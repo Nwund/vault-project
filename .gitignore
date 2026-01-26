@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+out/
+dist/
+release/
+*.exe
+*.blockmap
+
+# Environment and local config
+.env
+.env.local
+.env.*.local
+*.local.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+nul
+
+# Logs
+*.log
+npm-debug.log*
+
+# Cache
+.cache/
+*.cache
+
+# Test coverage
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Media files (user content - don't commit)
+NSFW Soundpack/
+
+# Icons (if generated)
+Icons/
+
+# Claude settings (local)
+.claude/settings.local.json
