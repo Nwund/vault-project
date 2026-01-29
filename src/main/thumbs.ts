@@ -38,6 +38,20 @@ export async function probeVideoDurationSec(filePath: string): Promise<number | 
   })
 }
 
+export async function probeMediaDimensions(filePath: string): Promise<{ width: number; height: number } | null> {
+  return await new Promise((resolve) => {
+    ffmpeg.ffprobe(filePath, (err, data) => {
+      if (err) return resolve(null)
+      // Find the video stream (or first stream with dimensions)
+      const videoStream = data.streams?.find(s => s.width && s.height)
+      if (videoStream?.width && videoStream?.height) {
+        return resolve({ width: videoStream.width, height: videoStream.height })
+      }
+      resolve(null)
+    })
+  })
+}
+
 export async function makeVideoThumb(params: {
   mediaId: string
   filePath: string
@@ -61,7 +75,10 @@ export async function makeVideoThumb(params: {
         folder: outDir,
         size: '480x?'
       })
-  }).catch(() => null)
+  }).catch((err) => {
+    console.error(`[Thumbs] Video thumb failed for ${params.filePath}:`, err?.message ?? err)
+    return null
+  })
 }
 
 export async function makeImageThumb(params: {
@@ -85,7 +102,10 @@ export async function makeImageThumb(params: {
         '-vf scale=480:-2:force_original_aspect_ratio=decrease'
       ])
       .save(outFile)
-  }).catch(() => null)
+  }).catch((err) => {
+    console.error(`[Thumbs] Image thumb failed for ${params.filePath}:`, err?.message ?? err)
+    return null
+  })
 }
 
 export function thumbExists(p: string | null): boolean {

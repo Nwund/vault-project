@@ -13,7 +13,7 @@ import { startWatcher } from './watcher'
 import { startJobRunner } from './jobs'
 import { broadcastToggle, logMain, registerDiagnosticsIpc } from './diagnostics'
 import { registerVaultProtocol } from './vaultProtocol'
-import { makeImageThumb, makeVideoThumb, probeVideoDurationSec } from './thumbs'
+import { makeImageThumb, makeVideoThumb, probeVideoDurationSec, probeMediaDimensions } from './thumbs'
 import { initDiabellaService } from './services/diabella'
 
 const DEFAULT_DEV_SERVER_URL = 'http://localhost:5173/'
@@ -130,13 +130,33 @@ async function main() {
   const dirs = getMediaDirs()
   logMain('info', 'Media dirs', { dirs })
 
-  // Clean up database entries for files that no longer exist
-  const removedCount = cleanupMissingFiles(db)
+  // Clean up database entries for files that no longer exist or are outside media dirs
+  const removedCount = cleanupMissingFiles(db, dirs)
   if (removedCount > 0) {
     logMain('info', 'Cleaned up missing files', { count: removedCount })
   }
 
   await rescanAll(db, dirs)
+
+  // Deduplicate DB entries (different path styles for same file, e.g. C:\foo vs C:/foo)
+  const dbPaths = db.listAllMediaPaths()
+  const pathMap = new Map<string, string[]>()
+  for (const p of dbPaths) {
+    const normalized = path.resolve(p.path).toLowerCase()
+    if (!pathMap.has(normalized)) pathMap.set(normalized, [])
+    pathMap.get(normalized)!.push(p.id)
+  }
+  let removedDupes = 0
+  for (const [, ids] of pathMap) {
+    for (let i = 1; i < ids.length; i++) {
+      db.deleteMediaById(ids[i])
+      removedDupes++
+    }
+  }
+  if (removedDupes > 0) {
+    console.log(`[Startup] Removed ${removedDupes} duplicate DB entries`)
+  }
+
   startWatchersForDirs(dirs)
 
   const jobRunner = startJobRunner(
@@ -158,6 +178,7 @@ async function main() {
 
         if (p.type === 'video') {
           const durationSec = await probeVideoDurationSec(p.path)
+          const dimensions = await probeMediaDimensions(p.path)
           const thumbPath = await makeVideoThumb({
             mediaId: p.mediaId,
             filePath: p.path,
@@ -165,22 +186,39 @@ async function main() {
             durationSec
           })
 
+          // Save dimensions/duration even if thumb fails
           db2.upsertMedia({
             ...cur,
             durationSec: durationSec ?? cur.durationSec ?? null,
-            thumbPath: thumbPath ?? cur.thumbPath ?? null
+            thumbPath: thumbPath ?? cur.thumbPath ?? null,
+            width: dimensions?.width ?? cur.width ?? null,
+            height: dimensions?.height ?? cur.height ?? null
           })
+
+          if (!thumbPath && !cur.thumbPath) {
+            console.warn(`[Thumbs] Video thumb returned null for ${p.path}`)
+            throw new Error(`Thumbnail generation failed for video: ${p.path}`)
+          }
         } else {
+          const dimensions = await probeMediaDimensions(p.path)
           const thumbPath = await makeImageThumb({
             mediaId: p.mediaId,
             filePath: p.path,
             mtimeMs: p.mtimeMs
           })
 
+          // Save dimensions even if thumb fails
           db2.upsertMedia({
             ...cur,
-            thumbPath: thumbPath ?? cur.thumbPath ?? null
+            thumbPath: thumbPath ?? cur.thumbPath ?? null,
+            width: dimensions?.width ?? cur.width ?? null,
+            height: dimensions?.height ?? cur.height ?? null
           })
+
+          if (!thumbPath && !cur.thumbPath) {
+            console.warn(`[Thumbs] Image thumb returned null for ${p.path}`)
+            throw new Error(`Thumbnail generation failed for image: ${p.path}`)
+          }
         }
 
         broadcast('vault:changed')

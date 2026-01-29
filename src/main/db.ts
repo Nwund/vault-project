@@ -119,6 +119,16 @@ export function createDb() {
     markJobDone: db.prepare(`UPDATE jobs SET status='done', finishedAt=? WHERE id=?;`),
     markJobError: db.prepare(`UPDATE jobs SET status='error', error=?, finishedAt=? WHERE id=?;`),
     listJobs: db.prepare(`SELECT * FROM jobs ORDER BY createdAt DESC LIMIT 200;`),
+    hasQueuedJobForMedia: db.prepare(`
+      SELECT 1 FROM jobs
+      WHERE type='media:analyze' AND status='queued' AND payloadJson LIKE '%' || ? || '%'
+      LIMIT 1;
+    `),
+    resetStaleRunningJobs: db.prepare(`
+      UPDATE jobs SET status='queued', startedAt=NULL
+      WHERE status='running' AND startedAt < ?;
+    `),
+    clearThumbPath: db.prepare(`UPDATE media SET thumbPath=NULL WHERE id=?;`),
 
     // stats
     getStats: db.prepare(`SELECT * FROM media_stats WHERE mediaId=? LIMIT 1;`),
@@ -250,7 +260,7 @@ export function createDb() {
     const row = stmts.upsertMedia.get({
       id: input.id ?? nanoid(),
       type: input.type,
-      path: input.path,
+      path: path.resolve(input.path),
       filename: input.filename,
       ext: input.ext,
       size: input.size,
@@ -270,7 +280,7 @@ export function createDb() {
     const q = args.q ?? ''
     const type = args.type ?? ''
     const tag = args.tag ?? ''
-    const limit = args.limit ?? 200
+    const limit = args.limit ?? 50000 // Allow large libraries
     const offset = args.offset ?? 0
     const items = stmts.listMedia.all({ q, type, tag, limit, offset }) as MediaRow[]
     const total = (stmts.countMedia.get({ q, type, tag }) as { n: number }).n
@@ -452,31 +462,50 @@ export function createDb() {
     return row
   }
 
-  function daylistGenerateToday(limit: number): { daylist: DaylistRow; items: MediaRow[] } {
+  function daylistGenerateToday(limit: number, intensity: number = 3): { daylist: DaylistRow; items: MediaRow[] } {
     const daylist = daylistGetOrCreateToday()
     const n = clampInt(limit, 10, 200)
+    const intensityLevel = clampInt(intensity, 1, 5)
 
     // Taste profile: recently viewed + top rated + most viewed
     const recent = stmts.listRecentlyViewed.all() as MediaRow[]
     const rated = stmts.listTopRated.all() as MediaRow[]
     const viewed = stmts.listMostViewed.all() as MediaRow[]
 
+    // Intensity affects how much we weight taste profile vs random
+    // 1 (Mild) = 20% taste, 80% random variety
+    // 3 (Medium) = 60% taste, 40% random
+    // 5 (Extreme) = 100% taste, heavily favor top rated
+    const tasteWeight = 0.2 + (intensityLevel - 1) * 0.2 // 0.2 to 1.0
+    const tasteSlice = Math.floor(80 * tasteWeight)
+
     const pool: MediaRow[] = []
-    const pushUniq = (arr: MediaRow[]) => {
+    const pushUniq = (arr: MediaRow[], weight: number = 1) => {
       const seen = new Set(pool.map((x) => x.id))
       for (const m of arr) {
         if (seen.has(m.id)) continue
         seen.add(m.id)
-        pool.push(m)
+        // At higher intensity, duplicate entries for top rated/viewed for weighted selection
+        const copies = intensityLevel >= 4 && weight > 1 ? Math.ceil(weight) : 1
+        for (let c = 0; c < copies; c++) pool.push(m)
       }
     }
 
-    pushUniq(recent.slice(0, 80))
-    pushUniq(rated.slice(0, 80))
-    pushUniq(viewed.slice(0, 80))
+    // Higher intensity = more emphasis on rated content
+    if (intensityLevel >= 4) {
+      pushUniq(rated.slice(0, tasteSlice), 3) // Triple weight for top rated at high intensity
+      pushUniq(viewed.slice(0, tasteSlice), 2)
+      pushUniq(recent.slice(0, tasteSlice), 1)
+    } else {
+      pushUniq(recent.slice(0, tasteSlice))
+      pushUniq(rated.slice(0, tasteSlice))
+      pushUniq(viewed.slice(0, tasteSlice))
+    }
 
-    if (pool.length < n) {
-      const all = listMedia({ q: '', type: 'video', tag: '', limit: 500, offset: 0 }).items
+    // Fill with random content based on intensity (lower intensity = more random)
+    const randomSlice = Math.floor(500 * (1 - tasteWeight + 0.2))
+    if (pool.length < n || intensityLevel <= 2) {
+      const all = listMedia({ q: '', type: 'video', tag: '', limit: randomSlice, offset: 0 }).items
       pushUniq(all)
     }
 
@@ -486,7 +515,17 @@ export function createDb() {
       ;[pool[i], pool[j]] = [pool[j], pool[i]]
     }
 
-    const picks = pool.slice(0, n)
+    // Dedupe after shuffle (weighted entries may have duplicates)
+    const uniquePicks: MediaRow[] = []
+    const seenIds = new Set<string>()
+    for (const m of pool) {
+      if (seenIds.has(m.id)) continue
+      seenIds.add(m.id)
+      uniquePicks.push(m)
+      if (uniquePicks.length >= n) break
+    }
+
+    const picks = uniquePicks
 
     db.transaction(() => {
       stmts.deleteDaylistItems.run(daylist.id)
@@ -554,6 +593,20 @@ export function createDb() {
     return out
   }
 
+  function hasQueuedJobForMedia(mediaId: string): boolean {
+    return !!stmts.hasQueuedJobForMedia.get(mediaId)
+  }
+
+  function resetStaleRunningJobs(): number {
+    const fiveMinAgo = Date.now() - 5 * 60 * 1000
+    const result = stmts.resetStaleRunningJobs.run(fiveMinAgo)
+    return result.changes
+  }
+
+  function clearThumbPath(mediaId: string): void {
+    stmts.clearThumbPath.run(mediaId)
+  }
+
   function enqueueJob(type: string, payload: unknown, priority = 0): string {
     const id = nanoid()
     stmts.enqueueJob.run(id, type, priority, JSON.stringify(payload), Date.now())
@@ -600,6 +653,9 @@ export function createDb() {
 
     enqueueJob,
     claimNextJob,
+    hasQueuedJobForMedia,
+    resetStaleRunningJobs,
+    clearThumbPath,
     markJobRunning: (id: string) => stmts.markJobRunning.run(Date.now(), id),
     markJobDone: (id: string) => stmts.markJobDone.run(Date.now(), id),
     markJobError: (id: string, err: string) => stmts.markJobError.run(err, Date.now(), id),
