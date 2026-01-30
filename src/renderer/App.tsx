@@ -1750,7 +1750,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
               <FloatingVideoPlayer
                 key={`player-slot-${index}`}
                 media={openMedia}
-                mediaList={media.filter(m => !openIds.includes(m.id) || m.id === id)} // Exclude other open videos from navigation
+                mediaList={sortedMedia.filter(m => !openIds.includes(m.id) || m.id === id)} // Use sorted order for navigation
                 onClose={() => closeFloatingPlayer(id)}
                 onMediaChange={(newId) => changeFloatingPlayerMedia(id, newId)}
                 instanceIndex={index}
@@ -1843,26 +1843,41 @@ const MediaTile = React.memo(function MediaTile(props: {
   // Hide HUD when: preview is actually playing
   const showHud = !isPreviewPlaying
 
-  // Load thumbnail
+  // Load thumbnail — if no thumbPath, request on-demand generation
   useEffect(() => {
     let alive = true
     setIsLoaded(false)
     setThumbError(false)
+    setThumbUrl('')
     ;(async () => {
       const p = media.thumbPath
-      if (!p) {
-        setThumbUrl('')
-        return
+      if (p) {
+        try {
+          const u = await toFileUrlCached(p)
+          if (!alive) return
+          setThumbUrl(u)
+          return
+        } catch (err) {
+          if (!alive) return
+          console.warn('[MediaTile] Failed to load thumb:', media.id, err)
+        }
       }
+      // No thumbPath — request on-demand thumbnail generation
       try {
-        const u = await toFileUrlCached(p)
+        const generatedPath = await window.api.media.generateThumb(media.id)
         if (!alive) return
-        setThumbUrl(u)
+        if (generatedPath) {
+          const u = await toFileUrlCached(generatedPath as string)
+          if (!alive) return
+          setThumbUrl(u)
+          return
+        }
       } catch (err) {
         if (!alive) return
-        console.warn('[MediaTile] Failed to load thumb:', media.id, err)
-        setThumbError(true)
+        console.warn('[MediaTile] On-demand thumb gen failed:', media.id, err)
       }
+      // Generation failed — show fallback
+      if (alive) setThumbError(true)
     })()
     return () => {
       alive = false
@@ -1987,8 +2002,9 @@ const MediaTile = React.memo(function MediaTile(props: {
             )}
           </>
         ) : thumbError ? (
-          <div className="w-full h-full bg-gradient-to-br from-red-900/20 to-black/60 flex items-center justify-center">
-            <div className="text-white/30 text-xs">No preview</div>
+          <div className="w-full h-full bg-gradient-to-br from-white/5 to-black/60 flex flex-col items-center justify-center gap-1">
+            <Play size={24} className="text-white/20" />
+            <div className="text-white/20 text-[10px]">{media.type === 'video' ? 'Video' : media.type === 'gif' ? 'GIF' : 'Image'}</div>
           </div>
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-black/40 to-black/60 flex items-center justify-center">
@@ -2471,10 +2487,10 @@ function GoonWallPage(props: {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const tileTimersRef = useRef<Map<number, NodeJS.Timeout>>(new Map())
 
-  // Calculate shuffle interval based on intensity (1=30s, 10=2s)
+  // Calculate shuffle interval based on intensity (1=120s, 10=10s)
   const getShuffleInterval = useCallback((intensityLevel: number) => {
-    const maxInterval = 30000 // 30 seconds at intensity 1
-    const minInterval = 2000  // 2 seconds at intensity 10
+    const maxInterval = 120000 // 120 seconds at intensity 1
+    const minInterval = 10000  // 10 seconds at intensity 10
     return maxInterval - ((intensityLevel - 1) / 9) * (maxInterval - minInterval)
   }, [])
 
@@ -2673,9 +2689,9 @@ function GoonWallPage(props: {
       tileTimersRef.current.set(idx, timer)
     }
 
-    // Start timers with staggered initial delays
+    // Start timers with well-staggered initial delays so tiles don't all shuffle at once
     for (let idx = 0; idx < tileCount; idx++) {
-      const initialDelay = Math.random() * baseInterval * 0.3
+      const initialDelay = (idx / tileCount) * baseInterval + Math.random() * 3000
       const initTimer = setTimeout(() => {
         if (active) startTileTimer(idx)
       }, initialDelay)
@@ -2912,7 +2928,6 @@ function GoonWallPage(props: {
               muted={muted}
               style={getTileStyle(idx)}
               onShuffle={() => shuffleSingleTile(idx)}
-              loadDelay={idx * 50} // Stagger loading by 50ms per tile
             />
           ))}
         </div>
@@ -2930,120 +2945,62 @@ function GoonWallPage(props: {
   )
 }
 
-const GoonTile = React.memo(function GoonTile(props: { media: MediaRow; muted: boolean; style?: React.CSSProperties; onShuffle: () => void; loadDelay?: number }) {
+const GoonTile = React.memo(function GoonTile(props: { media: MediaRow; muted: boolean; style?: React.CSSProperties; onShuffle: () => void }) {
   const { media, muted, style, onShuffle } = props
   const [url, setUrl] = useState('')
-  const [loading, setLoading] = useState(true)
   const [retried, setRetried] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
-  // Load video URL via getPlayableUrl (handles transcoding transparently)
+  // Load URL immediately — no delays, no queues
   useEffect(() => {
     let alive = true
-    setLoading(true)
     setRetried(false)
-
-    window.api.media.getPlayableUrl(media.id).then(u => {
-      if (alive && u) {
-        setUrl(u as string)
-      } else if (alive) {
-        // Fallback to direct path
-        toFileUrlCached(media.path).then(u2 => {
-          if (alive && u2) setUrl(u2)
-          else if (alive) { setLoading(false); onShuffle() }
-        })
-      }
-    }).catch(() => {
-      if (alive) {
-        toFileUrlCached(media.path).then(u2 => {
-          if (alive && u2) setUrl(u2)
-          else if (alive) { setLoading(false); onShuffle() }
-        })
-      }
-    })
-
+    toFileUrlCached(media.path).then(u => {
+      if (alive && u) setUrl(u)
+      else if (alive) onShuffle()
+    }).catch(() => { if (alive) onShuffle() })
     return () => { alive = false }
   }, [media.id, media.path, onShuffle])
 
-  // Critical: Cleanup video on unmount to release decoder
+  // Cleanup video on unmount
   useEffect(() => {
     return () => {
       const video = videoRef.current
-      if (video) {
-        cleanupVideo(video)
-      }
+      if (video) cleanupVideo(video)
     }
   }, [])
 
-  // Handle mute state changes
+  // Mute sync
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.muted = muted
-    }
+    if (videoRef.current) videoRef.current.muted = muted
   }, [muted])
 
-  // Seek to loudness peak or random position on metadata load
+  // Seek to random position on metadata load
   const handleLoadedMetadata = useCallback(() => {
     const video = videoRef.current
     if (!video || !video.duration || video.duration < 2) return
     const dur = video.duration
-
-    window.api.media.getLoudnessPeak(media.id).then(peakTime => {
-      if (!videoRef.current) return
-      if (peakTime != null && peakTime > 0 && peakTime < dur) {
-        videoRef.current.currentTime = peakTime
-      } else {
-        // Random 10-90% of duration
-        videoRef.current.currentTime = (0.1 + Math.random() * 0.8) * dur
-      }
-    }).catch(() => {
-      if (videoRef.current && dur > 2) {
-        videoRef.current.currentTime = (0.1 + Math.random() * 0.8) * dur
-      }
-    })
-  }, [media.id])
-
-  // Ensure video plays when loaded
-  const handleCanPlay = useCallback(() => {
-    setLoading(false)
-    const video = videoRef.current
-    if (video && video.paused) {
-      video.play().catch(() => {})
-    }
+    // Seek to random 10-90% immediately — don't wait for loudness IPC
+    video.currentTime = (0.1 + Math.random() * 0.8) * dur
   }, [])
 
-  // Handle video errors - retry with transcode, then move broken
+  // Handle errors — force transcode on first error, skip on second
   const handleError = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
-    const video = e.currentTarget
-    const error = video.error
+    const error = e.currentTarget.error
     const errorType = error ? ['', 'ABORTED', 'NETWORK', 'DECODE', 'SRC_NOT_SUPPORTED'][error.code] || 'UNKNOWN' : 'UNKNOWN'
 
-    // First error: retry via getPlayableUrl (triggers transcode if needed)
     if (!retried) {
-      console.warn('[GoonTile] Video error, retrying with transcode:', media.path, errorType)
+      console.warn('[GoonTile] Error, force transcoding:', media.path, errorType)
       setRetried(true)
-      window.api.media.getPlayableUrl(media.id).then(u => {
+      window.api.media.getPlayableUrl(media.id, true).then(u => {
         if (u) setUrl(u as string)
-        else {
-          // Transcode also failed — move to broken
-          window.api.media.moveBroken(media.id, errorType).finally(() => onShuffle())
-        }
-      }).catch(() => {
-        window.api.media.moveBroken(media.id, errorType).finally(() => onShuffle())
-      })
+        else onShuffle()
+      }).catch(() => onShuffle())
       return
     }
-
-    console.warn('[GoonTile] Video error after retry, moving to broken folder:', media.path, errorType)
-    window.api.media.moveBroken(media.id, errorType).then(() => {
-      onShuffle()
-    }).catch(() => {
-      onShuffle()
-    })
+    console.warn('[GoonTile] Error after transcode, skipping:', media.path, errorType)
+    onShuffle()
   }, [media.id, media.path, onShuffle, retried])
-
-  // Get filename from path
-  const filename = media.path.split(/[/\\]/).pop() || 'Unknown'
 
   return (
     <div
@@ -3051,13 +3008,6 @@ const GoonTile = React.memo(function GoonTile(props: { media: MediaRow; muted: b
       style={style}
       onClick={onShuffle}
     >
-      {/* Loading indicator */}
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black z-10">
-          <div className="w-8 h-8 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
-        </div>
-      )}
-
       {url && (
         <video
           ref={videoRef}
@@ -3069,7 +3019,6 @@ const GoonTile = React.memo(function GoonTile(props: { media: MediaRow; muted: b
           preload="auto"
           className="w-full h-full object-cover"
           onLoadedMetadata={handleLoadedMetadata}
-          onLoadedData={handleCanPlay}
           onError={handleError}
         />
       )}
@@ -3077,7 +3026,7 @@ const GoonTile = React.memo(function GoonTile(props: { media: MediaRow; muted: b
       {/* Hover overlay */}
       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center">
         <div className="text-xs text-white/80 text-center p-2 truncate max-w-full">
-          {filename}
+          {media.path.split(/[/\\]/).pop() || 'Unknown'}
         </div>
         <div className="text-[10px] text-white/50">Click to shuffle</div>
       </div>

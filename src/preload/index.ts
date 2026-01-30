@@ -106,8 +106,13 @@ const api = {
     // Move broken/corrupted files
     moveBroken: (mediaId: string, reason?: string) => invoke('media:moveBroken', mediaId, reason),
     // Transcode & playback
-    getPlayableUrl: (mediaId: string) => invoke<string | null>('media:getPlayableUrl', mediaId),
+    getPlayableUrl: (mediaId: string, forceTranscode?: boolean) => invoke<string | null>('media:getPlayableUrl', mediaId, forceTranscode),
     getLoudnessPeak: (mediaId: string) => invoke<number | null>('media:getLoudnessPeak', mediaId),
+    // On-demand thumbnail generation
+    generateThumb: (mediaId: string) => invoke<string | null>('media:generateThumb', mediaId),
+    // Duplicate detection
+    findDuplicates: () => invoke<Array<{ hash: string; count: number; ids: string[]; paths: string[] }>>('media:findDuplicates'),
+    deleteDuplicates: (options?: { dryRun?: boolean }) => invoke<{ deletedCount: number; freedBytes: number; deleted: string[]; dryRun: boolean }>('media:deleteDuplicates', options),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

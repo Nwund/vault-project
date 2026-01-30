@@ -73,6 +73,7 @@ import { toVaultUrl } from './vaultProtocol'
 import { getAICacheService } from './services/ai-cache-service'
 import { getLicenseService } from './services/license-service'
 import { needsTranscode, transcodeToMp4, getTranscodedPath } from './services/transcode'
+import { makeVideoThumb, makeImageThumb, probeVideoDurationSec } from './thumbs'
 
 type OnDirsChanged = (newDirs: string[]) => Promise<void>
 
@@ -439,11 +440,11 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   // ═══════════════════════════════════════════════════════════════════════════
   // MEDIA - Playable URL (transcode on demand)
   // ═══════════════════════════════════════════════════════════════════════════
-  ipcMain.handle('media:getPlayableUrl', async (_ev, mediaId: string) => {
+  ipcMain.handle('media:getPlayableUrl', async (_ev, mediaId: string, forceTranscode?: boolean) => {
     const media = db.getMedia(mediaId)
     if (!media) return null
     const ext = path.extname(media.path).toLowerCase()
-    if (needsTranscode(ext)) {
+    if (forceTranscode || needsTranscode(ext)) {
       // Check if already transcoded
       let tp = getTranscodedPath(mediaId)
       if (!tp) {
@@ -457,6 +458,115 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('media:getLoudnessPeak', async (_ev, mediaId: string) => {
     return db.getLoudnessPeakTime(mediaId)
+  })
+
+  // On-demand thumbnail generation — called when MediaTile has no thumb
+  ipcMain.handle('media:generateThumb', async (_ev, mediaId: string) => {
+    try {
+      const media = db.getMedia(mediaId)
+      if (!media) return null
+      if (media.thumbPath && fs.existsSync(media.thumbPath)) {
+        return media.thumbPath // Already has valid thumb
+      }
+      let thumbPath: string | null = null
+      if (media.type === 'video' || media.type === 'gif') {
+        const dur = media.durationSec ?? await probeVideoDurationSec(media.path)
+        thumbPath = await makeVideoThumb({
+          mediaId: media.id,
+          filePath: media.path,
+          mtimeMs: media.mtimeMs,
+          durationSec: dur
+        })
+      } else {
+        thumbPath = await makeImageThumb({
+          mediaId: media.id,
+          filePath: media.path,
+          mtimeMs: media.mtimeMs
+        })
+      }
+      if (thumbPath) {
+        // Update DB with thumb path
+        db.raw.prepare('UPDATE media SET thumbPath=? WHERE id=?').run(thumbPath, mediaId)
+      }
+      return thumbPath
+    } catch (err: any) {
+      console.error('[IPC] generateThumb failed:', mediaId, err?.message)
+      return null
+    }
+  })
+
+  // Find duplicate files by SHA-256 hash
+  ipcMain.handle('media:findDuplicates', async () => {
+    try {
+      const rows = db.raw.prepare(`
+        SELECT hashSha256, GROUP_CONCAT(id, '|') as ids, GROUP_CONCAT(path, '|') as paths, COUNT(*) as cnt
+        FROM media
+        WHERE hashSha256 IS NOT NULL AND hashSha256 != ''
+        GROUP BY hashSha256
+        HAVING cnt > 1
+        ORDER BY cnt DESC
+      `).all() as Array<{ hashSha256: string; ids: string; paths: string; cnt: number }>
+
+      return rows.map(r => ({
+        hash: r.hashSha256,
+        count: r.cnt,
+        ids: r.ids.split('|'),
+        paths: r.paths.split('|')
+      }))
+    } catch (err: any) {
+      console.error('[IPC] findDuplicates error:', err?.message)
+      return []
+    }
+  })
+
+  // Delete duplicate files, keeping the first one
+  ipcMain.handle('media:deleteDuplicates', async (_ev, options?: { dryRun?: boolean }) => {
+    try {
+      const dryRun = options?.dryRun ?? false
+      const rows = db.raw.prepare(`
+        SELECT hashSha256, GROUP_CONCAT(id, '|') as ids, GROUP_CONCAT(path, '|') as paths, COUNT(*) as cnt
+        FROM media
+        WHERE hashSha256 IS NOT NULL AND hashSha256 != ''
+        GROUP BY hashSha256
+        HAVING cnt > 1
+      `).all() as Array<{ hashSha256: string; ids: string; paths: string; cnt: number }>
+
+      let deletedCount = 0
+      let freedBytes = 0
+      const deleted: string[] = []
+
+      for (const r of rows) {
+        const ids = r.ids.split('|')
+        const paths = r.paths.split('|')
+        // Keep the first, delete the rest
+        for (let i = 1; i < ids.length; i++) {
+          if (!dryRun) {
+            try {
+              if (fs.existsSync(paths[i])) {
+                const stat = fs.statSync(paths[i])
+                freedBytes += stat.size
+                fs.unlinkSync(paths[i])
+              }
+              db.deleteMediaById(ids[i])
+            } catch (e: any) {
+              console.warn('[Dedup] Failed to delete:', paths[i], e?.message)
+              continue
+            }
+          }
+          deleted.push(paths[i])
+          deletedCount++
+        }
+      }
+
+      if (!dryRun && deletedCount > 0) {
+        broadcast('vault:changed')
+      }
+
+      return { deletedCount, freedBytes, deleted, dryRun }
+    } catch (err: any) {
+      console.error('[IPC] deleteDuplicates error:', err?.message)
+      return { deletedCount: 0, freedBytes: 0, deleted: [], dryRun: true, error: err?.message }
+    }
   })
 
   // ═══════════════════════════════════════════════════════════════════════════

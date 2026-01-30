@@ -4,7 +4,7 @@
 const AI_DEEP_ANALYSIS_DISABLED = true // Maintenance flag - disable AI deep analysis button
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, Star, FolderOpen, Play, Pause, Sparkles, Heart } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart } from 'lucide-react'
 
 interface MediaRow {
   id: string
@@ -70,6 +70,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [analysisResult, setAnalysisResult] = useState<string | null>(null)
   const [isLiked, setIsLiked] = useState(false)
   const [transcodeRetried, setTranscodeRetried] = useState(false)
+  const errorHandled = useRef(false) // Prevent duplicate error handling
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const hideControlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -104,6 +105,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     setHasError(false)
     aspectRatioSet.current = false // Reset for new video
     setTranscodeRetried(false)
+    errorHandled.current = false
     ;(async () => {
       try {
         const u = await window.api.media.getPlayableUrl(media.id)
@@ -131,23 +133,25 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     window.api.media.recordView(media.id)
   }, [media.id])
 
-  // Loading timeout - if video doesn't load within 10 seconds, show error
+  // Loading timeout - if video doesn't load within 10 seconds, auto-skip or show error
   useEffect(() => {
     if (!isLoading || hasError) return
     const timeout = setTimeout(() => {
       if (isLoading && !hasError) {
-        console.warn('[FloatingPlayer] Loading timeout:', media.path)
+        console.warn('[FloatingPlayer] Loading timeout, auto-skipping:', media.path)
+        if (hasNext) { goToNext(); return }
         setHasError(true)
         setIsLoading(false)
       }
     }, 10000)
     return () => clearTimeout(timeout)
-  }, [isLoading, hasError, media.path])
+  }, [isLoading, hasError, media.path, hasNext, goToNext])
 
   // Handle video events
   const handleCanPlay = useCallback(() => {
     setIsLoading(false)
     setHasError(false)
+    errorHandled.current = false
     if (videoRef.current) {
       setDuration(videoRef.current.duration)
       // Apply initial volume
@@ -156,25 +160,33 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   }, [isMuted, volume])
 
   const handleError = useCallback((e: React.SyntheticEvent<HTMLVideoElement | HTMLImageElement>) => {
+    // Prevent duplicate error handling (video element fires error multiple times)
+    if (errorHandled.current) return
+    errorHandled.current = true
+
     const target = e.currentTarget
     if ('error' in target && target.error) {
       const videoError = target.error as MediaError
       const errorType = ['', 'ABORTED', 'NETWORK', 'DECODE', 'SRC_NOT_SUPPORTED'][videoError.code] || 'UNKNOWN'
       console.warn('[FloatingPlayer] Video error:', { path: media.path, code: videoError.code, errorType })
 
-      // Retry via transcode if not already retried and it's a decode/format error
+      // Retry with force transcode if not already retried and it's a decode/format error
       if (!transcodeRetried && (videoError.code === 3 || videoError.code === 4)) {
         setTranscodeRetried(true)
-        window.api.media.getPlayableUrl(media.id).then(u => {
+        errorHandled.current = false // Allow one more error after transcode retry
+        window.api.media.getPlayableUrl(media.id, true).then(u => {
           if (u) {
             setUrl(u as string)
             setHasError(false)
             setIsLoading(true)
             return
           }
+          // Transcode failed — auto-skip to next video
+          if (hasNext) { goToNext(); return }
           setIsLoading(false)
           setHasError(true)
         }).catch(() => {
+          if (hasNext) { goToNext(); return }
           setIsLoading(false)
           setHasError(true)
         })
@@ -183,9 +195,11 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     } else {
       console.warn('[FloatingPlayer] Media error:', media.path)
     }
+    // Auto-skip to next if available
+    if (hasNext) { goToNext(); return }
     setIsLoading(false)
     setHasError(true)
-  }, [media.path, media.id, transcodeRetried])
+  }, [media.path, media.id, transcodeRetried, hasNext, goToNext])
 
   const handleTimeUpdate = useCallback(() => {
     if (videoRef.current) {
@@ -516,16 +530,6 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     })()
     return () => { alive = false }
   }, [media.id])
-
-  // Quick actions
-  const handleIncO = async () => {
-    await window.api.media.incO(media.id)
-  }
-
-  const handleRate5Stars = async () => {
-    await window.api.media.setRating(media.id, 5)
-    setIsLiked(true)
-  }
 
   const handleRevealInFolder = async () => {
     await window.api.shell.showItemInFolder(media.path)
@@ -862,22 +866,6 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               title={isLiked ? 'Unlike (L)' : 'Like (L)'}
             >
               <Heart size={16} className={isLiked ? 'fill-current' : ''} />
-            </button>
-
-            <button
-              onClick={handleIncO}
-              className="p-2 rounded-lg bg-pink-600/60 hover:bg-pink-600/80 transition"
-              title="+O"
-            >
-              <span className="text-xs font-bold">+O</span>
-            </button>
-
-            <button
-              onClick={handleRate5Stars}
-              className="p-2 rounded-lg bg-yellow-600/60 hover:bg-yellow-600/80 transition"
-              title="Rate 5 stars"
-            >
-              <Star size={16} />
             </button>
 
             <button
