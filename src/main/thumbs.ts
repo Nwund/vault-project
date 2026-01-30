@@ -52,6 +52,34 @@ export async function probeMediaDimensions(filePath: string): Promise<{ width: n
   })
 }
 
+function isValidThumb(filePath: string): boolean {
+  try {
+    const stat = fs.statSync(filePath)
+    return stat.size > 1500 // black frames are typically 500-1500 bytes at 480px; real content is 5-30KB
+  } catch {
+    return false
+  }
+}
+
+function captureScreenshot(
+  filePath: string,
+  outFile: string,
+  outDir: string,
+  atSeconds: number
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    ffmpeg(filePath)
+      .on('error', (e) => reject(e))
+      .on('end', () => resolve(outFile))
+      .screenshots({
+        timestamps: [atSeconds],
+        filename: path.basename(outFile),
+        folder: outDir,
+        size: '480x?'
+      })
+  })
+}
+
 export async function makeVideoThumb(params: {
   mediaId: string
   filePath: string
@@ -61,24 +89,27 @@ export async function makeVideoThumb(params: {
   const outDir = thumbsRootDir()
   const outFile = path.join(outDir, stableThumbName(params.mediaId, params.mtimeMs, 'jpg'))
 
-  if (fs.existsSync(outFile)) return outFile
+  if (fs.existsSync(outFile) && isValidThumb(outFile)) return outFile
 
-  const at = params.durationSec && params.durationSec > 6 ? Math.min(params.durationSec * 0.1, 10) : 3
+  // Try multiple timestamps to avoid black frames (intros, fades)
+  const dur = params.durationSec
+  const timestamps = dur && dur > 2
+    ? [dur * 0.3, dur * 0.5, dur * 0.7, dur * 0.15, dur * 0.85, dur * 0.05].map(t => Math.max(0, Math.min(t, dur - 0.5))).concat([1])
+    : [1, 0]
 
-  return await new Promise((resolve, reject) => {
-    ffmpeg(params.filePath)
-      .on('error', (e) => reject(e))
-      .on('end', () => resolve(outFile))
-      .screenshots({
-        timestamps: [at],
-        filename: path.basename(outFile),
-        folder: outDir,
-        size: '480x?'
-      })
-  }).catch((err) => {
-    console.error(`[Thumbs] Video thumb failed for ${params.filePath}:`, err?.message ?? err)
-    return null
-  })
+  for (const at of timestamps) {
+    try {
+      await captureScreenshot(params.filePath, outFile, outDir, at)
+      if (isValidThumb(outFile)) return outFile
+      // Tiny file likely means black/corrupt frame — try next timestamp
+      try { fs.unlinkSync(outFile) } catch {}
+    } catch {
+      try { fs.unlinkSync(outFile) } catch {}
+    }
+  }
+
+  console.error(`[Thumbs] Video thumb failed for ${params.filePath}: all timestamps produced invalid frames`)
+  return null
 }
 
 export async function makeImageThumb(params: {
@@ -106,6 +137,34 @@ export async function makeImageThumb(params: {
     console.error(`[Thumbs] Image thumb failed for ${params.filePath}:`, err?.message ?? err)
     return null
   })
+}
+
+export async function regenerateThumb(params: {
+  mediaId: string
+  filePath: string
+  mtimeMs: number
+  durationSec: number | null
+  type: 'video' | 'image'
+  existingThumbPath?: string | null
+}): Promise<string | null> {
+  // Delete existing thumb if present
+  if (params.existingThumbPath) {
+    try { fs.unlinkSync(params.existingThumbPath) } catch {}
+  }
+  if (params.type === 'video') {
+    return makeVideoThumb({
+      mediaId: params.mediaId,
+      filePath: params.filePath,
+      mtimeMs: params.mtimeMs,
+      durationSec: params.durationSec
+    })
+  } else {
+    return makeImageThumb({
+      mediaId: params.mediaId,
+      filePath: params.filePath,
+      mtimeMs: params.mtimeMs
+    })
+  }
 }
 
 export function thumbExists(p: string | null): boolean {

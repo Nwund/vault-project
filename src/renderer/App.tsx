@@ -2,14 +2,52 @@
 // ============================================
 // MAINTENANCE FLAGS - Set to true to disable features
 // ============================================
-const THEMES_DISABLED = true           // Disable theme switching, use default obsidian
+const THEMES_DISABLED = false          // Disable theme switching, use default obsidian
 const APPEARANCE_DISABLED = true       // Disable all appearance settings (pixel bg, cursors, effects)
+const AI_DEEP_ANALYSIS_DISABLED = true // Disable AI deep analysis and tag analysis for maintenance
+// ============================================
+
+// ============================================
+// TODO: DISABLED FEATURES - STATUS REPORT
+// ============================================
+//
+// [DIABELLA - AI COMPANION] (95% complete)
+// - Backend: Fully implemented (chat, avatar, voice, sounds)
+// - Frontend: DiabellaPage ready but disabled
+// - NEEDS: Move Venice API keys from hardcoded to environment variables
+//   Files: src/main/services/diabella/chat-engine.ts, avatar-generator.ts, voice-engine.ts
+// - NEEDS: Implement AI provider selection UI in Settings
+// - NEEDS: Add voice playback UI to DiabellaPage (audio element, preset selector)
+// - TO ENABLE: Set MAINTENANCE_MODE.diabella = false
+//
+// [SESSIONS/PLAYLISTS] (100% complete, ready to enable)
+// - Backend: All IPC handlers working (create, rename, delete, reorder, export M3U)
+// - Frontend: PlaylistsPage fully implemented with drag-and-drop
+// - NEEDS: Implement Mood feature (UI buttons exist but no handlers)
+// - TO ENABLE: Set MAINTENANCE_MODE.playlists = false
+//
+// [STATS] (95% complete)
+// - Backend: GoonStats tracking with 20+ metrics, achievements
+// - Frontend: StatsPage with session controls, stats grid, achievements display
+// - NEEDS: Implement activity heatmap visualization (type exists but not rendered)
+// - NEEDS: Verify achievement unlock triggers all work
+// - TO ENABLE: Set MAINTENANCE_MODE.stats = false
+//
+// [THEMES] (100% complete, enabled but restricted)
+// - 20 full themes implemented (10 classic + 10 goon)
+// - Erotic animations CSS system built-in
+// - NEEDS: Remove src/renderer/themes.ts (old file) to avoid confusion
+// - NEEDS: Ensure injectEroticAnimations() is called at startup
+// - TO ENABLE FULL: Set THEMES_DISABLED = false
+//
 // ============================================
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import {
   themes,
   THEME_LIST,
+  DARK_THEME_LIST,
+  LIGHT_THEME_LIST,
   applyTheme as applyThemeCSS,
   injectEroticAnimations,
   isGoonTheme,
@@ -17,6 +55,7 @@ import {
   type ThemeId
 } from './styles/themes'
 import { useDebounce, toFileUrlCached } from './hooks/usePerformance'
+import { useVideoPreview } from './hooks/useVideoPreview'
 import { DiabellaAvatar } from './components/DiabellaAvatar'
 import { TagSelector } from './components/TagSelector'
 // Overlays disabled for cleaner look - keeping pixel background only
@@ -31,8 +70,11 @@ import cursorGrab from './assets/cursors/grab.png'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { fisherYatesShuffle, shuffleTake, randomPick } from './utils/shuffle'
 import { cleanupVideo, useVideoPool, videoPool } from './hooks/useVideoCleanup'
+import { useAnime } from './hooks/useAnime'
+import { useConfetti } from './hooks/useConfetti'
 import { LoginPage } from './pages/LoginPage'
 import { FloatingVideoPlayer } from './components/FloatingVideoPlayer'
+import { FeatureTree } from './components/FeatureTree'
 import {
   Library,
   Repeat,
@@ -64,9 +106,79 @@ import {
   Crown,
   Zap,
   Wrench,
-  Construction
+  Construction,
+  Maximize2,
+  Tag,
+  GitBranch
 } from 'lucide-react'
 import { playGreeting, playSoundFromCategory, playClimaxForType, hasSounds } from './utils/soundPlayer'
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GLOBAL TASK CONTEXT - Track running background tasks across the app
+// ═══════════════════════════════════════════════════════════════════════════
+type GlobalTask = {
+  id: string
+  name: string
+  progress: number // 0-100
+  status: string
+  startedAt: number
+}
+
+const GlobalTaskContext = React.createContext<{
+  tasks: GlobalTask[]
+  addTask: (task: Omit<GlobalTask, 'startedAt'>) => void
+  updateTask: (id: string, updates: Partial<GlobalTask>) => void
+  removeTask: (id: string) => void
+}>({
+  tasks: [],
+  addTask: () => {},
+  updateTask: () => {},
+  removeTask: () => {}
+})
+
+export function useGlobalTasks() {
+  return React.useContext(GlobalTaskContext)
+}
+
+// Global Progress Bar Component - Always visible at bottom when tasks are running
+function GlobalProgressBar() {
+  const { tasks, removeTask } = useGlobalTasks()
+
+  if (tasks.length === 0) return null
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-[100] bg-black/95 border-t border-purple-500/30 backdrop-blur-sm">
+      <div className="max-w-screen-xl mx-auto px-4 py-2">
+        {tasks.map(task => (
+          <div key={task.id} className="flex items-center gap-4">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <Sparkles size={14} className="text-purple-400 animate-pulse flex-shrink-0" />
+              <span className="text-sm text-white font-medium truncate">{task.name}</span>
+              <span className="text-xs text-white/60 truncate">{task.status}</span>
+            </div>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <div className="w-48 h-2 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300"
+                  style={{ width: `${task.progress}%` }}
+                />
+              </div>
+              <span className="text-xs text-white/60 w-10 text-right">{task.progress}%</span>
+              {task.progress >= 100 && (
+                <button
+                  onClick={() => removeTask(task.id)}
+                  className="p-1 hover:bg-white/10 rounded transition"
+                >
+                  <X size={12} className="text-white/60" />
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 type MediaType = 'video' | 'image' | 'gif'
 
@@ -171,19 +283,24 @@ const THEMES = THEME_LIST.map(t => ({ id: t.id, name: t.name }))
 
 // Features under maintenance - set to true to disable
 const MAINTENANCE_MODE = {
-  diabella: true,
-  playlists: true, // Sessions
-  stats: true
+  diabella: true,   // AI companion - disabled for maintenance
+  playlists: true,  // Sessions - disabled for maintenance
+  stats: true,      // Stats & achievements - disabled for maintenance
+  roadmap: true,    // Roadmap - disabled for maintenance
+  quickmix: true,   // Quick Mix - disabled for maintenance
+  settings: false   // Settings - enabled
 }
 
 const NAV = [
   { id: 'library', name: 'Library' },
   { id: 'goonwall', name: 'Goon Wall' },
-  { id: 'daylist', name: "Today's Mix" },
+  { id: 'daylist', name: 'Quick Mix', maintenance: MAINTENANCE_MODE.quickmix },
+  { id: 'feed', name: 'Feed' },
   { id: 'playlists', name: 'Sessions', maintenance: MAINTENANCE_MODE.playlists },
   { id: 'stats', name: 'Stats', maintenance: MAINTENANCE_MODE.stats },
   { id: 'diabella', name: 'Diabella', maintenance: MAINTENANCE_MODE.diabella },
-  { id: 'settings', name: 'Settings' },
+  { id: 'roadmap', name: 'Roadmap', maintenance: MAINTENANCE_MODE.roadmap },
+  { id: 'settings', name: 'Settings', maintenance: MAINTENANCE_MODE.settings },
   { id: 'about', name: 'About' }
 ] as const
 
@@ -193,10 +310,12 @@ const NavIcon: React.FC<{ id: string; active?: boolean }> = ({ id, active }) => 
   switch (id) {
     case 'library': return <Library {...iconProps} />
     case 'goonwall': return <LayoutGrid {...iconProps} />
-    case 'daylist': return <Flame {...iconProps} />
+    case 'daylist': return <Shuffle {...iconProps} />
+    case 'feed': return <Flame {...iconProps} />
     case 'playlists': return <ListMusic {...iconProps} />
     case 'stats': return <BarChart3 {...iconProps} />
     case 'diabella': return <Heart {...iconProps} />
+    case 'roadmap': return <GitBranch {...iconProps} />
     case 'settings': return <Settings {...iconProps} />
     case 'about': return <Info {...iconProps} />
     default: return null
@@ -209,6 +328,10 @@ export default function App() {
   const [page, setPage] = useState<NavId>('library')
   const [settings, setSettings] = useState<VaultSettings | null>(null)
   const [sessionActive, setSessionActive] = useState(false)
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
+  const [leftSidebarHover, setLeftSidebarHover] = useState(false)
+  const [leftSidebarMouseY, setLeftSidebarMouseY] = useState(0)
+  const [tagBarOpen, setTagBarOpen] = useState(true) // Lifted to App for coordination
   const [visualEffectsEnabled, setVisualEffectsEnabled] = useState(true)
   const [ambientHeatLevel, setAmbientHeatLevel] = useState(3) // Manual heat level for ambient effects
   const [goonModeEnabled, setGoonModeEnabled] = useState(false) // Floating text mode
@@ -225,11 +348,47 @@ export default function App() {
   const [dreamyHazeEnabled, setDreamyHazeEnabled] = useState(false) // Soft dreamy haze
 
   // Pixel background settings (simplified - just parallax)
-  const [pixelTheme, setPixelTheme] = useState<PixelTheme | 'none'>('cityLights')
+  const [pixelTheme, setPixelTheme] = useState<PixelTheme>('neonMetropolis')
   const [pixelBackgroundEnabled, setPixelBackgroundEnabled] = useState(true)
   const [pixelParallaxStrength, setPixelParallaxStrength] = useState(35)
   const [pixelOpacity, setPixelOpacity] = useState(40)
   const [pixelCursorEnabled, setPixelCursorEnabled] = useState(true)
+
+  // Global task tracking state
+  const [globalTasks, setGlobalTasks] = useState<GlobalTask[]>([])
+
+  const addGlobalTask = useCallback((task: Omit<GlobalTask, 'startedAt'>) => {
+    setGlobalTasks(prev => [...prev.filter(t => t.id !== task.id), { ...task, startedAt: Date.now() }])
+  }, [])
+
+  const updateGlobalTask = useCallback((id: string, updates: Partial<GlobalTask>) => {
+    setGlobalTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t))
+  }, [])
+
+  const removeGlobalTask = useCallback((id: string) => {
+    setGlobalTasks(prev => prev.filter(t => t.id !== id))
+  }, [])
+
+  const globalTaskContextValue = useMemo(() => ({
+    tasks: globalTasks,
+    addTask: addGlobalTask,
+    updateTask: updateGlobalTask,
+    removeTask: removeGlobalTask
+  }), [globalTasks, addGlobalTask, updateGlobalTask, removeGlobalTask])
+
+  // Animation hooks for visual effects
+  const anime = useAnime()
+  const confetti = useConfetti()
+  const mainContentRef = useRef<HTMLElement>(null)
+  const prevPageRef = useRef<string>(page)
+
+  // Page transition animation
+  useEffect(() => {
+    if (prevPageRef.current !== page && mainContentRef.current) {
+      anime.fadeIn(mainContentRef.current, 200)
+      prevPageRef.current = page
+    }
+  }, [page, anime])
 
   // Track heat level based on session duration
   const sessionHeatLevel = useHeatLevel(sessionActive)
@@ -247,7 +406,9 @@ export default function App() {
     setTimeout(() => setScreenShake(0), 800) // Shake for 800ms
     // Play climax/orgasm sound from NSFW Soundpack
     playClimaxForType(type, { volume: 0.85 })
-  }, [heatLevel])
+    // Celebration effect!
+    confetti.fireworks()
+  }, [heatLevel, confetti])
 
   // Random climax trigger effect
   useEffect(() => {
@@ -304,12 +465,8 @@ export default function App() {
     }
     // Try new settings structure first, fall back to legacy
     const themeId = (settings as any)?.appearance?.themeId ?? settings?.ui?.themeId ?? 'obsidian'
-    // Only apply CSS theme if pixel background is disabled
-    if (!pixelBackgroundEnabled || pixelTheme === 'none') {
-      applyThemeCSS(themeId as ThemeId)
-      clearPixelThemeColors()
-    }
-  }, [(settings as any)?.appearance?.themeId, settings?.ui?.themeId, pixelBackgroundEnabled, pixelTheme])
+    applyThemeCSS(themeId as ThemeId)
+  }, [(settings as any)?.appearance?.themeId, settings?.ui?.themeId])
 
   const patchSettings = async (patch: Partial<VaultSettings>) => {
     const next = await window.api.settings.patch(patch)
@@ -323,8 +480,9 @@ export default function App() {
   } : {}
 
   return (
+    <GlobalTaskContext.Provider value={globalTaskContextValue}>
     <div
-      className="h-screen w-screen overflow-hidden"
+      className={`h-screen w-screen overflow-hidden ${!APPEARANCE_DISABLED && pixelBackgroundEnabled && pixelTheme !== 'none' ? 'pixel-bg-active' : ''}`}
       style={{ background: 'var(--bg)', ...shakeStyle }}
     >
       {/* Screen shake keyframes */}
@@ -370,9 +528,48 @@ export default function App() {
       {/* Visual Effects Overlays - DISABLED for cleaner look */}
       {/* Keep pixel background only, no goon overlays */}
 
-      <div className="h-full w-full flex">
-        <aside className="w-[240px] shrink-0 border-r border-[var(--border)] bg-[var(--panel)]">
-          <div className="p-5">
+      <div className="h-full w-full flex relative">
+        {/* Left Sidebar Edge Hover Zone */}
+        <div
+          className="absolute top-0 bottom-0 w-5 z-50 cursor-pointer"
+          style={{ left: leftSidebarOpen ? '240px' : '0px', transition: 'left 0.3s ease-in-out' }}
+          onMouseEnter={() => setLeftSidebarHover(true)}
+          onMouseLeave={() => setLeftSidebarHover(false)}
+          onMouseMove={(e) => setLeftSidebarMouseY(e.clientY)}
+          onClick={() => {
+            if (!leftSidebarOpen) {
+              // Opening: if both are collapsed, open both
+              setLeftSidebarOpen(true)
+              if (!tagBarOpen) setTagBarOpen(true)
+            } else {
+              // Closing: just close left sidebar
+              setLeftSidebarOpen(false)
+            }
+          }}
+        >
+          {/* Toggle arrow follows cursor */}
+          <div
+            className={cn(
+              'absolute left-0 py-3 px-1.5 rounded-r-md pointer-events-none',
+              'bg-[var(--panel)] border border-l-0 border-[var(--border)]',
+              'shadow-lg transition-opacity duration-150',
+              leftSidebarHover ? 'opacity-100' : 'opacity-0'
+            )}
+            style={{ top: Math.max(10, leftSidebarMouseY - 24) }}
+          >
+            <ChevronLeft size={14} className={cn(
+              'transition-transform duration-300 text-[var(--primary)]',
+              !leftSidebarOpen && 'rotate-180'
+            )} />
+          </div>
+        </div>
+
+        <aside className={cn(
+          'shrink-0 border-r border-[var(--border)] bg-[var(--panel)]',
+          'transition-all duration-300 ease-in-out overflow-hidden',
+          leftSidebarOpen ? 'w-[240px]' : 'w-0'
+        )}>
+          <div className="w-[240px] p-5">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] flex items-center justify-center">
                 <Sparkles size={20} className="text-white" />
@@ -385,27 +582,24 @@ export default function App() {
           </div>
 
           <nav className="px-3 pb-4">
-            {NAV.map((n) => {
+            {NAV.filter((n) => !('maintenance' in n && n.maintenance)).map((n) => {
               const isActive = page === n.id
-              const isMaintenance = 'maintenance' in n && n.maintenance
               return (
                 <button
                   key={n.id}
-                  onClick={() => setPage(n.id)}
+                  onClick={(e) => {
+                    anime.pulse(e.currentTarget, 1.05)
+                    setPage(n.id)
+                  }}
                   className={cn(
                     'w-full text-left px-3 py-2.5 rounded-xl text-sm transition border flex items-center gap-3',
                     isActive
                       ? 'bg-[var(--primary)]/15 border-[var(--primary)]/30 text-[var(--primary)]'
-                      : isMaintenance
-                        ? 'bg-transparent border-transparent hover:bg-amber-500/5 hover:border-amber-500/10 text-white/40'
-                        : 'bg-transparent border-transparent hover:bg-white/5 hover:border-white/10 text-[var(--text)]'
+                      : 'bg-transparent border-transparent hover:bg-white/5 hover:border-white/10 text-[var(--text)]'
                   )}
                 >
                   <NavIcon id={n.id} active={isActive} />
                   <span className="flex-1">{n.name}</span>
-                  {isMaintenance && (
-                    <Wrench size={12} className="text-amber-500/60" />
-                  )}
                 </button>
               )
             })}
@@ -417,28 +611,35 @@ export default function App() {
               <div className="text-xs text-[var(--muted)] mb-2">Quick Actions</div>
               <div className="flex flex-col gap-2">
                 <button
-                  onClick={() => setPage('goonwall')}
+                  onClick={(e) => {
+                    anime.bounce(e.currentTarget)
+                    setPage('goonwall')
+                  }}
                   className="w-full px-3 py-2 rounded-lg text-xs bg-[var(--primary)]/20 border border-[var(--primary)]/30 hover:bg-[var(--primary)]/30 transition text-left flex items-center gap-2"
                 >
                   <Flame size={14} />
                   Start Goon Wall
                 </button>
                 <button
-                  onClick={() => setPage('daylist')}
+                  onClick={(e) => {
+                    anime.wiggle(e.currentTarget)
+                    confetti.burst()
+                    setPage('daylist')
+                  }}
                   className="w-full px-3 py-2 rounded-lg text-xs bg-black/20 border border-[var(--border)] hover:border-white/15 transition text-left flex items-center gap-2"
                 >
                   <Sparkles size={14} />
-                  Today's Mix
+                  Quick Mix
                 </button>
               </div>
             </div>
           </div>
         </aside>
 
-        <main className="flex-1 min-w-0">
+        <main ref={mainContentRef} className="flex-1 min-w-0 transition-all duration-300 ease-in-out">
           {page === 'library' ? (
             <ErrorBoundary pageName="Library">
-              <LibraryPage settings={settings} selected={selected} setSelected={setSelected} />
+              <LibraryPage settings={settings} selected={selected} setSelected={setSelected} tagBarOpen={tagBarOpen} setTagBarOpen={setTagBarOpen} confetti={confetti} anime={anime} />
             </ErrorBoundary>
           ) : page === 'goonwall' ? (
             <ErrorBoundary pageName="Goon Wall">
@@ -470,13 +671,15 @@ export default function App() {
               />
             </ErrorBoundary>
           ) : page === 'daylist' ? (
-            <ErrorBoundary pageName="Today's Mix">
-              <DaylistPage />
+            MAINTENANCE_MODE.quickmix ? <MaintenancePage featureName="Quick Mix" /> : <ErrorBoundary pageName="Quick Mix"><DaylistPage /></ErrorBoundary>
+          ) : page === 'feed' ? (
+            <ErrorBoundary pageName="Feed">
+              <FeedPage />
             </ErrorBoundary>
           ) : page === 'playlists' ? (
-            MAINTENANCE_MODE.playlists ? <MaintenancePage featureName="Sessions" /> : <PlaylistsPage />
+            MAINTENANCE_MODE.playlists ? <MaintenancePage featureName="Sessions" /> : <ErrorBoundary pageName="Sessions"><PlaylistsPage /></ErrorBoundary>
           ) : page === 'stats' ? (
-            MAINTENANCE_MODE.stats ? <MaintenancePage featureName="Stats" /> : <StatsPage />
+            MAINTENANCE_MODE.stats ? <MaintenancePage featureName="Stats" /> : <StatsPage confetti={confetti} anime={anime} />
           ) : page === 'diabella' ? (
             MAINTENANCE_MODE.diabella ? <MaintenancePage featureName="Diabella AI Companion" /> : (
               <ErrorBoundary pageName="Diabella">
@@ -484,9 +687,16 @@ export default function App() {
               </ErrorBoundary>
             )
           ) : page === 'settings' ? (
+            MAINTENANCE_MODE.settings ? <MaintenancePage featureName="Settings" /> :
             <SettingsPage
               settings={settings}
               patchSettings={patchSettings}
+              onThemeChange={(id: string) => {
+                applyThemeCSS(id as ThemeId)
+                window.api.settings.setTheme(id).then((next) => {
+                  if (next) setSettings(next)
+                })
+              }}
               visualEffectsEnabled={visualEffectsEnabled}
               setVisualEffectsEnabled={setVisualEffectsEnabled}
               ambientHeatLevel={ambientHeatLevel}
@@ -512,12 +722,18 @@ export default function App() {
               pixelCursorEnabled={pixelCursorEnabled}
               setPixelCursorEnabled={setPixelCursorEnabled}
             />
+          ) : page === 'roadmap' ? (
+            <FeatureTree />
           ) : page === 'about' ? (
             <AboutPage />
           ) : null}
         </main>
       </div>
+
+      {/* Global Progress Bar - Shows at bottom when tasks are running */}
+      <GlobalProgressBar />
     </div>
+    </GlobalTaskContext.Provider>
   )
 }
 
@@ -587,14 +803,75 @@ function Btn(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { tone?: 'pr
   )
 }
 
+// Custom styled dropdown to replace native select (which can't be styled on Windows)
+function Dropdown<T extends string>(props: {
+  value: T
+  onChange: (value: T) => void
+  options: { value: T; label: string }[]
+  className?: string
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const selectedOption = props.options.find(o => o.value === props.value)
+
+  // Close on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  return (
+    <div ref={dropdownRef} className={cn('relative', props.className)}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-[#1a1a1c] border border-[var(--border)] text-sm text-white cursor-pointer hover:border-[var(--primary)]/40 outline-none min-w-[100px]"
+      >
+        <span>{selectedOption?.label ?? 'Select...'}</span>
+        <ChevronDown size={12} className={cn('transition-transform', isOpen && 'rotate-180')} />
+      </button>
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-1 w-full min-w-[120px] rounded-xl bg-[#1a1a1c] border border-[var(--border)] shadow-xl z-50 overflow-hidden">
+          {props.options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => {
+                props.onChange(option.value)
+                setIsOpen(false)
+              }}
+              className={cn(
+                'w-full text-left px-3 py-2 text-sm transition-colors',
+                option.value === props.value
+                  ? 'bg-[var(--primary)]/20 text-[var(--primary)]'
+                  : 'text-white hover:bg-white/10'
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 type SortOption = 'newest' | 'oldest' | 'name' | 'rating' | 'views' | 'ocount' | 'duration' | 'type' | 'size' | 'random'
 type LayoutOption = 'grid' | 'compact' | 'large' | 'fit'
 
 const MAX_FLOATING_PLAYERS = 4
 
-const ITEMS_PER_PAGE = 60
+const PAGE_SIZE_OPTIONS = [10, 20, 30, 50, 90, 150, 250] as const
+const DEFAULT_PAGE_SIZE = 50
 
-function LibraryPage(props: { settings: VaultSettings | null; selected: string[]; setSelected: (ids: string[]) => void }) {
+function LibraryPage(props: { settings: VaultSettings | null; selected: string[]; setSelected: (ids: string[]) => void; tagBarOpen: boolean; setTagBarOpen: (open: boolean | ((prev: boolean) => boolean)) => void; confetti?: ReturnType<typeof useConfetti>; anime?: ReturnType<typeof useAnime> }) {
+  const { confetti, anime } = props
+  const { tagBarOpen, setTagBarOpen } = props
   const [media, setMedia] = useState<MediaRow[]>([])
   const [tags, setTags] = useState<TagRow[]>([])
   const [query, setQuery] = useState<string>('')
@@ -607,10 +884,20 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   const [isLoading, setIsLoading] = useState(false)
   const [mediaStats, setMediaStats] = useState<Map<string, { rating: number; viewCount: number; oCount: number }>>(new Map())
   const [randomQuickTags, setRandomQuickTags] = useState<TagRow[]>([])
-  const [displayLimit, setDisplayLimit] = useState(ITEMS_PER_PAGE)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const [currentPage, setCurrentPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const [typeCounts, setTypeCounts] = useState<{ video: number; image: number; gif: number }>({ video: 0, image: 0, gif: 0 })
   const [randomSeed, setRandomSeed] = useState(0) // Used to trigger re-shuffle
+  const [tagBarHover, setTagBarHover] = useState(false)
+  const [tagBarMouseY, setTagBarMouseY] = useState(0)
+  const [previewMuted, setPreviewMuted] = useState(true) // Mute state for video previews
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false) // Track when tag selector dropdown is open
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set()) // Track liked media
+  const [selectionMode, setSelectionMode] = useState(false) // Bulk selection mode
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set()) // Selected media IDs for bulk actions
+  const [showPlaylistPicker, setShowPlaylistPicker] = useState(false) // Show playlist picker for bulk add
+  const [bulkPlaylists, setBulkPlaylists] = useState<PlaylistRow[]>([]) // Playlists for picker
 
   // Add a video to floating players (max 4) - STRICT: no duplicates, no exceeding max
   const addFloatingPlayer = useCallback((mediaId: string) => {
@@ -739,7 +1026,9 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
 
       const cols = getColumnsCount()
-      const maxIndex = Math.min(displayLimit, sortedMedia.length) - 1
+      const startIndex = (currentPage - 1) * pageSize
+      const endIndex = Math.min(startIndex + pageSize, sortedMedia.length)
+      const maxIndex = endIndex - startIndex - 1
 
       switch (e.key) {
         case 'ArrowRight':
@@ -776,7 +1065,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [focusedIndex, sortedMedia, displayLimit, getColumnsCount, openIds, addFloatingPlayer])
+  }, [focusedIndex, sortedMedia, pageSize, currentPage, getColumnsCount, openIds, addFloatingPlayer])
 
   // Reset focus when media changes
   useEffect(() => {
@@ -795,6 +1084,38 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       }
     }
   }, [focusedIndex])
+
+  // Toggle like on a media item (uses rating: 5 = liked, 0 = unliked)
+  const toggleLike = useCallback(async (mediaId: string, event?: React.MouseEvent) => {
+    const isLiked = likedIds.has(mediaId)
+    const newRating = isLiked ? 0 : 5
+    // Optimistic UI update
+    setLikedIds(prev => {
+      const next = new Set(prev)
+      if (isLiked) next.delete(mediaId)
+      else next.add(mediaId)
+      return next
+    })
+    // Celebration animation when liking
+    if (!isLiked) {
+      confetti?.hearts()
+      if (event?.currentTarget) {
+        anime?.pulse(event.currentTarget as Element, 1.3)
+      }
+    }
+    try {
+      await window.api.media.setRating(mediaId, newRating)
+    } catch (err) {
+      console.error('[Like] Failed to set rating:', err)
+      // Revert on failure
+      setLikedIds(prev => {
+        const next = new Set(prev)
+        if (isLiked) next.add(mediaId)
+        else next.delete(mediaId)
+        return next
+      })
+    }
+  }, [likedIds, confetti, anime])
 
   const refresh = useCallback(async () => {
     setIsLoading(true)
@@ -819,38 +1140,45 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       setTypeCounts(counts)
       setTotalCount(items.length)
 
-      // Fetch stats for sorting by rating/views/ocount
-      if (sortBy === 'rating' || sortBy === 'views' || sortBy === 'ocount') {
-        const statsMap = new Map<string, { rating: number; viewCount: number; oCount: number }>()
-        await Promise.all(
-          items.slice(0, 200).map(async (item) => {
-            try {
-              const stats = await window.api.media.getStats(item.id)
-              if (stats) {
-                statsMap.set(item.id, {
-                  rating: stats.rating ?? 0,
-                  viewCount: stats.viewCount ?? 0,
-                  oCount: stats.oCount ?? 0
-                })
+      // Fetch stats for all items to get liked status and sorting data
+      const statsMap = new Map<string, { rating: number; viewCount: number; oCount: number }>()
+      const newLikedIds = new Set<string>()
+      await Promise.all(
+        items.map(async (item) => {
+          try {
+            const stats = await window.api.media.getStats(item.id)
+            if (stats) {
+              statsMap.set(item.id, {
+                rating: stats.rating ?? 0,
+                viewCount: stats.viewCount ?? 0,
+                oCount: stats.oCount ?? 0
+              })
+              // Rating 5 = liked
+              if ((stats.rating ?? 0) >= 5) {
+                newLikedIds.add(item.id)
               }
-            } catch {}
-          })
-        )
-        setMediaStats(statsMap)
-      }
+            }
+          } catch {}
+        })
+      )
+      setMediaStats(statsMap)
+      setLikedIds(newLikedIds)
 
       setMedia(items)
     } finally {
       setIsLoading(false)
     }
-  }, [debouncedQuery, typeFilter, activeTags, sortBy])
+  }, [debouncedQuery, typeFilter, activeTags])
 
   useEffect(() => {
     let alive = true
     ;(async () => {
-      const t = await window.api.tags.list()
+      // Use listWithCounts and filter out tags with no media attached
+      const t = await window.api.tags.listWithCounts?.() ?? await window.api.tags.list()
       if (!alive) return
-      setTags(t)
+      // Filter to only show tags that have at least 1 media item
+      const filtered = Array.isArray(t) ? t.filter((tag: any) => tag.count === undefined || tag.count > 0) : t
+      setTags(filtered)
       await refresh()
     })()
     const unsub = window.api.events?.onVaultChanged?.(() => void refresh())
@@ -861,7 +1189,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   }, [])
 
   useEffect(() => {
-    setDisplayLimit(ITEMS_PER_PAGE) // Reset pagination when filters change
+    setCurrentPage(1) // Reset to first page when filters change
     void refresh()
   }, [debouncedQuery, activeTags.join('|'), typeFilter, sortBy])
 
@@ -876,17 +1204,21 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
     setActiveTags((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]))
   }
 
-  // Get grid style based on layout
+  // Get grid/layout style based on layout mode
   const getGridStyle = (): React.CSSProperties => {
     switch (layout) {
       case 'compact':
-        return { gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '8px' }
+        return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '8px' }
       case 'large':
-        return { gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }
+        return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }
       case 'fit':
-        return { gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }
+        // Use CSS columns for masonry-style layout with true aspect ratios
+        return {
+          columnWidth: '280px',
+          columnGap: '12px',
+        }
       default:
-        return { gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }
+        return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }
     }
   }
 
@@ -913,6 +1245,18 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
               ))}
             </div>
 
+            {/* Preview volume toggle */}
+            <button
+              onClick={() => setPreviewMuted(!previewMuted)}
+              className={cn(
+                'p-2 rounded-lg transition-all',
+                previewMuted ? 'bg-white/5 text-white/50' : 'bg-[var(--primary)]/20 text-[var(--primary)]'
+              )}
+              title={previewMuted ? 'Unmute previews' : 'Mute previews'}
+            >
+              {previewMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+            </button>
+
             {/* Active players indicator */}
             {openIds.length > 0 && (
               <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--primary)]/20 border border-[var(--primary)]/30">
@@ -927,6 +1271,19 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
                 </button>
               </div>
             )}
+
+            {/* Bulk select toggle */}
+            <Btn
+              tone={selectionMode ? 'primary' : 'ghost'}
+              onClick={() => {
+                setSelectionMode(prev => !prev)
+                setSelectedIds(new Set())
+              }}
+              className="flex items-center gap-1.5"
+            >
+              {selectionMode ? <X size={14} /> : <LayoutGrid size={14} />}
+              <span className="text-xs">{selectionMode ? 'Cancel' : 'Select'}</span>
+            </Btn>
 
             <Btn onClick={() => void refresh()} className="flex items-center gap-2">
               <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
@@ -949,45 +1306,38 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
           </div>
 
           {/* Content Type Filter */}
-          <div className="relative">
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as MediaType | 'all')}
-              className="appearance-none px-3 py-2 pr-7 rounded-xl bg-black/20 border border-[var(--border)] text-sm cursor-pointer hover:border-[var(--primary)]/40 outline-none"
-            >
-              <option value="all">All</option>
-              <option value="video">Videos</option>
-              <option value="image">Images</option>
-              <option value="gif">GIFs</option>
-            </select>
-            <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--muted)]" />
-          </div>
+          <Dropdown
+            value={typeFilter}
+            onChange={(v) => setTypeFilter(v as MediaType | 'all')}
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'video', label: 'Videos' },
+              { value: 'image', label: 'Images' },
+              { value: 'gif', label: 'GIFs' },
+            ]}
+          />
 
           {/* Sort By */}
           <div className="flex items-center gap-1">
-            <div className="relative">
-              <select
-                value={sortBy}
-                onChange={(e) => {
-                  const newSort = e.target.value as SortOption
-                  setSortBy(newSort)
-                  if (newSort === 'random') setRandomSeed(Date.now())
-                }}
-                className="appearance-none px-3 py-2 pr-7 rounded-xl bg-black/20 border border-[var(--border)] text-sm cursor-pointer hover:border-[var(--primary)]/40 outline-none"
-              >
-                <option value="newest">Newest</option>
-                <option value="oldest">Oldest</option>
-                <option value="name">Name</option>
-                <option value="type">Type</option>
-                <option value="size">Size</option>
-                <option value="duration">Duration</option>
-                <option value="rating">★ Rating</option>
-                <option value="views">Views</option>
-                <option value="ocount">O Count</option>
-                <option value="random">🎲 Random</option>
-              </select>
-              <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--muted)]" />
-            </div>
+            <Dropdown
+              value={sortBy}
+              onChange={(v) => {
+                setSortBy(v as SortOption)
+                if (v === 'random') setRandomSeed(Date.now())
+              }}
+              options={[
+                { value: 'newest', label: 'Newest' },
+                { value: 'oldest', label: 'Oldest' },
+                { value: 'name', label: 'Name' },
+                { value: 'type', label: 'Type' },
+                { value: 'size', label: 'Size' },
+                { value: 'duration', label: 'Duration' },
+                { value: 'rating', label: '★ Rating' },
+                { value: 'views', label: 'Views' },
+                { value: 'ocount', label: 'O Count' },
+                { value: 'random', label: '🎲 Random' },
+              ]}
+            />
             {/* Reshuffle button for random sort */}
             {sortBy === 'random' && (
               <button
@@ -1013,14 +1363,45 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
         </div>
       </TopBar>
 
-      <div className="h-[calc(100vh-110px)] flex min-w-0">
-        {/* Thinner tag sidebar */}
-        <div className="w-[180px] shrink-0 border-r border-[var(--border)] bg-[var(--panel2)] overflow-auto">
-          <div className="p-3">
+      <div className="h-[calc(100vh-110px)] flex min-w-0 relative">
+        {/* Tag Sidebar Edge Hover Zone - always at left edge of this container */}
+        <div
+          className="absolute top-0 bottom-0 w-5 z-40 cursor-pointer"
+          style={{ left: tagBarOpen ? '180px' : '0px', transition: 'left 0.3s ease-in-out' }}
+          onMouseEnter={() => setTagBarHover(true)}
+          onMouseLeave={() => setTagBarHover(false)}
+          onMouseMove={(e) => setTagBarMouseY(e.nativeEvent.offsetY)}
+          onClick={() => setTagBarOpen(prev => !prev)}
+        >
+          {/* Toggle arrow follows cursor */}
+          <div
+            className={cn(
+              'absolute left-0 py-3 px-1.5 rounded-r-md pointer-events-none',
+              'bg-[var(--panel2)] border border-l-0 border-[var(--border)]',
+              'shadow-lg transition-opacity duration-150',
+              tagBarHover ? 'opacity-100' : 'opacity-0'
+            )}
+            style={{ top: Math.max(10, Math.min(tagBarMouseY - 20, 500)) }}
+          >
+            <ChevronLeft size={14} className={cn(
+              'transition-transform duration-300 text-[var(--primary)]',
+              !tagBarOpen && 'rotate-180'
+            )} />
+          </div>
+        </div>
+
+        {/* Collapsible tag sidebar */}
+        <div className={cn(
+          'shrink-0 border-r border-[var(--border)] bg-[var(--panel2)] overflow-hidden',
+          'transition-all duration-300 ease-in-out',
+          tagBarOpen ? 'w-[180px]' : 'w-0'
+        )}>
+          <div className="w-[180px] overflow-auto h-full p-3">
             <TagSelector
               tags={tags}
               selectedTags={activeTags}
               onTagsChange={setActiveTags}
+              onOpenChange={setTagDropdownOpen}
               onCreateTag={async (name) => {
                 await window.api.tags.create(name)
                 const t = await window.api.tags.list()
@@ -1030,8 +1411,8 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
               className="mb-3"
             />
 
-            {/* Randomized Quick Tags with visual effects */}
-            {randomQuickTags.length > 0 && (
+            {/* Randomized Quick Tags with visual effects - hidden when dropdown is open */}
+            {randomQuickTags.length > 0 && !tagDropdownOpen && (
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] text-[var(--muted)] flex items-center gap-1">
@@ -1120,7 +1501,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 overflow-auto p-4 transition-all duration-300 ease-in-out">
           {/* Results count with type breakdown */}
           <div className="text-xs text-[var(--muted)] mb-3 flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
@@ -1167,16 +1548,58 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
                 )}
               </div>
             )}
-            {/* Showing X of Y when paginated */}
-            {sortedMedia.length > displayLimit && (
-              <span className="text-white/40">
-                showing {Math.min(displayLimit, sortedMedia.length)} of {sortedMedia.length}
-              </span>
+            {/* Total count */}
+            <span className="text-white/40">
+              {sortedMedia.length} items
+            </span>
+          </div>
+
+          {/* Page Size & Pagination Controls */}
+          <div className="flex items-center justify-between mb-4 px-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-white/40">Per page:</span>
+              <div className="flex gap-1">
+                {PAGE_SIZE_OPTIONS.map(size => (
+                  <button
+                    key={size}
+                    onClick={() => { setPageSize(size); setCurrentPage(1) }}
+                    className={cn(
+                      'px-2 py-1 rounded text-xs transition',
+                      pageSize === size
+                        ? 'bg-[var(--primary)]/30 text-white'
+                        : 'bg-white/5 text-white/50 hover:bg-white/10'
+                    )}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {sortedMedia.length > pageSize && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-2 py-1 rounded text-xs bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  ← Prev
+                </button>
+                <span className="text-xs text-white/60">
+                  Page {currentPage} of {Math.ceil(sortedMedia.length / pageSize)}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(Math.ceil(sortedMedia.length / pageSize), p + 1))}
+                  disabled={currentPage >= Math.ceil(sortedMedia.length / pageSize)}
+                  className="px-2 py-1 rounded text-xs bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  Next →
+                </button>
+              </div>
             )}
           </div>
 
-          <div ref={gridRef} className="grid" style={getGridStyle()}>
-            {sortedMedia.slice(0, displayLimit).map((m, index) => {
+          <div ref={gridRef} className={layout === 'fit' ? '' : 'grid'} style={getGridStyle()}>
+            {sortedMedia.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((m, index) => {
               const isPlaying = openIds.includes(m.id)
               const canAddMore = openIds.length < MAX_FLOATING_PLAYERS
               const canOpen = isPlaying || canAddMore
@@ -1184,7 +1607,11 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
               return (
                 <div
                   key={m.id}
-                  className={cn('animate-fadeInUp', isFocused && 'ring-2 ring-[var(--primary)] ring-offset-2 ring-offset-[var(--bg)] rounded-xl')}
+                  className={cn(
+                    'animate-fadeInUp',
+                    isFocused && 'ring-2 ring-[var(--primary)] ring-offset-2 ring-offset-[var(--bg)] rounded-xl',
+                    layout === 'fit' && 'mb-3 break-inside-avoid'
+                  )}
                   style={{
                     animationDelay: `${Math.min(index * 30, 500)}ms`,
                     animationFillMode: 'backwards'
@@ -1192,45 +1619,66 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
                 >
                   <MediaTile
                     media={m}
-                    selected={isPlaying}
+                    selected={selectionMode ? selectedIds.has(m.id) : isPlaying}
                     onClick={() => {
-                      console.log('[Library] Tile clicked:', m.id, 'canOpen:', canOpen, 'openIds:', openIds.length)
-                      setFocusedIndex(index)
-                      canOpen && addFloatingPlayer(m.id)
+                      if (selectionMode) {
+                        setSelectedIds(prev => {
+                          const next = new Set(prev)
+                          if (next.has(m.id)) next.delete(m.id)
+                          else next.add(m.id)
+                          return next
+                        })
+                      } else {
+                        console.log('[Library] Tile clicked:', m.id, 'canOpen:', canOpen, 'openIds:', openIds.length)
+                        setFocusedIndex(index)
+                        canOpen && addFloatingPlayer(m.id)
+                      }
                     }}
-                    onToggleSelect={() => canOpen && addFloatingPlayer(m.id)}
+                    onToggleSelect={() => {
+                      if (selectionMode) {
+                        setSelectedIds(prev => {
+                          const next = new Set(prev)
+                          if (next.has(m.id)) next.delete(m.id)
+                          else next.add(m.id)
+                          return next
+                        })
+                      } else {
+                        canOpen && addFloatingPlayer(m.id)
+                      }
+                    }}
                     compact={layout === 'compact'}
-                    disabled={!canOpen}
+                    layout={layout}
+                    disabled={selectionMode ? false : !canOpen}
                     showStats={sortBy === 'rating' || sortBy === 'views' || sortBy === 'ocount'}
                     stats={mediaStats.get(m.id)}
+                    previewMuted={previewMuted}
+                    liked={likedIds.has(m.id)}
+                    onToggleLike={() => toggleLike(m.id)}
                   />
                 </div>
               )
             })}
           </div>
 
-          {/* Load More Button */}
-          {sortedMedia.length > displayLimit && (
-            <div className="mt-6 flex justify-center">
+          {/* Bottom Pagination */}
+          {sortedMedia.length > pageSize && (
+            <div className="mt-6 flex justify-center items-center gap-4">
               <button
-                onClick={() => setDisplayLimit(prev => prev + ITEMS_PER_PAGE)}
-                className="px-6 py-2.5 rounded-xl bg-[var(--primary)]/20 hover:bg-[var(--primary)]/30 border border-[var(--primary)]/30 text-sm font-medium transition-all hover:scale-105 flex items-center gap-2"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 rounded-lg text-sm bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
               >
-                <ChevronDown size={16} />
-                Load More ({sortedMedia.length - displayLimit} remaining)
+                ← Previous
               </button>
-            </div>
-          )}
-
-          {/* Show All Button when fully paginated */}
-          {sortedMedia.length > ITEMS_PER_PAGE && displayLimit >= sortedMedia.length && (
-            <div className="mt-4 flex justify-center">
+              <span className="text-sm text-white/60">
+                Page {currentPage} of {Math.ceil(sortedMedia.length / pageSize)}
+              </span>
               <button
-                onClick={() => setDisplayLimit(ITEMS_PER_PAGE)}
-                className="px-4 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-[var(--muted)] transition"
+                onClick={() => setCurrentPage(p => Math.min(Math.ceil(sortedMedia.length / pageSize), p + 1))}
+                disabled={currentPage >= Math.ceil(sortedMedia.length / pageSize)}
+                className="px-3 py-1.5 rounded-lg text-sm bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
               >
-                <ChevronUp size={12} className="inline mr-1" />
-                Show Less
+                Next →
               </button>
             </div>
           )}
@@ -1300,7 +1748,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
               .map(([, bounds]) => bounds)
             return (
               <FloatingVideoPlayer
-                key={`player-${index}-${id}`}
+                key={`player-slot-${index}`}
                 media={openMedia}
                 mediaList={media.filter(m => !openIds.includes(m.id) || m.id === id)} // Exclude other open videos from navigation
                 onClose={() => closeFloatingPlayer(id)}
@@ -1317,27 +1765,85 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
           })}
         </>
       )}
+
+      {/* Bulk selection floating action bar */}
+      {selectionMode && selectedIds.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[90] flex items-center gap-3 px-5 py-3 rounded-2xl bg-black/90 border border-[var(--primary)]/30 backdrop-blur-sm shadow-2xl">
+          <span className="text-sm text-white/80">{selectedIds.size} selected</span>
+          <Btn tone="primary" onClick={async () => {
+            try {
+              const pls = await window.api.playlists.list()
+              setBulkPlaylists(pls)
+              setShowPlaylistPicker(true)
+            } catch (err) {
+              console.error('[Library] Failed to load playlists:', err)
+            }
+          }} className="flex items-center gap-1.5">
+            <Plus size={14} />
+            <span>Add to Playlist</span>
+          </Btn>
+          <Btn onClick={() => setSelectedIds(new Set())}>Clear</Btn>
+        </div>
+      )}
+
+      {/* Playlist picker modal for bulk add */}
+      {showPlaylistPicker && (
+        <PlaylistPicker
+          playlists={bulkPlaylists}
+          onClose={() => setShowPlaylistPicker(false)}
+          onPick={async (plId) => {
+            try {
+              await window.api.playlists.addItems(plId, [...selectedIds])
+              setShowPlaylistPicker(false)
+              setSelectedIds(new Set())
+              setSelectionMode(false)
+            } catch (err) {
+              console.error('[Library] Failed to add items to playlist:', err)
+            }
+          }}
+        />
+      )}
     </>
   )
 }
 
-function MediaTile(props: {
+const MediaTile = React.memo(function MediaTile(props: {
   media: MediaRow
   selected: boolean
   onClick: () => void
   onToggleSelect: () => void
   compact?: boolean
+  layout?: LayoutOption
   disabled?: boolean
   showStats?: boolean
   stats?: { rating: number; viewCount: number; oCount: number }
+  previewMuted?: boolean
+  liked?: boolean
+  onToggleLike?: () => void
 }) {
-  const { media, compact, disabled, showStats, stats } = props
+  const { media, compact, layout, disabled, showStats, stats, previewMuted = true, liked, onToggleLike } = props
   const [thumbUrl, setThumbUrl] = useState<string>('')
+  const [videoUrl, setVideoUrl] = useState<string>('')
   const [isLoaded, setIsLoaded] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const [thumbError, setThumbError] = useState(false)
   const [renameStatus, setRenameStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [thumbAspect, setThumbAspect] = useState<number | null>(null)
 
+  // Video preview on hover - 2 second delay, quick clips
+  const isVideo = media.type === 'video'
+  const { videoRef, isWaiting: isPreviewWaiting, isPlaying: isPreviewPlaying, handleMouseEnter: startPreview, handleMouseLeave: stopPreview } = useVideoPreview({
+    clipDuration: 1.5,
+    clipCount: 4,
+    hoverDelay: 2000, // 2 second delay
+    muted: previewMuted // Pass mute state to hook
+  })
+
+  // Show HUD when: not hovering OR hovering but still in 2 second intro
+  // Hide HUD when: preview is actually playing
+  const showHud = !isPreviewPlaying
+
+  // Load thumbnail
   useEffect(() => {
     let alive = true
     setIsLoaded(false)
@@ -1363,11 +1869,38 @@ function MediaTile(props: {
     }
   }, [media.id, media.thumbPath])
 
+  // Load video URL for preview
+  useEffect(() => {
+    if (!isVideo) return
+    let alive = true
+    ;(async () => {
+      try {
+        const u = await toFileUrlCached(media.path)
+        if (alive) setVideoUrl(u)
+      } catch {}
+    })()
+    return () => { alive = false }
+  }, [media.path, isVideo])
+
+  const handleMouseEnter = useCallback(() => {
+    setIsHovered(true)
+    if (isVideo && videoUrl && !disabled) {
+      startPreview(videoUrl, media.durationSec ?? undefined)
+    }
+  }, [isVideo, videoUrl, disabled, startPreview, media.durationSec])
+
+  const handleMouseLeave = useCallback(() => {
+    setIsHovered(false)
+    if (isVideo) {
+      stopPreview()
+    }
+  }, [isVideo, stopPreview])
+
   return (
     <div
       onClick={disabled ? undefined : props.onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       className={cn(
         'text-left border bg-black/20 overflow-hidden relative group',
         'transition-all duration-300 ease-out',
@@ -1403,24 +1936,56 @@ function MediaTile(props: {
         }}
       />
 
-      <div className={cn('bg-black/25 relative overflow-hidden', compact ? 'aspect-[16/9]' : 'aspect-[16/10]')}>
+      <div
+        className="bg-black/25 relative overflow-hidden"
+        style={{
+          aspectRatio: layout === 'fit' && thumbAspect
+            ? thumbAspect
+            : layout === 'fit' && media.width && media.height
+              ? `${media.width} / ${media.height}`
+              : compact ? '16 / 9' : '16 / 10'
+        }}
+      >
         {/* Loading shimmer */}
         {!isLoaded && thumbUrl && (
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" />
         )}
 
         {thumbUrl && !thumbError ? (
-          <img
-            src={thumbUrl}
-            alt=""
-            className={cn(
-              'w-full h-full object-cover transition-all duration-500',
-              isLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-105',
-              isHovered && 'scale-110'
+          <>
+            <img
+              src={thumbUrl}
+              alt=""
+              className={cn(
+                'w-full h-full object-cover transition-all duration-500',
+                isLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-105',
+                isHovered && !isPreviewPlaying && 'scale-110',
+                isPreviewPlaying && 'opacity-0'
+              )}
+              onLoad={(e) => {
+                setIsLoaded(true)
+                // Capture thumbnail aspect ratio for "fit" layout
+                const img = e.currentTarget
+                if (img.naturalWidth && img.naturalHeight) {
+                  setThumbAspect(img.naturalWidth / img.naturalHeight)
+                }
+              }}
+              onError={() => setThumbError(true)}
+            />
+            {/* Video preview overlay */}
+            {isVideo && (
+              <video
+                ref={videoRef}
+                className={cn(
+                  'absolute inset-0 w-full h-full object-cover transition-opacity duration-300',
+                  isPreviewPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                )}
+                muted={previewMuted}
+                playsInline
+                loop
+              />
             )}
-            onLoad={() => setIsLoaded(true)}
-            onError={() => setThumbError(true)}
-          />
+          </>
         ) : thumbError ? (
           <div className="w-full h-full bg-gradient-to-br from-red-900/20 to-black/60 flex items-center justify-center">
             <div className="text-white/30 text-xs">No preview</div>
@@ -1431,51 +1996,44 @@ function MediaTile(props: {
           </div>
         )}
 
-        {/* Gradient overlay that intensifies on hover */}
+        {/* Gradient overlay that intensifies on hover - hidden during preview */}
         <div
           className={cn(
             'absolute inset-0 transition-opacity duration-300',
             'bg-gradient-to-t from-black/80 via-transparent to-transparent',
-            isHovered ? 'opacity-100' : 'opacity-60'
+            isHovered && showHud ? 'opacity-100' : showHud ? 'opacity-60' : 'opacity-0'
           )}
         />
 
-        {/* Type Badge with glow */}
+        {/* Type Badge with glow - hidden during preview */}
         <div className={cn(
           'absolute top-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded backdrop-blur-sm',
           'bg-black/60 border border-white/10 transition-all duration-200',
           compact ? 'text-[8px]' : 'text-[10px]',
-          isHovered && 'bg-black/80 border-white/20 shadow-lg'
+          isHovered && showHud && 'bg-black/80 border-white/20 shadow-lg',
+          !showHud && 'opacity-0 pointer-events-none'
         )}>
           {media.type === 'video' && <Play size={compact ? 8 : 10} className="fill-current" />}
           {media.type === 'gif' && <Repeat size={compact ? 8 : 10} />}
           {media.type === 'image' && <Eye size={compact ? 8 : 10} />}
         </div>
 
-        {/* Duration badge for videos with glow effect */}
+        {/* Duration badge for videos with glow effect - hidden during preview */}
         {media.type === 'video' && media.durationSec ? (
           <div className={cn(
             'absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded backdrop-blur-sm transition-all duration-200',
             'bg-black/70 border border-white/10',
             compact ? 'text-[8px]' : 'text-[10px]',
-            isHovered && 'bg-[var(--primary)]/80 border-[var(--primary)]/50 shadow-[0_0_10px_var(--primary)]'
+            isHovered && showHud && 'bg-[var(--primary)]/80 border-[var(--primary)]/50 shadow-[0_0_10px_var(--primary)]',
+            !showHud && 'opacity-0 pointer-events-none'
           )}>
             {formatDuration(media.durationSec)}
           </div>
         ) : null}
 
-        {/* Stats badges when sorting by stats */}
-        {showStats && stats && (
+        {/* Stats badges when sorting by stats - hidden during preview */}
+        {showStats && stats && showHud && (
           <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1">
-            {stats.rating > 0 && (
-              <div className={cn(
-                'px-1.5 py-0.5 rounded text-[9px] font-medium flex items-center gap-0.5 transition-all duration-200',
-                'bg-yellow-500/80',
-                isHovered && 'bg-yellow-400 shadow-[0_0_10px_rgba(234,179,8,0.5)] scale-105'
-              )}>
-                <Star size={8} className="fill-current" /> {stats.rating}
-              </div>
-            )}
             {stats.viewCount > 0 && (
               <div className={cn(
                 'px-1.5 py-0.5 rounded text-[9px] font-medium flex items-center gap-0.5 transition-all duration-200',
@@ -1485,24 +2043,15 @@ function MediaTile(props: {
                 <Eye size={8} /> {stats.viewCount}
               </div>
             )}
-            {stats.oCount > 0 && (
-              <div className={cn(
-                'px-1.5 py-0.5 rounded text-[9px] font-medium transition-all duration-200',
-                'bg-pink-500/80',
-                isHovered && 'bg-pink-400 shadow-[0_0_10px_rgba(236,72,153,0.5)] scale-105'
-              )}>
-                O:{stats.oCount}
-              </div>
-            )}
           </div>
         )}
 
         {/* Playing indicator (always visible when playing) or Add button (show on hover) */}
         {!compact && (
           <div className={cn(
-            'absolute top-1.5 left-1.5 transition-all duration-200',
-            props.selected
-              ? 'opacity-100 translate-y-0' // Always visible when playing
+            'absolute top-1.5 left-1.5 flex items-center gap-1 transition-all duration-200',
+            props.selected || liked
+              ? 'opacity-100 translate-y-0' // Always visible when playing or liked
               : 'opacity-0 -translate-y-2 group-hover:opacity-100 group-hover:translate-y-0'
           )}>
             <button
@@ -1524,24 +2073,44 @@ function MediaTile(props: {
                 </>
               ) : '+'}
             </button>
+            {/* Like/Heart button */}
+            {onToggleLike && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleLike()
+                }}
+                className={cn(
+                  'p-1.5 rounded transition-all duration-200 backdrop-blur-sm',
+                  liked
+                    ? 'bg-pink-500/80 text-white shadow-[0_0_15px_rgba(236,72,153,0.6)]'
+                    : 'bg-black/60 hover:bg-pink-500/60 text-white/70 hover:text-white'
+                )}
+                title={liked ? 'Unlike' : 'Like'}
+              >
+                <Heart size={12} className={liked ? 'fill-current' : ''} />
+              </button>
+            )}
           </div>
         )}
 
-        {/* Hover overlay with play button animation */}
-        <div className={cn(
-          'absolute inset-0 flex items-center justify-center transition-all duration-300',
-          'bg-gradient-to-t from-black/60 via-black/20 to-transparent',
-          'opacity-0 group-hover:opacity-100'
-        )}>
+        {/* Hover overlay with play button animation - hidden during preview */}
+        {showHud && (
           <div className={cn(
-            'p-3 rounded-full transition-all duration-300 transform',
-            'bg-white/20 backdrop-blur-sm border border-white/30',
-            'scale-75 group-hover:scale-100',
-            'shadow-[0_0_30px_rgba(255,255,255,0.3)]'
+            'absolute inset-0 flex items-center justify-center transition-all duration-300',
+            'bg-gradient-to-t from-black/60 via-black/20 to-transparent',
+            'opacity-0 group-hover:opacity-100'
           )}>
-            <Play size={compact ? 18 : 24} className="fill-current ml-0.5" />
+            <div className={cn(
+              'p-3 rounded-full transition-all duration-300 transform',
+              'bg-white/20 backdrop-blur-sm border border-white/30',
+              'scale-75 group-hover:scale-100',
+              'shadow-[0_0_30px_rgba(255,255,255,0.3)]'
+            )}>
+              <Play size={compact ? 18 : 24} className="fill-current ml-0.5" />
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {!compact && (
@@ -1630,7 +2199,7 @@ function MediaTile(props: {
       `}</style>
     </div>
   )
-}
+})
 
 function MediaViewer(props: {
   mediaId: string
@@ -1716,7 +2285,7 @@ function MediaViewer(props: {
   if (!media) return null
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-md-sm flex items-center justify-center z-50">
       <div className="w-[min(1100px,92vw)] h-[min(760px,88vh)] rounded-3xl border border-white/10 bg-[var(--panel)] overflow-hidden shadow-2xl">
         <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between">
           <div className="min-w-0 flex-1">
@@ -1816,10 +2385,6 @@ function MediaViewer(props: {
                   <span>{stats?.viewCount ?? 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[var(--muted)]">O</span>
-                  <span>{stats?.oCount ?? 0}</span>
-                </div>
-                <div className="flex items-center justify-between">
                   <span className="text-[var(--muted)]">Rating</span>
                   <span>{stats?.rating ?? 0}</span>
                 </div>
@@ -1849,7 +2414,7 @@ function PlaylistPicker(props: {
   onPick: (playlistId: string) => void
 }) {
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60]">
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-md-sm flex items-center justify-center z-[60]">
       <div className="w-[520px] rounded-3xl border border-white/10 bg-[var(--panel)] overflow-hidden shadow-2xl">
         <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between">
           <div className="text-sm font-semibold">Add to Playlist</div>
@@ -1897,14 +2462,21 @@ function GoonWallPage(props: {
   const [tiles, setTiles] = useState<MediaRow[]>([])
   const [tileCount, setTileCount] = useState(9)
   const [layout, setLayout] = useState<GoonWallLayout>('grid')
-  const [intervalSec, setIntervalSec] = useState<ShuffleInterval>(45)
+  const [intensity, setIntensity] = useState(5) // 1-10 scale for shuffle speed
   const [isPlaying, setIsPlaying] = useState(false)
   const [muted, setMuted] = useState(true)
   const [showHud, setShowHud] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const tileTimersRef = useRef<Map<number, NodeJS.Timeout>>(new Map())
+
+  // Calculate shuffle interval based on intensity (1=30s, 10=2s)
+  const getShuffleInterval = useCallback((intensityLevel: number) => {
+    const maxInterval = 30000 // 30 seconds at intensity 1
+    const minInterval = 2000  // 2 seconds at intensity 10
+    return maxInterval - ((intensityLevel - 1) / 9) * (maxInterval - minInterval)
+  }, [])
 
   // Load settings from props
   useEffect(() => {
@@ -1912,14 +2484,13 @@ function GoonWallPage(props: {
     if (gw) {
       if (gw.tileCount) setTileCount(gw.tileCount)
       if (gw.layout) setLayout(gw.layout)
-      if (gw.intervalSec) setIntervalSec(gw.intervalSec)
       if (gw.muted !== undefined) setMuted(gw.muted)
       if (gw.showHud !== undefined) setShowHud(gw.showHud)
     }
   }, [props.settings?.goonwall])
 
   // Save settings when they change
-  const saveSettings = useCallback(async (patch: Partial<{ tileCount: number; layout: string; intervalSec: number; muted: boolean; showHud: boolean }>) => {
+  const saveSettings = useCallback(async (patch: Partial<{ tileCount: number; layout: string; muted: boolean; showHud: boolean }>) => {
     try {
       await window.api.settings.goonwall?.update?.(patch)
     } catch (e) {
@@ -2005,7 +2576,8 @@ function GoonWallPage(props: {
     })
 
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
+      tileTimersRef.current.forEach(timer => clearTimeout(timer))
+      tileTimersRef.current.clear()
       unsub?.()
     }
   }, [])
@@ -2033,11 +2605,11 @@ function GoonWallPage(props: {
         case 'f': // F - toggle fullscreen
           toggleFullscreen()
           break
-        case 'arrowup': // Arrow up - increase heat
-          props.onHeatChange(Math.min(10, props.heatLevel + 1))
+        case 'arrowup': // Arrow up - increase intensity
+          setIntensity(prev => Math.min(10, prev + 1))
           break
-        case 'arrowdown': // Arrow down - decrease heat
-          props.onHeatChange(Math.max(0, props.heatLevel - 1))
+        case 'arrowdown': // Arrow down - decrease intensity
+          setIntensity(prev => Math.max(1, prev - 1))
           break
         case 'h': // H - toggle HUD
           setShowHud(prev => {
@@ -2065,30 +2637,57 @@ function GoonWallPage(props: {
     shuffleTiles()
   }, [tileCount, videos])
 
+  // Individual tile timers for smooth random shuffling based on intensity
   useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
+    // Clear all existing timers
+    tileTimersRef.current.forEach(timer => clearTimeout(timer))
+    tileTimersRef.current.clear()
+
+    // Track if effect is still active
+    let active = true
+
+    if (!isPlaying || tiles.length === 0 || videos.length === 0) {
+      // Not playing - no auto shuffle
+      return () => {
+        active = false
+        tileTimersRef.current.forEach(timer => clearTimeout(timer))
+        tileTimersRef.current.clear()
+      }
     }
 
-    if (isPlaying && intervalSec > 0) {
-      // Active session: use configured interval
-      intervalRef.current = setInterval(() => {
-        const idx = Math.floor(Math.random() * tiles.length)
+    // Active mode: intensity-based individual tile shuffling
+    const baseInterval = getShuffleInterval(intensity)
+
+    const startTileTimer = (idx: number) => {
+      if (!active) return
+
+      // Each tile gets a random offset so they don't sync up
+      const randomOffset = Math.random() * baseInterval * 0.5
+      const interval = baseInterval + randomOffset
+
+      const timer = setTimeout(() => {
+        if (!active) return
         shuffleSingleTile(idx)
-      }, intervalSec * 1000)
-    } else if (!isPlaying && tiles.length > 0 && videos.length > 0) {
-      // Passive mode: slow ambient tile changes (every 45-90 seconds)
-      intervalRef.current = setInterval(() => {
-        const idx = Math.floor(Math.random() * tiles.length)
-        shuffleSingleTile(idx)
-      }, 45000 + Math.random() * 45000) // Random 45-90 seconds
+        startTileTimer(idx) // Reschedule with new random offset
+      }, interval)
+      tileTimersRef.current.set(idx, timer)
+    }
+
+    // Start timers with staggered initial delays
+    for (let idx = 0; idx < tileCount; idx++) {
+      const initialDelay = Math.random() * baseInterval * 0.3
+      const initTimer = setTimeout(() => {
+        if (active) startTileTimer(idx)
+      }, initialDelay)
+      tileTimersRef.current.set(idx + 1000, initTimer) // Store init timers with offset key
     }
 
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
+      active = false
+      tileTimersRef.current.forEach(timer => clearTimeout(timer))
+      tileTimersRef.current.clear()
     }
-  }, [isPlaying, intervalSec, tiles.length, videos.length])
+  }, [isPlaying, intensity, tileCount, getShuffleInterval])
 
   const getGridStyle = (): React.CSSProperties => {
     const cols = Math.ceil(Math.sqrt(tileCount))
@@ -2210,24 +2809,20 @@ function GoonWallPage(props: {
 
           <div className="w-px h-6 bg-white/20" />
 
-          {/* Interval */}
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-white/40">⏱</span>
-            {([30, 45, 60, 90] as ShuffleInterval[]).map((s) => (
-              <button
-                key={s}
-                onClick={() => {
-                  setIntervalSec(s)
-                  saveSettings({ intervalSec: s })
-                }}
-                className={cn(
-                  'px-1.5 py-1 rounded text-[10px] transition',
-                  intervalSec === s ? 'bg-white/25 text-white' : 'bg-white/5 text-white/60 hover:bg-white/15'
-                )}
-              >
-                {s}
-              </button>
-            ))}
+          {/* Intensity Slider */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-white/40">Chill</span>
+            <input
+              type="range"
+              min={1}
+              max={10}
+              value={intensity}
+              onChange={(e) => setIntensity(Number(e.target.value))}
+              className="w-20 h-1.5 rounded-full appearance-none bg-white/20 cursor-pointer accent-pink-500"
+              title={`Intensity: ${intensity}/10 (shuffle every ${Math.round(getShuffleInterval(intensity) / 1000)}s)`}
+            />
+            <span className="text-[10px] text-white/40">Intense</span>
+            <span className="text-[10px] text-pink-400 font-medium w-4">{intensity}</span>
           </div>
 
           <div className="w-px h-6 bg-white/20" />
@@ -2248,38 +2843,6 @@ function GoonWallPage(props: {
           </button>
 
           <div className="w-px h-6 bg-white/20" />
-
-          {/* Heat Level / Visual Effects Intensity */}
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-white/40">🔥</span>
-            <input
-              type="range"
-              min="0"
-              max="10"
-              step="1"
-              value={props.heatLevel}
-              onChange={(e) => props.onHeatChange(Number(e.target.value))}
-              className="w-16 h-1 rounded-full appearance-none bg-white/20 cursor-pointer accent-pink-500"
-              title={`Visual effects intensity: ${props.heatLevel}/10`}
-            />
-            <span className="text-[10px] text-white/60 w-4">{props.heatLevel}</span>
-          </div>
-
-          <div className="w-px h-6 bg-white/20" />
-
-          {/* Goon Mode Toggle */}
-          <button
-            onClick={() => props.onGoonModeChange(!props.goonMode)}
-            className={cn(
-              'px-2 py-1.5 rounded-lg text-[10px] font-medium transition',
-              props.goonMode
-                ? 'bg-pink-500/80 text-white shadow-[0_0_15px_rgba(236,72,153,0.5)]'
-                : 'bg-white/10 text-white/60 hover:bg-white/20'
-            )}
-            title="Toggle Goon Mode - Floating text prompts"
-          >
-            GOON
-          </button>
 
           {/* Fullscreen */}
           <button
@@ -2312,11 +2875,11 @@ function GoonWallPage(props: {
       >
         <div className="text-[10px] text-white/40 bg-black/60 rounded-lg px-3 py-2 border border-white/10 space-y-0.5">
           <div><span className="text-white/60">Space</span> Play/Stop</div>
-          <div><span className="text-white/60">S</span> Shuffle</div>
+          <div><span className="text-white/60">S</span> Shuffle All</div>
           <div><span className="text-white/60">M</span> Mute</div>
           <div><span className="text-white/60">F</span> Fullscreen</div>
           <div><span className="text-white/60">H</span> Toggle HUD</div>
-          <div><span className="text-white/60">↑/↓</span> Heat level</div>
+          <div><span className="text-pink-400">↑/↓</span> Intensity</div>
           <div><span className="text-pink-400">G</span> Goon Mode</div>
         </div>
       </div>
@@ -2367,63 +2930,40 @@ function GoonWallPage(props: {
   )
 }
 
-function GoonTile(props: { media: MediaRow; muted: boolean; style?: React.CSSProperties; onShuffle: () => void; loadDelay?: number }) {
-  const { media, muted, style, onShuffle, loadDelay = 0 } = props
+const GoonTile = React.memo(function GoonTile(props: { media: MediaRow; muted: boolean; style?: React.CSSProperties; onShuffle: () => void; loadDelay?: number }) {
+  const { media, muted, style, onShuffle } = props
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(true)
-  const [hasError, setHasError] = useState(false)
-  const [retryCount, setRetryCount] = useState(0)
-  const [hasSlot, setHasSlot] = useState(false)
+  const [retried, setRetried] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
-  // Use video pool to manage decoder slots - prevents black screens from decoder exhaustion
-  useVideoPool(media.id, videoRef, hasSlot && !!url && !hasError)
-
-  // Load video URL with staggered delay
+  // Load video URL via getPlayableUrl (handles transcoding transparently)
   useEffect(() => {
     let alive = true
     setLoading(true)
-    setHasError(false)
-    setHasSlot(false)
+    setRetried(false)
 
-    const loadVideo = async () => {
-      // Stagger loading to prevent overwhelming decoders
-      if (loadDelay > 0) {
-        await new Promise(r => setTimeout(r, loadDelay))
-      }
-      if (!alive) return
-
-      const u = await toFileUrlCached(media.path)
+    window.api.media.getPlayableUrl(media.id).then(u => {
       if (alive && u) {
-        setUrl(u)
-        // Additional small delay
-        await new Promise(r => setTimeout(r, 50))
-        if (alive) setHasSlot(true)
+        setUrl(u as string)
       } else if (alive) {
-        console.warn('[GoonTile] Failed to get URL for:', media.path)
-        setHasError(true)
-        setLoading(false)
+        // Fallback to direct path
+        toFileUrlCached(media.path).then(u2 => {
+          if (alive && u2) setUrl(u2)
+          else if (alive) { setLoading(false); onShuffle() }
+        })
       }
-    }
-
-    loadVideo()
-    return () => {
-      alive = false
-    }
-  }, [media.id, media.path, retryCount, loadDelay])
-
-  // Loading timeout - if video doesn't load within 8 seconds, show error
-  useEffect(() => {
-    if (!loading || hasError) return
-    const timeout = setTimeout(() => {
-      if (loading && !hasError && url) {
-        console.warn('[GoonTile] Loading timeout:', media.path)
-        setHasError(true)
-        setLoading(false)
+    }).catch(() => {
+      if (alive) {
+        toFileUrlCached(media.path).then(u2 => {
+          if (alive && u2) setUrl(u2)
+          else if (alive) { setLoading(false); onShuffle() }
+        })
       }
-    }, 8000)
-    return () => clearTimeout(timeout)
-  }, [loading, hasError, url, media.path])
+    })
+
+    return () => { alive = false }
+  }, [media.id, media.path, onShuffle])
 
   // Critical: Cleanup video on unmount to release decoder
   useEffect(() => {
@@ -2442,54 +2982,65 @@ function GoonTile(props: { media: MediaRow; muted: boolean; style?: React.CSSPro
     }
   }, [muted])
 
+  // Seek to loudness peak or random position on metadata load
+  const handleLoadedMetadata = useCallback(() => {
+    const video = videoRef.current
+    if (!video || !video.duration || video.duration < 2) return
+    const dur = video.duration
+
+    window.api.media.getLoudnessPeak(media.id).then(peakTime => {
+      if (!videoRef.current) return
+      if (peakTime != null && peakTime > 0 && peakTime < dur) {
+        videoRef.current.currentTime = peakTime
+      } else {
+        // Random 10-90% of duration
+        videoRef.current.currentTime = (0.1 + Math.random() * 0.8) * dur
+      }
+    }).catch(() => {
+      if (videoRef.current && dur > 2) {
+        videoRef.current.currentTime = (0.1 + Math.random() * 0.8) * dur
+      }
+    })
+  }, [media.id])
+
   // Ensure video plays when loaded
   const handleCanPlay = useCallback(() => {
     setLoading(false)
-    setHasError(false)
     const video = videoRef.current
     if (video && video.paused) {
-      video.play().catch(err => {
-        console.warn('[GoonTile] Autoplay blocked:', err.message)
-      })
+      video.play().catch(() => {})
     }
   }, [])
 
-  // Handle video errors with detailed logging - auto-shuffle on codec errors or missing files
+  // Handle video errors - retry with transcode, then move broken
   const handleError = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
     const video = e.currentTarget
     const error = video.error
-    const isCodecError = error?.code === 4 // SRC_NOT_SUPPORTED = codec issue
-    const isNetworkError = error?.code === 2 // NETWORK = file not found/deleted
+    const errorType = error ? ['', 'ABORTED', 'NETWORK', 'DECODE', 'SRC_NOT_SUPPORTED'][error.code] || 'UNKNOWN' : 'UNKNOWN'
 
-    if (error) {
-      console.warn('[GoonTile] Video error:', {
-        path: media.path,
-        code: error.code,
-        message: error.message,
-        errorType: ['', 'ABORTED', 'NETWORK', 'DECODE', 'SRC_NOT_SUPPORTED'][error.code] || 'UNKNOWN'
+    // First error: retry via getPlayableUrl (triggers transcode if needed)
+    if (!retried) {
+      console.warn('[GoonTile] Video error, retrying with transcode:', media.path, errorType)
+      setRetried(true)
+      window.api.media.getPlayableUrl(media.id).then(u => {
+        if (u) setUrl(u as string)
+        else {
+          // Transcode also failed — move to broken
+          window.api.media.moveBroken(media.id, errorType).finally(() => onShuffle())
+        }
+      }).catch(() => {
+        window.api.media.moveBroken(media.id, errorType).finally(() => onShuffle())
       })
-    } else {
-      console.warn('[GoonTile] Video error (no details):', media.path)
-    }
-
-    // Auto-shuffle to next video on codec errors (unsupported format) or network errors (file deleted/missing)
-    if (isCodecError || isNetworkError) {
-      setTimeout(() => onShuffle(), 300) // Small delay before shuffling
       return
     }
 
-    setHasError(true)
-    setLoading(false)
-  }, [media.path, onShuffle])
-
-  // Retry loading the video
-  const handleRetry = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    setRetryCount(c => c + 1)
-    setUrl('')
-    setHasError(false)
-    setLoading(true)
-  }, [])
+    console.warn('[GoonTile] Video error after retry, moving to broken folder:', media.path, errorType)
+    window.api.media.moveBroken(media.id, errorType).then(() => {
+      onShuffle()
+    }).catch(() => {
+      onShuffle()
+    })
+  }, [media.id, media.path, onShuffle, retried])
 
   // Get filename from path
   const filename = media.path.split(/[/\\]/).pop() || 'Unknown'
@@ -2498,38 +3049,16 @@ function GoonTile(props: { media: MediaRow; muted: boolean; style?: React.CSSPro
     <div
       className="relative overflow-hidden bg-black group cursor-pointer"
       style={style}
-      onClick={hasError ? handleRetry : onShuffle}
+      onClick={onShuffle}
     >
       {/* Loading indicator */}
-      {loading && !hasError && (
+      {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black z-10">
           <div className="w-8 h-8 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
         </div>
       )}
 
-      {/* Error state */}
-      {hasError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-10">
-          <div className="text-2xl mb-1">⚠️</div>
-          <div className="text-[10px] text-white/60 mb-2">Failed to load</div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleRetry}
-              className="px-2 py-1 text-[10px] bg-white/20 rounded hover:bg-white/30 transition"
-            >
-              Retry
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onShuffle() }}
-              className="px-2 py-1 text-[10px] bg-[var(--primary)]/50 rounded hover:bg-[var(--primary)]/70 transition"
-            >
-              Skip
-            </button>
-          </div>
-        </div>
-      )}
-
-      {url && !hasError && (
+      {url && (
         <video
           ref={videoRef}
           src={url}
@@ -2539,33 +3068,31 @@ function GoonTile(props: { media: MediaRow; muted: boolean; style?: React.CSSPro
           playsInline
           preload="auto"
           className="w-full h-full object-cover"
-          onCanPlay={handleCanPlay}
-          onLoadedMetadata={() => console.log('[GoonTile] Metadata loaded:', media.path.split(/[/\\]/).pop())}
+          onLoadedMetadata={handleLoadedMetadata}
+          onLoadedData={handleCanPlay}
           onError={handleError}
-          onStalled={() => console.warn('[GoonTile] Stalled:', media.path.split(/[/\\]/).pop())}
-          onWaiting={() => setLoading(true)}
-          onPlaying={() => setLoading(false)}
         />
       )}
 
-      {/* Hover overlay - only show when not in error state */}
-      {!hasError && (
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center">
-          <div className="text-xs text-white/80 text-center p-2 truncate max-w-full">
-            {filename}
-          </div>
-          <div className="text-[10px] text-white/50">Click to shuffle</div>
+      {/* Hover overlay */}
+      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center">
+        <div className="text-xs text-white/80 text-center p-2 truncate max-w-full">
+          {filename}
         </div>
-      )}
+        <div className="text-[10px] text-white/50">Click to shuffle</div>
+      </div>
     </div>
   )
-}
+})
 
 function DaylistPage() {
   const [daylist, setDaylist] = useState<{ daylist: any; items: MediaRow[] } | null>(null)
   const [loading, setLoading] = useState(false)
   const [motifName, setMotifName] = useState('')
   const [openId, setOpenId] = useState<string | null>(null)
+  const [daylistIntensity, setDaylistIntensity] = useState(3)
+
+  const intensityLabels = ['Mild', 'Light', 'Medium', 'Spicy', 'Extreme']
 
   const generateMotifName = () => {
     const hour = new Date().getHours()
@@ -2603,7 +3130,7 @@ function DaylistPage() {
   const loadDaylist = async () => {
     setLoading(true)
     try {
-      const result = await window.api.daylist.getToday({ limit: 50 })
+      const result = await window.api.daylist.getToday({ limit: 50, intensity: daylistIntensity })
       setDaylist(result)
       setMotifName(generateMotifName())
     } finally {
@@ -2614,7 +3141,7 @@ function DaylistPage() {
   const regenerate = async () => {
     setLoading(true)
     try {
-      const result = await window.api.daylist.regenerate({ limit: 50 })
+      const result = await window.api.daylist.regenerate({ limit: 50, intensity: daylistIntensity })
       setDaylist(result)
       setMotifName(generateMotifName())
     } finally {
@@ -2628,25 +3155,61 @@ function DaylistPage() {
 
   const items = daylist?.items ?? []
 
-  // Calculate intensity curve visualization
+  // Calculate intensity curve visualization - changes with intensity slider
   const intensityCurve = useMemo(() => {
-    if (items.length === 0) return []
-    // Simulate a buildup curve
-    return items.map((_, i) => {
-      const progress = i / Math.max(items.length - 1, 1)
-      // Buildup pattern: starts low, peaks around 70%, tapers slightly
-      if (progress < 0.3) return 0.3 + progress * 1.5
-      if (progress < 0.7) return 0.75 + (progress - 0.3) * 0.6
-      return 0.9 - (progress - 0.7) * 0.3
+    const len = items.length > 0 ? items.length : 50 // Show curve even without items
+    // Intensity affects the curve shape:
+    // Low intensity (1-2): gentle, slow buildup
+    // Medium (3): balanced curve
+    // High (4-5): aggressive, fast peaks
+    const intensityFactor = daylistIntensity / 3 // 0.33 to 1.67
+    const peakPosition = 0.5 + (daylistIntensity - 3) * 0.1 // Peak moves later at higher intensity
+    const baseHeight = 0.2 + (daylistIntensity - 1) * 0.1 // Higher base at higher intensity
+
+    return Array.from({ length: len }, (_, i) => {
+      const progress = i / Math.max(len - 1, 1)
+
+      // Create dynamic curve based on intensity
+      if (progress < peakPosition * 0.6) {
+        // Buildup phase - steeper at higher intensity
+        return baseHeight + progress * (1.5 * intensityFactor)
+      } else if (progress < peakPosition) {
+        // Approaching peak
+        const peakProgress = (progress - peakPosition * 0.6) / (peakPosition * 0.4)
+        return baseHeight + 0.4 * intensityFactor + peakProgress * (0.5 * intensityFactor)
+      } else if (progress < peakPosition + 0.2) {
+        // Peak zone - higher and longer at higher intensity
+        return Math.min(1, baseHeight + 0.9 * intensityFactor)
+      } else {
+        // Cooldown - sharper drop at higher intensity
+        const coolProgress = (progress - peakPosition - 0.2) / (1 - peakPosition - 0.2)
+        return Math.max(baseHeight, (baseHeight + 0.9 * intensityFactor) - coolProgress * (0.4 * intensityFactor))
+      }
     })
-  }, [items.length])
+  }, [items.length, daylistIntensity])
 
   return (
     <>
       <TopBar
         title={motifName || 'Today\'s Daylist'}
         right={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-[var(--muted)]">Intensity:</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={1}
+                  max={5}
+                  value={daylistIntensity}
+                  onChange={(e) => setDaylistIntensity(Number(e.target.value))}
+                  className="w-24 h-1.5 accent-[var(--primary)] bg-[var(--surface)] rounded-full cursor-pointer"
+                />
+                <span className="text-xs font-medium min-w-[50px] text-[var(--primary)]">
+                  {intensityLabels[daylistIntensity - 1]}
+                </span>
+              </div>
+            </div>
             <Btn onClick={regenerate} disabled={loading}>
               {loading ? 'Generating...' : 'Regenerate'}
             </Btn>
@@ -2742,6 +3305,569 @@ function DaylistPage() {
   )
 }
 
+// TikTok-style vertical swipe feed
+function FeedPage() {
+  const [videos, setVideos] = useState<MediaRow[]>([])
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [isMuted, setIsMuted] = useState(false)
+  const [showHud, setShowHud] = useState(true)
+  const [showTagPanel, setShowTagPanel] = useState(false)
+  const [allTags, setAllTags] = useState<Array<{ id: string; name: string; videoCount: number }>>([])
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [recommendedTags, setRecommendedTags] = useState<string[]>([]) // Tags to "keep seeing"
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
+  const containerRef = useRef<HTMLDivElement>(null)
+  const videoRefs = useRef<Map<number, HTMLVideoElement>>(new Map())
+  const hudTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Suggested tags = tags that have at least 1 video, sorted by video count
+  const suggestedTags = useMemo(() => {
+    return allTags.filter(t => t.videoCount > 0).slice(0, 20)
+  }, [allTags])
+
+  // Load tags with counts on mount
+  useEffect(() => {
+    window.api.tags.listWithCounts().then(setAllTags)
+  }, [])
+
+  // Load random videos based on selected tags
+  const loadVideos = useCallback(async (tags: string[] = []) => {
+    setLoading(true)
+    try {
+      // Combine selected tags with recommended tags
+      const combinedTags = [...new Set([...tags, ...recommendedTags])]
+      const result = await window.api.media.randomByTags(combinedTags, { limit: 50 })
+      const vids = (Array.isArray(result) ? result : []).filter((m: any) => m.type === 'video')
+      setVideos(vids)
+
+      // Load liked status for these videos
+      const newLikedIds = new Set<string>()
+      await Promise.all(vids.slice(0, 50).map(async (v: MediaRow) => {
+        try {
+          const stats = await window.api.media.getStats(v.id)
+          if (stats && (stats.rating ?? 0) >= 5) {
+            newLikedIds.add(v.id)
+          }
+        } catch {}
+      }))
+      setLikedIds(newLikedIds)
+    } catch (e) {
+      console.error('[Feed] Failed to load videos:', e)
+    } finally {
+      setLoading(false)
+    }
+  }, [recommendedTags])
+
+  // Initial load
+  useEffect(() => {
+    loadVideos(selectedTags)
+  }, []) // eslint-disable-line
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+      if (e.key === 'ArrowDown' || e.key === ' ' || e.key === 'j') {
+        e.preventDefault()
+        setCurrentIndex(prev => Math.min(prev + 1, videos.length - 1))
+      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+        e.preventDefault()
+        setCurrentIndex(prev => Math.max(prev - 1, 0))
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [videos.length])
+
+  // Scroll to current video
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTo({
+        top: currentIndex * containerRef.current.clientHeight,
+        behavior: 'smooth'
+      })
+    }
+
+    // Pause all videos except current
+    videoRefs.current.forEach((video, idx) => {
+      if (idx === currentIndex) {
+        video.play().catch(() => {})
+      } else {
+        video.pause()
+      }
+    })
+  }, [currentIndex])
+
+  // Handle scroll to update current index
+  const handleScroll = useCallback(() => {
+    if (containerRef.current) {
+      const scrollTop = containerRef.current.scrollTop
+      const height = containerRef.current.clientHeight
+      const newIndex = Math.round(scrollTop / height)
+      if (newIndex !== currentIndex && newIndex >= 0 && newIndex < videos.length) {
+        setCurrentIndex(newIndex)
+      }
+    }
+  }, [currentIndex, videos.length])
+
+  // Auto-hide HUD after inactivity
+  const resetHudTimeout = useCallback(() => {
+    setShowHud(true)
+    if (hudTimeoutRef.current) clearTimeout(hudTimeoutRef.current)
+    hudTimeoutRef.current = setTimeout(() => setShowHud(false), 3000)
+  }, [])
+
+  useEffect(() => {
+    const handleMove = () => resetHudTimeout()
+    window.addEventListener('mousemove', handleMove)
+    resetHudTimeout()
+    return () => {
+      window.removeEventListener('mousemove', handleMove)
+      if (hudTimeoutRef.current) clearTimeout(hudTimeoutRef.current)
+    }
+  }, [resetHudTimeout])
+
+  // Toggle mute on current video
+  useEffect(() => {
+    videoRefs.current.forEach((video, idx) => {
+      video.muted = idx !== currentIndex || isMuted
+    })
+  }, [currentIndex, isMuted])
+
+  // Shuffle/refresh feed
+  const shuffleFeed = useCallback(async () => {
+    setCurrentIndex(0)
+    if (containerRef.current) {
+      containerRef.current.scrollTo({ top: 0, behavior: 'auto' })
+    }
+    await loadVideos(selectedTags)
+  }, [loadVideos, selectedTags])
+
+  // Toggle like for current video
+  const toggleLike = useCallback(async (mediaId: string) => {
+    const isLiked = likedIds.has(mediaId)
+    const newRating = isLiked ? 0 : 5
+    // Optimistic UI update
+    setLikedIds(prev => {
+      const next = new Set(prev)
+      if (isLiked) next.delete(mediaId)
+      else next.add(mediaId)
+      return next
+    })
+    try {
+      await window.api.media.setRating(mediaId, newRating)
+    } catch (err) {
+      console.error('[Like] Failed to set rating:', err)
+      // Revert on failure
+      setLikedIds(prev => {
+        const next = new Set(prev)
+        if (isLiked) next.add(mediaId)
+        else next.delete(mediaId)
+        return next
+      })
+    }
+  }, [likedIds])
+
+  // Toggle tag selection
+  const toggleTag = useCallback((tagName: string) => {
+    setSelectedTags(prev =>
+      prev.includes(tagName) ? prev.filter(t => t !== tagName) : [...prev, tagName]
+    )
+  }, [])
+
+  // Add tag to recommended (keep seeing)
+  const addToRecommended = useCallback((tagName: string) => {
+    setRecommendedTags(prev =>
+      prev.includes(tagName) ? prev : [...prev, tagName]
+    )
+  }, [])
+
+  // Remove from recommended
+  const removeFromRecommended = useCallback((tagName: string) => {
+    setRecommendedTags(prev => prev.filter(t => t !== tagName))
+  }, [])
+
+  // Apply tag filters
+  const applyFilters = useCallback(() => {
+    setCurrentIndex(0)
+    if (containerRef.current) {
+      containerRef.current.scrollTo({ top: 0, behavior: 'auto' })
+    }
+    loadVideos(selectedTags)
+    setShowTagPanel(false)
+  }, [loadVideos, selectedTags])
+
+  // Skip to next video (used by FeedItem shuffle button)
+  const skipToNext = useCallback(() => {
+    if (currentIndex < videos.length - 1) {
+      setCurrentIndex(currentIndex + 1)
+    } else {
+      // At end, shuffle new feed
+      shuffleFeed()
+    }
+  }, [currentIndex, videos.length, shuffleFeed])
+
+  // Open current video in main player
+  const openInPlayer = useCallback(() => {
+    if (videos[currentIndex]) {
+      window.dispatchEvent(new CustomEvent('vault-open-video', { detail: videos[currentIndex] }))
+    }
+  }, [videos, currentIndex])
+
+  if (loading) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-black">
+        <div className="w-12 h-12 border-4 border-white/20 border-t-white/80 rounded-full animate-spin mb-4" />
+        <div className="text-white/60">Loading feed...</div>
+      </div>
+    )
+  }
+
+  if (videos.length === 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-black text-center p-8">
+        <div className="text-6xl mb-4 opacity-30">🎬</div>
+        <div className="text-lg font-medium text-white/60">No videos found</div>
+        <div className="text-sm text-white/40 mt-2">Add some videos to your library first</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full w-full bg-black relative" onMouseMove={resetHudTimeout}>
+      {/* HUD Controls */}
+      <div
+        className={`absolute top-4 left-4 right-4 z-50 flex items-center justify-between transition-opacity duration-300 ${showHud ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      >
+        {/* Left: Counter */}
+        <div className="flex items-center gap-3 bg-black/90 backdrop-blur-md rounded-full px-4 py-2">
+          <span className="text-sm font-medium text-white">
+            {currentIndex + 1} / {videos.length}
+          </span>
+        </div>
+
+        {/* Center: Navigation hint */}
+        <div className="flex items-center gap-2 bg-black/90 backdrop-blur-md rounded-full px-4 py-2">
+          <span className="text-xs text-white/60">↑↓ or Space to navigate</span>
+        </div>
+
+        {/* Right: Controls */}
+        <div className="flex items-center gap-2 bg-black/90 backdrop-blur-md rounded-full px-2 py-1">
+          <button
+            onClick={() => setShowTagPanel(!showTagPanel)}
+            className={cn(
+              "w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/10 transition",
+              showTagPanel || selectedTags.length > 0 || recommendedTags.length > 0
+                ? "text-[var(--primary)]"
+                : "text-white/70 hover:text-white"
+            )}
+            title="Tag filters"
+          >
+            <Tag size={18} />
+          </button>
+          <button
+            onClick={() => setIsMuted(!isMuted)}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition"
+            title={isMuted ? 'Unmute' : 'Mute'}
+          >
+            {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+          </button>
+          <button
+            onClick={shuffleFeed}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition"
+            title="Shuffle feed"
+          >
+            <Shuffle size={18} />
+          </button>
+          <button
+            onClick={openInPlayer}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition"
+            title="Open in player"
+          >
+            <Maximize2 size={18} />
+          </button>
+        </div>
+      </div>
+
+      {/* Tag Panel */}
+      {showTagPanel && (
+        <div className="absolute top-16 right-4 z-50 w-80 bg-black/90 backdrop-blur-xl rounded-2xl border border-white/10 overflow-hidden">
+          <div className="p-4 border-b border-white/10">
+            <h3 className="text-sm font-semibold text-white">Filter by Tags</h3>
+            <p className="text-xs text-white/50 mt-1">Select tags to filter your feed</p>
+          </div>
+
+          {/* Selected Tags */}
+          {selectedTags.length > 0 && (
+            <div className="p-3 border-b border-white/5">
+              <div className="text-xs text-white/40 mb-2">Active Filters</div>
+              <div className="flex flex-wrap gap-1">
+                {selectedTags.map(tag => (
+                  <span
+                    key={tag}
+                    onClick={() => toggleTag(tag)}
+                    className="px-2 py-1 text-xs rounded-full bg-[var(--primary)] text-white cursor-pointer hover:opacity-80"
+                  >
+                    {tag} ×
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recommended Tags */}
+          {recommendedTags.length > 0 && (
+            <div className="p-3 border-b border-white/5">
+              <div className="text-xs text-white/40 mb-2">Keep Seeing (Recommended)</div>
+              <div className="flex flex-wrap gap-1">
+                {recommendedTags.map(tag => (
+                  <span
+                    key={tag}
+                    onClick={() => removeFromRecommended(tag)}
+                    className="px-2 py-1 text-xs rounded-full bg-green-600/80 text-white cursor-pointer hover:opacity-80"
+                  >
+                    {tag} ×
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Suggested Tags (tags with videos) */}
+          {suggestedTags.length > 0 && (
+            <div className="p-3 border-b border-white/5">
+              <div className="text-xs text-white/40 mb-2 flex items-center gap-1">
+                <Sparkles size={12} />
+                Suggested Tags
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {suggestedTags.map(tag => {
+                  const isSelected = selectedTags.includes(tag.name)
+                  const isRecommended = recommendedTags.includes(tag.name)
+                  return (
+                    <div key={tag.id} className="relative group">
+                      <span
+                        onClick={() => toggleTag(tag.name)}
+                        className={cn(
+                          "px-2 py-1 text-xs rounded-full cursor-pointer transition inline-flex items-center gap-1",
+                          isSelected
+                            ? "bg-[var(--primary)] text-white"
+                            : isRecommended
+                              ? "bg-green-600/40 text-green-300"
+                              : "bg-gradient-to-r from-purple-600/30 to-pink-600/30 text-white/90 hover:from-purple-600/50 hover:to-pink-600/50"
+                        )}
+                      >
+                        {tag.name}
+                        <span className="text-[10px] opacity-60">({tag.videoCount})</span>
+                      </span>
+                      {!isRecommended && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); addToRecommended(tag.name) }}
+                          className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-green-600 text-white text-[10px] opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
+                          title="Keep seeing this tag"
+                        >
+                          +
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* All Tags */}
+          <div className="p-3 max-h-48 overflow-y-auto">
+            <div className="text-xs text-white/40 mb-2">All Tags ({allTags.length})</div>
+            <div className="flex flex-wrap gap-1">
+              {allTags.map(tag => {
+                const isSelected = selectedTags.includes(tag.name)
+                const isRecommended = recommendedTags.includes(tag.name)
+                return (
+                  <div key={tag.id} className="relative group">
+                    <span
+                      onClick={() => toggleTag(tag.name)}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded-full cursor-pointer transition inline-flex items-center gap-1",
+                        isSelected
+                          ? "bg-[var(--primary)] text-white"
+                          : isRecommended
+                            ? "bg-green-600/40 text-green-300"
+                            : tag.videoCount > 0
+                              ? "bg-white/10 text-white/70 hover:bg-white/20"
+                              : "bg-white/5 text-white/40 hover:bg-white/10"
+                      )}
+                    >
+                      {tag.name}
+                      {tag.videoCount > 0 && (
+                        <span className="text-[10px] opacity-50">({tag.videoCount})</span>
+                      )}
+                    </span>
+                    {!isRecommended && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); addToRecommended(tag.name) }}
+                        className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-green-600 text-white text-[10px] opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
+                        title="Keep seeing this tag"
+                      >
+                        +
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="p-3 border-t border-white/10 flex gap-2">
+            <button
+              onClick={() => { setSelectedTags([]); setRecommendedTags([]) }}
+              className="flex-1 px-3 py-2 text-xs rounded-lg bg-white/10 text-white/70 hover:bg-white/20 transition"
+            >
+              Clear All
+            </button>
+            <button
+              onClick={applyFilters}
+              className="flex-1 px-3 py-2 text-xs rounded-lg bg-[var(--primary)] text-white hover:opacity-90 transition"
+            >
+              Apply Filters
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Video container */}
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="h-full w-full overflow-y-auto snap-y snap-mandatory scrollbar-hide"
+        style={{ scrollSnapType: 'y mandatory' }}
+      >
+        {videos.map((video, index) => (
+          <FeedItem
+            key={video.id}
+            video={video}
+            index={index}
+            isActive={index === currentIndex}
+            onVideoRef={(el) => {
+              if (el) videoRefs.current.set(index, el)
+              else videoRefs.current.delete(index)
+            }}
+            isLiked={likedIds.has(video.id)}
+            onToggleLike={() => toggleLike(video.id)}
+            onSkip={skipToNext}
+          />
+        ))}
+      </div>
+
+      {/* Side navigation */}
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2">
+        <button
+          onClick={() => setCurrentIndex(prev => Math.max(prev - 1, 0))}
+          disabled={currentIndex === 0}
+          className="w-10 h-10 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center text-white/60 hover:text-white hover:bg-black/70 disabled:opacity-30 disabled:cursor-not-allowed transition"
+        >
+          <ChevronUp size={20} />
+        </button>
+        <button
+          onClick={() => setCurrentIndex(prev => Math.min(prev + 1, videos.length - 1))}
+          disabled={currentIndex === videos.length - 1}
+          className="w-10 h-10 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center text-white/60 hover:text-white hover:bg-black/70 disabled:opacity-30 disabled:cursor-not-allowed transition"
+        >
+          <ChevronDown size={20} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Individual feed item
+const FeedItem = React.memo(function FeedItem(props: {
+  video: MediaRow
+  index: number
+  isActive: boolean
+  onVideoRef: (el: HTMLVideoElement | null) => void
+  isLiked: boolean
+  onToggleLike: () => void
+  onSkip: () => void
+}) {
+  const { video, isActive, onVideoRef, isLiked, onToggleLike, onSkip } = props
+  const [url, setUrl] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const u = await toFileUrlCached(video.path)
+      if (alive) setUrl(u)
+    })()
+    return () => { alive = false }
+  }, [video.path])
+
+  const filename = video.filename || video.path.split(/[/\\]/).pop() || 'Unknown'
+
+  return (
+    <div
+      className="h-full w-full snap-start flex items-center justify-center bg-black relative"
+      style={{ scrollSnapAlign: 'start', minHeight: '100vh' }}
+    >
+      {/* Video - fill height, maintain aspect ratio */}
+      {url && (
+        <video
+          ref={onVideoRef}
+          src={url}
+          className="h-full w-auto max-w-full object-contain"
+          style={{ maxHeight: '100vh' }}
+          autoPlay={isActive}
+          muted={!isActive}
+          loop
+          playsInline
+          preload={isActive ? 'auto' : 'metadata'}
+          onCanPlay={() => setLoading(false)}
+        />
+      )}
+
+      {/* Loading state */}
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+        </div>
+      )}
+
+      {/* Video info overlay */}
+      <div className="absolute bottom-20 left-4 right-20 text-white">
+        <p className="font-semibold text-lg truncate">{filename}</p>
+        {video.durationSec && (
+          <p className="text-sm text-white/60">{formatDuration(video.durationSec)}</p>
+        )}
+      </div>
+
+      {/* Side actions */}
+      <div className="absolute right-4 bottom-32 flex flex-col gap-4">
+        <button
+          onClick={onToggleLike}
+          className={cn(
+            "w-12 h-12 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center hover:bg-black/60 transition",
+            isLiked ? "text-red-500" : "text-white/80 hover:text-white"
+          )}
+          title={isLiked ? "Unlike" : "Like"}
+        >
+          <Heart size={24} fill={isLiked ? "currentColor" : "none"} />
+        </button>
+        <button
+          onClick={onSkip}
+          className="w-12 h-12 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center text-white/80 hover:text-white hover:bg-black/60 transition"
+          title="Next video"
+        >
+          <Shuffle size={24} />
+        </button>
+      </div>
+    </div>
+  )
+})
+
 function DaylistItem(props: { media: MediaRow; index: number; intensity: number; onClick: () => void }) {
   const { media, index, intensity, onClick } = props
   const [thumbUrl, setThumbUrl] = useState('')
@@ -2823,15 +3949,32 @@ function PlaylistsPage() {
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renamingValue, setRenamingValue] = useState('')
   const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [openMediaId, setOpenMediaId] = useState<string | null>(null)
 
   const refresh = async () => {
-    const pls = await window.api.playlists.list()
-    setPlaylists(pls)
+    try {
+      setIsLoading(true)
+      setError(null)
+      const pls = await window.api.playlists.list()
+      setPlaylists(pls)
+    } catch (err: any) {
+      console.error('[PlaylistsPage] Failed to load playlists:', err)
+      setError(err?.message ?? 'Failed to load playlists')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const loadItems = async (id: string) => {
-    const its = await window.api.playlists.getItems(id)
-    setItems(its)
+    try {
+      const its = await window.api.playlists.getItems(id)
+      setItems(its)
+    } catch (err: any) {
+      console.error('[PlaylistsPage] Failed to load items:', err)
+      setError(err?.message ?? 'Failed to load playlist items')
+    }
   }
 
   useEffect(() => {
@@ -2913,6 +4056,40 @@ function PlaylistsPage() {
   }
 
   const selectedPlaylist = playlists.find(p => p.id === selectedId)
+
+  // Build media list for the FloatingVideoPlayer from playlist items
+  const playlistMediaList: MediaRow[] = items
+    .filter((item: any) => item.media || item.path)
+    .map((item: any) => ({
+      id: item.media?.id ?? item.mediaId ?? item.id,
+      path: item.media?.path ?? item.path ?? '',
+      type: (item.media?.type ?? item.type ?? 'video') as MediaType,
+      filename: item.media?.filename ?? item.filename,
+      ext: item.media?.ext ?? item.ext,
+      size: item.media?.size ?? item.size,
+      durationSec: item.media?.durationSec ?? item.durationSec,
+      thumbPath: item.media?.thumbPath ?? item.thumbPath,
+      width: item.media?.width ?? item.width,
+      height: item.media?.height ?? item.height,
+    }))
+  const currentMedia = playlistMediaList.find(m => m.id === openMediaId)
+
+  if (isLoading && playlists.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <RefreshCw size={24} className="animate-spin text-[var(--muted)]" />
+      </div>
+    )
+  }
+
+  if (error && playlists.length === 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-4">
+        <div className="text-sm text-red-400">{error}</div>
+        <Btn onClick={() => void refresh()}>Retry</Btn>
+      </div>
+    )
+  }
 
   return (
     <>
@@ -3038,13 +4215,18 @@ function PlaylistsPage() {
                     onDragStart={() => handleDragStart(idx)}
                     onDragOver={(e) => handleDragOver(e, idx)}
                     onDrop={(e) => handleDrop(e, idx)}
+                    onClick={() => {
+                      const mediaId = item.media?.id ?? item.mediaId
+                      if (mediaId) setOpenMediaId(mediaId)
+                    }}
                     className={cn(
-                      'flex items-center gap-4 p-3 rounded-xl border border-[var(--border)] bg-black/20 hover:border-white/15 transition cursor-grab active:cursor-grabbing',
-                      dragIdx === idx && 'opacity-50'
+                      'flex items-center gap-4 p-3 rounded-xl border border-[var(--border)] bg-black/20 hover:border-white/15 transition cursor-pointer',
+                      dragIdx === idx && 'opacity-50',
+                      openMediaId === (item.media?.id ?? item.mediaId) && 'border-[var(--primary)]/50 bg-[var(--primary)]/10'
                     )}
                   >
                     {/* Drag handle */}
-                    <div className="text-[var(--muted)] select-none">⋮⋮</div>
+                    <div className="text-[var(--muted)] select-none cursor-grab active:cursor-grabbing">⋮⋮</div>
 
                     {/* Position */}
                     <div className="w-6 text-center text-xs text-[var(--muted)]">{idx + 1}</div>
@@ -3063,8 +4245,20 @@ function PlaylistsPage() {
                       </div>
                     </div>
 
+                    {/* Play */}
+                    <Btn tone="primary" onClick={(e) => {
+                      e.stopPropagation()
+                      const mediaId = item.media?.id ?? item.mediaId
+                      if (mediaId) setOpenMediaId(mediaId)
+                    }}>
+                      <Play size={14} />
+                    </Btn>
+
                     {/* Remove */}
-                    <Btn tone="danger" onClick={() => removeItem(item.playlistItemId)}>
+                    <Btn tone="danger" onClick={(e) => {
+                      e.stopPropagation()
+                      removeItem(item.playlistItemId)
+                    }}>
                       Remove
                     </Btn>
                   </div>
@@ -3092,6 +4286,16 @@ function PlaylistsPage() {
           )}
         </div>
       </div>
+
+      {/* Floating Video Player for playlist playback */}
+      {openMediaId && currentMedia && (
+        <FloatingVideoPlayer
+          media={currentMedia}
+          mediaList={playlistMediaList}
+          onClose={() => setOpenMediaId(null)}
+          onMediaChange={(newId) => setOpenMediaId(newId)}
+        />
+      )}
     </>
   )
 }
@@ -3166,7 +4370,7 @@ type Achievement = {
   secret?: boolean
 }
 
-function StatsPage() {
+function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof useConfetti>; anime?: ReturnType<typeof useAnime> }) {
   const [stats, setStats] = useState<GoonStats | null>(null)
   const [achievements, setAchievements] = useState<Achievement[]>([])
   const [loading, setLoading] = useState(true)
@@ -3181,8 +4385,9 @@ function StatsPage() {
     // Listen for stats changes
     const unsubStats = window.api.events.onGoonStatsChanged?.((s: GoonStats) => setStats(s))
     const unsubAchievement = window.api.events.onAchievementUnlocked?.((ids: string[]) => {
-      // Could show a toast here
+      // Celebration for achievement unlock!
       console.log('Achievements unlocked:', ids)
+      confetti?.achievement()
     })
 
     return () => {
@@ -3859,9 +5064,12 @@ function GIFPage() {
   useEffect(() => {
     let alive = true
     ;(async () => {
-      const t = await window.api.tags.list()
+      // Use listWithCounts and filter out tags with no media attached
+      const t = await window.api.tags.listWithCounts?.() ?? await window.api.tags.list()
       if (!alive) return
-      setTags(t)
+      // Filter to only show tags that have at least 1 media item
+      const filtered = Array.isArray(t) ? t.filter((tag: any) => tag.count === undefined || tag.count > 0) : t
+      setTags(filtered)
       await refresh()
     })()
     const unsub = window.api.events?.onVaultChanged?.(() => void refresh())
@@ -4040,6 +5248,7 @@ function GIFTile(props: {
 function SettingsPage(props: {
   settings: VaultSettings | null
   patchSettings: (p: Partial<VaultSettings>) => void
+  onThemeChange: (themeId: string) => void
   visualEffectsEnabled: boolean
   setVisualEffectsEnabled: (v: boolean) => void
   ambientHeatLevel: number
@@ -4058,8 +5267,8 @@ function SettingsPage(props: {
   // Pixel background
   pixelBackgroundEnabled: boolean
   setPixelBackgroundEnabled: (v: boolean) => void
-  pixelTheme: PixelTheme | 'none'
-  setPixelTheme: (v: PixelTheme | 'none') => void
+  pixelTheme: PixelTheme
+  setPixelTheme: (v: PixelTheme) => void
   pixelParallaxStrength: number
   setPixelParallaxStrength: (v: number) => void
   pixelOpacity: number
@@ -4308,94 +5517,61 @@ function SettingsPage(props: {
             <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5">
               <div className="text-sm font-semibold mb-4">Appearance</div>
 
-              {/* Appearance disabled notice */}
-              {APPEARANCE_DISABLED && (
-                <div className="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-200 text-sm">
-                  <div className="font-medium mb-1">Appearance Settings Disabled</div>
-                  <div className="text-xs text-yellow-200/70">All appearance features (themes, pixel backgrounds, visual effects) are disabled for maintenance. Focus is on framework, UI, and functionality improvements.</div>
-                </div>
-              )}
-
               {/* Theme Selectors - hidden when THEMES_DISABLED */}
-              {!THEMES_DISABLED && (
-                <>
-                  {/* Goon Themes */}
-                  <div className="mb-6">
-                    <div className="text-xs text-[var(--muted)] mb-3 flex items-center gap-2">
-                      <Flame size={14} /> Goon Vibes
-                    </div>
-                    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
-                      {GOON_THEME_LIST.map((goonTheme) => {
-                        const currentTheme = s?.appearance?.themeId ?? s?.ui?.themeId ?? 'obsidian'
-                        const active = currentTheme === goonTheme.id
-                        const themeColors = themes[goonTheme.id as ThemeId]?.colors
-                        return (
-                          <button
-                            key={goonTheme.id}
-                            onClick={async () => {
-                              if (window.api.settings.setTheme) {
-                                await window.api.settings.setTheme(goonTheme.id)
-                                const next = await window.api.settings.get()
-                                props.patchSettings(next)
-                              }
-                            }}
-                            title={goonTheme.vibe}
-                            className={cn(
-                              'p-4 rounded-2xl border transition text-left sensual-hover',
-                              active
-                                ? 'bg-[var(--primary)]/20 border-[var(--primary)] ring-2 ring-[var(--primary)]/30'
-                                : 'bg-black/20 border-[var(--border)] hover:border-[var(--primary)]/40'
-                            )}
-                          >
-                            <div
-                              className="w-full h-8 rounded-lg mb-2"
-                              style={{ background: themeColors?.gradient || 'linear-gradient(to right, var(--primary), var(--secondary))' }}
-                            />
-                            <div className="text-sm font-medium">{goonTheme.name}</div>
-                            <div className="text-xs text-[var(--muted)] mt-1 truncate">{goonTheme.vibe}</div>
-                          </button>
-                        )
-                      })}
-                    </div>
+              {!THEMES_DISABLED && (() => {
+                const currentTheme = s?.appearance?.themeId ?? s?.ui?.themeId ?? 'obsidian'
+                const goonThemes = GOON_THEME_LIST.map(g => ({ id: g.id, name: g.name, subtitle: g.vibe, colors: themes[g.id as ThemeId]?.colors }))
+                const darkThemes = DARK_THEME_LIST.map(t => ({ id: t.id, name: t.name, subtitle: t.description, colors: t.colors }))
+                const lightThemes = LIGHT_THEME_LIST.map(t => ({ id: t.id, name: t.name, subtitle: t.description, colors: t.colors }))
+                const renderGrid = (items: typeof goonThemes) => (
+                  <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
+                    {items.map((t) => {
+                      const active = currentTheme === t.id
+                      const primary = t.colors?.primary || '#8b5cf6'
+                      const gradient = t.colors?.gradient || `linear-gradient(135deg, ${primary}, ${t.colors?.secondary || '#ec4899'})`
+                      return (
+                        <button
+                          key={t.id}
+                          onClick={() => props.onThemeChange(t.id)}
+                          className="group relative rounded-xl overflow-hidden transition-transform hover:scale-105"
+                          style={{
+                            border: active ? `2px solid ${primary}` : '2px solid rgba(255,255,255,0.08)',
+                            boxShadow: active ? `0 0 12px ${primary}40` : 'none'
+                          }}
+                        >
+                          <div className="h-16 w-full" style={{ background: gradient }} />
+                          <div className="px-2.5 py-2 bg-black/80">
+                            <div className="text-xs font-medium text-white/90 truncate">{t.name}</div>
+                          </div>
+                          {active && (
+                            <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ background: primary }}>
+                              ✓
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })}
                   </div>
-
-                  {/* Classic Themes */}
-                  <div>
-                    <div className="text-xs text-[var(--muted)] mb-3">Classic</div>
-                    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
-                      {THEME_LIST.filter(t => !isGoonTheme(t.id as ThemeId)).map((classicTheme) => {
-                        const currentTheme = s?.appearance?.themeId ?? s?.ui?.themeId ?? 'obsidian'
-                        const active = currentTheme === classicTheme.id
-                        return (
-                          <button
-                            key={classicTheme.id}
-                            onClick={async () => {
-                              if (window.api.settings.setTheme) {
-                                await window.api.settings.setTheme(classicTheme.id)
-                                const next = await window.api.settings.get()
-                                props.patchSettings(next)
-                              }
-                            }}
-                            className={cn(
-                              'p-4 rounded-2xl border transition text-left',
-                              active
-                                ? 'bg-white/15 border-white/25'
-                                : 'bg-black/20 border-[var(--border)] hover:border-white/15'
-                            )}
-                          >
-                            <div
-                              className="w-full h-8 rounded-lg mb-2"
-                              style={{ background: classicTheme.colors?.gradient || 'linear-gradient(to right, var(--primary), var(--secondary))' }}
-                            />
-                            <div className="text-sm font-medium">{classicTheme.name}</div>
-                            <div className="text-xs text-[var(--muted)] mt-1">{classicTheme.isDark ? 'Dark' : 'Light'}</div>
-                          </button>
-                        )
-                      })}
+                )
+                return (
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-xs text-[var(--text-muted)] uppercase tracking-wider mb-2 font-semibold">Goon Themes</div>
+                      {renderGrid(goonThemes)}
                     </div>
+                    <div>
+                      <div className="text-xs text-[var(--text-muted)] uppercase tracking-wider mb-2 font-semibold">Dark Themes</div>
+                      {renderGrid(darkThemes)}
+                    </div>
+                    {lightThemes.length > 0 && (
+                      <div>
+                        <div className="text-xs text-[var(--text-muted)] uppercase tracking-wider mb-2 font-semibold">Light Themes</div>
+                        {renderGrid(lightThemes)}
+                      </div>
+                    )}
                   </div>
-                </>
-              )}
+                )
+              })()}
 
               {/* Pixel Art Background - hidden during maintenance */}
               {!APPEARANCE_DISABLED && <div className="mt-6 pt-6 border-t border-[var(--border)]">
@@ -4432,17 +5608,14 @@ function SettingsPage(props: {
                         <div className="text-sm mb-3">Theme (overrides app colors)</div>
                         <div className="grid grid-cols-5 gap-2">
                           {([
-                            { id: 'cityLights', name: 'City Lights', color: 'from-orange-500 to-purple-700' },
-                            { id: 'neonCity', name: 'Neon City', color: 'from-pink-500 to-cyan-500' },
-                            { id: 'neonCity2', name: 'Neon District', color: 'from-violet-500 to-fuchsia-500' },
-                            { id: 'nightSky', name: 'Night Sky', color: 'from-indigo-600 to-purple-800' },
-                            { id: 'sunset', name: 'Sunset', color: 'from-orange-400 to-rose-500' },
-                            { id: 'clouds', name: 'Clouds', color: 'from-sky-300 to-blue-400' },
-                            { id: 'cloudsDrift', name: 'Drifting', color: 'from-slate-400 to-sky-500' },
-                            { id: 'daySky', name: 'Day Sky', color: 'from-sky-400 to-blue-500' },
-                            { id: 'cityReflection', name: 'Reflection', color: 'from-slate-700 to-purple-900' },
-                            { id: 'pixelCity', name: 'Pixel City', color: 'from-amber-400 to-orange-500' },
-                          ] as const).map((theme) => (
+                            { id: 'neonMetropolis', name: 'Neon Metropolis', color: 'from-pink-500 to-cyan-500' },
+                            { id: 'cyberpunkCity', name: 'Cyberpunk', color: 'from-violet-500 to-fuchsia-500' },
+                            { id: 'retroCity', name: 'Retro City', color: 'from-amber-400 to-orange-500' },
+                            { id: 'dreamyClouds', name: 'Dreamy Clouds', color: 'from-sky-400 to-blue-500' },
+                            { id: 'stormClouds', name: 'Storm', color: 'from-slate-400 to-slate-600' },
+                            { id: 'aquarium', name: 'Aquarium', color: 'from-cyan-400 to-teal-600' },
+                            { id: 'none', name: 'None', color: 'from-gray-600 to-gray-800' },
+                          ] as { id: PixelTheme; name: string; color: string }[]).map((theme) => (
                             <button
                               key={theme.id}
                               onClick={() => setPixelTheme(theme.id)}
@@ -4715,63 +5888,257 @@ function SettingsPage(props: {
 
 // Library Tools Section - Smart Tagging & Cleanup
 function LibraryToolsSection() {
-  const [isAutoTagging, setIsAutoTagging] = useState(false)
+  const { addTask, updateTask, removeTask } = useGlobalTasks()
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isCleaning, setIsCleaning] = useState(false)
-  const [tagProgress, setTagProgress] = useState<{ processed: number; total: number; tagged: number } | null>(null)
-  const [results, setResults] = useState<{ type: 'tag' | 'clean'; message: string } | null>(null)
+  const [isCleaningNames, setIsCleaningNames] = useState(false)
+  const [analysisProgress, setAnalysisProgress] = useState<{ stage: string; current: number; total: number } | null>(null)
+  const [ollamaAvailable, setOllamaAvailable] = useState<boolean | null>(null)
+  const [results, setResults] = useState<{ type: 'ai' | 'clean' | 'names'; message: string } | null>(null)
 
-  const handleAutoTag = async () => {
-    setIsAutoTagging(true)
+  // Check if Ollama is available on mount
+  useEffect(() => {
+    window.api.hybridTag?.isVisionAvailable?.().then(available => {
+      setOllamaAvailable(available)
+      console.log('[LibraryTools] Ollama available:', available)
+    }).catch(() => setOllamaAvailable(false))
+  }, [])
+
+  // Unified AI analysis - does everything
+  const handleAiAnalyzeAll = async () => {
+    const taskId = 'ai-analyze-all'
+    setIsAnalyzing(true)
     setResults(null)
-    setTagProgress({ processed: 0, total: 0, tagged: 0 })
+    setAnalysisProgress({ stage: 'Starting...', current: 0, total: 100 })
+    addTask({ id: taskId, name: 'AI Library Analysis', progress: 0, status: 'Starting...' })
+
+    // Set up progress listeners
+    const unsubHybrid = window.api.events?.onHybridTagProgress?.((progress) => {
+      const percent = Math.round(10 + (progress.processed / progress.total) * 55)
+      const status = `AI tagging... ${progress.processed}/${progress.total} (${progress.tagged} tagged)`
+      setAnalysisProgress({ stage: status, current: Math.min(65, percent), total: 100 })
+      updateTask(taskId, { progress: Math.min(65, percent), status })
+    })
+
+    const unsubDeep = window.api.events?.onVideoAnalysisBatchProgress?.((progress) => {
+      const percent = Math.round(65 + (progress.current / progress.total) * 30)
+      const status = `Deep analysis... ${progress.current}/${progress.total}`
+      setAnalysisProgress({ stage: status, current: Math.min(95, percent), total: 100 })
+      updateTask(taskId, { progress: Math.min(95, percent), status })
+    })
 
     try {
-      const result = await window.api.smartTag.autoTagAll({ minConfidence: 0.65 })
-      if (result.success) {
-        setResults({
-          type: 'tag',
-          message: `Tagged ${result.tagged} of ${result.processed} files with smart tags`
-        })
-      } else {
-        setResults({ type: 'tag', message: `Error: ${result.error}` })
+      let totalTagged = 0
+      let totalProcessed = 0
+      const methods: string[] = []
+
+      // Stage 1: Smart tagging (filename-based) - fast, free
+      setAnalysisProgress({ stage: 'Smart tagging (filenames)...', current: 5, total: 100 })
+      updateTask(taskId, { progress: 5, status: 'Smart tagging (filenames)...' })
+      try {
+        const smartResult = await window.api.smartTag.autoTagAll({ minConfidence: 0.6 })
+        if (smartResult.success) {
+          totalTagged += smartResult.tagged
+          totalProcessed += smartResult.processed
+          methods.push('filename')
+        }
+      } catch (e) {
+        console.error('[AI] Smart tagging failed:', e)
       }
+
+      // Stage 2: Filename-based tagging (fast, no AI vision)
+      setAnalysisProgress({ stage: 'Pattern matching all files...', current: 10, total: 100 })
+      updateTask(taskId, { progress: 10, status: 'Pattern matching all files...' })
+      try {
+        const hybridResult = await window.api.hybridTag.autoTagAll({
+          onlyUntagged: false,
+          maxItems: 10000,
+          useVision: false  // No vision for large batches - too slow
+        })
+        if (hybridResult.success) {
+          totalTagged += hybridResult.tagged
+          totalProcessed = Math.max(totalProcessed, hybridResult.processed)
+          methods.push('patterns')
+        }
+      } catch (e) {
+        console.error('[AI] Pattern tagging failed:', e)
+      }
+
+      // Stage 3: AI Vision on small sample (only 20 items with no tags)
+      setAnalysisProgress({ stage: 'AI vision sample (20 items)...', current: 50, total: 100 })
+      updateTask(taskId, { progress: 50, status: 'AI vision sample (20 items)...' })
+      try {
+        const visionResult = await window.api.hybridTag.autoTagAll({
+          onlyUntagged: true,
+          maxItems: 20,  // Only 20 items with vision - takes ~10 minutes
+          useVision: true
+        })
+        if (visionResult.success && visionResult.tagged > 0) {
+          totalTagged += visionResult.tagged
+          methods.push('AI vision')
+        }
+      } catch (e) {
+        console.error('[AI] Vision tagging failed:', e)
+      }
+
+      // Stage 4: Deep analysis for a few videos
+      setAnalysisProgress({ stage: 'Deep analysis (10 videos)...', current: 75, total: 100 })
+      updateTask(taskId, { progress: 75, status: 'Deep analysis (10 videos)...' })
+      try {
+        const deepResult = await window.api.videoAnalysis.analyzeBatch({
+          limit: 10,  // Only 10 videos for deep analysis
+          onlyUnanalyzed: true
+        })
+        if (deepResult.success && deepResult.analyzed > 0) {
+          methods.push('deep analysis')
+        }
+      } catch (e) {
+        console.error('[AI] Deep analysis failed:', e)
+      }
+
+      setAnalysisProgress({ stage: 'Complete!', current: 100, total: 100 })
+      updateTask(taskId, { progress: 100, status: 'Complete!' })
+
+      const methodStr = methods.length > 0 ? methods.join(' + ') : 'filename patterns'
+      setResults({
+        type: 'ai',
+        message: `AI analyzed ${totalProcessed} items, applied ${totalTagged} tags using ${methodStr}`
+      })
+      // Auto-remove task after 3 seconds
+      setTimeout(() => removeTask(taskId), 3000)
     } catch (e: any) {
-      setResults({ type: 'tag', message: `Error: ${e.message}` })
+      setResults({ type: 'ai', message: `Error: ${e.message}` })
+      updateTask(taskId, { progress: 100, status: `Error: ${e.message}` })
+      setTimeout(() => removeTask(taskId), 5000)
     } finally {
-      setIsAutoTagging(false)
-      setTagProgress(null)
+      // Clean up listeners
+      unsubHybrid?.()
+      unsubDeep?.()
+      setIsAnalyzing(false)
+      setAnalysisProgress(null)
     }
   }
 
+  // AI-powered tag cleanup - merge similar, fix typos, normalize
   const handleCleanTags = async () => {
+    const taskId = 'ai-clean-tags'
     setIsCleaning(true)
     setResults(null)
+    setAnalysisProgress({ stage: 'AI analyzing tags...', current: 0, total: 100 })
+    addTask({ id: taskId, name: 'AI Tag Cleanup', progress: 0, status: 'Analyzing tags...' })
 
     try {
-      const result = await window.api.tags.cleanup()
+      updateTask(taskId, { progress: 30, status: 'AI analyzing tag patterns...' })
+      // Use AI-powered cleanup
+      const result = await window.api.aiTools.cleanupTags()
       if (result.success) {
-        setResults({
-          type: 'clean',
-          message: result.removedCount > 0
-            ? `Removed ${result.removedCount} inappropriate tags: ${result.removedTags.slice(0, 5).join(', ')}${result.removedTags.length > 5 ? '...' : ''}`
-            : 'No inappropriate tags found'
-        })
+        const actions = []
+        if (result.merged > 0) actions.push(`${result.merged} merged`)
+        if (result.renamed > 0) actions.push(`${result.renamed} renamed`)
+        if (result.deleted > 0) actions.push(`${result.deleted} deleted`)
+
+        const message = result.applied > 0
+          ? `AI cleaned ${result.analyzed} tags: ${actions.join(', ')}`
+          : `AI analyzed ${result.analyzed} tags - all look good!`
+        setResults({ type: 'clean', message })
+        updateTask(taskId, { progress: 100, status: 'Complete!' })
       } else {
-        setResults({ type: 'clean', message: `Error: ${result.error}` })
+        // Fallback to basic cleanup
+        updateTask(taskId, { progress: 60, status: 'Running basic cleanup...' })
+        const fallbackResult = await window.api.tags.cleanup()
+        const message = fallbackResult.removedCount > 0
+          ? `Removed ${fallbackResult.removedCount} inappropriate tags`
+          : 'No inappropriate tags found'
+        setResults({ type: 'clean', message })
+        updateTask(taskId, { progress: 100, status: 'Complete!' })
       }
+      setTimeout(() => removeTask(taskId), 3000)
     } catch (e: any) {
       setResults({ type: 'clean', message: `Error: ${e.message}` })
+      updateTask(taskId, { progress: 100, status: `Error: ${e.message}` })
+      setTimeout(() => removeTask(taskId), 5000)
     } finally {
       setIsCleaning(false)
+      setAnalysisProgress(null)
     }
   }
 
-  // Listen for progress events
+  // AI-powered tag creation for entire library
+  const handleCreateTags = async () => {
+    const taskId = 'ai-create-tags'
+    setIsCleaning(true)
+    setResults(null)
+    setAnalysisProgress({ stage: 'AI generating new tags...', current: 0, total: 100 })
+    addTask({ id: taskId, name: 'AI Tag Creation', progress: 0, status: 'Generating tags...' })
+
+    try {
+      updateTask(taskId, { progress: 20, status: 'Analyzing content...' })
+      const result = await window.api.aiTools.generateTagsAll({ maxItems: 500, onlyUntagged: false })
+      if (result.success) {
+        const message = `AI processed ${result.processed} items: ${result.tagsApplied} tags applied, ${result.newTagsCreated} new tags created`
+        setResults({ type: 'clean', message })
+        updateTask(taskId, { progress: 100, status: 'Complete!' })
+      } else {
+        setResults({ type: 'clean', message: `Error: ${result.error}` })
+        updateTask(taskId, { progress: 100, status: `Error: ${result.error}` })
+      }
+      setTimeout(() => removeTask(taskId), 3000)
+    } catch (e: any) {
+      setResults({ type: 'clean', message: `Error: ${e.message}` })
+      updateTask(taskId, { progress: 100, status: `Error: ${e.message}` })
+      setTimeout(() => removeTask(taskId), 5000)
+    } finally {
+      setIsCleaning(false)
+      setAnalysisProgress(null)
+    }
+  }
+
+  // AI-powered file renaming based on video content
+  const handleCleanNames = async () => {
+    const taskId = 'ai-rename-files'
+    setIsCleaningNames(true)
+    setResults(null)
+    setAnalysisProgress({ stage: 'AI renaming files...', current: 0, total: 100 })
+    addTask({ id: taskId, name: 'AI File Renaming', progress: 0, status: 'Analyzing files...' })
+
+    try {
+      updateTask(taskId, { progress: 20, status: 'AI analyzing content...' })
+      // Use AI-powered renaming
+      const result = await window.api.aiTools.renameAll({ maxItems: 500 })
+      if (result.success) {
+        let message = `AI renamed ${result.renamed} files`
+        if (result.skipped > 0) message += ` (${result.skipped} skipped)`
+        if (result.failed > 0) message += ` (${result.failed} failed)`
+        setResults({ type: 'names', message })
+        updateTask(taskId, { progress: 100, status: 'Complete!' })
+      } else {
+        // Fallback to basic cleanup
+        updateTask(taskId, { progress: 60, status: 'Running pattern cleanup...' })
+        const fallbackResult = await window.api.media.optimizeAllNames()
+        setResults({
+          type: 'names',
+          message: `Pattern-cleaned ${fallbackResult.optimized} filenames`
+        })
+        updateTask(taskId, { progress: 100, status: 'Complete!' })
+      }
+      setTimeout(() => removeTask(taskId), 3000)
+    } catch (e: any) {
+      setResults({ type: 'names', message: `Error: ${e.message}` })
+      updateTask(taskId, { progress: 100, status: `Error: ${e.message}` })
+      setTimeout(() => removeTask(taskId), 5000)
+    } finally {
+      setIsCleaningNames(false)
+      setAnalysisProgress(null)
+    }
+  }
+
+  // Listen for progress events (optional, main progress is tracked locally)
   useEffect(() => {
-    const unsub = window.api.events?.onSmartTagProgress?.((progress: { processed: number; total: number; tagged: number }) => {
-      setTagProgress(progress)
-    })
-    return () => unsub?.()
+    const unsubs: Array<(() => void) | undefined> = []
+    unsubs.push(window.api.events?.onSmartTagProgress?.(() => {}))
+    unsubs.push(window.api.events?.onHybridTagProgress?.(() => {}))
+    unsubs.push(window.api.events?.onVideoAnalysisBatchProgress?.(() => {}))
+    return () => unsubs.forEach(u => u?.())
   }, [])
 
   return (
@@ -4785,41 +6152,83 @@ function LibraryToolsSection() {
       </div>
 
       <div className="space-y-3">
-        {/* Auto-Tag Button */}
-        <div className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-[var(--border)]">
-          <div>
-            <div className="text-sm">Smart Auto-Tag</div>
-            <div className="text-xs text-[var(--muted)]">
-              Analyze filenames and apply relevant tags
+        {/* Unified AI Analyze Button */}
+        {!AI_DEEP_ANALYSIS_DISABLED && (
+        <div className="p-4 rounded-xl bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-sm font-semibold flex items-center gap-2">
+                AI Analyze Entire Library
+                <span className="px-2 py-0.5 text-[10px] rounded-full bg-green-500/30 text-green-400 border border-green-500/30">
+                  AI Powered
+                </span>
+              </div>
+              <div className="text-xs text-[var(--muted)] mt-1">
+                Filename patterns + AI vision + scene detection + auto-tagging
+              </div>
+            </div>
+            <button
+              onClick={handleAiAnalyzeAll}
+              disabled={isAnalyzing}
+              className={cn(
+                'px-5 py-2.5 rounded-xl text-sm font-semibold transition',
+                isAnalyzing
+                  ? 'bg-purple-500/30 text-purple-300 cursor-wait'
+                  : 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg shadow-purple-500/25'
+              )}
+            >
+              {isAnalyzing ? (
+                <span className="flex items-center gap-2">
+                  <RefreshCw size={14} className="animate-spin" />
+                  Analyzing...
+                </span>
+              ) : (
+                'Analyze All'
+              )}
+            </button>
+          </div>
+
+          {/* Progress bar */}
+          {analysisProgress && (
+            <div className="mt-3">
+              <div className="flex justify-between text-xs text-[var(--muted)] mb-1">
+                <span>{analysisProgress.stage}</span>
+                <span>{analysisProgress.current}%</span>
+              </div>
+              <div className="h-2 bg-black/30 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300"
+                  style={{ width: `${analysisProgress.current}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* What it does */}
+          <div className="mt-3 text-[10px] text-[var(--muted)] grid grid-cols-3 gap-2">
+            <div className="flex items-center gap-1">
+              <span className="text-green-400">✓</span> Smart filename tags
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-green-400">✓</span> AI vision analysis
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-green-400">✓</span> Scene detection
             </div>
           </div>
-          <button
-            onClick={handleAutoTag}
-            disabled={isAutoTagging}
-            className={cn(
-              'px-4 py-2 rounded-lg text-xs font-medium transition',
-              isAutoTagging
-                ? 'bg-amber-500/20 text-amber-400 cursor-wait'
-                : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/30'
-            )}
-          >
-            {isAutoTagging ? (
-              <span className="flex items-center gap-2">
-                <RefreshCw size={12} className="animate-spin" />
-                {tagProgress ? `${tagProgress.processed}/${tagProgress.total}` : 'Scanning...'}
-              </span>
-            ) : (
-              'Auto-Tag All'
-            )}
-          </button>
         </div>
+        )}
 
-        {/* Clean Tags Button */}
+        {/* AI Clean Tags Button */}
+        {!AI_DEEP_ANALYSIS_DISABLED && (
         <div className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-[var(--border)]">
           <div>
-            <div className="text-sm">Clean Up Tags</div>
+            <div className="text-sm flex items-center gap-2">
+              AI Clean Tags
+              <span className="px-1.5 py-0.5 text-[9px] rounded bg-purple-500/30 text-purple-300">AI</span>
+            </div>
             <div className="text-xs text-[var(--muted)]">
-              Remove inappropriate or weird tags
+              Merge similar, fix typos, normalize naming
             </div>
           </div>
           <button
@@ -4828,8 +6237,8 @@ function LibraryToolsSection() {
             className={cn(
               'px-4 py-2 rounded-lg text-xs font-medium transition',
               isCleaning
-                ? 'bg-red-500/20 text-red-400 cursor-wait'
-                : 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30'
+                ? 'bg-purple-500/20 text-purple-400 cursor-wait'
+                : 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30'
             )}
           >
             {isCleaning ? (
@@ -4842,24 +6251,103 @@ function LibraryToolsSection() {
             )}
           </button>
         </div>
+        )}
 
-        {/* Rescan Library */}
+        {/* AI Create Tags Button */}
         <div className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-[var(--border)]">
           <div>
-            <div className="text-sm">Rescan Library</div>
+            <div className="text-sm flex items-center gap-2">
+              AI Create Tags
+              <span className="px-1.5 py-0.5 text-[9px] rounded bg-green-500/30 text-green-300">AI</span>
+            </div>
             <div className="text-xs text-[var(--muted)]">
-              Re-index all media folders
+              Generate new descriptive tags from video content
             </div>
           </div>
           <button
-            onClick={async () => {
-              await window.api.vault.rescan()
-              setResults({ type: 'tag', message: 'Library rescan started' })
-            }}
-            className="px-4 py-2 rounded-lg text-xs font-medium bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 transition"
+            onClick={handleCreateTags}
+            disabled={isCleaning}
+            className={cn(
+              'px-4 py-2 rounded-lg text-xs font-medium transition',
+              isCleaning
+                ? 'bg-green-500/20 text-green-400 cursor-wait'
+                : 'bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30'
+            )}
           >
-            Rescan
+            {isCleaning ? (
+              <span className="flex items-center gap-2">
+                <RefreshCw size={12} className="animate-spin" />
+                Creating...
+              </span>
+            ) : (
+              'Create Tags'
+            )}
           </button>
+        </div>
+
+        {/* AI Rename Files */}
+        <div className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-[var(--border)]">
+          <div>
+            <div className="text-sm flex items-center gap-2">
+              AI Rename Files
+              <span className="px-1.5 py-0.5 text-[9px] rounded bg-blue-500/30 text-blue-300">AI</span>
+            </div>
+            <div className="text-xs text-[var(--muted)]">
+              Generate clean, descriptive filenames from content
+            </div>
+          </div>
+          <button
+            onClick={handleCleanNames}
+            disabled={isCleaningNames}
+            className={cn(
+              'px-4 py-2 rounded-lg text-xs font-medium transition',
+              isCleaningNames
+                ? 'bg-blue-500/20 text-blue-400 cursor-wait'
+                : 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30'
+            )}
+          >
+            {isCleaningNames ? (
+              <span className="flex items-center gap-2">
+                <RefreshCw size={12} className="animate-spin" />
+                Renaming...
+              </span>
+            ) : (
+              'Rename All'
+            )}
+          </button>
+        </div>
+
+        {/* Cleanup & Rescan */}
+        <div className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-[var(--border)]">
+          <div>
+            <div className="text-sm">Cleanup & Rescan</div>
+            <div className="text-xs text-[var(--muted)]">
+              Remove deleted files, re-index folders
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={async () => {
+                const result = await window.api.vault.cleanup()
+                if (result.success) {
+                  setResults({ type: 'clean', message: `Removed ${result.removed} stale entries from ${result.checked} checked` })
+                }
+              }}
+              className="px-3 py-2 rounded-lg text-xs font-medium bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 transition"
+            >
+              Cleanup
+            </button>
+            <button
+              onClick={async () => {
+                setResults({ type: 'ai', message: 'Cleaning up & rescanning...' })
+                await window.api.vault.rescan()
+                setResults({ type: 'ai', message: 'Library cleanup & rescan complete!' })
+              }}
+              className="px-3 py-2 rounded-lg text-xs font-medium bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 transition"
+            >
+              Rescan
+            </button>
+          </div>
         </div>
 
         {/* Results Message */}
@@ -4868,7 +6356,9 @@ function LibraryToolsSection() {
             'p-3 rounded-xl text-xs',
             results.type === 'clean'
               ? 'bg-red-500/10 border border-red-500/20 text-red-300'
-              : 'bg-green-500/10 border border-green-500/20 text-green-300'
+              : results.type === 'names'
+                ? 'bg-purple-500/10 border border-purple-500/20 text-purple-300'
+                : 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 text-purple-300'
           )}>
             {results.message}
           </div>
@@ -4926,9 +6416,8 @@ function AboutPage() {
   }
 
   return (
-    <>
-      <TopBar title="About Vault" />
-      <div className="p-6 space-y-6 max-w-3xl">
+    <div className="h-full flex flex-col">
+      <div className="flex-1 overflow-auto p-6 space-y-6 max-w-3xl">
         {/* App Info */}
         <div className="rounded-3xl border border-[var(--border)] bg-gradient-to-br from-[var(--primary-muted)] to-transparent p-6 text-center">
           <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] flex items-center justify-center">
@@ -5058,6 +6547,6 @@ function AboutPage() {
           </button>
         </div>
       </div>
-    </>
+    </div>
   )
 }

@@ -2,7 +2,14 @@
 // Virtualized media grid for performance with large libraries
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { FixedSizeGrid, GridChildComponentProps } from 'react-window'
+import { FixedSizeGrid } from 'react-window'
+
+// Inline type to avoid import issues
+interface GridChildComponentProps {
+  columnIndex: number
+  rowIndex: number
+  style: React.CSSProperties
+}
 import { useLazyLoad, toFileUrlCached } from '../hooks/usePerformance'
 
 type MediaRow = {

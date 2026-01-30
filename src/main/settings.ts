@@ -741,7 +741,7 @@ const DEFAULT_MOTIFS: MotifDictionary = {
 
 const DEFAULTS: VaultSettings = {
   library: {
-    mediaDirs: [defaultMediaDir, 'C:/media'],
+    mediaDirs: [defaultMediaDir],
     cacheDir: defaultCacheDir,
     scanOnStartup: true,
     watchForNewFiles: true,

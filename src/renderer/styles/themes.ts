@@ -15,6 +15,16 @@ export type ClassicThemeId =
   | 'rose-gold'
   | 'midnight-garden'
   | 'sapphire'
+  | 'aurora'
+  | 'copper'
+  | 'lavender-haze'
+  | 'deep-ocean'
+  | 'bloodmoon'
+  | 'mint'
+  | 'sunset-strip'
+  | 'slate'
+  | 'cherry-blossom'
+  | 'electric-lime'
 
 // Hypersexual goon themes
 export type GoonThemeId =
@@ -102,7 +112,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#05070d',
-      backgroundAlt: '#0a0c14',
+      backgroundAlt: '#0e1028',
       surface: 'rgba(255, 255, 255, 0.04)',
       surfaceHover: 'rgba(255, 255, 255, 0.06)',
       surfaceActive: 'rgba(255, 255, 255, 0.08)',
@@ -146,7 +156,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#0f1318',
-      backgroundAlt: '#161b22',
+      backgroundAlt: '#1a2130',
       surface: 'rgba(148, 163, 184, 0.05)',
       surfaceHover: 'rgba(148, 163, 184, 0.08)',
       surfaceActive: 'rgba(148, 163, 184, 0.12)',
@@ -190,7 +200,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#0c0806',
-      backgroundAlt: '#14100c',
+      backgroundAlt: '#1e1208',
       surface: 'rgba(251, 146, 60, 0.04)',
       surfaceHover: 'rgba(251, 146, 60, 0.07)',
       surfaceActive: 'rgba(251, 146, 60, 0.1)',
@@ -234,7 +244,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#0d0611',
-      backgroundAlt: '#150a1a',
+      backgroundAlt: '#1a0e2a',
       surface: 'rgba(192, 132, 252, 0.04)',
       surfaceHover: 'rgba(192, 132, 252, 0.07)',
       surfaceActive: 'rgba(192, 132, 252, 0.1)',
@@ -278,7 +288,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#000000',
-      backgroundAlt: '#0a0a0a',
+      backgroundAlt: '#0d0d12',
       surface: 'rgba(255, 255, 255, 0.03)',
       surfaceHover: 'rgba(255, 255, 255, 0.06)',
       surfaceActive: 'rgba(255, 255, 255, 0.09)',
@@ -322,7 +332,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#0a0a12',
-      backgroundAlt: '#0f0f1a',
+      backgroundAlt: '#0e1825',
       surface: 'rgba(34, 211, 238, 0.04)',
       surfaceHover: 'rgba(34, 211, 238, 0.07)',
       surfaceActive: 'rgba(34, 211, 238, 0.1)',
@@ -366,7 +376,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: false,
     colors: {
       background: '#faf8f5',
-      backgroundAlt: '#f5f0e8',
+      backgroundAlt: '#eee5d4',
       surface: 'rgba(180, 140, 100, 0.06)',
       surfaceHover: 'rgba(180, 140, 100, 0.1)',
       surfaceActive: 'rgba(180, 140, 100, 0.14)',
@@ -410,7 +420,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: false,
     colors: {
       background: '#fdf4f5',
-      backgroundAlt: '#fce8ea',
+      backgroundAlt: '#f8dae0',
       surface: 'rgba(225, 150, 160, 0.06)',
       surfaceHover: 'rgba(225, 150, 160, 0.1)',
       surfaceActive: 'rgba(225, 150, 160, 0.14)',
@@ -454,7 +464,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#05090a',
-      backgroundAlt: '#0a1210',
+      backgroundAlt: '#0a1e16',
       surface: 'rgba(74, 222, 128, 0.04)',
       surfaceHover: 'rgba(74, 222, 128, 0.07)',
       surfaceActive: 'rgba(74, 222, 128, 0.1)',
@@ -498,7 +508,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#030712',
-      backgroundAlt: '#0c1426',
+      backgroundAlt: '#0a1a38',
       surface: 'rgba(59, 130, 246, 0.04)',
       surfaceHover: 'rgba(59, 130, 246, 0.07)',
       surfaceActive: 'rgba(59, 130, 246, 0.1)',
@@ -534,6 +544,356 @@ export const themes: Record<ThemeId, Theme> = {
     }
   },
 
+  // 11. AURORA - Northern lights, teal and green
+  aurora: {
+    id: 'aurora',
+    name: 'Aurora',
+    description: 'Northern lights with teal and green shifts.',
+    isDark: true,
+    colors: {
+      background: '#040d0f',
+      backgroundAlt: '#082220',
+      surface: 'rgba(45, 212, 191, 0.05)',
+      surfaceHover: 'rgba(45, 212, 191, 0.08)',
+      surfaceActive: 'rgba(45, 212, 191, 0.12)',
+      border: 'rgba(45, 212, 191, 0.1)',
+      borderHover: 'rgba(45, 212, 191, 0.18)',
+      borderActive: 'rgba(45, 212, 191, 0.25)',
+      text: '#e0fef6',
+      textMuted: 'rgba(224, 254, 246, 0.65)',
+      textSubtle: 'rgba(224, 254, 246, 0.4)',
+      primary: '#2dd4bf',
+      primaryHover: '#5eead4',
+      primaryMuted: 'rgba(45, 212, 191, 0.2)',
+      secondary: '#34d399',
+      secondaryHover: '#6ee7b7',
+      success: '#4ade80',
+      warning: '#fbbf24',
+      error: '#f87171',
+      info: '#22d3ee',
+      gradient: 'linear-gradient(135deg, #0d9488 0%, #34d399 50%, #2dd4bf 100%)',
+      glow: 'rgba(45, 212, 191, 0.4)',
+      overlay: 'rgba(4, 13, 15, 0.85)'
+    },
+    shadows: { sm: '0 1px 2px rgba(0,0,0,0.5)', md: '0 4px 12px rgba(0,0,0,0.5)', lg: '0 8px 32px rgba(0,0,0,0.6)', glow: '0 0 24px rgba(45,212,191,0.3)' },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // 12. COPPER - Warm bronze and copper tones
+  copper: {
+    id: 'copper',
+    name: 'Copper',
+    description: 'Warm bronze and copper tones. Industrial elegance.',
+    isDark: true,
+    colors: {
+      background: '#0c0907',
+      backgroundAlt: '#1e1610',
+      surface: 'rgba(194, 130, 72, 0.05)',
+      surfaceHover: 'rgba(194, 130, 72, 0.08)',
+      surfaceActive: 'rgba(194, 130, 72, 0.12)',
+      border: 'rgba(194, 130, 72, 0.1)',
+      borderHover: 'rgba(194, 130, 72, 0.18)',
+      borderActive: 'rgba(194, 130, 72, 0.25)',
+      text: '#fde8cd',
+      textMuted: 'rgba(253, 232, 205, 0.65)',
+      textSubtle: 'rgba(253, 232, 205, 0.4)',
+      primary: '#c28248',
+      primaryHover: '#d4976a',
+      primaryMuted: 'rgba(194, 130, 72, 0.2)',
+      secondary: '#a0744a',
+      secondaryHover: '#c09060',
+      success: '#84cc16',
+      warning: '#eab308',
+      error: '#ef4444',
+      info: '#f59e0b',
+      gradient: 'linear-gradient(135deg, #92400e 0%, #c28248 50%, #d4976a 100%)',
+      glow: 'rgba(194, 130, 72, 0.35)',
+      overlay: 'rgba(12, 9, 7, 0.85)'
+    },
+    shadows: { sm: '0 1px 2px rgba(0,0,0,0.5)', md: '0 4px 12px rgba(0,0,0,0.5)', lg: '0 8px 32px rgba(0,0,0,0.6)', glow: '0 0 20px rgba(194,130,72,0.3)' },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // 13. LAVENDER HAZE - Soft purple pastels on dark
+  'lavender-haze': {
+    id: 'lavender-haze',
+    name: 'Lavender Haze',
+    description: 'Soft lavender pastels on a dark canvas.',
+    isDark: true,
+    colors: {
+      background: '#0c0a14',
+      backgroundAlt: '#1a1430',
+      surface: 'rgba(196, 181, 253, 0.05)',
+      surfaceHover: 'rgba(196, 181, 253, 0.08)',
+      surfaceActive: 'rgba(196, 181, 253, 0.12)',
+      border: 'rgba(196, 181, 253, 0.1)',
+      borderHover: 'rgba(196, 181, 253, 0.18)',
+      borderActive: 'rgba(196, 181, 253, 0.25)',
+      text: '#ede9fe',
+      textMuted: 'rgba(237, 233, 254, 0.65)',
+      textSubtle: 'rgba(237, 233, 254, 0.4)',
+      primary: '#c4b5fd',
+      primaryHover: '#ddd6fe',
+      primaryMuted: 'rgba(196, 181, 253, 0.2)',
+      secondary: '#a78bfa',
+      secondaryHover: '#c4b5fd',
+      success: '#4ade80',
+      warning: '#fbbf24',
+      error: '#fb7185',
+      info: '#a78bfa',
+      gradient: 'linear-gradient(135deg, #7c3aed 0%, #c4b5fd 50%, #e9d5ff 100%)',
+      glow: 'rgba(196, 181, 253, 0.35)',
+      overlay: 'rgba(12, 10, 20, 0.85)'
+    },
+    shadows: { sm: '0 1px 2px rgba(0,0,0,0.5)', md: '0 4px 12px rgba(0,0,0,0.5)', lg: '0 8px 32px rgba(0,0,0,0.6)', glow: '0 0 24px rgba(196,181,253,0.3)' },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // 14. DEEP OCEAN - Abyssal blues and bioluminescence
+  'deep-ocean': {
+    id: 'deep-ocean',
+    name: 'Deep Ocean',
+    description: 'Abyssal blues with bioluminescent accents.',
+    isDark: true,
+    colors: {
+      background: '#020617',
+      backgroundAlt: '#081e3a',
+      surface: 'rgba(56, 189, 248, 0.04)',
+      surfaceHover: 'rgba(56, 189, 248, 0.07)',
+      surfaceActive: 'rgba(56, 189, 248, 0.1)',
+      border: 'rgba(56, 189, 248, 0.08)',
+      borderHover: 'rgba(56, 189, 248, 0.15)',
+      borderActive: 'rgba(56, 189, 248, 0.22)',
+      text: '#e0f2fe',
+      textMuted: 'rgba(224, 242, 254, 0.65)',
+      textSubtle: 'rgba(224, 242, 254, 0.4)',
+      primary: '#0ea5e9',
+      primaryHover: '#38bdf8',
+      primaryMuted: 'rgba(14, 165, 233, 0.2)',
+      secondary: '#06b6d4',
+      secondaryHover: '#22d3ee',
+      success: '#34d399',
+      warning: '#fbbf24',
+      error: '#f87171',
+      info: '#38bdf8',
+      gradient: 'linear-gradient(135deg, #0c4a6e 0%, #0369a1 50%, #0ea5e9 100%)',
+      glow: 'rgba(14, 165, 233, 0.4)',
+      overlay: 'rgba(2, 6, 23, 0.88)'
+    },
+    shadows: { sm: '0 1px 2px rgba(0,0,0,0.6)', md: '0 4px 12px rgba(0,0,0,0.6)', lg: '0 8px 32px rgba(0,0,0,0.7)', glow: '0 0 24px rgba(14,165,233,0.3)' },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // 15. BLOODMOON - Deep crimson and dark reds
+  bloodmoon: {
+    id: 'bloodmoon',
+    name: 'Blood Moon',
+    description: 'Deep crimson under a blood-red moon.',
+    isDark: true,
+    colors: {
+      background: '#0a0304',
+      backgroundAlt: '#200810',
+      surface: 'rgba(220, 38, 38, 0.05)',
+      surfaceHover: 'rgba(220, 38, 38, 0.08)',
+      surfaceActive: 'rgba(220, 38, 38, 0.12)',
+      border: 'rgba(220, 38, 38, 0.1)',
+      borderHover: 'rgba(220, 38, 38, 0.18)',
+      borderActive: 'rgba(220, 38, 38, 0.25)',
+      text: '#fee2e2',
+      textMuted: 'rgba(254, 226, 226, 0.65)',
+      textSubtle: 'rgba(254, 226, 226, 0.4)',
+      primary: '#dc2626',
+      primaryHover: '#ef4444',
+      primaryMuted: 'rgba(220, 38, 38, 0.2)',
+      secondary: '#991b1b',
+      secondaryHover: '#b91c1c',
+      success: '#4ade80',
+      warning: '#f59e0b',
+      error: '#fca5a5',
+      info: '#ef4444',
+      gradient: 'linear-gradient(135deg, #450a0a 0%, #991b1b 50%, #dc2626 100%)',
+      glow: 'rgba(220, 38, 38, 0.4)',
+      overlay: 'rgba(10, 3, 4, 0.88)'
+    },
+    shadows: { sm: '0 1px 2px rgba(0,0,0,0.6)', md: '0 4px 12px rgba(0,0,0,0.6)', lg: '0 8px 32px rgba(0,0,0,0.7)', glow: '0 0 20px rgba(220,38,38,0.35)' },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // 16. MINT - Fresh cool greens
+  mint: {
+    id: 'mint',
+    name: 'Mint',
+    description: 'Fresh mint greens. Cool and clean.',
+    isDark: true,
+    colors: {
+      background: '#04100c',
+      backgroundAlt: '#0a2a1e',
+      surface: 'rgba(52, 211, 153, 0.05)',
+      surfaceHover: 'rgba(52, 211, 153, 0.08)',
+      surfaceActive: 'rgba(52, 211, 153, 0.12)',
+      border: 'rgba(52, 211, 153, 0.1)',
+      borderHover: 'rgba(52, 211, 153, 0.18)',
+      borderActive: 'rgba(52, 211, 153, 0.25)',
+      text: '#d1fae5',
+      textMuted: 'rgba(209, 250, 229, 0.65)',
+      textSubtle: 'rgba(209, 250, 229, 0.4)',
+      primary: '#34d399',
+      primaryHover: '#6ee7b7',
+      primaryMuted: 'rgba(52, 211, 153, 0.2)',
+      secondary: '#10b981',
+      secondaryHover: '#34d399',
+      success: '#4ade80',
+      warning: '#fbbf24',
+      error: '#f87171',
+      info: '#2dd4bf',
+      gradient: 'linear-gradient(135deg, #065f46 0%, #10b981 50%, #6ee7b7 100%)',
+      glow: 'rgba(52, 211, 153, 0.35)',
+      overlay: 'rgba(4, 16, 12, 0.85)'
+    },
+    shadows: { sm: '0 1px 2px rgba(0,0,0,0.5)', md: '0 4px 12px rgba(0,0,0,0.5)', lg: '0 8px 32px rgba(0,0,0,0.6)', glow: '0 0 20px rgba(52,211,153,0.3)' },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // 17. SUNSET STRIP - Warm orange to pink gradient
+  'sunset-strip': {
+    id: 'sunset-strip',
+    name: 'Sunset Strip',
+    description: 'Golden hour warmth fading into pink dusk.',
+    isDark: true,
+    colors: {
+      background: '#0f0806',
+      backgroundAlt: '#241410',
+      surface: 'rgba(251, 146, 60, 0.05)',
+      surfaceHover: 'rgba(251, 146, 60, 0.08)',
+      surfaceActive: 'rgba(251, 146, 60, 0.12)',
+      border: 'rgba(251, 146, 60, 0.1)',
+      borderHover: 'rgba(251, 146, 60, 0.18)',
+      borderActive: 'rgba(251, 146, 60, 0.25)',
+      text: '#fff1e6',
+      textMuted: 'rgba(255, 241, 230, 0.65)',
+      textSubtle: 'rgba(255, 241, 230, 0.4)',
+      primary: '#fb923c',
+      primaryHover: '#fdba74',
+      primaryMuted: 'rgba(251, 146, 60, 0.2)',
+      secondary: '#f472b6',
+      secondaryHover: '#f9a8d4',
+      success: '#4ade80',
+      warning: '#fbbf24',
+      error: '#ef4444',
+      info: '#fb923c',
+      gradient: 'linear-gradient(135deg, #ea580c 0%, #fb923c 40%, #f472b6 100%)',
+      glow: 'rgba(251, 146, 60, 0.4)',
+      overlay: 'rgba(15, 8, 6, 0.85)'
+    },
+    shadows: { sm: '0 1px 2px rgba(0,0,0,0.5)', md: '0 4px 12px rgba(0,0,0,0.5)', lg: '0 8px 32px rgba(0,0,0,0.6)', glow: '0 0 24px rgba(251,146,60,0.3)' },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // 18. SLATE - Cool neutral grays with blue undertone
+  slate: {
+    id: 'slate',
+    name: 'Slate',
+    description: 'Cool neutral grays. Minimal and focused.',
+    isDark: true,
+    colors: {
+      background: '#0f172a',
+      backgroundAlt: '#243448',
+      surface: 'rgba(148, 163, 184, 0.06)',
+      surfaceHover: 'rgba(148, 163, 184, 0.1)',
+      surfaceActive: 'rgba(148, 163, 184, 0.14)',
+      border: 'rgba(148, 163, 184, 0.12)',
+      borderHover: 'rgba(148, 163, 184, 0.2)',
+      borderActive: 'rgba(148, 163, 184, 0.28)',
+      text: '#f1f5f9',
+      textMuted: 'rgba(241, 245, 249, 0.6)',
+      textSubtle: 'rgba(241, 245, 249, 0.4)',
+      primary: '#64748b',
+      primaryHover: '#94a3b8',
+      primaryMuted: 'rgba(100, 116, 139, 0.2)',
+      secondary: '#475569',
+      secondaryHover: '#64748b',
+      success: '#22c55e',
+      warning: '#f59e0b',
+      error: '#ef4444',
+      info: '#3b82f6',
+      gradient: 'linear-gradient(135deg, #334155 0%, #64748b 50%, #94a3b8 100%)',
+      glow: 'rgba(100, 116, 139, 0.3)',
+      overlay: 'rgba(15, 23, 42, 0.88)'
+    },
+    shadows: { sm: '0 1px 2px rgba(0,0,0,0.4)', md: '0 4px 12px rgba(0,0,0,0.4)', lg: '0 8px 32px rgba(0,0,0,0.5)', glow: '0 0 16px rgba(100,116,139,0.2)' },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // 19. CHERRY BLOSSOM - Soft pinks on dark
+  'cherry-blossom': {
+    id: 'cherry-blossom',
+    name: 'Cherry Blossom',
+    description: 'Delicate pink petals on moonlit darkness.',
+    isDark: true,
+    colors: {
+      background: '#0d060a',
+      backgroundAlt: '#22101c',
+      surface: 'rgba(244, 114, 182, 0.05)',
+      surfaceHover: 'rgba(244, 114, 182, 0.08)',
+      surfaceActive: 'rgba(244, 114, 182, 0.12)',
+      border: 'rgba(244, 114, 182, 0.1)',
+      borderHover: 'rgba(244, 114, 182, 0.18)',
+      borderActive: 'rgba(244, 114, 182, 0.25)',
+      text: '#fce7f3',
+      textMuted: 'rgba(252, 231, 243, 0.65)',
+      textSubtle: 'rgba(252, 231, 243, 0.4)',
+      primary: '#f472b6',
+      primaryHover: '#f9a8d4',
+      primaryMuted: 'rgba(244, 114, 182, 0.2)',
+      secondary: '#ec4899',
+      secondaryHover: '#f472b6',
+      success: '#4ade80',
+      warning: '#fbbf24',
+      error: '#fb7185',
+      info: '#f472b6',
+      gradient: 'linear-gradient(135deg, #be185d 0%, #ec4899 50%, #fbcfe8 100%)',
+      glow: 'rgba(244, 114, 182, 0.35)',
+      overlay: 'rgba(13, 6, 10, 0.85)'
+    },
+    shadows: { sm: '0 1px 2px rgba(0,0,0,0.5)', md: '0 4px 12px rgba(0,0,0,0.5)', lg: '0 8px 32px rgba(0,0,0,0.6)', glow: '0 0 24px rgba(244,114,182,0.3)' },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // 20. ELECTRIC LIME - Vivid green energy
+  'electric-lime': {
+    id: 'electric-lime',
+    name: 'Electric Lime',
+    description: 'High-voltage lime green energy.',
+    isDark: true,
+    colors: {
+      background: '#060a04',
+      backgroundAlt: '#122008',
+      surface: 'rgba(163, 230, 53, 0.04)',
+      surfaceHover: 'rgba(163, 230, 53, 0.07)',
+      surfaceActive: 'rgba(163, 230, 53, 0.1)',
+      border: 'rgba(163, 230, 53, 0.08)',
+      borderHover: 'rgba(163, 230, 53, 0.15)',
+      borderActive: 'rgba(163, 230, 53, 0.22)',
+      text: '#f7fee7',
+      textMuted: 'rgba(247, 254, 231, 0.65)',
+      textSubtle: 'rgba(247, 254, 231, 0.4)',
+      primary: '#a3e635',
+      primaryHover: '#bef264',
+      primaryMuted: 'rgba(163, 230, 53, 0.2)',
+      secondary: '#84cc16',
+      secondaryHover: '#a3e635',
+      success: '#4ade80',
+      warning: '#fbbf24',
+      error: '#ef4444',
+      info: '#a3e635',
+      gradient: 'linear-gradient(135deg, #3f6212 0%, #84cc16 50%, #a3e635 100%)',
+      glow: 'rgba(163, 230, 53, 0.4)',
+      overlay: 'rgba(6, 10, 4, 0.85)'
+    },
+    shadows: { sm: '0 1px 2px rgba(0,0,0,0.5)', md: '0 4px 12px rgba(0,0,0,0.5)', lg: '0 8px 32px rgba(0,0,0,0.6)', glow: '0 0 24px rgba(163,230,53,0.3)' },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
   // ═══════════════════════════════════════════════════════════════════════════
   // HYPERSEXUAL GOON THEMES
   // ═══════════════════════════════════════════════════════════════════════════
@@ -546,7 +906,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#1A0A14',
-      backgroundAlt: '#2D1420',
+      backgroundAlt: '#3a1830',
       surface: 'rgba(255, 107, 157, 0.06)',
       surfaceHover: 'rgba(255, 107, 157, 0.1)',
       surfaceActive: 'rgba(255, 107, 157, 0.14)',
@@ -590,7 +950,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#0D0511',
-      backgroundAlt: '#1A0B22',
+      backgroundAlt: '#220e38',
       surface: 'rgba(157, 78, 221, 0.06)',
       surfaceHover: 'rgba(157, 78, 221, 0.1)',
       surfaceActive: 'rgba(157, 78, 221, 0.14)',
@@ -634,7 +994,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#0A0000',
-      backgroundAlt: '#1A0505',
+      backgroundAlt: '#250808',
       surface: 'rgba(220, 20, 60, 0.06)',
       surfaceHover: 'rgba(220, 20, 60, 0.1)',
       surfaceActive: 'rgba(220, 20, 60, 0.14)',
@@ -678,7 +1038,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#0A0510',
-      backgroundAlt: '#150A1A',
+      backgroundAlt: '#1e0c2c',
       surface: 'rgba(142, 69, 133, 0.06)',
       surfaceHover: 'rgba(142, 69, 133, 0.1)',
       surfaceActive: 'rgba(142, 69, 133, 0.14)',
@@ -722,7 +1082,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#0A0A0F',
-      backgroundAlt: '#12121A',
+      backgroundAlt: '#18102a',
       surface: 'rgba(255, 0, 255, 0.05)',
       surfaceHover: 'rgba(255, 0, 255, 0.08)',
       surfaceActive: 'rgba(255, 0, 255, 0.12)',
@@ -766,7 +1126,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#0F0A05',
-      backgroundAlt: '#1A1408',
+      backgroundAlt: '#261c08',
       surface: 'rgba(255, 179, 0, 0.06)',
       surfaceHover: 'rgba(255, 179, 0, 0.1)',
       surfaceActive: 'rgba(255, 179, 0, 0.14)',
@@ -810,7 +1170,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#0D0000',
-      backgroundAlt: '#1A0808',
+      backgroundAlt: '#240a04',
       surface: 'rgba(255, 69, 0, 0.06)',
       surfaceHover: 'rgba(255, 69, 0, 0.1)',
       surfaceActive: 'rgba(255, 69, 0, 0.14)',
@@ -854,7 +1214,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#050510',
-      backgroundAlt: '#0A0A1A',
+      backgroundAlt: '#0e0e2c',
       surface: 'rgba(92, 107, 192, 0.06)',
       surfaceHover: 'rgba(92, 107, 192, 0.1)',
       surfaceActive: 'rgba(92, 107, 192, 0.14)',
@@ -898,7 +1258,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#0F0808',
-      backgroundAlt: '#1A1010',
+      backgroundAlt: '#241814',
       surface: 'rgba(232, 165, 152, 0.06)',
       surfaceHover: 'rgba(232, 165, 152, 0.1)',
       surfaceActive: 'rgba(232, 165, 152, 0.14)',
@@ -942,7 +1302,7 @@ export const themes: Record<ThemeId, Theme> = {
     isDark: true,
     colors: {
       background: '#000000',
-      backgroundAlt: '#0A0A0A',
+      backgroundAlt: '#0c0c10',
       surface: 'rgba(255, 255, 255, 0.03)',
       surfaceHover: 'rgba(255, 255, 255, 0.05)',
       surfaceActive: 'rgba(255, 255, 255, 0.08)',
@@ -1254,3 +1614,9 @@ export const GOON_THEME_LIST = [
   { id: 'flesh', name: 'Flesh', vibe: 'primal' },
   { id: 'void', name: 'Void', vibe: 'focused' },
 ] as const
+
+// Goon theme IDs set for filtering
+const GOON_IDS = new Set<string>(GOON_THEME_LIST.map(g => g.id))
+
+export const DARK_THEME_LIST = THEME_LIST.filter(t => t.isDark && !GOON_IDS.has(t.id))
+export const LIGHT_THEME_LIST = THEME_LIST.filter(t => !t.isDark)

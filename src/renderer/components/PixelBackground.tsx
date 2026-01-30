@@ -1,47 +1,108 @@
 // File: src/renderer/components/PixelBackground.tsx
-// Animated pixel art backgrounds with parallax cursor tracking
+// Animated pixel art backgrounds with multi-layer parallax
 
 import React, { useEffect, useRef, useState, useMemo } from 'react'
 
-// Import background images - Original
-import sky1 from '../assets/backgrounds/sky 1.png'
-import sky2 from '../assets/backgrounds/sky 2.png'
-import skyline1 from '../assets/backgrounds/skyline.png'
-import skyline2 from '../assets/backgrounds/skyline 2.png'
+// Import new parallax backgrounds - City 2 (10 layers)
+import city2_1 from '../assets/backgrounds/city-2/1.png'
+import city2_2 from '../assets/backgrounds/city-2/2.png'
+import city2_4 from '../assets/backgrounds/city-2/4.png'
+import city2_5 from '../assets/backgrounds/city-2/5.png'
+import city2_6 from '../assets/backgrounds/city-2/6.png'
+import city2_7 from '../assets/backgrounds/city-2/7.png'
+import city2_8 from '../assets/backgrounds/city-2/8.png'
+import city2_9 from '../assets/backgrounds/city-2/9.png'
+import city2_10 from '../assets/backgrounds/city-2/10.png'
 
-// Import new backgrounds - City
-import cityNight1 from '../assets/backgrounds/city/city-night-1.png'
-import cityNight2 from '../assets/backgrounds/city/city-night-2.png'
-import cityDay from '../assets/backgrounds/city/city-day.png'
+// Import new parallax backgrounds - City 3 (6 layers)
+import city3_1 from '../assets/backgrounds/city-3/1.png'
+import city3_2 from '../assets/backgrounds/city-3/2.png'
+import city3_3 from '../assets/backgrounds/city-3/3.png'
+import city3_4 from '../assets/backgrounds/city-3/4.png'
+import city3_5 from '../assets/backgrounds/city-3/5.png'
+import city3_6 from '../assets/backgrounds/city-3/6.png'
 
-// Import new backgrounds - Sky
-import clouds1 from '../assets/backgrounds/sky/clouds-1.png'
-import clouds2 from '../assets/backgrounds/sky/clouds-2.png'
-import cloudsSunset from '../assets/backgrounds/sky/clouds-sunset.png'
+// Import new parallax backgrounds - City New (4 layers)
+import cityNew_1 from '../assets/backgrounds/city-new/1.png'
+import cityNew_2 from '../assets/backgrounds/city-new/2.png'
+import cityNew_3 from '../assets/backgrounds/city-new/3.png'
+import cityNew_4 from '../assets/backgrounds/city-new/4.png'
+
+// Import new parallax backgrounds - Cloud (3 layers)
+import cloudNew_1 from '../assets/backgrounds/cloud-new/1.png'
+import cloudNew_2 from '../assets/backgrounds/cloud-new/2.png'
+import cloudNew_3 from '../assets/backgrounds/cloud-new/3.png'
+
+// Import new parallax backgrounds - Cloud 2 (4 layers)
+import cloud2_1 from '../assets/backgrounds/cloud-2/1.png'
+import cloud2_2 from '../assets/backgrounds/cloud-2/2.png'
+import cloud2_4 from '../assets/backgrounds/cloud-2/4.png'
+import cloud2_5 from '../assets/backgrounds/cloud-2/5.png'
+
+// Import aquarium
+import aquarium_5 from '../assets/backgrounds/aquarium/5.png'
 
 export type PixelTheme =
-  | 'nightSky' | 'daySky' | 'cityReflection' | 'cityLights'
-  | 'neonCity' | 'neonCity2' | 'pixelCity'
-  | 'clouds' | 'cloudsDrift' | 'sunset'
-  | 'custom'
+  | 'neonMetropolis'  // city-2 - vibrant neon city
+  | 'cyberpunkCity'   // city-3 - darker cyberpunk
+  | 'retroCity'       // city-new - retro style
+  | 'dreamyClouds'    // cloud-new
+  | 'stormClouds'     // cloud-2
+  | 'aquarium'        // underwater
+  | 'none'
 
-// Theme images
-const THEME_IMAGES: Record<PixelTheme, string> = {
-  nightSky: sky1,
-  daySky: sky2,
-  cityReflection: skyline1,
-  cityLights: skyline2,
-  neonCity: cityNight1,
-  neonCity2: cityNight2,
-  pixelCity: cityDay,
-  clouds: clouds1,
-  cloudsDrift: clouds2,
-  sunset: cloudsSunset,
-  custom: '',
+// Multi-layer parallax configurations
+// Each layer has: image, depth (0=far, 1=close), and optional animation
+interface ParallaxLayer {
+  image: string
+  depth: number // 0 = far background, 1 = closest foreground
+  animate?: 'drift-left' | 'drift-right' | 'float' | 'none'
+  animationSpeed?: number // seconds for one cycle
 }
 
-// Theme color palettes - these override app theme colors when pixel background is active
-// Panels are more opaque for better text visibility
+const THEME_LAYERS: Record<Exclude<PixelTheme, 'none'>, ParallaxLayer[]> = {
+  neonMetropolis: [
+    { image: city2_1, depth: 0, animate: 'none' },
+    { image: city2_2, depth: 0.1, animate: 'none' },
+    { image: city2_4, depth: 0.2, animate: 'none' },
+    { image: city2_5, depth: 0.3, animate: 'none' },
+    { image: city2_6, depth: 0.4, animate: 'none' },
+    { image: city2_7, depth: 0.5, animate: 'none' },
+    { image: city2_8, depth: 0.6, animate: 'none' },
+    { image: city2_9, depth: 0.8, animate: 'none' },
+    { image: city2_10, depth: 1, animate: 'none' },
+  ],
+  cyberpunkCity: [
+    { image: city3_1, depth: 0, animate: 'none' },
+    { image: city3_2, depth: 0.15, animate: 'none' },
+    { image: city3_3, depth: 0.3, animate: 'none' },
+    { image: city3_4, depth: 0.5, animate: 'none' },
+    { image: city3_5, depth: 0.7, animate: 'none' },
+    { image: city3_6, depth: 1, animate: 'none' },
+  ],
+  retroCity: [
+    { image: cityNew_1, depth: 0, animate: 'none' },
+    { image: cityNew_2, depth: 0.3, animate: 'none' },
+    { image: cityNew_3, depth: 0.6, animate: 'none' },
+    { image: cityNew_4, depth: 1, animate: 'none' },
+  ],
+  dreamyClouds: [
+    { image: cloudNew_1, depth: 0, animate: 'drift-left', animationSpeed: 120 },
+    { image: cloudNew_2, depth: 0.4, animate: 'drift-right', animationSpeed: 80 },
+    { image: cloudNew_3, depth: 1, animate: 'drift-left', animationSpeed: 60 },
+  ],
+  stormClouds: [
+    { image: cloud2_1, depth: 0, animate: 'drift-left', animationSpeed: 100 },
+    { image: cloud2_2, depth: 0.3, animate: 'drift-right', animationSpeed: 70 },
+    { image: cloud2_4, depth: 0.6, animate: 'drift-left', animationSpeed: 50 },
+    { image: cloud2_5, depth: 1, animate: 'drift-right', animationSpeed: 40 },
+  ],
+  aquarium: [
+    { image: aquarium_5, depth: 0.5, animate: 'float', animationSpeed: 8 },
+  ],
+}
+
+// Theme color palettes - panels are solid/opaque for better readability
 export const THEME_COLORS: Record<PixelTheme, {
   primary: string
   secondary: string
@@ -53,123 +114,79 @@ export const THEME_COLORS: Record<PixelTheme, {
   muted: string
   gradient: string
 }> = {
-  nightSky: {
-    primary: '#a78bfa',
-    secondary: '#818cf8',
-    accent: '#c4b5fd',
-    bg: '#0a0714',
-    panel: 'rgba(15, 10, 30, 0.95)',
-    border: 'rgba(139, 92, 246, 0.3)',
-    text: '#f5f3ff',
-    muted: '#a5a3c7',
-    gradient: 'linear-gradient(135deg, #4c1d95 0%, #1e1b4b 100%)',
-  },
-  daySky: {
-    primary: '#38bdf8',
-    secondary: '#22d3ee',
-    accent: '#7dd3fc',
-    bg: '#0a1520',
-    panel: 'rgba(10, 21, 32, 0.95)',
-    border: 'rgba(56, 189, 248, 0.3)',
-    text: '#f0f9ff',
-    muted: '#94a3b8',
-    gradient: 'linear-gradient(135deg, #0284c7 0%, #0c4a6e 100%)',
-  },
-  cityReflection: {
-    primary: '#c084fc',
-    secondary: '#a78bfa',
-    accent: '#d8b4fe',
-    bg: '#0a0a14',
-    panel: 'rgba(13, 13, 26, 0.95)',
-    border: 'rgba(168, 85, 247, 0.3)',
-    text: '#faf5ff',
-    muted: '#a8a3c2',
-    gradient: 'linear-gradient(135deg, #7c3aed 0%, #312e81 100%)',
-  },
-  cityLights: {
-    primary: '#fb923c',
-    secondary: '#f97316',
-    accent: '#fdba74',
-    bg: '#120a05',
-    panel: 'rgba(18, 10, 5, 0.95)',
-    border: 'rgba(249, 115, 22, 0.3)',
-    text: '#fff7ed',
-    muted: '#b8a090',
-    gradient: 'linear-gradient(135deg, #ea580c 0%, #7c2d12 100%)',
-  },
-  neonCity: {
+  neonMetropolis: {
     primary: '#f472b6',
     secondary: '#22d3ee',
     accent: '#f9a8d4',
     bg: '#080812',
-    panel: 'rgba(10, 10, 20, 0.95)',
-    border: 'rgba(236, 72, 153, 0.3)',
+    panel: '#0d0d1a',
+    border: 'rgba(236, 72, 153, 0.6)',
     text: '#fdf2f8',
     muted: '#a8a3b8',
     gradient: 'linear-gradient(135deg, #ec4899 0%, #06b6d4 100%)',
   },
-  neonCity2: {
+  cyberpunkCity: {
     primary: '#a78bfa',
     secondary: '#e879f9',
     accent: '#c4b5fd',
     bg: '#0a0810',
-    panel: 'rgba(13, 10, 20, 0.95)',
-    border: 'rgba(139, 92, 246, 0.3)',
+    panel: '#100d18',
+    border: 'rgba(139, 92, 246, 0.6)',
     text: '#faf5ff',
     muted: '#a5a0b8',
     gradient: 'linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%)',
   },
-  pixelCity: {
+  retroCity: {
     primary: '#fbbf24',
     secondary: '#f59e0b',
     accent: '#fcd34d',
     bg: '#100c05',
-    panel: 'rgba(16, 12, 5, 0.95)',
-    border: 'rgba(245, 158, 11, 0.3)',
+    panel: '#1a1408',
+    border: 'rgba(245, 158, 11, 0.6)',
     text: '#fffbeb',
     muted: '#b5a888',
     gradient: 'linear-gradient(135deg, #f59e0b 0%, #b45309 100%)',
   },
-  clouds: {
+  dreamyClouds: {
     primary: '#38bdf8',
     secondary: '#0ea5e9',
     accent: '#7dd3fc',
     bg: '#0a1218',
-    panel: 'rgba(12, 21, 32, 0.95)',
-    border: 'rgba(56, 189, 248, 0.3)',
+    panel: '#0c1620',
+    border: 'rgba(56, 189, 248, 0.6)',
     text: '#f0f9ff',
     muted: '#8facc0',
     gradient: 'linear-gradient(135deg, #38bdf8 0%, #0369a1 100%)',
   },
-  cloudsDrift: {
+  stormClouds: {
     primary: '#94a3b8',
     secondary: '#64748b',
     accent: '#cbd5e1',
     bg: '#0c1015',
-    panel: 'rgba(15, 19, 24, 0.95)',
-    border: 'rgba(100, 116, 139, 0.3)',
+    panel: '#12181e',
+    border: 'rgba(100, 116, 139, 0.6)',
     text: '#f1f5f9',
     muted: '#8892a0',
     gradient: 'linear-gradient(135deg, #64748b 0%, #334155 100%)',
   },
-  sunset: {
-    primary: '#fb923c',
-    secondary: '#fb7185',
-    accent: '#fdba74',
-    bg: '#100808',
-    panel: 'rgba(16, 8, 8, 0.95)',
-    border: 'rgba(249, 115, 22, 0.3)',
-    text: '#fff7ed',
-    muted: '#b89090',
-    gradient: 'linear-gradient(135deg, #f97316 0%, #be123c 100%)',
+  aquarium: {
+    primary: '#22d3ee',
+    secondary: '#06b6d4',
+    accent: '#67e8f9',
+    bg: '#041015',
+    panel: '#081418',
+    border: 'rgba(34, 211, 238, 0.6)',
+    text: '#ecfeff',
+    muted: '#7dd3fc',
+    gradient: 'linear-gradient(135deg, #22d3ee 0%, #0891b2 100%)',
   },
-  custom: {
+  none: {
     primary: '#a78bfa',
     secondary: '#818cf8',
     accent: '#c4b5fd',
     bg: '#08080c',
-    panel: 'rgba(10, 10, 15, 0.95)',
-    border: 'rgba(139, 92, 246, 0.3)',
+    panel: '#0e0e14',
+    border: 'rgba(139, 92, 246, 0.5)',
     text: '#f5f3ff',
     muted: '#9090a0',
     gradient: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
@@ -177,23 +194,18 @@ export const THEME_COLORS: Record<PixelTheme, {
 }
 
 // Theme metadata for UI
-export const THEME_INFO: Record<PixelTheme, { name: string; category: string }> = {
-  nightSky: { name: 'Night Sky', category: 'Sky' },
-  daySky: { name: 'Day Sky', category: 'Sky' },
-  cityReflection: { name: 'City Reflection', category: 'City' },
-  cityLights: { name: 'City Lights', category: 'City' },
-  neonCity: { name: 'Neon City', category: 'City' },
-  neonCity2: { name: 'Neon District', category: 'City' },
-  pixelCity: { name: 'Pixel City', category: 'City' },
-  clouds: { name: 'Clouds', category: 'Sky' },
-  cloudsDrift: { name: 'Drifting Clouds', category: 'Sky' },
-  sunset: { name: 'Sunset', category: 'Sky' },
-  custom: { name: 'Custom', category: 'Other' },
+export const THEME_INFO: Record<PixelTheme, { name: string; category: string; description: string }> = {
+  neonMetropolis: { name: 'Neon Metropolis', category: 'City', description: '10-layer vibrant neon cityscape' },
+  cyberpunkCity: { name: 'Cyberpunk City', category: 'City', description: '6-layer dark cyberpunk scene' },
+  retroCity: { name: 'Retro City', category: 'City', description: '4-layer retro pixel city' },
+  dreamyClouds: { name: 'Dreamy Clouds', category: 'Sky', description: 'Drifting animated clouds' },
+  stormClouds: { name: 'Storm Clouds', category: 'Sky', description: 'Moody storm clouds' },
+  aquarium: { name: 'Aquarium', category: 'Nature', description: 'Underwater scene' },
+  none: { name: 'None', category: 'Other', description: 'No background' },
 }
 
 interface PixelBackgroundProps {
   theme?: PixelTheme
-  customImage?: string
   parallaxStrength?: number // 0-100
   opacity?: number // 0-100
   children?: React.ReactNode
@@ -233,28 +245,24 @@ export function clearPixelThemeColors() {
 }
 
 export function PixelBackground({
-  theme = 'cityLights',
-  customImage,
-  parallaxStrength = 30,
-  opacity = 40,
+  theme = 'neonMetropolis',
+  parallaxStrength = 35,
+  opacity = 50,
   children,
 }: PixelBackgroundProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [mousePos, setMousePos] = useState({ x: 0.5, y: 0.5 })
 
-  const backgroundImage = customImage || THEME_IMAGES[theme]
+  const layers = theme !== 'none' ? THEME_LAYERS[theme] : []
 
   // Convert 0-100 scales to usable values
-  const normalizedParallax = (parallaxStrength / 100) * 0.06 // Max 6% movement
+  const normalizedParallax = (parallaxStrength / 100) * 50 // Max 50px movement
   const normalizedOpacity = opacity / 100
 
   // Apply theme colors when theme changes
   useEffect(() => {
-    if (theme && theme !== 'custom') {
+    if (theme && theme !== 'none') {
       applyPixelThemeColors(theme)
-    }
-    return () => {
-      // Don't clear on unmount - let the parent handle that
     }
   }, [theme])
 
@@ -269,15 +277,13 @@ export function PixelBackground({
     let currentY = 0.5
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!containerRef.current) return
-      const rect = containerRef.current.getBoundingClientRect()
-      targetX = (e.clientX - rect.left) / rect.width
-      targetY = (e.clientY - rect.top) / rect.height
+      targetX = e.clientX / window.innerWidth
+      targetY = e.clientY / window.innerHeight
     }
 
     // Smooth interpolation loop
     const animate = () => {
-      const ease = 0.08 // Lower = smoother
+      const ease = 0.06
       currentX += (targetX - currentX) * ease
       currentY += (targetY - currentY) * ease
       setMousePos({ x: currentX, y: currentY })
@@ -293,39 +299,77 @@ export function PixelBackground({
     }
   }, [parallaxStrength])
 
-  const parallaxOffset = useMemo(() => {
-    if (parallaxStrength === 0) return { x: 0, y: 0 }
-    return {
-      x: (mousePos.x - 0.5) * normalizedParallax * 100,
-      y: (mousePos.y - 0.5) * normalizedParallax * 100,
-    }
-  }, [mousePos, normalizedParallax, parallaxStrength])
+  if (theme === 'none' || layers.length === 0) {
+    return <>{children}</>
+  }
 
   return (
     <div ref={containerRef} className="absolute inset-0 overflow-hidden pointer-events-none">
-      {/* Background image layer with parallax */}
-      {backgroundImage && (
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `url(${backgroundImage})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            transform: `translate(${parallaxOffset.x}px, ${parallaxOffset.y}px) scale(1.08)`,
-            opacity: normalizedOpacity,
-            imageRendering: 'pixelated',
-            willChange: 'transform',
-          }}
-        />
-      )}
+      {/* Render parallax layers */}
+      {layers.map((layer, index) => {
+        const offsetX = (mousePos.x - 0.5) * normalizedParallax * layer.depth
+        const offsetY = (mousePos.y - 0.5) * normalizedParallax * layer.depth * 0.5
 
-      {/* Subtle vignette overlay */}
+        // Animation styles
+        let animationStyle = {}
+        if (layer.animate === 'drift-left') {
+          animationStyle = {
+            animation: `driftLeft ${layer.animationSpeed || 60}s linear infinite`,
+          }
+        } else if (layer.animate === 'drift-right') {
+          animationStyle = {
+            animation: `driftRight ${layer.animationSpeed || 60}s linear infinite`,
+          }
+        } else if (layer.animate === 'float') {
+          animationStyle = {
+            animation: `float ${layer.animationSpeed || 8}s ease-in-out infinite`,
+          }
+        }
+
+        return (
+          <div
+            key={index}
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `url(${layer.image})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: layer.animate?.startsWith('drift') ? 'repeat-x' : 'no-repeat',
+              transform: `translate(${offsetX}px, ${offsetY}px) scale(1.1)`,
+              opacity: normalizedOpacity,
+              imageRendering: 'pixelated',
+              willChange: 'transform',
+              zIndex: index,
+              ...animationStyle,
+            }}
+          />
+        )
+      })}
+
+      {/* Vignette overlay */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: 'radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.4) 100%)',
+          background: 'radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.5) 100%)',
+          zIndex: layers.length + 1,
         }}
       />
+
+      {/* Global keyframes */}
+      <style>{`
+        @keyframes driftLeft {
+          from { background-position-x: 0; }
+          to { background-position-x: -100%; }
+        }
+        @keyframes driftRight {
+          from { background-position-x: 0; }
+          to { background-position-x: 100%; }
+        }
+        @keyframes float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
+        }
+      `}</style>
 
       {/* Content */}
       {children}

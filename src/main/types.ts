@@ -18,6 +18,9 @@ export type MediaRow = {
   height: number | null
   hashSha256: string | null
   phash: string | null
+  analyzeError?: number
+  transcodedPath?: string | null
+  loudnessPeakTime?: number | null
 }
 
 export type TagRow = { id: string; name: string }

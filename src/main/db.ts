@@ -56,6 +56,14 @@ export function createDb() {
       RETURNING *;
     `),
     getMediaByPath: db.prepare(`SELECT * FROM media WHERE path = ? LIMIT 1;`),
+    updateMediaById: db.prepare(`
+      UPDATE media SET
+        type=@type, path=@path, filename=@filename, ext=@ext, size=@size,
+        mtimeMs=@mtimeMs, durationSec=@durationSec, thumbPath=@thumbPath,
+        width=@width, height=@height, hashSha256=@hashSha256, phash=@phash
+      WHERE id=@id;
+    `),
+    getMediaById: db.prepare(`SELECT * FROM media WHERE id = ? LIMIT 1;`),
     listMedia: db.prepare(`
       SELECT DISTINCT m.*
       FROM media m
@@ -65,6 +73,7 @@ export function createDb() {
         (@q = '' OR m.filename LIKE '%' || @q || '%')
         AND (@type = '' OR m.type = @type)
         AND (@tag = '' OR t.name = @tag)
+        AND m.analyzeError = 0
       ORDER BY m.addedAt DESC
       LIMIT @limit OFFSET @offset;
     `),
@@ -76,7 +85,8 @@ export function createDb() {
       WHERE
         (@q = '' OR m.filename LIKE '%' || @q || '%')
         AND (@type = '' OR m.type = @type)
-        AND (@tag = '' OR t.name = @tag);
+        AND (@tag = '' OR t.name = @tag)
+        AND m.analyzeError = 0;
     `),
     getMedia: db.prepare(`SELECT * FROM media WHERE id = ? LIMIT 1;`),
     updateMediaPath: db.prepare(`UPDATE media SET path = ?, filename = ? WHERE id = ?;`),
@@ -129,6 +139,11 @@ export function createDb() {
       WHERE status='running' AND startedAt < ?;
     `),
     clearThumbPath: db.prepare(`UPDATE media SET thumbPath=NULL WHERE id=?;`),
+    markAnalyzeError: db.prepare(`UPDATE media SET analyzeError=1 WHERE id=?;`),
+    clearAnalyzeError: db.prepare(`UPDATE media SET analyzeError=0 WHERE id=?;`),
+    setTranscodedPath: db.prepare(`UPDATE media SET transcodedPath=? WHERE id=?;`),
+    setLoudnessPeakTime: db.prepare(`UPDATE media SET loudnessPeakTime=? WHERE id=?;`),
+    getLoudnessPeakTime: db.prepare(`SELECT loudnessPeakTime FROM media WHERE id=? LIMIT 1;`),
 
     // stats
     getStats: db.prepare(`SELECT * FROM media_stats WHERE mediaId=? LIMIT 1;`),
@@ -257,7 +272,7 @@ export function createDb() {
 
   function upsertMedia(input: Omit<MediaRow, 'id' | 'addedAt'> & Partial<Pick<MediaRow, 'id' | 'addedAt'>>): MediaRow {
     const now = Date.now()
-    const row = stmts.upsertMedia.get({
+    const params = {
       id: input.id ?? nanoid(),
       type: input.type,
       path: path.resolve(input.path),
@@ -272,8 +287,17 @@ export function createDb() {
       height: input.height ?? null,
       hashSha256: input.hashSha256 ?? null,
       phash: input.phash ?? null
-    }) as MediaRow
-    return row
+    }
+    try {
+      return stmts.upsertMedia.get(params) as MediaRow
+    } catch (e: any) {
+      if (e.message?.includes('UNIQUE constraint failed: media.id')) {
+        // id already exists at a different path — update existing record by id
+        stmts.updateMediaById.run(params)
+        return stmts.getMediaById.get(params.id) as MediaRow
+      }
+      throw e
+    }
   }
 
   function listMedia(args: { q?: string; type?: MediaType | ''; tag?: string; limit?: number; offset?: number }) {
@@ -607,6 +631,14 @@ export function createDb() {
     stmts.clearThumbPath.run(mediaId)
   }
 
+  function markAnalyzeError(mediaId: string): void {
+    stmts.markAnalyzeError.run(mediaId)
+  }
+
+  function clearAnalyzeError(mediaId: string): void {
+    stmts.clearAnalyzeError.run(mediaId)
+  }
+
   function enqueueJob(type: string, payload: unknown, priority = 0): string {
     const id = nanoid()
     stmts.enqueueJob.run(id, type, priority, JSON.stringify(payload), Date.now())
@@ -656,6 +688,14 @@ export function createDb() {
     hasQueuedJobForMedia,
     resetStaleRunningJobs,
     clearThumbPath,
+    markAnalyzeError,
+    clearAnalyzeError,
+    setTranscodedPath: (mediaId: string, transcodedPath: string) => stmts.setTranscodedPath.run(transcodedPath, mediaId),
+    setLoudnessPeakTime: (mediaId: string, peakTime: number) => stmts.setLoudnessPeakTime.run(peakTime, mediaId),
+    getLoudnessPeakTime: (mediaId: string) => {
+      const row = stmts.getLoudnessPeakTime.get(mediaId) as { loudnessPeakTime: number | null } | undefined
+      return row?.loudnessPeakTime ?? null
+    },
     markJobRunning: (id: string) => stmts.markJobRunning.run(Date.now(), id),
     markJobDone: (id: string) => stmts.markJobDone.run(Date.now(), id),
     markJobError: (id: string, err: string) => stmts.markJobError.run(err, Date.now(), id),

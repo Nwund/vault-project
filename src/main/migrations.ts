@@ -136,6 +136,53 @@ const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_search_history_created ON search_history(createdAt);
       `)
     }
+  },
+
+  // v3: AI video analysis storage
+  {
+    id: 3,
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS video_analyses (
+          id TEXT PRIMARY KEY,
+          mediaId TEXT NOT NULL UNIQUE,
+          duration REAL,
+          summary TEXT,
+          scenesJson TEXT,
+          tagsJson TEXT,
+          highlightsJson TEXT,
+          bestThumbnailTime REAL,
+          analyzedAt REAL NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_video_analyses_media ON video_analyses(mediaId);
+
+        -- Track tag visibility (hidden until has videos)
+        ALTER TABLE tags ADD COLUMN isHidden INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE tags ADD COLUMN isAiGenerated INTEGER NOT NULL DEFAULT 0;
+      `)
+    }
+  },
+
+  // v4: Track permanently failed analysis
+  {
+    id: 4,
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE media ADD COLUMN analyzeError INTEGER NOT NULL DEFAULT 0;
+      `)
+    }
+  },
+
+  // v5: Transcode cache path and loudness peak time
+  {
+    id: 5,
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE media ADD COLUMN transcodedPath TEXT;
+        ALTER TABLE media ADD COLUMN loudnessPeakTime REAL;
+      `)
+    }
   }
 ]
 

@@ -26,6 +26,9 @@ function enqueueAnalyze(db: DB, payload: AnalyzePayload) {
   // Skip if a queued job already exists for this media
   if (db.hasQueuedJobForMedia(payload.mediaId)) return
 
+  // Clear any previous analyze error so item gets a fresh chance
+  db.clearAnalyzeError(payload.mediaId)
+
   // Priority: videos first
   const priority = payload.type === 'video' ? 10 : 5
   db.enqueueJob('media:analyze', payload, priority)

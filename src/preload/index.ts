@@ -102,6 +102,12 @@ const api = {
     incO: (mediaId: string) => invoke('media:incO', mediaId),
     // Name optimization
     optimizeName: (mediaId: string) => invoke('media:optimizeName', mediaId),
+    optimizeAllNames: () => invoke('media:optimizeAllNames'),
+    // Move broken/corrupted files
+    moveBroken: (mediaId: string, reason?: string) => invoke('media:moveBroken', mediaId, reason),
+    // Transcode & playback
+    getPlayableUrl: (mediaId: string) => invoke<string | null>('media:getPlayableUrl', mediaId),
+    getLoudnessPeak: (mediaId: string) => invoke<number | null>('media:getLoudnessPeak', mediaId),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -109,6 +115,7 @@ const api = {
   // ═══════════════════════════════════════════════════════════════════════════
   tags: {
     list: () => invoke('tags:list'),
+    listWithCounts: () => invoke('tags:listWithCounts'),
     forMedia: (mediaId: string) => invoke('tags:forMedia', mediaId),
     listForMedia: (mediaId: string) => invoke('tags:listForMedia', mediaId),
     setForMedia: (mediaId: string, tags: string[]) => invoke('tags:setForMedia', mediaId, tags),
@@ -288,6 +295,67 @@ const api = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // HYBRID TAGGING - AI-powered multi-tier tagging
+  // ═══════════════════════════════════════════════════════════════════════════
+  hybridTag: {
+    // Check if Ollama vision is available
+    isVisionAvailable: () => invoke('hybridTag:isVisionAvailable'),
+    // Tag a single media item with hybrid approach
+    tagMedia: (mediaId: string) => invoke('hybridTag:tagMedia', mediaId),
+    // Apply hybrid tags to a media item
+    applyToMedia: (mediaId: string) => invoke('hybridTag:applyToMedia', mediaId),
+    // Get tag suggestions without applying
+    getSuggestions: (mediaId: string) => invoke('hybridTag:getSuggestions', mediaId),
+    // Auto-tag all untagged media
+    autoTagAll: (options?: { onlyUntagged?: boolean; maxItems?: number; useVision?: boolean }) =>
+      invoke('hybridTag:autoTagAll', options),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VIDEO ANALYSIS - AI scene detection, tagging, summaries
+  // ═══════════════════════════════════════════════════════════════════════════
+  videoAnalysis: {
+    // Check if analyzer is available
+    isAvailable: () => invoke('videoAnalysis:isAvailable'),
+    // Analyze a single video (deep analysis with scenes, summary, highlights)
+    analyze: (mediaId: string) => invoke('videoAnalysis:analyze', mediaId),
+    // Get existing analysis for a video
+    get: (mediaId: string) => invoke('videoAnalysis:get', mediaId),
+    // Batch analyze multiple videos
+    analyzeBatch: (options?: { limit?: number; onlyUnanalyzed?: boolean }) =>
+      invoke('videoAnalysis:analyzeBatch', options),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TAGS EXTENDED - Visibility and AI-generated tags
+  // ═══════════════════════════════════════════════════════════════════════════
+  tagsExtended: {
+    // Get tags with visibility and count info
+    listWithVisibility: () => invoke('tags:listWithVisibility'),
+    // Toggle tag visibility
+    setVisibility: (tagName: string, isHidden: boolean) => invoke('tags:setVisibility', tagName, isHidden),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AI LIBRARY TOOLS - Tag cleaning, tag creation, AI file renaming
+  // ═══════════════════════════════════════════════════════════════════════════
+  aiTools: {
+    // Check if AI is available
+    isAvailable: () => invoke('aiTools:isAvailable'),
+    // AI-powered tag cleanup (merge similar, fix typos, normalize)
+    cleanupTags: () => invoke('aiTools:cleanupTags'),
+    // AI-powered tag generation for a single media item
+    generateTags: (mediaId: string) => invoke('aiTools:generateTags', mediaId),
+    // AI-powered tag generation for entire library
+    generateTagsAll: (options?: { maxItems?: number; onlyUntagged?: boolean }) =>
+      invoke('aiTools:generateTagsAll', options),
+    // AI-powered filename suggestion
+    suggestFilename: (mediaId: string) => invoke('aiTools:suggestFilename', mediaId),
+    // AI-powered batch file renaming
+    renameAll: (options?: { maxItems?: number }) => invoke('aiTools:renameAll', options),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // RECOMMENDATIONS
   // ═══════════════════════════════════════════════════════════════════════════
   recommend: {
@@ -308,6 +376,7 @@ const api = {
   // ═══════════════════════════════════════════════════════════════════════════
   vault: {
     rescan: () => invoke('vault:rescan'),
+    cleanup: () => invoke('vault:cleanup'),
     pickFolder: () => invoke('vault:pickFolder'),
     getStats: () => invoke('vault:getStats'),
   },
@@ -375,6 +444,19 @@ const api = {
       on('tagging:progress', cb),
     onSmartTagProgress: (cb: (progress: { processed: number; total: number; tagged: number }) => void) =>
       on('smartTag:progress', cb),
+    onHybridTagProgress: (cb: (progress: { processed: number; total: number; tagged: number }) => void) =>
+      on('hybridTag:progress', cb),
+    onVideoAnalysisProgress: (cb: (progress: { mediaId: string; stage: string; current: number; total: number; message: string }) => void) =>
+      on('videoAnalysis:progress', cb),
+    onVideoAnalysisBatchProgress: (cb: (progress: { current: number; total: number; currentVideo: string }) => void) =>
+      on('videoAnalysis:batchProgress', cb),
+    // AI Library Tools events
+    onAiTagCleanupProgress: (cb: (progress: { current: number; total: number; tag: string }) => void) =>
+      on('aiTools:tagCleanupProgress', cb),
+    onAiGenerateTagsProgress: (cb: (progress: { current: number; total: number; filename: string }) => void) =>
+      on('aiTools:generateTagsProgress', cb),
+    onAiRenameProgress: (cb: (progress: { current: number; total: number; filename: string }) => void) =>
+      on('aiTools:renameProgress', cb),
     // Goon events
     onGoonStatsChanged: (cb: (stats: any) => void) => on('goon:statsChanged', cb),
     onAchievementUnlocked: (cb: (achievements: string[]) => void) => on('goon:achievementUnlocked', cb),

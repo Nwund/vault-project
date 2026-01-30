@@ -15,6 +15,7 @@ interface TagSelectorProps {
   selectedTags: string[]
   onTagsChange: (tags: string[]) => void
   onCreateTag?: (name: string) => Promise<void>
+  onOpenChange?: (isOpen: boolean) => void
   placeholder?: string
   maxResults?: number
   className?: string
@@ -25,11 +26,23 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
   selectedTags,
   onTagsChange,
   onCreateTag,
+  onOpenChange,
   placeholder = 'Search or add tags...',
   maxResults = 20,
   className = ''
 }) => {
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpenInternal] = useState(false)
+
+  // Wrapper to notify parent of open state changes
+  const setIsOpen = useCallback((open: boolean | ((prev: boolean) => boolean)) => {
+    setIsOpenInternal(prev => {
+      const newValue = typeof open === 'function' ? open(prev) : open
+      if (newValue !== prev) {
+        onOpenChange?.(newValue)
+      }
+      return newValue
+    })
+  }, [onOpenChange])
   const [search, setSearch] = useState('')
   const [highlightIndex, setHighlightIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)

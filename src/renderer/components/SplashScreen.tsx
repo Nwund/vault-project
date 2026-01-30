@@ -1,30 +1,13 @@
 // File: src/renderer/components/SplashScreen.tsx
-// Animated splash screen for app startup
+// Splash screen for app startup with glowing vault logo
 import React, { useEffect, useState } from 'react'
 
-// Time-based greetings from Diabella
-const getTimeGreeting = (): string => {
-  const hour = new Date().getHours()
-  if (hour >= 5 && hour < 12) {
-    return "Good morning, gorgeous... Ready to start your day right?"
-  } else if (hour >= 12 && hour < 17) {
-    return "Afternoon delight awaits... Let's get lost together."
-  } else if (hour >= 17 && hour < 21) {
-    return "Evening, lover... Time to unwind and indulge."
-  } else {
-    return "Late night cravings? I'm here for you, always..."
-  }
-}
-
-// Animated Vault Logo SVG
-const VaultLogo: React.FC<{ animate: boolean }> = ({ animate }) => {
+// Static Vault Logo SVG with glow animation
+const VaultLogo: React.FC = () => {
   return (
     <svg
       viewBox="0 0 120 120"
-      className="w-32 h-32"
-      style={{
-        filter: 'drop-shadow(0 0 30px var(--glow, rgba(255,100,150,0.5)))'
-      }}
+      className="w-32 h-32 vault-glow"
     >
       {/* Outer vault door ring */}
       <circle
@@ -34,12 +17,6 @@ const VaultLogo: React.FC<{ animate: boolean }> = ({ animate }) => {
         fill="none"
         stroke="url(#vaultGradient)"
         strokeWidth="4"
-        className={animate ? 'animate-draw-ring' : ''}
-        style={{
-          strokeDasharray: animate ? '345' : '0',
-          strokeDashoffset: animate ? '345' : '0',
-          animation: animate ? 'drawRing 1.5s ease-out forwards' : 'none'
-        }}
       />
 
       {/* Inner ring */}
@@ -51,11 +28,6 @@ const VaultLogo: React.FC<{ animate: boolean }> = ({ animate }) => {
         stroke="url(#vaultGradient)"
         strokeWidth="2"
         opacity="0.6"
-        style={{
-          strokeDasharray: animate ? '283' : '0',
-          strokeDashoffset: animate ? '283' : '0',
-          animation: animate ? 'drawRing 1.2s ease-out 0.3s forwards' : 'none'
-        }}
       />
 
       {/* Vault handle - horizontal bar */}
@@ -66,10 +38,6 @@ const VaultLogo: React.FC<{ animate: boolean }> = ({ animate }) => {
         height="6"
         rx="3"
         fill="url(#vaultGradient)"
-        style={{
-          opacity: animate ? 0 : 1,
-          animation: animate ? 'fadeIn 0.5s ease-out 0.8s forwards' : 'none'
-        }}
       />
 
       {/* Vault handle - knob */}
@@ -80,10 +48,6 @@ const VaultLogo: React.FC<{ animate: boolean }> = ({ animate }) => {
         fill="none"
         stroke="url(#vaultGradient)"
         strokeWidth="3"
-        style={{
-          opacity: animate ? 0 : 1,
-          animation: animate ? 'fadeIn 0.5s ease-out 1s forwards, spinKnob 2s ease-in-out 1.2s infinite' : 'spinKnob 2s ease-in-out infinite'
-        }}
       />
 
       {/* Center dot */}
@@ -92,14 +56,10 @@ const VaultLogo: React.FC<{ animate: boolean }> = ({ animate }) => {
         cy="60"
         r="4"
         fill="url(#vaultGradient)"
-        style={{
-          opacity: animate ? 0 : 1,
-          animation: animate ? 'fadeIn 0.3s ease-out 1.2s forwards, pulse 2s ease-in-out 1.5s infinite' : 'pulse 2s ease-in-out infinite'
-        }}
       />
 
       {/* Locking pins */}
-      {[0, 60, 120, 180, 240, 300].map((angle, i) => {
+      {[0, 60, 120, 180, 240, 300].map((angle) => {
         const rad = (angle * Math.PI) / 180
         const x1 = 60 + Math.cos(rad) * 35
         const y1 = 60 + Math.sin(rad) * 35
@@ -115,10 +75,6 @@ const VaultLogo: React.FC<{ animate: boolean }> = ({ animate }) => {
             stroke="url(#vaultGradient)"
             strokeWidth="3"
             strokeLinecap="round"
-            style={{
-              opacity: animate ? 0 : 1,
-              animation: animate ? `fadeIn 0.3s ease-out ${0.6 + i * 0.1}s forwards` : 'none'
-            }}
           />
         )
       })}
@@ -134,24 +90,6 @@ const VaultLogo: React.FC<{ animate: boolean }> = ({ animate }) => {
   )
 }
 
-// Loading bar component
-const LoadingBar: React.FC<{ progress: number }> = ({ progress }) => {
-  return (
-    <div className="w-64 h-1 bg-white/10 rounded-full overflow-hidden">
-      <div
-        className="h-full rounded-full transition-all duration-300 ease-out"
-        style={{
-          width: `${progress}%`,
-          background: 'linear-gradient(90deg, var(--accent, #ff6b9d), var(--text, #fff), var(--accent, #ff6b9d))',
-          boxShadow: '0 0 20px var(--glow, rgba(255,100,150,0.5))'
-        }}
-      />
-    </div>
-  )
-}
-
-type SplashPhase = 'logo' | 'tagline' | 'greeting' | 'complete'
-
 interface SplashScreenProps {
   onComplete: () => void
   minDuration?: number
@@ -159,11 +97,8 @@ interface SplashScreenProps {
 
 export const SplashScreen: React.FC<SplashScreenProps> = ({
   onComplete,
-  minDuration = 2500
+  minDuration = 1500
 }) => {
-  const [phase, setPhase] = useState<SplashPhase>('logo')
-  const [progress, setProgress] = useState(0)
-  const [greeting] = useState(getTimeGreeting)
   const [fadeOut, setFadeOut] = useState(false)
   const [canSkip, setCanSkip] = useState(false)
 
@@ -175,38 +110,23 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
   }
 
   useEffect(() => {
-    // Phase transitions
     const timers: NodeJS.Timeout[] = []
 
-    // Progress animation
-    const progressInterval = setInterval(() => {
-      setProgress(p => Math.min(p + 2, 100))
-    }, minDuration / 50)
-    timers.push(progressInterval as unknown as NodeJS.Timeout)
+    // Allow skipping after a short delay
+    timers.push(setTimeout(() => setCanSkip(true), 500))
 
-    // Allow skipping after logo animation
-    timers.push(setTimeout(() => setCanSkip(true), 1000))
-
-    // Logo phase complete
-    timers.push(setTimeout(() => setPhase('tagline'), 800))
-
-    // Tagline phase complete
-    timers.push(setTimeout(() => setPhase('greeting'), 1600))
-
-    // Ready to complete
+    // Start fade out
     timers.push(setTimeout(() => {
-      setPhase('complete')
       setFadeOut(true)
-    }, minDuration - 500))
+    }, minDuration - 300))
 
-    // Final complete
+    // Complete
     timers.push(setTimeout(() => {
       onComplete()
     }, minDuration))
 
     return () => {
       timers.forEach(t => clearTimeout(t))
-      clearInterval(progressInterval)
     }
   }, [minDuration, onComplete])
 
@@ -233,18 +153,12 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
 
       {/* Main content */}
       <div className="relative z-10 flex flex-col items-center gap-8">
-        {/* Animated logo */}
-        <div className={`transition-transform duration-700 ${phase !== 'logo' ? 'scale-90' : 'scale-100'}`}>
-          <VaultLogo animate={true} />
-        </div>
+        {/* Logo with glow animation */}
+        <VaultLogo />
 
         {/* App name */}
         <div
-          className={`
-            text-4xl font-bold tracking-wider
-            transition-all duration-500
-            ${phase === 'logo' ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}
-          `}
+          className="text-4xl font-bold tracking-wider"
           style={{
             background: 'linear-gradient(135deg, var(--text, #fff), var(--accent, #ff6b9d))',
             WebkitBackgroundClip: 'text',
@@ -253,35 +167,6 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
           }}
         >
           VAULT
-        </div>
-
-        {/* Tagline */}
-        <div
-          className={`
-            text-sm text-[var(--muted)] tracking-widest uppercase
-            transition-all duration-500 delay-100
-            ${phase === 'logo' || phase === 'tagline' ? 'opacity-0' : 'opacity-100'}
-          `}
-        >
-          Your Private Pleasure Palace
-        </div>
-
-        {/* Diabella greeting */}
-        <div
-          className={`
-            max-w-md text-center text-[var(--muted)] italic
-            transition-all duration-500 delay-200
-            ${phase === 'greeting' || phase === 'complete' ? 'opacity-100' : 'opacity-0'}
-          `}
-          style={{ minHeight: '3rem' }}
-        >
-          "{greeting}"
-          <div className="text-xs mt-2 text-[var(--accent)]">— Diabella</div>
-        </div>
-
-        {/* Loading bar */}
-        <div className="mt-4">
-          <LoadingBar progress={progress} />
         </div>
 
         {/* Skip hint */}
@@ -296,39 +181,18 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
         </div>
       </div>
 
-      {/* Keyframe animations */}
+      {/* Glow animation */}
       <style>{`
-        @keyframes drawRing {
-          to {
-            stroke-dashoffset: 0;
-          }
-        }
-        @keyframes fadeIn {
-          to {
-            opacity: 1;
-          }
-        }
-        @keyframes spinKnob {
+        @keyframes glow {
           0%, 100% {
-            transform-origin: center;
-            transform: rotate(0deg);
-          }
-          25% {
-            transform: rotate(15deg);
-          }
-          75% {
-            transform: rotate(-15deg);
-          }
-        }
-        @keyframes pulse {
-          0%, 100% {
-            opacity: 1;
-            transform: scale(1);
+            filter: drop-shadow(0 0 20px var(--glow, rgba(255,100,150,0.4)));
           }
           50% {
-            opacity: 0.7;
-            transform: scale(1.2);
+            filter: drop-shadow(0 0 40px var(--glow, rgba(255,100,150,0.8)));
           }
+        }
+        .vault-glow {
+          animation: glow 2s ease-in-out infinite;
         }
       `}</style>
     </div>

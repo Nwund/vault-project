@@ -102,6 +102,14 @@ function getMimeType(filePath: string): string | undefined {
     '.avi': 'video/x-msvideo',
     '.wmv': 'video/x-ms-wmv',
     '.flv': 'video/x-flv',
+    '.ts': 'video/mp2t',
+    '.mpg': 'video/mpeg',
+    '.mpeg': 'video/mpeg',
+    '.3gp': 'video/3gpp',
+    '.ogv': 'video/ogg',
+    '.m2ts': 'video/mp2t',
+    '.mts': 'video/mp2t',
+    '.vob': 'video/mpeg',
     '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',
     '.png': 'image/png',
@@ -157,7 +165,7 @@ export function registerVaultProtocol(): void {
         : absolutePath
       console.log('[vault protocol] Serving:', shortPath, mimeType ? `(${mimeType})` : '')
 
-      callback({ path: absolutePath })
+      callback({ path: absolutePath, mimeType })
     } catch (err) {
       console.error('[vault protocol] Error:', err)
       callback({ error: -2 })

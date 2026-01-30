@@ -28,7 +28,7 @@ export type AiTagResult = {
 
 const DEFAULT_CONFIG: AiConfig = {
   provider: 'ollama',
-  enabled: false,
+  enabled: true,
   ollamaUrl: 'http://127.0.0.1:11434',
   ollamaModel: 'llava:latest',
   frameCount: 4,

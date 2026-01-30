@@ -1,8 +1,10 @@
 // File: src/renderer/components/FloatingVideoPlayer.tsx
 // Floating Picture-in-Picture style video player with fullscreen support
 
+const AI_DEEP_ANALYSIS_DISABLED = true // Maintenance flag - disable AI deep analysis button
+
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, Star, FolderOpen, Play, Pause } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, Star, FolderOpen, Play, Pause, Sparkles, Heart } from 'lucide-react'
 
 interface MediaRow {
   id: string
@@ -64,6 +66,10 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [showVolumeSlider, setShowVolumeSlider] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null)
+  const [isLiked, setIsLiked] = useState(false)
+  const [transcodeRetried, setTranscodeRetried] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const hideControlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -91,18 +97,27 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const hasPrev = currentIndex > 0
   const hasNext = currentIndex < mediaList.length - 1
 
-  // Load video URL
+  // Load video URL - prefer getPlayableUrl for transcode support, fallback to direct
   useEffect(() => {
     let alive = true
     setIsLoading(true)
     setHasError(false)
     aspectRatioSet.current = false // Reset for new video
+    setTranscodeRetried(false)
     ;(async () => {
+      try {
+        const u = await window.api.media.getPlayableUrl(media.id)
+        if (alive && u) {
+          setUrl(u as string)
+          return
+        }
+      } catch {}
+      // Fallback to direct file URL
       const u = await toFileUrlCached(media.path)
       if (alive) setUrl(u)
     })()
     return () => { alive = false }
-  }, [media.path])
+  }, [media.id, media.path])
 
   // Apply volume to video element
   useEffect(() => {
@@ -141,22 +156,36 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   }, [isMuted, volume])
 
   const handleError = useCallback((e: React.SyntheticEvent<HTMLVideoElement | HTMLImageElement>) => {
-    setIsLoading(false)
-    setHasError(true)
     const target = e.currentTarget
     if ('error' in target && target.error) {
       const videoError = target.error as MediaError
-      console.warn('[FloatingPlayer] Video error:', {
-        path: media.path,
-        code: videoError.code,
-        message: videoError.message,
-        // MediaError codes: 1=ABORTED, 2=NETWORK, 3=DECODE, 4=SRC_NOT_SUPPORTED
-        errorType: ['', 'ABORTED', 'NETWORK', 'DECODE', 'SRC_NOT_SUPPORTED'][videoError.code] || 'UNKNOWN'
-      })
+      const errorType = ['', 'ABORTED', 'NETWORK', 'DECODE', 'SRC_NOT_SUPPORTED'][videoError.code] || 'UNKNOWN'
+      console.warn('[FloatingPlayer] Video error:', { path: media.path, code: videoError.code, errorType })
+
+      // Retry via transcode if not already retried and it's a decode/format error
+      if (!transcodeRetried && (videoError.code === 3 || videoError.code === 4)) {
+        setTranscodeRetried(true)
+        window.api.media.getPlayableUrl(media.id).then(u => {
+          if (u) {
+            setUrl(u as string)
+            setHasError(false)
+            setIsLoading(true)
+            return
+          }
+          setIsLoading(false)
+          setHasError(true)
+        }).catch(() => {
+          setIsLoading(false)
+          setHasError(true)
+        })
+        return
+      }
     } else {
       console.warn('[FloatingPlayer] Media error:', media.path)
     }
-  }, [media.path])
+    setIsLoading(false)
+    setHasError(true)
+  }, [media.path, media.id, transcodeRetried])
 
   const handleTimeUpdate = useCallback(() => {
     if (videoRef.current) {
@@ -199,6 +228,18 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     }
   }, [])
 
+  const handleToggleLike = useCallback(async () => {
+    const wasLiked = isLiked
+    const newRating = wasLiked ? 0 : 5
+    setIsLiked(!wasLiked)
+    try {
+      await window.api.media.setRating(media.id, newRating)
+    } catch (err) {
+      console.error('[FloatingPlayer] Like failed:', err)
+      setIsLiked(wasLiked)
+    }
+  }, [isLiked, media.id])
+
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -227,11 +268,13 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         setIsMuted(prev => !prev)
       } else if (e.key === 'f' || e.key === 'F') {
         toggleFullscreen()
+      } else if (e.key === 'l' || e.key === 'L') {
+        handleToggleLike()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [goToPrev, goToNext, onClose, isFullscreen, togglePlay])
+  }, [goToPrev, goToNext, onClose, isFullscreen, togglePlay, handleToggleLike])
 
   // Fullscreen handling
   const toggleFullscreen = useCallback(async () => {
@@ -462,6 +505,18 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     }
   }, [])
 
+  // Load liked status when media changes
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const stats = await window.api.media.getStats(media.id)
+        if (alive) setIsLiked((stats?.rating ?? 0) >= 5)
+      } catch {}
+    })()
+    return () => { alive = false }
+  }, [media.id])
+
   // Quick actions
   const handleIncO = async () => {
     await window.api.media.incO(media.id)
@@ -469,10 +524,51 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
 
   const handleRate5Stars = async () => {
     await window.api.media.setRating(media.id, 5)
+    setIsLiked(true)
   }
 
   const handleRevealInFolder = async () => {
     await window.api.shell.showItemInFolder(media.path)
+  }
+
+  // Deep AI Analysis for this video - includes tagging, scene detection, and file renaming
+  const handleAiAnalyze = async () => {
+    if (media.type !== 'video') return
+    setIsAnalyzing(true)
+    setAnalysisResult(null)
+    const results: string[] = []
+
+    try {
+      // Step 1: Run AI tagging
+      const tagResult = await window.api.aiTools?.generateTags?.(media.id)
+      if (tagResult?.success && tagResult.applied > 0) {
+        results.push(`${tagResult.applied} tags`)
+      }
+
+      // Step 2: Run deep video analysis
+      const analysisRes = await window.api.videoAnalysis?.analyze?.(media.id)
+      if (analysisRes?.success) {
+        const scenes = analysisRes.analysis?.scenes?.length ?? 0
+        if (scenes > 0) results.push(`${scenes} scenes`)
+      }
+
+      // Step 3: Suggest and apply AI filename
+      const renameResult = await window.api.aiTools?.suggestFilename?.(media.id)
+      if (renameResult?.success && renameResult.suggestedName) {
+        results.push(`renamed`)
+      }
+
+      setAnalysisResult(results.length > 0 ? `AI: ${results.join(', ')}` : 'Analysis complete')
+
+      // Auto-hide result after 5 seconds
+      setTimeout(() => setAnalysisResult(null), 5000)
+    } catch (e: any) {
+      console.error('[AI Analyze] Error:', e)
+      setAnalysisResult(`Error: ${e.message}`)
+      setTimeout(() => setAnalysisResult(null), 3000)
+    } finally {
+      setIsAnalyzing(false)
+    }
   }
 
   const filename = media.filename || media.path.split(/[/\\]/).pop() || 'Unknown'
@@ -570,6 +666,26 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-20">
           <div className="w-10 h-10 border-3 border-white/20 border-t-white rounded-full animate-spin" />
+        </div>
+      )}
+
+      {/* AI Analysis Result */}
+      {analysisResult && (
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 px-4 py-2 bg-purple-500/90 text-white text-sm rounded-lg shadow-lg z-30 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <Sparkles size={14} />
+            {analysisResult}
+          </div>
+        </div>
+      )}
+
+      {/* AI Analyzing Overlay */}
+      {isAnalyzing && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-25">
+          <div className="flex flex-col items-center gap-3">
+            <Sparkles size={32} className="text-purple-400 animate-pulse" />
+            <div className="text-white text-sm">AI Analyzing...</div>
+          </div>
         </div>
       )}
 
@@ -720,7 +836,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                   {isMuted || volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
                 </button>
                 {/* Volume slider */}
-                <div className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-3 bg-black/90 rounded-lg border border-white/20 transition-all duration-200 ${showVolumeSlider ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+                <div className={`absolute bottom-full left-1/2 -translate-x-1/2 px-2 pt-3 pb-5 bg-black/90 rounded-lg border border-white/20 transition-all duration-200 ${showVolumeSlider ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
                   <input
                     type="range"
                     min="0"
@@ -739,6 +855,14 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                 </div>
               </div>
             )}
+
+            <button
+              onClick={handleToggleLike}
+              className={`p-2 rounded-lg transition ${isLiked ? 'bg-pink-500/80 shadow-[0_0_12px_rgba(236,72,153,0.5)]' : 'bg-white/10 hover:bg-pink-500/60'}`}
+              title={isLiked ? 'Unlike (L)' : 'Like (L)'}
+            >
+              <Heart size={16} className={isLiked ? 'fill-current' : ''} />
+            </button>
 
             <button
               onClick={handleIncO}
@@ -763,6 +887,17 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
             >
               <FolderOpen size={16} />
             </button>
+
+            {media.type === 'video' && !AI_DEEP_ANALYSIS_DISABLED && (
+              <button
+                onClick={handleAiAnalyze}
+                disabled={isAnalyzing}
+                className={`p-2 rounded-lg transition ${isAnalyzing ? 'bg-purple-500/50 animate-pulse' : 'bg-purple-500/60 hover:bg-purple-500/80'}`}
+                title="AI Deep Analysis"
+              >
+                <Sparkles size={16} className={isAnalyzing ? 'animate-spin' : ''} />
+              </button>
+            )}
 
             {isFullscreen && (
               <button

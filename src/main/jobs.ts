@@ -45,6 +45,10 @@ export function startJobRunner(db: DB, registry: JobRegistry, onTick?: () => voi
           console.warn(`[Jobs] Retrying job ${job.type} (attempt ${retryCount + 1}/${MAX_RETRIES}): ${e?.message ?? e}`)
         } else {
           db.markJobError(job.id, String(e?.message ?? e))
+          // Mark media as permanently failed so it's hidden from listings
+          if (job.type === 'media:analyze' && payload.mediaId) {
+            db.markAnalyzeError(payload.mediaId)
+          }
           console.error(`[Jobs] Job ${job.type} permanently failed after ${MAX_RETRIES} retries: ${e?.message ?? e}`)
         }
       } finally {

@@ -10,6 +10,9 @@ import { SoundOrganizer } from './services/audio/sound-organizer'
 import { VoiceLineService } from './services/audio/voice-line-service'
 import { NSFWTagger } from './services/tagging/nsfw-tagger'
 import { getSmartTagger } from './services/tagging/smart-tagger'
+import { getHybridTagger } from './services/tagging/hybrid-tagger'
+import { analyzeVideo, isAnalyzerAvailable, type VideoAnalysis } from './services/ai/video-analyzer'
+import { aiCleanupTags, aiGenerateTags, aiSuggestFilename, aiBatchRename, isOllamaAvailable } from './services/ai/ai-library-tools'
 import { diabella, initDiabellaService } from './services/diabella'
 import {
   getSettings,
@@ -69,6 +72,7 @@ import {
 import { toVaultUrl } from './vaultProtocol'
 import { getAICacheService } from './services/ai-cache-service'
 import { getLicenseService } from './services/license-service'
+import { needsTranscode, transcodeToMp4, getTranscodedPath } from './services/transcode'
 
 type OnDirsChanged = (newDirs: string[]) => Promise<void>
 
@@ -315,7 +319,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     const q = opts?.q ?? opts?.query ?? ''
     const type = opts?.type ?? ''
     const tag = opts?.tags?.[0] ?? opts?.tag ?? ''
-    const limit = opts?.limit ?? 200
+    const limit = opts?.limit ?? 10000 // Default to large number to get all
     const offset = opts?.offset ?? 0
     const result = db.listMedia({ q, type, tag, limit, offset })
     return result.items
@@ -390,11 +394,88 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return db.countMedia({ q, type, tag })
   })
 
+  // Move broken/corrupted media files to a separate folder
+  ipcMain.handle('media:moveBroken', async (_ev, mediaId: string, reason?: string) => {
+    try {
+      const media = db.getMedia(mediaId)
+      if (!media) return { success: false, error: 'Media not found' }
+
+      // Create broken files folder on C: drive
+      const brokenDir = 'C:\\VaultBrokenFiles'
+      if (!fs.existsSync(brokenDir)) {
+        fs.mkdirSync(brokenDir, { recursive: true })
+      }
+
+      const filename = path.basename(media.path)
+      const destPath = path.join(brokenDir, filename)
+
+      // Handle duplicate filenames
+      let finalDest = destPath
+      let counter = 1
+      while (fs.existsSync(finalDest)) {
+        const ext = path.extname(filename)
+        const base = path.basename(filename, ext)
+        finalDest = path.join(brokenDir, `${base}_${counter}${ext}`)
+        counter++
+      }
+
+      // Move the file
+      if (fs.existsSync(media.path)) {
+        fs.renameSync(media.path, finalDest)
+        console.log(`[Media] Moved broken file: ${media.path} -> ${finalDest} (reason: ${reason || 'unknown'})`)
+      }
+
+      // Remove from database
+      db.deleteMediaById(mediaId)
+      broadcast('vault:changed')
+
+      return { success: true, movedTo: finalDest }
+    } catch (err: any) {
+      console.error('[Media] Failed to move broken file:', err)
+      return { success: false, error: err.message }
+    }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MEDIA - Playable URL (transcode on demand)
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('media:getPlayableUrl', async (_ev, mediaId: string) => {
+    const media = db.getMedia(mediaId)
+    if (!media) return null
+    const ext = path.extname(media.path).toLowerCase()
+    if (needsTranscode(ext)) {
+      // Check if already transcoded
+      let tp = getTranscodedPath(mediaId)
+      if (!tp) {
+        tp = await transcodeToMp4(media.path, mediaId)
+        db.setTranscodedPath(mediaId, tp)
+      }
+      return toVaultUrl(tp)
+    }
+    return toVaultUrl(media.path)
+  })
+
+  ipcMain.handle('media:getLoudnessPeak', async (_ev, mediaId: string) => {
+    return db.getLoudnessPeakTime(mediaId)
+  })
+
   // ═══════════════════════════════════════════════════════════════════════════
   // TAGS
   // ═══════════════════════════════════════════════════════════════════════════
   ipcMain.handle('tags:list', async () => {
     return db.listTags()
+  })
+
+  // Get tags with media counts for filtering/suggestions
+  ipcMain.handle('tags:listWithCounts', async () => {
+    const result = db.raw.prepare(`
+      SELECT t.id, t.name, COUNT(DISTINCT mt.mediaId) as count
+      FROM tags t
+      LEFT JOIN media_tags mt ON mt.tagId = t.id
+      GROUP BY t.id, t.name
+      ORDER BY count DESC, t.name ASC
+    `).all() as Array<{ id: string; name: string; count: number }>
+    return result
   })
 
   ipcMain.handle('tags:forMedia', async (_ev, mediaId: string) => {
@@ -613,17 +694,20 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   // ═══════════════════════════════════════════════════════════════════════════
   ipcMain.handle('daylist:getToday', async (_ev, opts?: any) => {
     const limit = opts?.limit ?? 50
-    return db.daylistGenerateToday(limit)
+    const intensity = opts?.intensity ?? 3
+    return db.daylistGenerateToday(limit, intensity)
   })
 
   ipcMain.handle('daylist:generateToday', async (_ev, opts?: any) => {
     const limit = opts?.limit ?? 50
-    return db.daylistGenerateToday(limit)
+    const intensity = opts?.intensity ?? 3
+    return db.daylistGenerateToday(limit, intensity)
   })
 
   ipcMain.handle('daylist:regenerate', async (_ev, opts?: any) => {
     const limit = opts?.limit ?? 50
-    return db.daylistGenerateToday(limit)
+    const intensity = opts?.intensity ?? 3
+    return db.daylistGenerateToday(limit, intensity)
   })
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -641,7 +725,20 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   ipcMain.handle('thumbs:rebuildAll', async () => {
-    return true
+    // Re-enqueue all media for analysis to capture dimensions
+    const allMedia = db.listMedia({ limit: 100000, offset: 0 })
+    let enqueued = 0
+    for (const m of allMedia.items) {
+      db.enqueueJob('media:analyze', {
+        mediaId: m.id,
+        path: m.path,
+        type: m.type,
+        mtimeMs: m.mtimeMs,
+        size: m.size
+      }, 0)
+      enqueued++
+    }
+    return { enqueued }
   })
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -950,7 +1047,82 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   // ═══════════════════════════════════════════════════════════════════════════
   // VAULT / MISC
   // ═══════════════════════════════════════════════════════════════════════════
+
+  // Clean up stale database entries (files that no longer exist)
+  ipcMain.handle('vault:cleanup', async () => {
+    try {
+      const allMedia = db.listMedia({ limit: 100000 }).items
+      let removed = 0
+      let checked = 0
+      const missing: string[] = []
+
+      console.log(`[Cleanup] Checking ${allMedia.length} media entries...`)
+
+      // Show first few paths for debugging
+      if (allMedia.length > 0) {
+        console.log(`[Cleanup] Sample paths:`)
+        for (let i = 0; i < Math.min(3, allMedia.length); i++) {
+          const exists = fs.existsSync(allMedia[i].path)
+          console.log(`  ${allMedia[i].path} -> exists: ${exists}`)
+        }
+      }
+
+      for (const media of allMedia) {
+        checked++
+        // Normalize path for Windows
+        const normalizedPath = media.path.replace(/\//g, '\\')
+        const exists = fs.existsSync(normalizedPath) || fs.existsSync(media.path)
+
+        if (!exists) {
+          // File no longer exists - remove from database
+          db.deleteMediaById(media.id)
+          removed++
+          if (missing.length < 10) {
+            missing.push(`${media.filename} (${media.path})`)
+          }
+          if (removed <= 5) {
+            console.log(`[Cleanup] Removing: ${media.path}`)
+          }
+        }
+
+        // Log progress every 500 items
+        if (checked % 500 === 0) {
+          console.log(`[Cleanup] Checked ${checked}/${allMedia.length}, removed ${removed}`)
+        }
+      }
+
+      console.log(`[Cleanup] Done! Removed ${removed} stale entries from ${checked} total`)
+      if (removed > 0) {
+        broadcast('vault:changed')
+      }
+
+      return {
+        success: true,
+        checked: allMedia.length,
+        removed,
+        examples: missing
+      }
+    } catch (e: any) {
+      console.error('[Cleanup] Error:', e)
+      return { success: false, error: e.message }
+    }
+  })
+
   ipcMain.handle('vault:rescan', async () => {
+    // First clean up stale entries
+    const allMedia = db.listMedia({ limit: 100000 }).items
+    let removed = 0
+    for (const media of allMedia) {
+      if (!fs.existsSync(media.path)) {
+        db.deleteMediaById(media.id)
+        removed++
+      }
+    }
+    if (removed > 0) {
+      console.log(`[Rescan] Cleaned up ${removed} stale entries`)
+    }
+
+    // Then rescan directories
     const dirs = getMediaDirs()
     await onDirsChanged(dirs)
     return true
@@ -1535,6 +1707,358 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HYBRID TAGGING - AI-powered multi-tier tagging
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Check if vision AI is available (Ollama running)
+  ipcMain.handle('hybridTag:isVisionAvailable', async () => {
+    const tagger = getHybridTagger()
+    return tagger.isVisionAvailable()
+  })
+
+  // Tag a single media item with hybrid approach
+  ipcMain.handle('hybridTag:tagMedia', async (_ev, mediaId: string) => {
+    try {
+      const media = db.getMedia(mediaId)
+      if (!media) return { success: false, error: 'Media not found' }
+
+      const tagger = getHybridTagger()
+      const result = await tagger.tagMedia(media)
+
+      return { success: true, result }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Apply hybrid tags to a media item
+  ipcMain.handle('hybridTag:applyToMedia', async (_ev, mediaId: string) => {
+    try {
+      const media = db.getMedia(mediaId)
+      if (!media) return { success: false, error: 'Media not found' }
+
+      const tagger = getHybridTagger()
+      const result = await tagger.tagMedia(media)
+
+      // Apply the tags
+      for (const tag of result.tags) {
+        db.addTagToMedia(mediaId, tag.name)
+      }
+
+      broadcast('vault:changed')
+      return {
+        success: true,
+        appliedTags: result.tags.map(t => t.name),
+        result
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Auto-tag all untagged media using hybrid approach
+  ipcMain.handle('hybridTag:autoTagAll', async (_ev, options?: {
+    onlyUntagged?: boolean
+    maxItems?: number
+    useVision?: boolean
+  }) => {
+    try {
+      const onlyUntagged = options?.onlyUntagged ?? true
+      const maxItems = options?.maxItems ?? 10000
+      const useVision = options?.useVision ?? true
+
+      const tagger = getHybridTagger({ useVision })
+
+      // Get all media to process (videos and images)
+      const allMedia = db.listMedia({ q: '', type: '', tag: '', limit: maxItems, offset: 0 })
+      let toProcess = allMedia.items.filter(m => m.type === 'video' || m.type === 'image' || m.type === 'gif')
+
+      console.log(`[HybridTag] Found ${toProcess.length} media items total`)
+
+      if (onlyUntagged) {
+        // Filter to only items with no tags
+        toProcess = toProcess.filter(m => {
+          const tags = db.listMediaTags(m.id)
+          return tags.length === 0
+        })
+        console.log(`[HybridTag] ${toProcess.length} videos have no tags`)
+      }
+
+      toProcess = toProcess.slice(0, maxItems)
+      console.log(`[HybridTag] Processing ${toProcess.length} videos`)
+
+      let processed = 0
+      let tagged = 0
+      const results: Array<{ mediaId: string; filename: string; tags: string[]; methods: string[] }> = []
+
+      // Broadcast initial progress
+      broadcast('hybridTag:progress', { processed: 0, total: toProcess.length, tagged: 0 })
+
+      for (const media of toProcess) {
+        console.log(`[HybridTag] ${processed + 1}/${toProcess.length}: ${media.filename}`)
+
+        try {
+          const result = await tagger.tagMedia(media)
+
+          if (result.tags.length > 0) {
+            for (const tag of result.tags) {
+              db.addTagToMedia(media.id, tag.name)
+            }
+            results.push({
+              mediaId: media.id,
+              filename: media.filename,
+              tags: result.tags.map(t => t.name),
+              methods: result.methodsUsed
+            })
+            tagged++
+            console.log(`[HybridTag] Tagged with: ${result.tags.map(t => t.name).join(', ')}`)
+          }
+        } catch (e: any) {
+          console.error(`[HybridTag] Failed: ${e.message}`)
+        }
+
+        processed++
+
+        // Broadcast progress on every item
+        broadcast('hybridTag:progress', {
+          processed,
+          total: toProcess.length,
+          tagged
+        })
+      }
+
+      broadcast('vault:changed')
+      return {
+        success: true,
+        processed,
+        tagged,
+        results: results.slice(0, 50) // Return first 50 for display
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Get tag suggestions for a media item (without applying)
+  ipcMain.handle('hybridTag:getSuggestions', async (_ev, mediaId: string) => {
+    try {
+      const media = db.getMedia(mediaId)
+      if (!media) return { success: false, error: 'Media not found' }
+
+      const existingTags = db.listMediaTags(mediaId).map(t => t.name)
+      const tagger = getHybridTagger()
+      const suggestions = await tagger.getSuggestionsForMedia(media, existingTags)
+
+      return { success: true, suggestions }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AI VIDEO ANALYSIS - Scene detection, tagging, summaries, highlights
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Check if video analyzer is available
+  ipcMain.handle('videoAnalysis:isAvailable', async () => {
+    return isAnalyzerAvailable()
+  })
+
+  // Analyze a single video
+  ipcMain.handle('videoAnalysis:analyze', async (_ev, mediaId: string) => {
+    try {
+      const media = db.getMedia(mediaId)
+      if (!media) return { success: false, error: 'Media not found' }
+      if (media.type !== 'video') return { success: false, error: 'Not a video' }
+
+      const existingTags = db.listTags().map(t => t.name)
+
+      const analysis = await analyzeVideo(
+        media.path,
+        mediaId,
+        existingTags,
+        (progress) => {
+          broadcast('videoAnalysis:progress', { mediaId, ...progress })
+        }
+      )
+
+      // Save analysis to database
+      const id = `analysis_${mediaId}`
+      db.raw.prepare(`
+        INSERT INTO video_analyses (id, mediaId, duration, summary, scenesJson, tagsJson, highlightsJson, bestThumbnailTime, analyzedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(mediaId) DO UPDATE SET
+          duration=excluded.duration,
+          summary=excluded.summary,
+          scenesJson=excluded.scenesJson,
+          tagsJson=excluded.tagsJson,
+          highlightsJson=excluded.highlightsJson,
+          bestThumbnailTime=excluded.bestThumbnailTime,
+          analyzedAt=excluded.analyzedAt
+      `).run(
+        id,
+        mediaId,
+        analysis.duration,
+        analysis.summary,
+        JSON.stringify(analysis.scenes),
+        JSON.stringify(analysis.tags),
+        JSON.stringify(analysis.highlights),
+        analysis.bestThumbnailTime,
+        analysis.analyzedAt
+      )
+
+      // Apply discovered tags to the media
+      for (const tag of analysis.tags) {
+        if (tag.confidence >= 0.5) {
+          db.addTagToMedia(mediaId, tag.name)
+
+          // Mark new AI-generated tags
+          if (tag.isNew) {
+            db.raw.prepare(`UPDATE tags SET isAiGenerated = 1 WHERE name = ?`).run(tag.name)
+          }
+        }
+      }
+
+      broadcast('vault:changed')
+      return { success: true, analysis }
+    } catch (e: any) {
+      console.error('[VideoAnalysis] Failed:', e)
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Get analysis for a video
+  ipcMain.handle('videoAnalysis:get', async (_ev, mediaId: string) => {
+    try {
+      const row = db.raw.prepare(`
+        SELECT * FROM video_analyses WHERE mediaId = ? LIMIT 1
+      `).get(mediaId) as any
+
+      if (!row) return { success: false, error: 'No analysis found' }
+
+      return {
+        success: true,
+        analysis: {
+          mediaId: row.mediaId,
+          duration: row.duration,
+          summary: row.summary,
+          scenes: JSON.parse(row.scenesJson || '[]'),
+          tags: JSON.parse(row.tagsJson || '[]'),
+          highlights: JSON.parse(row.highlightsJson || '[]'),
+          bestThumbnailTime: row.bestThumbnailTime,
+          analyzedAt: row.analyzedAt
+        }
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Batch analyze videos
+  ipcMain.handle('videoAnalysis:analyzeBatch', async (_ev, options?: { limit?: number; onlyUnanalyzed?: boolean }) => {
+    try {
+      const limit = options?.limit ?? 10
+      const onlyUnanalyzed = options?.onlyUnanalyzed ?? true
+
+      const allVideos = db.listMedia({ q: '', type: 'video', tag: '', limit: limit * 2, offset: 0 }).items
+
+      let toAnalyze = allVideos
+
+      if (onlyUnanalyzed) {
+        const analyzedIds = new Set(
+          (db.raw.prepare(`SELECT mediaId FROM video_analyses`).all() as Array<{ mediaId: string }>)
+            .map(r => r.mediaId)
+        )
+        toAnalyze = allVideos.filter(v => !analyzedIds.has(v.id))
+      }
+
+      toAnalyze = toAnalyze.slice(0, limit)
+
+      const existingTags = db.listTags().map(t => t.name)
+      const results: Array<{ mediaId: string; success: boolean; tagsFound: number }> = []
+
+      for (let i = 0; i < toAnalyze.length; i++) {
+        const video = toAnalyze[i]
+        broadcast('videoAnalysis:batchProgress', {
+          current: i + 1,
+          total: toAnalyze.length,
+          currentVideo: video.filename
+        })
+
+        try {
+          const analysis = await analyzeVideo(video.path, video.id, existingTags)
+
+          // Save to database
+          const id = `analysis_${video.id}`
+          db.raw.prepare(`
+            INSERT INTO video_analyses (id, mediaId, duration, summary, scenesJson, tagsJson, highlightsJson, bestThumbnailTime, analyzedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(mediaId) DO UPDATE SET
+              duration=excluded.duration,
+              summary=excluded.summary,
+              scenesJson=excluded.scenesJson,
+              tagsJson=excluded.tagsJson,
+              highlightsJson=excluded.highlightsJson,
+              bestThumbnailTime=excluded.bestThumbnailTime,
+              analyzedAt=excluded.analyzedAt
+          `).run(
+            id,
+            video.id,
+            analysis.duration,
+            analysis.summary,
+            JSON.stringify(analysis.scenes),
+            JSON.stringify(analysis.tags),
+            JSON.stringify(analysis.highlights),
+            analysis.bestThumbnailTime,
+            analysis.analyzedAt
+          )
+
+          // Apply tags
+          for (const tag of analysis.tags) {
+            if (tag.confidence >= 0.5) {
+              db.addTagToMedia(video.id, tag.name)
+            }
+          }
+
+          results.push({ mediaId: video.id, success: true, tagsFound: analysis.tags.length })
+        } catch (e) {
+          console.error(`[VideoAnalysis] Failed for ${video.filename}:`, e)
+          results.push({ mediaId: video.id, success: false, tagsFound: 0 })
+        }
+      }
+
+      broadcast('vault:changed')
+      return { success: true, analyzed: results.filter(r => r.success).length, results }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Get tags with visibility info
+  ipcMain.handle('tags:listWithVisibility', async () => {
+    const tags = db.raw.prepare(`
+      SELECT t.*, COUNT(mt.mediaId) as mediaCount
+      FROM tags t
+      LEFT JOIN media_tags mt ON mt.tagId = t.id
+      GROUP BY t.id
+      ORDER BY mediaCount DESC, t.name ASC
+    `).all() as Array<{ id: string; name: string; isHidden: number; isAiGenerated: number; mediaCount: number }>
+
+    return tags.map(t => ({
+      ...t,
+      isHidden: t.isHidden === 1,
+      isAiGenerated: t.isAiGenerated === 1
+    }))
+  })
+
+  // Toggle tag visibility
+  ipcMain.handle('tags:setVisibility', async (_ev, tagName: string, isHidden: boolean) => {
+    db.raw.prepare(`UPDATE tags SET isHidden = ? WHERE name = ?`).run(isHidden ? 1 : 0, tagName)
+    broadcast('vault:changed')
+    return { success: true }
+  })
+
   // Optimize/clean up media filename
   ipcMain.handle('media:optimizeName', async (_ev, mediaId: string) => {
     try {
@@ -1596,6 +2120,366 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
         newPath
       }
     } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Batch optimize all filenames
+  ipcMain.handle('media:optimizeAllNames', async () => {
+    try {
+      const { items: allMedia } = db.listMedia({ limit: 50000 })
+      let optimized = 0
+      let skipped = 0
+      let failed = 0
+      const errors: string[] = []
+
+      for (const media of allMedia) {
+        try {
+          const oldPath = media.path
+
+          // Check if file exists first
+          if (!fs.existsSync(oldPath)) {
+            skipped++
+            continue
+          }
+
+          const dir = path.dirname(oldPath)
+          const ext = path.extname(oldPath)
+          const oldName = path.basename(oldPath, ext)
+
+          // Clean up the filename
+          let newName = oldName
+            // Remove common URL/platform prefixes
+            .replace(/^(https?_|www_|xvideos_|pornhub_|xnxx_|xhamster_|redtube_|spankbang_|youporn_|join_us_|more_at_)/gi, '')
+            // Remove Telegram/social handles
+            .replace(/(@\w+|telegram[_\s]?\d*|\d{3,}$)/gi, '')
+            // Convert underscores to spaces
+            .replace(/_/g, ' ')
+            // Remove HD/quality indicators at end
+            .replace(/[\s_-]*(HD|1080p|720p|480p|4K|UHD|HQ)$/gi, '')
+            // Remove common gibberish patterns (random hex strings, video IDs)
+            .replace(/[_-]?[a-f0-9]{24,}/gi, '')
+            .replace(/[-_]?video[-_]?\d{6,}/gi, '')
+            // Remove Windows-invalid characters
+            .replace(/[<>:"/\\|?*]/g, '')
+            // Clean up multiple spaces
+            .replace(/\s+/g, ' ')
+            // Trim
+            .trim()
+
+          // If name is unchanged or too short, skip
+          if (newName === oldName || newName.length < 3) {
+            skipped++
+            continue
+          }
+
+          // Capitalize first letter of each word
+          newName = newName
+            .split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join(' ')
+
+          const newPath = path.join(dir, newName + ext)
+
+          // Check if new path already exists
+          if (fs.existsSync(newPath) && newPath.toLowerCase() !== oldPath.toLowerCase()) {
+            skipped++
+            continue
+          }
+
+          // Rename the file
+          if (newPath !== oldPath) {
+            fs.renameSync(oldPath, newPath)
+            // Update database
+            db.updateMediaPath(media.id, newPath, newName)
+            optimized++
+            console.log(`[OptimizeNames] Renamed: ${oldName} -> ${newName}`)
+          }
+        } catch (e: any) {
+          failed++
+          if (errors.length < 5) {
+            errors.push(`${media.filename || media.path}: ${e.message}`)
+          }
+        }
+      }
+
+      broadcast('vault:changed')
+      return {
+        success: true,
+        optimized,
+        skipped,
+        failed,
+        total: allMedia.length,
+        errors: errors.length > 0 ? errors : undefined
+      }
+    } catch (e: any) {
+      console.error('[OptimizeNames] Error:', e)
+      return { success: false, error: e.message }
+    }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AI LIBRARY TOOLS - Tag cleaning, tag creation, AI file renaming
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Check if AI is available
+  ipcMain.handle('aiTools:isAvailable', async () => {
+    return isOllamaAvailable()
+  })
+
+  // AI-powered tag cleanup - merge similar, fix typos, normalize
+  ipcMain.handle('aiTools:cleanupTags', async () => {
+    try {
+      const allTags = db.listTags()
+      const tagsWithCounts = allTags.map(t => {
+        const count = db.listMedia({ q: '', type: '', tag: t.name, limit: 1, offset: 0 }).total
+        return { name: t.name, count }
+      })
+
+      console.log(`[AI Tags] Starting cleanup of ${tagsWithCounts.length} tags`)
+
+      const result = await aiCleanupTags(tagsWithCounts, (current, total, tag) => {
+        broadcast('aiTools:tagCleanupProgress', { current, total, tag })
+      })
+
+      if (!result.success) {
+        return { success: false, error: 'AI not available' }
+      }
+
+      // Apply the changes
+      let applied = 0
+      for (const r of result.results) {
+        if (r.action === 'delete') {
+          // Remove tag from all media
+          const media = db.listMedia({ q: '', type: '', tag: r.original, limit: 10000, offset: 0 })
+          for (const m of media.items) {
+            db.removeTagFromMedia(m.id, r.original)
+          }
+          console.log(`[AI Tags] Deleted: ${r.original} (${r.reason})`)
+          applied++
+        } else if (r.action === 'rename' && r.cleaned !== r.original) {
+          // Rename tag on all media
+          const media = db.listMedia({ q: '', type: '', tag: r.original, limit: 10000, offset: 0 })
+          for (const m of media.items) {
+            db.removeTagFromMedia(m.id, r.original)
+            db.addTagToMedia(m.id, r.cleaned)
+          }
+          console.log(`[AI Tags] Renamed: ${r.original} -> ${r.cleaned} (${r.reason})`)
+          applied++
+        } else if (r.action === 'merge' && r.mergeInto) {
+          // Merge tag into another
+          const media = db.listMedia({ q: '', type: '', tag: r.original, limit: 10000, offset: 0 })
+          for (const m of media.items) {
+            db.removeTagFromMedia(m.id, r.original)
+            db.addTagToMedia(m.id, r.mergeInto)
+          }
+          console.log(`[AI Tags] Merged: ${r.original} -> ${r.mergeInto} (${r.reason})`)
+          applied++
+        }
+      }
+
+      broadcast('vault:changed')
+      return {
+        success: true,
+        analyzed: result.results.length,
+        merged: result.merged,
+        renamed: result.renamed,
+        deleted: result.deleted,
+        applied
+      }
+    } catch (e: any) {
+      console.error('[AI Tags] Cleanup error:', e)
+      return { success: false, error: e.message }
+    }
+  })
+
+  // AI-powered tag generation - creates new tags dynamically
+  ipcMain.handle('aiTools:generateTags', async (_ev, mediaId: string) => {
+    try {
+      const media = db.getMedia(mediaId)
+      if (!media) return { success: false, error: 'Media not found' }
+
+      const existingTags = db.listMediaTags(mediaId).map(t => t.name)
+      const allLibraryTags = db.listTags().map(t => t.name)
+
+      const result = await aiGenerateTags(media, existingTags, allLibraryTags)
+
+      if (!result.success) {
+        return { success: false, error: 'AI not available or failed' }
+      }
+
+      // Apply the new tags
+      let applied = 0
+      for (const tag of result.tags) {
+        if (tag.confidence >= 0.4) {
+          db.addTagToMedia(mediaId, tag.name)
+          applied++
+
+          // Mark as AI-generated if new
+          if (tag.isNew) {
+            db.raw.prepare(`UPDATE tags SET isAiGenerated = 1 WHERE name = ?`).run(tag.name)
+          }
+        }
+      }
+
+      broadcast('vault:changed')
+      return {
+        success: true,
+        tags: result.tags,
+        applied,
+        newTagsCreated: result.tags.filter(t => t.isNew).length
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // AI-powered batch tag generation for entire library
+  ipcMain.handle('aiTools:generateTagsAll', async (_ev, options?: { maxItems?: number; onlyUntagged?: boolean }) => {
+    try {
+      const maxItems = options?.maxItems ?? 500
+      const onlyUntagged = options?.onlyUntagged ?? false
+
+      let allMedia = db.listMedia({ limit: maxItems * 2 }).items
+
+      if (onlyUntagged) {
+        allMedia = allMedia.filter(m => {
+          const tags = db.listMediaTags(m.id)
+          return tags.length === 0
+        })
+      }
+
+      allMedia = allMedia.slice(0, maxItems)
+      const allLibraryTags = db.listTags().map(t => t.name)
+
+      let totalApplied = 0
+      let totalNewTags = 0
+      let processed = 0
+
+      for (const media of allMedia) {
+        broadcast('aiTools:generateTagsProgress', {
+          current: processed + 1,
+          total: allMedia.length,
+          filename: media.filename
+        })
+
+        try {
+          const existingTags = db.listMediaTags(media.id).map(t => t.name)
+          const result = await aiGenerateTags(media, existingTags, allLibraryTags)
+
+          if (result.success) {
+            for (const tag of result.tags) {
+              if (tag.confidence >= 0.4) {
+                db.addTagToMedia(media.id, tag.name)
+                totalApplied++
+
+                if (tag.isNew) {
+                  db.raw.prepare(`UPDATE tags SET isAiGenerated = 1 WHERE name = ?`).run(tag.name)
+                  totalNewTags++
+                  // Add to library tags so subsequent items can use it
+                  allLibraryTags.push(tag.name)
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error(`[AI Tags] Failed for ${media.filename}:`, e)
+        }
+
+        processed++
+      }
+
+      broadcast('vault:changed')
+      return {
+        success: true,
+        processed,
+        tagsApplied: totalApplied,
+        newTagsCreated: totalNewTags
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // AI-powered filename suggestion
+  ipcMain.handle('aiTools:suggestFilename', async (_ev, mediaId: string) => {
+    try {
+      const media = db.getMedia(mediaId)
+      if (!media) return { success: false, error: 'Media not found' }
+
+      const tags = db.listMediaTags(mediaId).map(t => t.name)
+      const result = await aiSuggestFilename(media, tags)
+
+      return {
+        success: result.success,
+        currentName: media.filename,
+        suggestedName: result.suggestedName,
+        reason: result.reason
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // AI-powered batch file renaming
+  ipcMain.handle('aiTools:renameAll', async (_ev, options?: { maxItems?: number }) => {
+    try {
+      const maxItems = options?.maxItems ?? 500
+      const allMedia = db.listMedia({ limit: maxItems }).items
+
+      console.log(`[AI Rename] Starting AI rename for ${allMedia.length} items`)
+
+      const result = await aiBatchRename(
+        allMedia,
+        (mediaId) => db.listMediaTags(mediaId).map(t => t.name),
+        async (mediaId, newName) => {
+          const media = db.getMedia(mediaId)
+          if (!media) {
+            console.log(`[AI Rename] Media not found: ${mediaId}`)
+            return false
+          }
+
+          const oldPath = media.path
+          const dir = path.dirname(oldPath)
+          const newPath = path.join(dir, newName)
+
+          // Check if file exists
+          if (!fs.existsSync(oldPath)) {
+            console.log(`[AI Rename] File not found: ${oldPath}`)
+            return false
+          }
+
+          // Check if new path already exists
+          if (fs.existsSync(newPath) && newPath.toLowerCase() !== oldPath.toLowerCase()) {
+            console.log(`[AI Rename] Target already exists: ${newPath}`)
+            return false
+          }
+
+          // Rename the actual file on disk
+          console.log(`[AI Rename] RENAMING FILE: ${oldPath} -> ${newPath}`)
+          fs.renameSync(oldPath, newPath)
+
+          // Update database with new path and filename
+          const newFilename = path.basename(newPath, path.extname(newPath))
+          db.updateMediaPath(mediaId, newPath, newFilename)
+          console.log(`[AI Rename] SUCCESS: ${media.filename} -> ${newFilename}`)
+          return true
+        },
+        (current, total, filename) => {
+          broadcast('aiTools:renameProgress', { current, total, filename })
+        }
+      )
+
+      broadcast('vault:changed')
+      return {
+        success: true,
+        renamed: result.renamed,
+        skipped: result.skipped,
+        failed: result.failed,
+        errors: result.errors.length > 0 ? result.errors : undefined
+      }
+    } catch (e: any) {
+      console.error('[AI Rename] Error:', e)
       return { success: false, error: e.message }
     }
   })

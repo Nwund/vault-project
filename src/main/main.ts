@@ -1,5 +1,5 @@
 // File: src/main/main.ts
-import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -15,6 +15,7 @@ import { broadcastToggle, logMain, registerDiagnosticsIpc } from './diagnostics'
 import { registerVaultProtocol } from './vaultProtocol'
 import { makeImageThumb, makeVideoThumb, probeVideoDurationSec, probeMediaDimensions } from './thumbs'
 import { initDiabellaService } from './services/diabella'
+import { analyzeLoudness } from './services/loudness'
 
 const DEFAULT_DEV_SERVER_URL = 'http://localhost:5173/'
 
@@ -62,6 +63,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
     show: false,
     backgroundColor: '#0B0B0C',
     titleBarStyle: 'hiddenInset',
+    autoHideMenuBar: true,
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -108,6 +110,7 @@ function closeAllWatchers(watchers: FSWatcher[]) {
 }
 
 async function main() {
+  Menu.setApplicationMenu(null)
   registerDiagnosticsIpc()
   registerVaultProtocol()
 
@@ -134,6 +137,27 @@ async function main() {
   const removedCount = cleanupMissingFiles(db, dirs)
   if (removedCount > 0) {
     logMain('info', 'Cleaned up missing files', { count: removedCount })
+  }
+
+  // Clean up stale thumbnails and analyzeError flags from previous installs
+  {
+    const allMedia = db.listAllMediaPaths()
+    let staleThumbs = 0
+    let clearedErrors = 0
+    for (const { id } of allMedia) {
+      const row = db.getMedia(id)
+      if (!row) continue
+      if (row.thumbPath && !fs.existsSync(row.thumbPath)) {
+        db.clearThumbPath(id)
+        staleThumbs++
+      }
+      if (row.analyzeError) {
+        db.clearAnalyzeError(id)
+        clearedErrors++
+      }
+    }
+    if (staleThumbs > 0) logMain('info', 'Cleared stale thumb paths', { count: staleThumbs })
+    if (clearedErrors > 0) logMain('info', 'Cleared stale analyzeError flags', { count: clearedErrors })
   }
 
   await rescanAll(db, dirs)
@@ -198,6 +222,16 @@ async function main() {
           if (!thumbPath && !cur.thumbPath) {
             console.warn(`[Thumbs] Video thumb returned null for ${p.path}`)
             throw new Error(`Thumbnail generation failed for video: ${p.path}`)
+          }
+
+          // Run loudness analysis (non-blocking — failure doesn't break the job)
+          try {
+            const loudness = await analyzeLoudness(p.path, durationSec)
+            if (loudness?.peakTime != null) {
+              db2.setLoudnessPeakTime(p.mediaId, loudness.peakTime)
+            }
+          } catch (e: any) {
+            console.warn(`[Loudness] Analysis failed for ${p.path}:`, e?.message)
           }
         } else {
           const dimensions = await probeMediaDimensions(p.path)
