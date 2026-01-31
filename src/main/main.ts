@@ -14,7 +14,7 @@ import { startJobRunner } from './jobs'
 import { broadcastToggle, logMain, registerDiagnosticsIpc } from './diagnostics'
 import { registerVaultProtocol } from './vaultProtocol'
 import { makeImageThumb, makeVideoThumb, probeVideoDurationSec, probeMediaDimensions } from './thumbs'
-import { initDiabellaService } from './services/diabella'
+
 import { analyzeLoudness } from './services/loudness'
 
 const DEFAULT_DEV_SERVER_URL = 'http://localhost:5173/'
@@ -113,10 +113,6 @@ async function main() {
   Menu.setApplicationMenu(null)
   registerDiagnosticsIpc()
   registerVaultProtocol()
-
-  // Initialize Diabella AI companion service
-  initDiabellaService()
-  logMain('info', 'Diabella service initialized')
 
   const db = createDb()
 

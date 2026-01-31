@@ -1,48 +1,7 @@
 // File: src/renderer/App.tsx
-// ============================================
-// MAINTENANCE FLAGS - Set to true to disable features
-// ============================================
-const THEMES_DISABLED = false          // Disable theme switching, use default obsidian
-const APPEARANCE_DISABLED = true       // Disable all appearance settings (pixel bg, cursors, effects)
-const AI_DEEP_ANALYSIS_DISABLED = true // Disable AI deep analysis and tag analysis for maintenance
-// ============================================
-
-// ============================================
-// TODO: DISABLED FEATURES - STATUS REPORT
-// ============================================
-//
-// [DIABELLA - AI COMPANION] (95% complete)
-// - Backend: Fully implemented (chat, avatar, voice, sounds)
-// - Frontend: DiabellaPage ready but disabled
-// - NEEDS: Move Venice API keys from hardcoded to environment variables
-//   Files: src/main/services/diabella/chat-engine.ts, avatar-generator.ts, voice-engine.ts
-// - NEEDS: Implement AI provider selection UI in Settings
-// - NEEDS: Add voice playback UI to DiabellaPage (audio element, preset selector)
-// - TO ENABLE: Set MAINTENANCE_MODE.diabella = false
-//
-// [SESSIONS/PLAYLISTS] (100% complete, ready to enable)
-// - Backend: All IPC handlers working (create, rename, delete, reorder, export M3U)
-// - Frontend: PlaylistsPage fully implemented with drag-and-drop
-// - NEEDS: Implement Mood feature (UI buttons exist but no handlers)
-// - TO ENABLE: Set MAINTENANCE_MODE.playlists = false
-//
-// [STATS] (95% complete)
-// - Backend: GoonStats tracking with 20+ metrics, achievements
-// - Frontend: StatsPage with session controls, stats grid, achievements display
-// - NEEDS: Implement activity heatmap visualization (type exists but not rendered)
-// - NEEDS: Verify achievement unlock triggers all work
-// - TO ENABLE: Set MAINTENANCE_MODE.stats = false
-//
-// [THEMES] (100% complete, enabled but restricted)
-// - 20 full themes implemented (10 classic + 10 goon)
-// - Erotic animations CSS system built-in
-// - NEEDS: Remove src/renderer/themes.ts (old file) to avoid confusion
-// - NEEDS: Ensure injectEroticAnimations() is called at startup
-// - TO ENABLE FULL: Set THEMES_DISABLED = false
-//
-// ============================================
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import {
   themes,
   THEME_LIST,
@@ -56,25 +15,16 @@ import {
 } from './styles/themes'
 import { useDebounce, toFileUrlCached } from './hooks/usePerformance'
 import { useVideoPreview } from './hooks/useVideoPreview'
-import { DiabellaAvatar } from './components/DiabellaAvatar'
-import { TagSelector } from './components/TagSelector'
-// Overlays disabled for cleaner look - keeping pixel background only
-import { useHeatLevel } from './components/HeatOverlay'
-// import { ArousalEffects } from './components/VisualStimulants'
-import { PixelBackground, type PixelTheme, clearPixelThemeColors, THEME_COLORS } from './components/PixelBackground'
 
-// Import pixel cursors
-import cursorDefault from './assets/cursors/cursor.png'
-import cursorPointer from './assets/cursors/pointer.png'
-import cursorGrab from './assets/cursors/grab.png'
+import { TagSelector } from './components/TagSelector'
+import { useHeatLevel } from './components/HeatOverlay'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { fisherYatesShuffle, shuffleTake, randomPick } from './utils/shuffle'
 import { cleanupVideo, useVideoPool, videoPool } from './hooks/useVideoCleanup'
 import { useAnime } from './hooks/useAnime'
 import { useConfetti } from './hooks/useConfetti'
-import { LoginPage } from './pages/LoginPage'
+import { useUiSounds } from './hooks/useUiSounds'
 import { FloatingVideoPlayer } from './components/FloatingVideoPlayer'
-import { FeatureTree } from './components/FeatureTree'
 import {
   Library,
   Repeat,
@@ -105,17 +55,14 @@ import {
   Info,
   Crown,
   Zap,
-  Wrench,
-  Construction,
   Maximize2,
-  Tag,
-  GitBranch
+  Tag
 } from 'lucide-react'
 import { playGreeting, playSoundFromCategory, playClimaxForType, hasSounds } from './utils/soundPlayer'
 
-// ═══════════════════════════════════════════════════════════════════════════
+//
 // GLOBAL TASK CONTEXT - Track running background tasks across the app
-// ═══════════════════════════════════════════════════════════════════════════
+//
 type GlobalTask = {
   id: string
   name: string
@@ -223,6 +170,7 @@ type MediaStatsRow = {
 type VaultSettings = {
   mediaDirs: string[]
   cacheDir: string
+  uiSoundsEnabled?: boolean
   ui: {
     themeId: string
     animations: boolean
@@ -230,7 +178,7 @@ type VaultSettings = {
   goonwall?: {
     tileCount?: number
     tileMinPx?: number
-    layout?: 'mosaic' | 'columns' | 'grid'
+    layout?: 'mosaic' | 'grid'
     intervalSec?: 20 | 30 | 45 | 60 | 90 | 120
     muted?: boolean
     showHud?: boolean
@@ -239,16 +187,11 @@ type VaultSettings = {
     spice?: number
     motifs?: Record<string, string>
   }
-  diabella?: {
-    activePackId?: string
-    packs?: any[]
-  }
 }
 
 declare global {
   interface Window {
     api: any
-    vaultDiagnostics?: any
   }
 }
 
@@ -281,26 +224,14 @@ function formatDuration(sec: number | null | undefined) {
 // Use themes from our theme system
 const THEMES = THEME_LIST.map(t => ({ id: t.id, name: t.name }))
 
-// Features under maintenance - set to true to disable
-const MAINTENANCE_MODE = {
-  diabella: true,   // AI companion - disabled for maintenance
-  playlists: true,  // Sessions - disabled for maintenance
-  stats: true,      // Stats & achievements - disabled for maintenance
-  roadmap: true,    // Roadmap - disabled for maintenance
-  quickmix: true,   // Quick Mix - disabled for maintenance
-  settings: false   // Settings - enabled
-}
-
 const NAV = [
   { id: 'library', name: 'Library' },
   { id: 'goonwall', name: 'Goon Wall' },
-  { id: 'daylist', name: 'Quick Mix', maintenance: MAINTENANCE_MODE.quickmix },
   { id: 'feed', name: 'Feed' },
-  { id: 'playlists', name: 'Sessions', maintenance: MAINTENANCE_MODE.playlists },
-  { id: 'stats', name: 'Stats', maintenance: MAINTENANCE_MODE.stats },
-  { id: 'diabella', name: 'Diabella', maintenance: MAINTENANCE_MODE.diabella },
-  { id: 'roadmap', name: 'Roadmap', maintenance: MAINTENANCE_MODE.roadmap },
-  { id: 'settings', name: 'Settings', maintenance: MAINTENANCE_MODE.settings },
+  { id: 'daylist', name: 'Quick Mix' },
+  { id: 'playlists', name: 'Sessions' },
+  { id: 'stats', name: 'Stats' },
+  { id: 'settings', name: 'Settings' },
   { id: 'about', name: 'About' }
 ] as const
 
@@ -310,12 +241,9 @@ const NavIcon: React.FC<{ id: string; active?: boolean }> = ({ id, active }) => 
   switch (id) {
     case 'library': return <Library {...iconProps} />
     case 'goonwall': return <LayoutGrid {...iconProps} />
-    case 'daylist': return <Shuffle {...iconProps} />
     case 'feed': return <Flame {...iconProps} />
     case 'playlists': return <ListMusic {...iconProps} />
     case 'stats': return <BarChart3 {...iconProps} />
-    case 'diabella': return <Heart {...iconProps} />
-    case 'roadmap': return <GitBranch {...iconProps} />
     case 'settings': return <Settings {...iconProps} />
     case 'about': return <Info {...iconProps} />
     default: return null
@@ -347,12 +275,6 @@ export default function App() {
   const [filmGrainEnabled, setFilmGrainEnabled] = useState(false) // Vintage film grain
   const [dreamyHazeEnabled, setDreamyHazeEnabled] = useState(false) // Soft dreamy haze
 
-  // Pixel background settings (simplified - just parallax)
-  const [pixelTheme, setPixelTheme] = useState<PixelTheme>('neonMetropolis')
-  const [pixelBackgroundEnabled, setPixelBackgroundEnabled] = useState(true)
-  const [pixelParallaxStrength, setPixelParallaxStrength] = useState(35)
-  const [pixelOpacity, setPixelOpacity] = useState(40)
-  const [pixelCursorEnabled, setPixelCursorEnabled] = useState(true)
 
   // Global task tracking state
   const [globalTasks, setGlobalTasks] = useState<GlobalTask[]>([])
@@ -379,6 +301,7 @@ export default function App() {
   // Animation hooks for visual effects
   const anime = useAnime()
   const confetti = useConfetti()
+  useUiSounds(settings?.uiSoundsEnabled ?? true)
   const mainContentRef = useRef<HTMLElement>(null)
   const prevPageRef = useRef<string>(page)
 
@@ -450,6 +373,8 @@ export default function App() {
       const s = await window.api.settings.get()
       if (!alive) return
       setSettings(s)
+      // Auto-start session for streak tracking on app launch
+      try { await window.api.goon.startSession() } catch {}
     })()
     return () => {
       alive = false
@@ -458,11 +383,6 @@ export default function App() {
 
   // Apply theme using our theme system
   useEffect(() => {
-    // MAINTENANCE: Themes disabled, always use obsidian
-    if (THEMES_DISABLED) {
-      applyThemeCSS('obsidian')
-      return
-    }
     // Try new settings structure first, fall back to legacy
     const themeId = (settings as any)?.appearance?.themeId ?? settings?.ui?.themeId ?? 'obsidian'
     applyThemeCSS(themeId as ThemeId)
@@ -482,7 +402,7 @@ export default function App() {
   return (
     <GlobalTaskContext.Provider value={globalTaskContextValue}>
     <div
-      className={`h-screen w-screen overflow-hidden ${!APPEARANCE_DISABLED && pixelBackgroundEnabled && pixelTheme !== 'none' ? 'pixel-bg-active' : ''}`}
+      className="h-screen w-screen overflow-hidden"
       style={{ background: 'var(--bg)', ...shakeStyle }}
     >
       {/* Screen shake keyframes */}
@@ -504,30 +424,6 @@ export default function App() {
       )}
 
       {/* Pixel Cursor CSS - disabled during maintenance */}
-      {!APPEARANCE_DISABLED && pixelCursorEnabled && (
-        <style>{`
-          * { cursor: url(${cursorDefault}) 0 0, auto !important; }
-          a, button, [role="button"], input[type="submit"], input[type="button"],
-          .cursor-pointer, [onclick], select, label[for] {
-            cursor: url(${cursorPointer}) 6 0, pointer !important;
-          }
-          .cursor-grab, [draggable="true"] { cursor: url(${cursorGrab}) 8 8, grab !important; }
-          .cursor-grabbing { cursor: url(${cursorGrab}) 8 8, grabbing !important; }
-        `}</style>
-      )}
-
-      {/* Pixel Art Background Layer - disabled during maintenance */}
-      {!APPEARANCE_DISABLED && pixelBackgroundEnabled && pixelTheme !== 'none' && (
-        <PixelBackground
-          theme={pixelTheme}
-          parallaxStrength={pixelParallaxStrength}
-          opacity={pixelOpacity}
-        />
-      )}
-
-      {/* Visual Effects Overlays - DISABLED for cleaner look */}
-      {/* Keep pixel background only, no goon overlays */}
-
       <div className="h-full w-full flex relative">
         {/* Left Sidebar Edge Hover Zone */}
         <div
@@ -582,7 +478,7 @@ export default function App() {
           </div>
 
           <nav className="px-3 pb-4">
-            {NAV.filter((n) => !('maintenance' in n && n.maintenance)).map((n) => {
+            {NAV.map((n) => {
               const isActive = page === n.id
               return (
                 <button
@@ -670,60 +566,25 @@ export default function App() {
                 }}
               />
             </ErrorBoundary>
-          ) : page === 'daylist' ? (
-            MAINTENANCE_MODE.quickmix ? <MaintenancePage featureName="Quick Mix" /> : <ErrorBoundary pageName="Quick Mix"><DaylistPage /></ErrorBoundary>
           ) : page === 'feed' ? (
             <ErrorBoundary pageName="Feed">
               <FeedPage />
             </ErrorBoundary>
           ) : page === 'playlists' ? (
-            MAINTENANCE_MODE.playlists ? <MaintenancePage featureName="Sessions" /> : <ErrorBoundary pageName="Sessions"><PlaylistsPage /></ErrorBoundary>
+            <ErrorBoundary pageName="Sessions"><PlaylistsPage /></ErrorBoundary>
           ) : page === 'stats' ? (
-            MAINTENANCE_MODE.stats ? <MaintenancePage featureName="Stats" /> : <StatsPage confetti={confetti} anime={anime} />
-          ) : page === 'diabella' ? (
-            MAINTENANCE_MODE.diabella ? <MaintenancePage featureName="Diabella AI Companion" /> : (
-              <ErrorBoundary pageName="Diabella">
-                <DiabellaPage />
-              </ErrorBoundary>
-            )
+            <StatsPage confetti={confetti} anime={anime} />
           ) : page === 'settings' ? (
-            MAINTENANCE_MODE.settings ? <MaintenancePage featureName="Settings" /> :
             <SettingsPage
               settings={settings}
               patchSettings={patchSettings}
               onThemeChange={(id: string) => {
                 applyThemeCSS(id as ThemeId)
-                window.api.settings.setTheme(id).then((next) => {
-                  if (next) setSettings(next)
+                window.api.settings.setTheme(id).then((next: any) => {
+                  if (next) setSettings(next as any)
                 })
               }}
-              visualEffectsEnabled={visualEffectsEnabled}
-              setVisualEffectsEnabled={setVisualEffectsEnabled}
-              ambientHeatLevel={ambientHeatLevel}
-              setAmbientHeatLevel={setAmbientHeatLevel}
-              sparklesEnabled={sparklesEnabled}
-              setSparklesEnabled={setSparklesEnabled}
-              bokehEnabled={bokehEnabled}
-              setBokehEnabled={setBokehEnabled}
-              starfieldEnabled={starfieldEnabled}
-              setStarfieldEnabled={setStarfieldEnabled}
-              filmGrainEnabled={filmGrainEnabled}
-              setFilmGrainEnabled={setFilmGrainEnabled}
-              dreamyHazeEnabled={dreamyHazeEnabled}
-              setDreamyHazeEnabled={setDreamyHazeEnabled}
-              pixelBackgroundEnabled={pixelBackgroundEnabled}
-              setPixelBackgroundEnabled={setPixelBackgroundEnabled}
-              pixelTheme={pixelTheme}
-              setPixelTheme={setPixelTheme}
-              pixelParallaxStrength={pixelParallaxStrength}
-              setPixelParallaxStrength={setPixelParallaxStrength}
-              pixelOpacity={pixelOpacity}
-              setPixelOpacity={setPixelOpacity}
-              pixelCursorEnabled={pixelCursorEnabled}
-              setPixelCursorEnabled={setPixelCursorEnabled}
             />
-          ) : page === 'roadmap' ? (
-            <FeatureTree />
           ) : page === 'about' ? (
             <AboutPage />
           ) : null}
@@ -739,57 +600,28 @@ export default function App() {
 
 function TopBar(props: { title: string; right?: React.ReactNode; children?: React.ReactNode }) {
   return (
-    <div className="px-6 py-5 border-b border-[var(--border)] bg-[var(--panel)]">
-      <div className="flex items-center justify-between">
-        <div className="text-lg font-semibold">{props.title}</div>
-        <div className="flex items-center gap-2">{props.right}</div>
+    <div className="px-3 sm:px-6 py-3 sm:py-5 border-b border-[var(--border)] bg-[var(--panel)]">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm sm:text-lg font-semibold shrink-0">{props.title}</div>
+        <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">{props.right}</div>
       </div>
-      {props.children ? <div className="mt-4">{props.children}</div> : null}
+      {props.children ? <div className="mt-2 sm:mt-4">{props.children}</div> : null}
     </div>
   )
 }
 
 // Maintenance placeholder for features under development
-function MaintenancePage({ featureName }: { featureName: string }) {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-      <div className="relative mb-6">
-        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-600/20 flex items-center justify-center border border-amber-500/30">
-          <Construction size={40} className="text-amber-500" />
-        </div>
-        <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-[var(--bg)] border border-amber-500/30 flex items-center justify-center">
-          <Wrench size={14} className="text-amber-400" />
-        </div>
-      </div>
 
-      <h2 className="text-2xl font-bold mb-2 bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">
-        Under Maintenance
-      </h2>
-
-      <p className="text-white/60 max-w-md mb-6">
-        <span className="font-semibold text-white/80">{featureName}</span> is temporarily unavailable while we work on improvements and new features.
-      </p>
-
-      <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
-        <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-        <span className="text-sm text-amber-400">Development in progress</span>
-      </div>
-
-      <div className="mt-8 text-xs text-white/40">
-        Check back soon for updates
-      </div>
-    </div>
-  )
-}
-
-function Btn(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { tone?: 'primary' | 'ghost' | 'danger' }) {
+function Btn(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { tone?: 'primary' | 'ghost' | 'danger' | 'subtle' }) {
   const tone = props.tone ?? 'ghost'
   const cls =
     tone === 'primary'
       ? 'bg-white/15 hover:bg-white/20 border-white/20'
       : tone === 'danger'
         ? 'bg-red-500/10 hover:bg-red-500/15 border-red-500/20'
-        : 'bg-black/20 hover:bg-white/5 border-[var(--border)] hover:border-white/15'
+        : tone === 'subtle'
+          ? 'bg-white/5 hover:bg-white/10 border-white/10'
+          : 'bg-black/20 hover:bg-white/5 border-[var(--border)] hover:border-white/15'
   const { className, ...rest } = props
   return (
     <button
@@ -861,13 +693,10 @@ function Dropdown<T extends string>(props: {
   )
 }
 
-type SortOption = 'newest' | 'oldest' | 'name' | 'rating' | 'views' | 'ocount' | 'duration' | 'type' | 'size' | 'random'
-type LayoutOption = 'grid' | 'compact' | 'large' | 'fit'
+type SortOption = 'newest' | 'oldest' | 'name' | 'views' | 'duration' | 'type' | 'size' | 'random'
+type LayoutOption = 'mosaic' | 'grid'
 
-const MAX_FLOATING_PLAYERS = 4
-
-const PAGE_SIZE_OPTIONS = [10, 20, 30, 50, 90, 150, 250] as const
-const DEFAULT_PAGE_SIZE = 50
+const MAX_FLOATING_PLAYERS = 10
 
 function LibraryPage(props: { settings: VaultSettings | null; selected: string[]; setSelected: (ids: string[]) => void; tagBarOpen: boolean; setTagBarOpen: (open: boolean | ((prev: boolean) => boolean)) => void; confetti?: ReturnType<typeof useConfetti>; anime?: ReturnType<typeof useAnime> }) {
   const { confetti, anime } = props
@@ -878,13 +707,14 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   const [activeTags, setActiveTags] = useState<string[]>([])
   const [typeFilter, setTypeFilter] = useState<MediaType | 'all'>('all')
   const [sortBy, setSortBy] = useState<SortOption>('newest')
-  const [layout, setLayout] = useState<LayoutOption>('grid')
-  const [openIds, setOpenIds] = useState<string[]>([]) // Support up to 4 floating players
+  const [layout, setLayout] = useState<LayoutOption>('mosaic')
+  const [tileSize, setTileSize] = useState(200) // Grid mode: tile width in px
+  const [mosaicCols, setMosaicCols] = useState(4) // Mosaic mode: number of columns
+  const [openIds, setOpenIds] = useState<string[]>([]) // Support up to 10 floating players
   const [playerBounds, setPlayerBounds] = useState<Map<string, { x: number; y: number; width: number; height: number }>>(new Map())
   const [isLoading, setIsLoading] = useState(false)
   const [mediaStats, setMediaStats] = useState<Map<string, { rating: number; viewCount: number; oCount: number }>>(new Map())
   const [randomQuickTags, setRandomQuickTags] = useState<TagRow[]>([])
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const [typeCounts, setTypeCounts] = useState<{ video: number; image: number; gif: number }>({ video: 0, image: 0, gif: 0 })
@@ -906,6 +736,8 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       if (prev.includes(mediaId)) return prev
       // At max capacity - do nothing (don't replace)
       if (prev.length >= MAX_FLOATING_PLAYERS) return prev
+      // Track the watch
+      window.api.goon?.recordWatch?.(mediaId).catch(() => {})
       // Add new player
       return [...prev, mediaId]
     })
@@ -966,14 +798,41 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   // Keyboard navigation state
   const [focusedIndex, setFocusedIndex] = useState(-1)
   const gridRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  // Track content area dimensions for responsive layout
+  const [contentWidth, setContentWidth] = useState(0)
+  const [contentHeight, setContentHeight] = useState(0)
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContentWidth(entry.contentRect.width)
+        setContentHeight(entry.contentRect.height)
+      }
+    })
+    ro.observe(el)
+    setContentWidth(el.clientWidth)
+    setContentHeight(el.clientHeight)
+    return () => ro.disconnect()
+  }, [])
+
+  // Grid: compute how many columns fit at current tile size
+  const gridColumns = useMemo(() => {
+    if (contentWidth <= 0) return Math.max(1, Math.floor(1200 / tileSize))
+    return Math.max(1, Math.floor((contentWidth + 12) / (tileSize + 12)))
+  }, [contentWidth, tileSize])
+
+  const actualColumns = layout === 'mosaic' ? mosaicCols : gridColumns
 
   // Calculate columns for keyboard navigation
   const getColumnsCount = useCallback(() => {
-    if (!gridRef.current) return 4
-    const gridWidth = gridRef.current.offsetWidth
-    const minItemWidth = layout === 'compact' ? 160 : layout === 'large' ? 300 : 220
-    return Math.floor(gridWidth / minItemWidth) || 1
-  }, [layout])
+    return actualColumns
+  }, [actualColumns])
+
+  // Page size: mosaic shows a manageable batch, grid scrolls through more
+  const effectivePageSize = 200
 
   // Sort media based on selected option - MUST be before keyboard handler
   const sortedMedia = useMemo(() => {
@@ -985,12 +844,8 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
         return sorted.sort((a, b) => (a.addedAt ?? 0) - (b.addedAt ?? 0))
       case 'name':
         return sorted.sort((a, b) => (a.filename ?? a.path).localeCompare(b.filename ?? b.path))
-      case 'rating':
-        return sorted.sort((a, b) => (mediaStats.get(b.id)?.rating ?? 0) - (mediaStats.get(a.id)?.rating ?? 0))
       case 'views':
         return sorted.sort((a, b) => (mediaStats.get(b.id)?.viewCount ?? 0) - (mediaStats.get(a.id)?.viewCount ?? 0))
-      case 'ocount':
-        return sorted.sort((a, b) => (mediaStats.get(b.id)?.oCount ?? 0) - (mediaStats.get(a.id)?.oCount ?? 0))
       case 'duration':
         return sorted.sort((a, b) => (b.durationSec ?? 0) - (a.durationSec ?? 0))
       case 'type':
@@ -1026,8 +881,8 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
 
       const cols = getColumnsCount()
-      const startIndex = (currentPage - 1) * pageSize
-      const endIndex = Math.min(startIndex + pageSize, sortedMedia.length)
+      const startIndex = (currentPage - 1) * effectivePageSize
+      const endIndex = Math.min(startIndex + effectivePageSize, sortedMedia.length)
       const maxIndex = endIndex - startIndex - 1
 
       switch (e.key) {
@@ -1065,7 +920,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [focusedIndex, sortedMedia, pageSize, currentPage, getColumnsCount, openIds, addFloatingPlayer])
+  }, [focusedIndex, sortedMedia, effectivePageSize, currentPage, getColumnsCount, openIds, addFloatingPlayer])
 
   // Reset focus when media changes
   useEffect(() => {
@@ -1204,21 +1059,19 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
     setActiveTags((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]))
   }
 
-  // Get grid/layout style based on layout mode
+  // Get grid/mosaic style based on layout mode
   const getGridStyle = (): React.CSSProperties => {
-    switch (layout) {
-      case 'compact':
-        return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '8px' }
-      case 'large':
-        return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }
-      case 'fit':
-        // Use CSS columns for masonry-style layout with true aspect ratios
-        return {
-          columnWidth: '280px',
-          columnGap: '12px',
-        }
-      default:
-        return { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }
+    if (layout === 'mosaic') {
+      const gap = mosaicCols >= 7 ? 4 : mosaicCols >= 5 ? 6 : 8
+      return {
+        columns: mosaicCols,
+        columnGap: `${gap}px`,
+      }
+    }
+    return {
+      display: 'grid',
+      gridTemplateColumns: `repeat(auto-fill, minmax(${tileSize}px, 1fr))`,
+      gap: '12px'
     }
   }
 
@@ -1228,22 +1081,60 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
         title="Library"
         right={
           <div className="flex items-center gap-2">
-            {/* Layout selector */}
-            <div className="flex items-center gap-1 bg-black/20 rounded-lg p-0.5">
-              {(['grid', 'compact', 'large', 'fit'] as LayoutOption[]).map((l) => (
-                <button
-                  key={l}
-                  onClick={() => setLayout(l)}
-                  className={cn(
-                    'px-2 py-1 rounded text-xs capitalize transition',
-                    layout === l ? 'bg-white/20' : 'hover:bg-white/10'
-                  )}
-                  title={l === 'fit' ? 'Fit to video size' : l}
-                >
-                  {l === 'fit' ? '⊞' : l === 'compact' ? '▦' : l === 'large' ? '▣' : '▤'}
-                </button>
-              ))}
+            {/* Layout toggle: Mosaic / Grid */}
+            <div className="flex items-center bg-black/20 rounded-lg overflow-hidden">
+              <button
+                onClick={() => setLayout('mosaic')}
+                className={cn(
+                  'px-2.5 py-1.5 text-[10px] font-medium transition',
+                  layout === 'mosaic' ? 'bg-[var(--primary)]/30 text-white' : 'text-white/50 hover:text-white/80'
+                )}
+              >
+                Mosaic
+              </button>
+              <button
+                onClick={() => setLayout('grid')}
+                className={cn(
+                  'px-2.5 py-1.5 text-[10px] font-medium transition',
+                  layout === 'grid' ? 'bg-[var(--primary)]/30 text-white' : 'text-white/50 hover:text-white/80'
+                )}
+              >
+                Grid
+              </button>
             </div>
+
+            {/* Layout-specific slider */}
+            {layout === 'mosaic' ? (
+              <div className="flex items-center gap-2 bg-black/20 rounded-lg px-3 py-1.5">
+                <span className="text-[10px] text-[var(--muted)]">Cols</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={12}
+                  step={1}
+                  value={mosaicCols}
+                  onChange={(e) => { setMosaicCols(Number(e.target.value)) }}
+                  className="w-20 h-1 accent-[var(--primary)] cursor-pointer"
+                  title={`${mosaicCols} columns`}
+                />
+                <span className="text-[10px] text-[var(--muted)] w-4 text-center">{mosaicCols}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 bg-black/20 rounded-lg px-3 py-1.5">
+                <span className="text-[10px] text-[var(--muted)]">Size</span>
+                <input
+                  type="range"
+                  min={80}
+                  max={500}
+                  step={10}
+                  value={tileSize}
+                  onChange={(e) => { setTileSize(Number(e.target.value)) }}
+                  className="w-20 h-1 accent-[var(--primary)] cursor-pointer"
+                  title={`${tileSize}px tiles`}
+                />
+                <span className="text-[10px] text-[var(--muted)] w-8 text-center">{tileSize}px</span>
+              </div>
+            )}
 
             {/* Preview volume toggle */}
             <button
@@ -1332,9 +1223,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
                 { value: 'type', label: 'Type' },
                 { value: 'size', label: 'Size' },
                 { value: 'duration', label: 'Duration' },
-                { value: 'rating', label: '★ Rating' },
                 { value: 'views', label: 'Views' },
-                { value: 'ocount', label: 'O Count' },
                 { value: 'random', label: '🎲 Random' },
               ]}
             />
@@ -1501,7 +1390,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-4 transition-all duration-300 ease-in-out">
+        <div ref={contentRef} className="flex-1 overflow-auto p-4 transition-all duration-300 ease-in-out">
           {/* Results count with type breakdown */}
           <div className="text-xs text-[var(--muted)] mb-3 flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
@@ -1554,28 +1443,9 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
             </span>
           </div>
 
-          {/* Page Size & Pagination Controls */}
-          <div className="flex items-center justify-between mb-4 px-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-white/40">Per page:</span>
-              <div className="flex gap-1">
-                {PAGE_SIZE_OPTIONS.map(size => (
-                  <button
-                    key={size}
-                    onClick={() => { setPageSize(size); setCurrentPage(1) }}
-                    className={cn(
-                      'px-2 py-1 rounded text-xs transition',
-                      pageSize === size
-                        ? 'bg-[var(--primary)]/30 text-white'
-                        : 'bg-white/5 text-white/50 hover:bg-white/10'
-                    )}
-                  >
-                    {size}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {sortedMedia.length > pageSize && (
+          {/* Pagination Controls */}
+          <div className="flex items-center justify-end mb-4 px-1">
+            {sortedMedia.length > effectivePageSize && (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
@@ -1585,11 +1455,11 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
                   ← Prev
                 </button>
                 <span className="text-xs text-white/60">
-                  Page {currentPage} of {Math.ceil(sortedMedia.length / pageSize)}
+                  Page {currentPage} of {Math.ceil(sortedMedia.length / effectivePageSize)}
                 </span>
                 <button
-                  onClick={() => setCurrentPage(p => Math.min(Math.ceil(sortedMedia.length / pageSize), p + 1))}
-                  disabled={currentPage >= Math.ceil(sortedMedia.length / pageSize)}
+                  onClick={() => setCurrentPage(p => Math.min(Math.ceil(sortedMedia.length / effectivePageSize), p + 1))}
+                  disabled={currentPage >= Math.ceil(sortedMedia.length / effectivePageSize)}
                   className="px-2 py-1 rounded text-xs bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   Next →
@@ -1598,23 +1468,24 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
             )}
           </div>
 
-          <div ref={gridRef} className={layout === 'fit' ? '' : 'grid'} style={getGridStyle()}>
-            {sortedMedia.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((m, index) => {
+          <div ref={gridRef} style={getGridStyle()}>
+            {sortedMedia.slice((currentPage - 1) * effectivePageSize, currentPage * effectivePageSize).map((m, index) => {
               const isPlaying = openIds.includes(m.id)
               const canAddMore = openIds.length < MAX_FLOATING_PLAYERS
               const canOpen = isPlaying || canAddMore
               const isFocused = focusedIndex === index
+              const mosaicGap = mosaicCols >= 7 ? 4 : mosaicCols >= 5 ? 6 : 8
               return (
                 <div
                   key={m.id}
                   className={cn(
                     'animate-fadeInUp',
-                    isFocused && 'ring-2 ring-[var(--primary)] ring-offset-2 ring-offset-[var(--bg)] rounded-xl',
-                    layout === 'fit' && 'mb-3 break-inside-avoid'
+                    isFocused && 'ring-2 ring-[var(--primary)] ring-offset-2 ring-offset-[var(--bg)] rounded-xl'
                   )}
                   style={{
                     animationDelay: `${Math.min(index * 30, 500)}ms`,
-                    animationFillMode: 'backwards'
+                    animationFillMode: 'backwards',
+                    ...(layout === 'mosaic' ? { breakInside: 'avoid', marginBottom: `${mosaicGap}px` } : {})
                   }}
                 >
                   <MediaTile
@@ -1646,14 +1517,15 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
                         canOpen && addFloatingPlayer(m.id)
                       }
                     }}
-                    compact={layout === 'compact'}
+                    compact={layout === 'mosaic' && mosaicCols >= 6}
                     layout={layout}
                     disabled={selectionMode ? false : !canOpen}
-                    showStats={sortBy === 'rating' || sortBy === 'views' || sortBy === 'ocount'}
+                    showStats={sortBy === 'views'}
                     stats={mediaStats.get(m.id)}
                     previewMuted={previewMuted}
                     liked={likedIds.has(m.id)}
                     onToggleLike={() => toggleLike(m.id)}
+                    selectionMode={selectionMode}
                   />
                 </div>
               )
@@ -1661,7 +1533,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
           </div>
 
           {/* Bottom Pagination */}
-          {sortedMedia.length > pageSize && (
+          {sortedMedia.length > effectivePageSize && (
             <div className="mt-6 flex justify-center items-center gap-4">
               <button
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
@@ -1671,11 +1543,11 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
                 ← Previous
               </button>
               <span className="text-sm text-white/60">
-                Page {currentPage} of {Math.ceil(sortedMedia.length / pageSize)}
+                Page {currentPage} of {Math.ceil(sortedMedia.length / effectivePageSize)}
               </span>
               <button
-                onClick={() => setCurrentPage(p => Math.min(Math.ceil(sortedMedia.length / pageSize), p + 1))}
-                disabled={currentPage >= Math.ceil(sortedMedia.length / pageSize)}
+                onClick={() => setCurrentPage(p => Math.min(Math.ceil(sortedMedia.length / effectivePageSize), p + 1))}
+                disabled={currentPage >= Math.ceil(sortedMedia.length / effectivePageSize)}
                 className="px-3 py-1.5 rounded-lg text-sm bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
               >
                 Next →
@@ -1820,8 +1692,11 @@ const MediaTile = React.memo(function MediaTile(props: {
   previewMuted?: boolean
   liked?: boolean
   onToggleLike?: () => void
+  selectionMode?: boolean
 }) {
   const { media, compact, layout, disabled, showStats, stats, previewMuted = true, liked, onToggleLike } = props
+  const [showPlaylistPopup, setShowPlaylistPopup] = useState(false)
+  const playlistBtnRef = useRef<HTMLButtonElement>(null)
   const [thumbUrl, setThumbUrl] = useState<string>('')
   const [videoUrl, setVideoUrl] = useState<string>('')
   const [isLoaded, setIsLoaded] = useState(false)
@@ -1954,11 +1829,9 @@ const MediaTile = React.memo(function MediaTile(props: {
       <div
         className="bg-black/25 relative overflow-hidden"
         style={{
-          aspectRatio: layout === 'fit' && thumbAspect
-            ? thumbAspect
-            : layout === 'fit' && media.width && media.height
-              ? `${media.width} / ${media.height}`
-              : compact ? '16 / 9' : '16 / 10'
+          aspectRatio: layout === 'mosaic'
+            ? (thumbAspect ? `${thumbAspect}` : '16 / 10')
+            : (compact ? '16 / 9' : '16 / 10')
         }}
       >
         {/* Loading shimmer */}
@@ -1972,7 +1845,7 @@ const MediaTile = React.memo(function MediaTile(props: {
               src={thumbUrl}
               alt=""
               className={cn(
-                'w-full h-full object-cover transition-all duration-500',
+                'w-full h-full object-contain transition-all duration-500',
                 isLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-105',
                 isHovered && !isPreviewPlaying && 'scale-110',
                 isPreviewPlaying && 'opacity-0'
@@ -1992,7 +1865,7 @@ const MediaTile = React.memo(function MediaTile(props: {
               <video
                 ref={videoRef}
                 className={cn(
-                  'absolute inset-0 w-full h-full object-cover transition-opacity duration-300',
+                  'absolute inset-0 w-full h-full object-contain transition-opacity duration-300',
                   isPreviewPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 )}
                 muted={previewMuted}
@@ -2062,33 +1935,37 @@ const MediaTile = React.memo(function MediaTile(props: {
           </div>
         )}
 
-        {/* Playing indicator (always visible when playing) or Add button (show on hover) */}
+        {/* Add to playlist button + Like (top-left, hover only) */}
         {!compact && (
           <div className={cn(
             'absolute top-1.5 left-1.5 flex items-center gap-1 transition-all duration-200',
-            props.selected || liked
-              ? 'opacity-100 translate-y-0' // Always visible when playing or liked
+            liked
+              ? 'opacity-100 translate-y-0'
               : 'opacity-0 -translate-y-2 group-hover:opacity-100 group-hover:translate-y-0'
           )}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                props.onToggleSelect()
-              }}
-              className={cn(
-                'px-2 py-1 rounded text-[10px] transition-all duration-200 backdrop-blur-sm flex items-center gap-1',
-                props.selected
-                  ? 'bg-green-500 text-white shadow-[0_0_15px_rgba(34,197,94,0.6)] animate-pulse'
-                  : 'bg-black/60 hover:bg-[var(--primary)]/80 hover:shadow-[0_0_10px_var(--primary)]'
+            <div className="relative">
+              <button
+                ref={playlistBtnRef}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (props.selectionMode) {
+                    props.onToggleSelect()
+                  } else {
+                    setShowPlaylistPopup(prev => !prev)
+                  }
+                }}
+                className="px-2 py-1 rounded text-[10px] transition-all duration-200 backdrop-blur-sm flex items-center gap-1 bg-black/60 hover:bg-[var(--primary)]/80 hover:shadow-[0_0_10px_var(--primary)]"
+              >
+                +
+              </button>
+              {showPlaylistPopup && (
+                <AddToPlaylistPopup
+                  mediaId={media.id}
+                  onClose={() => setShowPlaylistPopup(false)}
+                  anchorRef={playlistBtnRef}
+                />
               )}
-            >
-              {props.selected ? (
-                <>
-                  <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
-                  Playing
-                </>
-              ) : '+'}
-            </button>
+            </div>
             {/* Like/Heart button */}
             {onToggleLike && (
               <button
@@ -2107,6 +1984,16 @@ const MediaTile = React.memo(function MediaTile(props: {
                 <Heart size={12} className={liked ? 'fill-current' : ''} />
               </button>
             )}
+          </div>
+        )}
+
+        {/* Now Playing indicator (bottom-left, always visible when selected) */}
+        {!compact && props.selected && (
+          <div className="absolute bottom-1.5 left-1.5 transition-all duration-200">
+            <div className="px-2 py-1 rounded text-[10px] backdrop-blur-sm flex items-center gap-1 bg-green-500 text-white shadow-[0_0_15px_rgba(34,197,94,0.6)] animate-pulse">
+              <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
+              Playing
+            </div>
           </div>
         )}
 
@@ -2276,8 +2163,12 @@ function MediaViewer(props: {
     const st = await window.api.media.getStats(id)
     setStats(st)
     if (m) {
-      const p = m.path
-      const u = await toFileUrlCached(p)
+      try {
+        const u = await window.api.media.getPlayableUrl(m.id)
+        if (u) { setUrl(u as string); return }
+      } catch {}
+      // Fallback to direct file URL
+      const u = await toFileUrlCached(m.path)
       setUrl(u)
     }
   }
@@ -2309,7 +2200,7 @@ function MediaViewer(props: {
             <div className="text-xs text-[var(--muted)] mt-1 flex items-center gap-3">
               <span>{media.type.toUpperCase()}</span>
               {media.durationSec ? <span>{formatDuration(media.durationSec)}</span> : null}
-              {typeof media.sizeBytes === 'number' ? <span>{formatBytes(media.sizeBytes)}</span> : null}
+              {typeof (media as any).sizeBytes === 'number' ? <span>{formatBytes((media as any).sizeBytes)}</span> : null}
               {props.mediaList && (
                 <span className="text-white/40">
                   {currentIndex + 1} / {props.mediaList.length}
@@ -2453,8 +2344,173 @@ function PlaylistPicker(props: {
   )
 }
 
-type GoonWallLayout = 'grid' | 'columns' | 'mosaic'
-type ShuffleInterval = 20 | 30 | 45 | 60 | 90 | 120
+function AddToPlaylistPopup(props: {
+  mediaId: string
+  onClose: () => void
+  anchorRef?: React.RefObject<HTMLElement | null>
+}) {
+  const [playlists, setPlaylists] = useState<PlaylistRow[]>([])
+  const [containingIds, setContainingIds] = useState<Set<string>>(new Set())
+  const [newName, setNewName] = useState('')
+  const [loading, setLoading] = useState(true)
+  const popupRef = useRef<HTMLDivElement>(null)
+
+  // Calculate fixed position synchronously from anchor element
+  const getPos = (): { top: number; left: number } => {
+    if (props.anchorRef?.current) {
+      const rect = props.anchorRef.current.getBoundingClientRect()
+      const popupWidth = 256
+      const popupHeight = 300
+      let top = rect.bottom + 4
+      let left = rect.left
+      if (left + popupWidth > window.innerWidth) {
+        left = window.innerWidth - popupWidth - 8
+      }
+      if (left < 8) left = 8
+      if (top + popupHeight > window.innerHeight) {
+        top = rect.top - popupHeight - 4
+      }
+      if (top < 8) top = 8
+      return { top, left }
+    }
+    return { top: 100, left: 100 }
+  }
+  const [pos] = useState(getPos)
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const pls = await window.api.playlists.list()
+        if (!alive) return
+        setPlaylists(pls)
+        // Check which playlists contain this media
+        const containing = new Set<string>()
+        await Promise.all(pls.map(async (pl: PlaylistRow) => {
+          try {
+            const items = await window.api.playlists.getItems(pl.id)
+            if (items.some((item: any) => (item.media?.id ?? item.mediaId) === props.mediaId)) {
+              containing.add(pl.id)
+            }
+          } catch {}
+        }))
+        if (alive) setContainingIds(containing)
+      } catch (e) {
+        console.error('[AddToPlaylistPopup] Failed to load playlists:', e)
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [props.mediaId])
+
+  // Close on outside click or Escape (delayed to avoid catching the opening click)
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      // Don't close if clicking the anchor button that opens this popup
+      if (props.anchorRef?.current?.contains(e.target as Node)) return
+      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        props.onClose()
+      }
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') props.onClose()
+    }
+    // Delay listener registration to avoid catching the opening click
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClick)
+      document.addEventListener('keydown', handleKey)
+    }, 0)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [props.onClose, props.anchorRef])
+
+  const handleAdd = async (playlistId: string) => {
+    try {
+      await window.api.playlists.addItems(playlistId, [props.mediaId])
+      props.onClose()
+    } catch (e) {
+      console.error('[AddToPlaylistPopup] Failed to add:', e)
+    }
+  }
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return
+    try {
+      const created = await window.api.playlists.create(newName.trim())
+      setNewName('')
+      if (created?.id) {
+        await window.api.playlists.addItems(created.id, [props.mediaId])
+      }
+      props.onClose()
+    } catch (e) {
+      console.error('[AddToPlaylistPopup] Failed to create playlist:', e)
+    }
+  }
+
+
+  const popup = (
+    <div
+      ref={popupRef}
+      className="w-64 rounded-xl border border-white/15 bg-[var(--panel)] shadow-2xl overflow-hidden backdrop-blur-xl"
+      style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 99999 }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="px-3 py-2 border-b border-[var(--border)] text-xs font-semibold text-[var(--muted)]">
+        Add to Playlist
+      </div>
+      {/* Create new */}
+      <div className="px-3 py-2 border-b border-[var(--border)] flex gap-1">
+        <input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+          placeholder="New playlist..."
+          className="flex-1 px-2 py-1 rounded-lg bg-black/20 border border-[var(--border)] outline-none focus:border-white/15 text-xs"
+          onClick={(e) => e.stopPropagation()}
+        />
+        <button
+          onClick={handleCreate}
+          className="px-2 py-1 rounded-lg bg-[var(--primary)] text-white text-xs hover:opacity-90 transition"
+        >
+          +
+        </button>
+      </div>
+      {/* Playlist list */}
+      <div className="max-h-48 overflow-auto">
+        {loading ? (
+          <div className="px-3 py-4 text-center text-xs text-[var(--muted)]">Loading...</div>
+        ) : playlists.length === 0 ? (
+          <div className="px-3 py-4 text-center text-xs text-[var(--muted)]">No playlists yet</div>
+        ) : (
+          playlists.map((pl) => {
+            const isIn = containingIds.has(pl.id)
+            return (
+              <button
+                key={pl.id}
+                onClick={() => !isIn && handleAdd(pl.id)}
+                className={cn(
+                  'w-full text-left px-3 py-2 text-xs hover:bg-white/5 transition flex items-center justify-between',
+                  isIn && 'opacity-60'
+                )}
+              >
+                <span className="truncate">{pl.name}</span>
+                {isIn && <span className="text-green-400 flex-shrink-0 ml-2">✓</span>}
+              </button>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+
+  return createPortal(popup, document.body)
+}
+
+type GoonWallLayout = 'grid' | 'mosaic'
 
 function GoonWallPage(props: {
   settings: VaultSettings | null
@@ -2477,36 +2533,27 @@ function GoonWallPage(props: {
   const [videos, setVideos] = useState<MediaRow[]>([])
   const [tiles, setTiles] = useState<MediaRow[]>([])
   const [tileCount, setTileCount] = useState(9)
-  const [layout, setLayout] = useState<GoonWallLayout>('grid')
-  const [intensity, setIntensity] = useState(5) // 1-10 scale for shuffle speed
-  const [isPlaying, setIsPlaying] = useState(false)
+  const brokenIdsRef = useRef<Set<string>>(new Set()) // Track broken/unplayable videos
   const [muted, setMuted] = useState(true)
   const [showHud, setShowHud] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const tileTimersRef = useRef<Map<number, NodeJS.Timeout>>(new Map())
-
-  // Calculate shuffle interval based on intensity (1=120s, 10=10s)
-  const getShuffleInterval = useCallback((intensityLevel: number) => {
-    const maxInterval = 120000 // 120 seconds at intensity 1
-    const minInterval = 10000  // 10 seconds at intensity 10
-    return maxInterval - ((intensityLevel - 1) / 9) * (maxInterval - minInterval)
-  }, [])
+  const [layout, setLayout] = useState<GoonWallLayout>('mosaic')
 
   // Load settings from props
   useEffect(() => {
     const gw = props.settings?.goonwall
     if (gw) {
-      if (gw.tileCount) setTileCount(gw.tileCount)
-      if (gw.layout) setLayout(gw.layout)
+      if (gw.tileCount) setTileCount(Math.min(gw.tileCount, 30))
       if (gw.muted !== undefined) setMuted(gw.muted)
       if (gw.showHud !== undefined) setShowHud(gw.showHud)
+      if (gw.layout) setLayout(gw.layout)
     }
   }, [props.settings?.goonwall])
 
   // Save settings when they change
-  const saveSettings = useCallback(async (patch: Partial<{ tileCount: number; layout: string; muted: boolean; showHud: boolean }>) => {
+  const saveSettings = useCallback(async (patch: Partial<{ tileCount: number; muted: boolean; showHud: boolean; layout: GoonWallLayout }>) => {
     try {
       await window.api.settings.goonwall?.update?.(patch)
     } catch (e) {
@@ -2551,22 +2598,31 @@ function GoonWallPage(props: {
     }
   }
 
-  const shuffleTiles = (pool?: MediaRow[]) => {
+  // Mark a video as broken so it's excluded from future shuffles
+  const markBroken = useCallback((mediaId: string) => {
+    brokenIdsRef.current.add(mediaId)
+  }, [])
+
+  const getUsableVideos = useCallback((pool?: MediaRow[]) => {
     const source = pool ?? videos
+    return source.filter(v => !brokenIdsRef.current.has(v.id))
+  }, [videos])
+
+  const shuffleTiles = (pool?: MediaRow[]) => {
+    const source = getUsableVideos(pool)
     if (source.length === 0) return
 
-    // Use proper Fisher-Yates shuffle instead of biased sort
     const shuffled = shuffleTake(source, tileCount)
     setTiles(shuffled)
 
-    // Track shuffle for achievements
     window.api.goonwall?.shuffle?.()
   }
 
   const shuffleSingleTile = (idx: number) => {
-    if (videos.length === 0) return
+    const usable = getUsableVideos()
+    if (usable.length === 0) return
     const currentIds = new Set(tiles.map(t => t.id))
-    const available = videos.filter(v => !currentIds.has(v.id))
+    const available = usable.filter(v => !currentIds.has(v.id))
     if (available.length === 0) return
 
     const newVideo = available[Math.floor(Math.random() * available.length)]
@@ -2576,7 +2632,6 @@ function GoonWallPage(props: {
       return next
     })
 
-    // Track shuffle for achievements
     window.api.goonwall?.shuffle?.()
   }
 
@@ -2592,8 +2647,6 @@ function GoonWallPage(props: {
     })
 
     return () => {
-      tileTimersRef.current.forEach(timer => clearTimeout(timer))
-      tileTimersRef.current.clear()
       unsub?.()
     }
   }, [])
@@ -2605,10 +2658,6 @@ function GoonWallPage(props: {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
 
       switch (e.key.toLowerCase()) {
-        case ' ': // Space - toggle play/stop
-          e.preventDefault()
-          setIsPlaying(prev => !prev)
-          break
         case 's': // S - shuffle all
           shuffleTiles()
           break
@@ -2620,12 +2669,6 @@ function GoonWallPage(props: {
           break
         case 'f': // F - toggle fullscreen
           toggleFullscreen()
-          break
-        case 'arrowup': // Arrow up - increase intensity
-          setIntensity(prev => Math.min(10, prev + 1))
-          break
-        case 'arrowdown': // Arrow down - decrease intensity
-          setIntensity(prev => Math.max(1, prev - 1))
           break
         case 'h': // H - toggle HUD
           setShowHud(prev => {
@@ -2653,121 +2696,161 @@ function GoonWallPage(props: {
     shuffleTiles()
   }, [tileCount, videos])
 
-  // Individual tile timers for smooth random shuffling based on intensity
-  useEffect(() => {
-    // Clear all existing timers
-    tileTimersRef.current.forEach(timer => clearTimeout(timer))
-    tileTimersRef.current.clear()
+  // Mosaic: row-packing layout using real aspect ratios
+  // Packs videos into rows that fill viewport width, then scales rows to fill height.
+  // Overlaps only as a last resort to eliminate black gaps.
+  const mosaicTileStyles = useMemo(() => {
+    if (layout !== 'mosaic' || tiles.length === 0) return [] as React.CSSProperties[]
 
-    // Track if effect is still active
-    let active = true
+    const VW = 100 // work in percent
+    const VH = 100
 
-    if (!isPlaying || tiles.length === 0 || videos.length === 0) {
-      // Not playing - no auto shuffle
-      return () => {
-        active = false
-        tileTimersRef.current.forEach(timer => clearTimeout(timer))
-        tileTimersRef.current.clear()
+    // Get aspect ratio for each tile (fallback 16:9 if unknown)
+    const aspects = tiles.map(t => {
+      const w = t.width ?? 0
+      const h = t.height ?? 0
+      return (w > 0 && h > 0) ? w / h : 16 / 9
+    })
+
+    // Pack tiles into rows using a "linear partition" greedy approach:
+    // Target a number of rows, assign tiles to rows, then compute sizes.
+    const targetRows = Math.max(1, Math.round(Math.sqrt(tiles.length / 1.6)))
+
+    // Distribute tiles into rows as evenly as possible
+    const tilesPerRow: number[] = []
+    const base = Math.floor(tiles.length / targetRows)
+    const extra = tiles.length % targetRows
+    for (let r = 0; r < targetRows; r++) {
+      tilesPerRow.push(base + (r < extra ? 1 : 0))
+    }
+
+    // For each row, compute tile widths proportional to aspect ratios
+    // so they fill 100% of viewport width, then compute the row height.
+    type Rect = { left: number; top: number; width: number; height: number }
+    const rects: Rect[] = []
+    let tileIdx = 0
+    const rowHeights: number[] = []
+
+    for (let r = 0; r < tilesPerRow.length; r++) {
+      const count = tilesPerRow[r]
+      const rowAspects = aspects.slice(tileIdx, tileIdx + count)
+      const totalAspect = rowAspects.reduce((a, b) => a + b, 0)
+
+      // Row height = VW / totalAspect (all tiles fill the row width)
+      const rowH = VW / totalAspect
+      rowHeights.push(rowH)
+
+      let x = 0
+      for (let c = 0; c < count; c++) {
+        const tileW = (rowAspects[c] / totalAspect) * VW
+        rects.push({ left: x, top: 0, width: tileW, height: rowH }) // top set later
+        x += tileW
+      }
+      tileIdx += count
+    }
+
+    // Total natural height of all rows
+    const totalNaturalH = rowHeights.reduce((a, b) => a + b, 0)
+
+    // Scale all rows uniformly to fill the viewport height
+    const scale = VH / totalNaturalH
+
+    // Apply scaling and compute final top positions
+    let yOffset = 0
+    tileIdx = 0
+    for (let r = 0; r < tilesPerRow.length; r++) {
+      const count = tilesPerRow[r]
+      const scaledRowH = rowHeights[r] * scale
+      for (let c = 0; c < count; c++) {
+        const rect = rects[tileIdx + c]
+        rect.top = yOffset
+        rect.width *= scale > 1 ? 1 : 1 // width stays at VW proportion
+        rect.height = scaledRowH
+        // Scale width too if we're stretching vertically — keep aspect by widening proportionally
+        // Actually: we scale row height, so to maintain the tile's aspect ratio,
+        // we need to widen the tile. But tiles must still fill the row exactly.
+        // Solution: let tiles fill their cell and use object-cover sparingly,
+        // OR accept slight aspect stretch for gap-free coverage.
+        // Best approach: keep proportional widths, accept that scaling height
+        // effectively just makes tiles a bit taller/shorter. object-cover in the
+        // video element handles the rest.
+      }
+      yOffset += scaledRowH
+      tileIdx += count
+    }
+
+    // If there's any remaining gap at the bottom (rounding), stretch the last row
+    if (yOffset < VH && tilesPerRow.length > 0) {
+      const lastRowStart = rects.length - tilesPerRow[tilesPerRow.length - 1]
+      const gap = VH - yOffset
+      for (let c = lastRowStart; c < rects.length; c++) {
+        rects[c].height += gap
       }
     }
 
-    // Active mode: intensity-based individual tile shuffling
-    const baseInterval = getShuffleInterval(intensity)
+    // Convert to CSS
+    return rects.map(r => ({
+      position: 'absolute' as const,
+      left: `${r.left}%`,
+      top: `${r.top}%`,
+      width: `${r.width}%`,
+      height: `${r.height}%`,
+    }))
+  }, [layout, tiles])
 
-    const startTileTimer = (idx: number) => {
-      if (!active) return
-
-      // Each tile gets a random offset so they don't sync up
-      const randomOffset = Math.random() * baseInterval * 0.5
-      const interval = baseInterval + randomOffset
-
-      const timer = setTimeout(() => {
-        if (!active) return
-        shuffleSingleTile(idx)
-        startTileTimer(idx) // Reschedule with new random offset
-      }, interval)
-      tileTimersRef.current.set(idx, timer)
-    }
-
-    // Start timers with well-staggered initial delays so tiles don't all shuffle at once
-    for (let idx = 0; idx < tileCount; idx++) {
-      const initialDelay = (idx / tileCount) * baseInterval + Math.random() * 3000
-      const initTimer = setTimeout(() => {
-        if (active) startTileTimer(idx)
-      }, initialDelay)
-      tileTimersRef.current.set(idx + 1000, initTimer) // Store init timers with offset key
-    }
-
-    return () => {
-      active = false
-      tileTimersRef.current.forEach(timer => clearTimeout(timer))
-      tileTimersRef.current.clear()
-    }
-  }, [isPlaying, intensity, tileCount, getShuffleInterval])
+  const cols = Math.ceil(Math.sqrt(tileCount * 1.6))
 
   const getGridStyle = (): React.CSSProperties => {
-    const cols = Math.ceil(Math.sqrt(tileCount))
-    const rows = Math.ceil(tileCount / cols)
-
     if (layout === 'grid') {
       return {
         display: 'grid',
         gridTemplateColumns: `repeat(${cols}, 1fr)`,
-        gridTemplateRows: `repeat(${rows}, 1fr)`,
-        gap: '2px'
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
       }
     }
-
-    if (layout === 'columns') {
-      return {
-        display: 'grid',
-        gridTemplateColumns: `repeat(${cols}, 1fr)`,
-        gridAutoRows: '1fr',
-        gap: '2px'
-      }
-    }
-
-    // Mosaic - varied sizes
     return {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(4, 1fr)',
-      gridAutoRows: '150px',
-      gap: '2px'
+      position: 'relative',
+      width: '100%',
+      height: '100%',
+      overflow: 'hidden',
     }
   }
 
   const getTileStyle = (idx: number): React.CSSProperties => {
-    if (layout !== 'mosaic') return {}
-
-    // Create varied tile sizes for mosaic
-    const patterns = [
-      { gridColumn: 'span 2', gridRow: 'span 2' },
-      { gridColumn: 'span 1', gridRow: 'span 1' },
-      { gridColumn: 'span 1', gridRow: 'span 2' },
-      { gridColumn: 'span 2', gridRow: 'span 1' },
-    ]
-    return patterns[idx % patterns.length]
+    if (layout === 'grid') return {}
+    return mosaicTileStyles[idx] ?? {}
   }
 
   return (
-    <div className="h-screen w-full flex flex-col bg-black relative overflow-hidden">
+    <div className="h-full w-full flex flex-col bg-black relative overflow-hidden">
       {/* Condensed HUD Controls - Centered bar with slide animation */}
       <div
         className={cn(
-          'absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-gradient-to-b from-gray-900/95 to-gray-800/90 backdrop-blur-md rounded-xl px-4 py-2.5 border border-white/30 shadow-xl shadow-black/70 transition-all duration-300 ease-in-out',
+          'absolute top-2 sm:top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 sm:gap-2 bg-gradient-to-b from-gray-900/95 to-gray-800/90 backdrop-blur-md rounded-xl px-2 sm:px-4 py-1.5 sm:py-2.5 border border-white/30 shadow-xl shadow-black/70 transition-all duration-300 ease-in-out max-w-[95vw] overflow-x-auto',
           showHud ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-full pointer-events-none'
         )}
       >
-          {/* Play/Stop */}
-          <button
-            onClick={() => setIsPlaying(!isPlaying)}
-            className={cn(
-              'px-3 py-1.5 rounded-lg text-xs font-medium transition',
-              isPlaying ? 'bg-red-500/80 hover:bg-red-500' : 'bg-green-500/80 hover:bg-green-500'
-            )}
-          >
-            {isPlaying ? '■ Stop' : '▶ Start'}
-          </button>
+          {/* Video count slider */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-white/40">Small</span>
+            <input
+              type="range"
+              min={2}
+              max={30}
+              value={tileCount}
+              onChange={(e) => {
+                const v = Number(e.target.value)
+                setTileCount(v)
+                saveSettings({ tileCount: v })
+              }}
+              className="w-28 h-1.5 rounded-full appearance-none bg-white/20 cursor-pointer accent-pink-500"
+              title={`Tiles: ${tileCount}`}
+            />
+            <span className="text-[10px] text-white/40">XLarge</span>
+            <span className="text-[10px] text-pink-400 font-medium w-5 text-center">{tileCount}</span>
+          </div>
 
           <div className="w-px h-6 bg-white/20" />
 
@@ -2775,70 +2858,35 @@ function GoonWallPage(props: {
           <button
             onClick={() => shuffleTiles()}
             className="px-2 py-1.5 rounded-lg text-xs bg-white/10 hover:bg-white/20 transition"
-            title="Shuffle All"
+            title="Shuffle All (S)"
           >
-            🔀
+
           </button>
 
           <div className="w-px h-6 bg-white/20" />
 
-          {/* Tile count */}
+          {/* Layout toggle */}
           <div className="flex items-center gap-1">
-            {[4, 6, 9, 12, 16].map((n) => (
-              <button
-                key={n}
-                onClick={() => {
-                  setTileCount(n)
-                  saveSettings({ tileCount: n })
-                }}
-                className={cn(
-                  'w-6 h-6 rounded text-[10px] font-medium transition',
-                  tileCount === n ? 'bg-white/25 text-white' : 'bg-white/5 text-white/60 hover:bg-white/15'
-                )}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
+            <button
+              onClick={() => { setLayout('grid'); saveSettings({ layout: 'grid' }) }}
+              className={cn(
+                'w-7 h-7 rounded-lg text-sm transition flex items-center justify-center',
+                layout === 'grid' ? 'bg-white/20 text-white' : 'bg-white/5 text-white/60 hover:bg-white/10'
+              )}
+              title="Grid layout"
+            >
 
-          <div className="w-px h-6 bg-white/20" />
+            </button>
+            <button
+              onClick={() => { setLayout('mosaic'); saveSettings({ layout: 'mosaic' }) }}
+              className={cn(
+                'w-7 h-7 rounded-lg text-sm transition flex items-center justify-center',
+                layout === 'mosaic' ? 'bg-white/20 text-white' : 'bg-white/5 text-white/60 hover:bg-white/10'
+              )}
+              title="Mosaic layout"
+            >
 
-          {/* Layout */}
-          <div className="flex items-center gap-1">
-            {(['grid', 'columns', 'mosaic'] as GoonWallLayout[]).map((l) => (
-              <button
-                key={l}
-                onClick={() => {
-                  setLayout(l)
-                  saveSettings({ layout: l })
-                }}
-                className={cn(
-                  'px-2 py-1 rounded text-[10px] transition',
-                  layout === l ? 'bg-white/25 text-white' : 'bg-white/5 text-white/60 hover:bg-white/15'
-                )}
-                title={l}
-              >
-                {l === 'grid' ? '▦' : l === 'columns' ? '▥' : '▧'}
-              </button>
-            ))}
-          </div>
-
-          <div className="w-px h-6 bg-white/20" />
-
-          {/* Intensity Slider */}
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-white/40">Chill</span>
-            <input
-              type="range"
-              min={1}
-              max={10}
-              value={intensity}
-              onChange={(e) => setIntensity(Number(e.target.value))}
-              className="w-20 h-1.5 rounded-full appearance-none bg-white/20 cursor-pointer accent-pink-500"
-              title={`Intensity: ${intensity}/10 (shuffle every ${Math.round(getShuffleInterval(intensity) / 1000)}s)`}
-            />
-            <span className="text-[10px] text-white/40">Intense</span>
-            <span className="text-[10px] text-pink-400 font-medium w-4">{intensity}</span>
+            </button>
           </div>
 
           <div className="w-px h-6 bg-white/20" />
@@ -2853,7 +2901,7 @@ function GoonWallPage(props: {
               'w-7 h-7 rounded-lg text-sm transition flex items-center justify-center',
               muted ? 'bg-white/5 text-white/60' : 'bg-white/20 text-white'
             )}
-            title={muted ? 'Unmute' : 'Mute'}
+            title={muted ? 'Unmute (M)' : 'Mute (M)'}
           >
             {muted ? '🔇' : '🔊'}
           </button>
@@ -2864,7 +2912,7 @@ function GoonWallPage(props: {
           <button
             onClick={toggleFullscreen}
             className="w-7 h-7 rounded-lg text-sm bg-white/5 hover:bg-white/15 transition flex items-center justify-center"
-            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen (F)'}
           >
             {isFullscreen ? '⤓' : '⤢'}
           </button>
@@ -2890,12 +2938,10 @@ function GoonWallPage(props: {
         )}
       >
         <div className="text-[10px] text-white/40 bg-black/60 rounded-lg px-3 py-2 border border-white/10 space-y-0.5">
-          <div><span className="text-white/60">Space</span> Play/Stop</div>
           <div><span className="text-white/60">S</span> Shuffle All</div>
           <div><span className="text-white/60">M</span> Mute</div>
           <div><span className="text-white/60">F</span> Fullscreen</div>
           <div><span className="text-white/60">H</span> Toggle HUD</div>
-          <div><span className="text-pink-400">↑/↓</span> Intensity</div>
           <div><span className="text-pink-400">G</span> Goon Mode</div>
         </div>
       </div>
@@ -2920,7 +2966,7 @@ function GoonWallPage(props: {
 
       {/* Video Grid */}
       {!loading && !error && tiles.length > 0 && (
-        <div className="flex-1 w-full h-full overflow-hidden" style={getGridStyle()}>
+        <div className="absolute inset-0 overflow-hidden" style={getGridStyle()}>
           {tiles.map((media, idx) => (
             <GoonTile
               key={`${media.id}-${idx}`}
@@ -2928,6 +2974,10 @@ function GoonWallPage(props: {
               muted={muted}
               style={getTileStyle(idx)}
               onShuffle={() => shuffleSingleTile(idx)}
+              index={idx}
+              tileCount={tileCount}
+              onBroken={markBroken}
+              layout={layout}
             />
           ))}
         </div>
@@ -2945,22 +2995,72 @@ function GoonWallPage(props: {
   )
 }
 
-const GoonTile = React.memo(function GoonTile(props: { media: MediaRow; muted: boolean; style?: React.CSSProperties; onShuffle: () => void }) {
-  const { media, muted, style, onShuffle } = props
+const GoonTile = React.memo(function GoonTile(props: {
+  media: MediaRow
+  muted: boolean
+  style?: React.CSSProperties
+  onShuffle: () => void
+  index: number
+  tileCount: number
+  onBroken: (id: string) => void
+  layout: GoonWallLayout
+}) {
+  const { media, muted, style, onShuffle, index, tileCount, onBroken, layout } = props
+  const isMosaic = layout === 'mosaic'
   const [url, setUrl] = useState('')
   const [retried, setRetried] = useState(false)
+  const [ready, setReady] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
-  // Load URL immediately — no delays, no queues
+  // Right-click to seek to a random timestamp
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const video = videoRef.current
+    if (!video || !video.duration || video.duration < 2) return
+    video.currentTime = (0.1 + Math.random() * 0.8) * video.duration
+  }, [])
+
+  // Load video URL with staggered delay based on tile index to avoid overwhelming the system
   useEffect(() => {
     let alive = true
     setRetried(false)
-    toFileUrlCached(media.path).then(u => {
-      if (alive && u) setUrl(u)
-      else if (alive) onShuffle()
-    }).catch(() => { if (alive) onShuffle() })
-    return () => { alive = false }
-  }, [media.id, media.path, onShuffle])
+    setReady(false)
+    setUrl('')
+
+    // Stagger tile loads: first 4 immediate, rest delayed by 100ms per tile
+    const delay = index < 4 ? 0 : (index - 4) * 100
+    const timer = setTimeout(() => {
+      if (!alive) return
+
+      // For 9+ tiles, try low-res first for faster loading
+      if (tileCount >= 9 && window.api.media.getLowResUrl) {
+        const maxH = tileCount > 16 ? 360 : 480
+        window.api.media.getLowResUrl(media.id, maxH).then((lowU: any) => {
+          if (alive && lowU) setUrl(lowU as string)
+          else if (alive) {
+            // Fallback to full-res
+            window.api.media.getPlayableUrl(media.id).then((u: any) => {
+              if (alive && u) setUrl(u as string)
+              else if (alive) onShuffle()
+            }).catch(() => { if (alive) onShuffle() })
+          }
+        }).catch(() => {
+          if (!alive) return
+          window.api.media.getPlayableUrl(media.id).then((u: any) => {
+            if (alive && u) setUrl(u as string)
+            else if (alive) onShuffle()
+          }).catch(() => { if (alive) onShuffle() })
+        })
+      } else {
+        window.api.media.getPlayableUrl(media.id).then((u: any) => {
+          if (alive && u) setUrl(u as string)
+          else if (alive) onShuffle()
+        }).catch(() => { if (alive) onShuffle() })
+      }
+    }, delay)
+
+    return () => { alive = false; clearTimeout(timer) }
+  }, [media.id, media.path, onShuffle, tileCount, index])
 
   // Cleanup video on unmount
   useEffect(() => {
@@ -2979,9 +3079,8 @@ const GoonTile = React.memo(function GoonTile(props: { media: MediaRow; muted: b
   const handleLoadedMetadata = useCallback(() => {
     const video = videoRef.current
     if (!video || !video.duration || video.duration < 2) return
-    const dur = video.duration
-    // Seek to random 10-90% immediately — don't wait for loudness IPC
-    video.currentTime = (0.1 + Math.random() * 0.8) * dur
+    video.currentTime = (0.1 + Math.random() * 0.8) * video.duration
+    setReady(true)
   }, [])
 
   // Handle errors — force transcode on first error, skip on second
@@ -2992,22 +3091,41 @@ const GoonTile = React.memo(function GoonTile(props: { media: MediaRow; muted: b
     if (!retried) {
       console.warn('[GoonTile] Error, force transcoding:', media.path, errorType)
       setRetried(true)
-      window.api.media.getPlayableUrl(media.id, true).then(u => {
+      window.api.media.getPlayableUrl(media.id, true).then((u: any) => {
         if (u) setUrl(u as string)
         else onShuffle()
       }).catch(() => onShuffle())
       return
     }
-    console.warn('[GoonTile] Error after transcode, skipping:', media.path, errorType)
+    console.warn('[GoonTile] Error after transcode, marking broken & skipping:', media.path, errorType)
+    onBroken(media.id)
     onShuffle()
-  }, [media.id, media.path, onShuffle, retried])
+  }, [media.id, media.path, onShuffle, onBroken, retried])
+
+  // Poster thumbnail URL
+  const [poster, setPoster] = useState('')
+  useEffect(() => {
+    if (media.thumbPath) {
+      toFileUrlCached(media.thumbPath).then(u => setPoster(u)).catch(() => {})
+    }
+  }, [media.thumbPath])
 
   return (
     <div
       className="relative overflow-hidden bg-black group cursor-pointer"
-      style={style}
+      style={{ ...style, contain: 'strict' }}
       onClick={onShuffle}
+      onContextMenu={handleContextMenu}
     >
+      {/* Show thumbnail poster while video loads */}
+      {poster && !ready && (
+        <img
+          src={poster}
+          className="absolute inset-0 w-full h-full object-cover"
+          alt=""
+        />
+      )}
+
       {url && (
         <video
           ref={videoRef}
@@ -3016,11 +3134,18 @@ const GoonTile = React.memo(function GoonTile(props: { media: MediaRow; muted: b
           loop
           muted={muted}
           playsInline
-          preload="auto"
-          className="w-full h-full object-cover"
+          preload="metadata"
+          className={`w-full h-full ${isMosaic ? 'object-cover' : 'object-contain'}`}
+          style={{ opacity: ready ? 1 : 0 }}
           onLoadedMetadata={handleLoadedMetadata}
+          onCanPlay={() => setReady(true)}
           onError={handleError}
         />
+      )}
+
+      {/* Loading shimmer when no poster and not ready */}
+      {!poster && !ready && (
+        <div className="absolute inset-0 bg-gray-900 animate-pulse" />
       )}
 
       {/* Hover overlay */}
@@ -3028,233 +3153,16 @@ const GoonTile = React.memo(function GoonTile(props: { media: MediaRow; muted: b
         <div className="text-xs text-white/80 text-center p-2 truncate max-w-full">
           {media.path.split(/[/\\]/).pop() || 'Unknown'}
         </div>
-        <div className="text-[10px] text-white/50">Click to shuffle</div>
+        <div className="text-[10px] text-white/50">Click to shuffle | Right-click to skip</div>
       </div>
     </div>
   )
 })
 
-function DaylistPage() {
-  const [daylist, setDaylist] = useState<{ daylist: any; items: MediaRow[] } | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [motifName, setMotifName] = useState('')
-  const [openId, setOpenId] = useState<string | null>(null)
-  const [daylistIntensity, setDaylistIntensity] = useState(3)
-
-  const intensityLabels = ['Mild', 'Light', 'Medium', 'Spicy', 'Extreme']
-
-  const generateMotifName = () => {
-    const hour = new Date().getHours()
-    const pick = <T extends unknown>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]
-
-    // Time-based prefixes
-    const timeVibe = hour >= 0 && hour < 5 ? pick(['3AM Goon Session', 'Midnight Edging', 'Late Night Stroke', 'Insomniac\'s Fap'])
-      : hour >= 5 && hour < 9 ? pick(['Morning Wood', 'Dawn Goon', 'Early Bird Edge', 'Wake & Stroke'])
-      : hour >= 9 && hour < 12 ? pick(['Mid-Morning Filth', 'Workday Goon Break', 'Secret Session'])
-      : hour >= 12 && hour < 17 ? pick(['Afternoon Delight', 'Lunch Break Lust', 'Midday Melt'])
-      : hour >= 17 && hour < 21 ? pick(['Evening Edge', 'Sunset Stroke', 'Twilight Goon'])
-      : pick(['Nighttime Nasty', 'Bedtime Binge', 'After Dark Session'])
-
-    // Explicit body part / act themes
-    const themes = [
-      'Thick Ass Overload', 'Juicy Tits Marathon', 'Brain-Melting Creampie',
-      'Slutty Blowjob Mix', 'Wet Pussy Worship', 'Deepthroat Dreams',
-      'Big Booty Bonanza', 'Cum Compilation', 'Anal Adventures',
-      'MILF Madness', 'Teen Temptation', 'Gangbang Gallery',
-      'Facial Fest', 'Squirt Special', 'Hardcore Heaven',
-      'POV Paradise', 'Threesome Thrills', 'Lesbian Lust',
-      'Riding Collection', 'Doggystyle Delights', 'Cowgirl Compilation',
-      'Titfuck Tuesday', 'Prone Bone Picks', 'Standing Sex Spectacle'
-    ]
-
-    // Emojis for extra spice
-    const emojis = ['🔥', '💦', '🍑', '😈', '🥵', '🍆', '💋', '🫦', '😩', '🤤']
-
-    const emoji = pick(emojis)
-    const theme = pick(themes)
-
-    return `${emoji} ${timeVibe}: ${theme}`
-  }
-
-  const loadDaylist = async () => {
-    setLoading(true)
-    try {
-      const result = await window.api.daylist.getToday({ limit: 50, intensity: daylistIntensity })
-      setDaylist(result)
-      setMotifName(generateMotifName())
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const regenerate = async () => {
-    setLoading(true)
-    try {
-      const result = await window.api.daylist.regenerate({ limit: 50, intensity: daylistIntensity })
-      setDaylist(result)
-      setMotifName(generateMotifName())
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    void loadDaylist()
-  }, [])
-
-  const items = daylist?.items ?? []
-
-  // Calculate intensity curve visualization - changes with intensity slider
-  const intensityCurve = useMemo(() => {
-    const len = items.length > 0 ? items.length : 50 // Show curve even without items
-    // Intensity affects the curve shape:
-    // Low intensity (1-2): gentle, slow buildup
-    // Medium (3): balanced curve
-    // High (4-5): aggressive, fast peaks
-    const intensityFactor = daylistIntensity / 3 // 0.33 to 1.67
-    const peakPosition = 0.5 + (daylistIntensity - 3) * 0.1 // Peak moves later at higher intensity
-    const baseHeight = 0.2 + (daylistIntensity - 1) * 0.1 // Higher base at higher intensity
-
-    return Array.from({ length: len }, (_, i) => {
-      const progress = i / Math.max(len - 1, 1)
-
-      // Create dynamic curve based on intensity
-      if (progress < peakPosition * 0.6) {
-        // Buildup phase - steeper at higher intensity
-        return baseHeight + progress * (1.5 * intensityFactor)
-      } else if (progress < peakPosition) {
-        // Approaching peak
-        const peakProgress = (progress - peakPosition * 0.6) / (peakPosition * 0.4)
-        return baseHeight + 0.4 * intensityFactor + peakProgress * (0.5 * intensityFactor)
-      } else if (progress < peakPosition + 0.2) {
-        // Peak zone - higher and longer at higher intensity
-        return Math.min(1, baseHeight + 0.9 * intensityFactor)
-      } else {
-        // Cooldown - sharper drop at higher intensity
-        const coolProgress = (progress - peakPosition - 0.2) / (1 - peakPosition - 0.2)
-        return Math.max(baseHeight, (baseHeight + 0.9 * intensityFactor) - coolProgress * (0.4 * intensityFactor))
-      }
-    })
-  }, [items.length, daylistIntensity])
-
-  return (
-    <>
-      <TopBar
-        title={motifName || 'Today\'s Daylist'}
-        right={
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-[var(--muted)]">Intensity:</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min={1}
-                  max={5}
-                  value={daylistIntensity}
-                  onChange={(e) => setDaylistIntensity(Number(e.target.value))}
-                  className="w-24 h-1.5 accent-[var(--primary)] bg-[var(--surface)] rounded-full cursor-pointer"
-                />
-                <span className="text-xs font-medium min-w-[50px] text-[var(--primary)]">
-                  {intensityLabels[daylistIntensity - 1]}
-                </span>
-              </div>
-            </div>
-            <Btn onClick={regenerate} disabled={loading}>
-              {loading ? 'Generating...' : 'Regenerate'}
-            </Btn>
-          </div>
-        }
-      >
-        {/* Intensity curve visualization */}
-        <div className="mt-4">
-          <div className="text-xs text-[var(--muted)] mb-2">Intensity Curve</div>
-          <div className="flex items-end gap-0.5 h-8">
-            {intensityCurve.map((intensity, i) => (
-              <div
-                key={i}
-                className="flex-1 rounded-t transition-all"
-                style={{
-                  height: `${intensity * 100}%`,
-                  background: `linear-gradient(to top, var(--primary), var(--secondary))`,
-                  opacity: 0.3 + intensity * 0.7
-                }}
-              />
-            ))}
-          </div>
-          <div className="flex justify-between text-[10px] text-[var(--muted)] mt-1">
-            <span>Warmup</span>
-            <span>Peak</span>
-            <span>Cooldown</span>
-          </div>
-        </div>
-      </TopBar>
-
-      <div className="h-[calc(100vh-180px)] overflow-auto p-6">
-        {loading && items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full">
-            <div className="animate-pulse text-4xl mb-4">🔥</div>
-            <div className="text-sm text-[var(--muted)]">Curating your selection...</div>
-          </div>
-        ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="text-6xl mb-4 opacity-30">📅</div>
-            <div className="text-lg font-medium text-[var(--muted)]">No daylist yet</div>
-            <div className="text-sm text-[var(--text-subtle)] mt-1 mb-4">
-              Generate a personalized selection for today
-            </div>
-            <Btn tone="primary" onClick={regenerate}>Generate Daylist</Btn>
-          </div>
-        ) : (
-          <>
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <div className="rounded-2xl border border-[var(--border)] bg-black/20 p-4 text-center">
-                <div className="text-2xl font-bold">{items.length}</div>
-                <div className="text-xs text-[var(--muted)] mt-1">Items</div>
-              </div>
-              <div className="rounded-2xl border border-[var(--border)] bg-black/20 p-4 text-center">
-                <div className="text-2xl font-bold">
-                  {formatDuration(items.reduce((sum, m) => sum + (m.durationSec || 0), 0))}
-                </div>
-                <div className="text-xs text-[var(--muted)] mt-1">Total Duration</div>
-              </div>
-              <div className="rounded-2xl border border-[var(--border)] bg-black/20 p-4 text-center">
-                <div className="text-2xl font-bold">
-                  {items.filter(m => m.type === 'video').length}
-                </div>
-                <div className="text-xs text-[var(--muted)] mt-1">Videos</div>
-              </div>
-            </div>
-
-            {/* Grid */}
-            <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
-              {items.map((item, idx) => (
-                <DaylistItem
-                  key={item.id}
-                  media={item}
-                  index={idx}
-                  intensity={intensityCurve[idx] ?? 0.5}
-                  onClick={() => setOpenId(item.id)}
-                />
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-
-      {openId && (
-        <MediaViewer
-          mediaId={openId}
-          onClose={() => setOpenId(null)}
-          mediaList={items}
-          onMediaChange={(newId) => setOpenId(newId)}
-        />
-      )}
-    </>
-  )
-}
 
 // TikTok-style vertical swipe feed
+type FeedSortMode = 'random' | 'liked' | 'newest' | 'views'
+
 function FeedPage() {
   const [videos, setVideos] = useState<MediaRow[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -3266,6 +3174,7 @@ function FeedPage() {
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [recommendedTags, setRecommendedTags] = useState<string[]>([]) // Tags to "keep seeing"
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
+  const [sortMode, setSortMode] = useState<FeedSortMode>('random')
   const containerRef = useRef<HTMLDivElement>(null)
   const videoRefs = useRef<Map<number, HTMLVideoElement>>(new Map())
   const hudTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -3280,14 +3189,47 @@ function FeedPage() {
     window.api.tags.listWithCounts().then(setAllTags)
   }, [])
 
-  // Load random videos based on selected tags
+  // Load videos based on sort mode and selected tags
   const loadVideos = useCallback(async (tags: string[] = []) => {
     setLoading(true)
     try {
-      // Combine selected tags with recommended tags
+      let vids: MediaRow[] = []
       const combinedTags = [...new Set([...tags, ...recommendedTags])]
-      const result = await window.api.media.randomByTags(combinedTags, { limit: 50 })
-      const vids = (Array.isArray(result) ? result : []).filter((m: any) => m.type === 'video')
+
+      if (sortMode === 'random') {
+        const result = await window.api.media.randomByTags(combinedTags, { limit: 50 })
+        vids = (Array.isArray(result) ? result : []).filter((m: any) => m.type === 'video')
+      } else if (sortMode === 'liked') {
+        const result = await window.api.media.randomByTags(combinedTags, { limit: 200 })
+        const allVids = (Array.isArray(result) ? result : []).filter((m: any) => m.type === 'video')
+        // Filter to only liked (rating >= 5)
+        const likedVids: MediaRow[] = []
+        await Promise.all(allVids.map(async (v: MediaRow) => {
+          try {
+            const stats = await window.api.media.getStats(v.id)
+            if (stats && (stats.rating ?? 0) >= 5) likedVids.push(v)
+          } catch {}
+        }))
+        vids = likedVids.slice(0, 50)
+      } else if (sortMode === 'newest') {
+        try {
+          const result = await window.api.media.list({ sort: 'newest', limit: 50, type: 'video' })
+          vids = (Array.isArray(result) ? result : result?.items ?? []).filter((m: any) => m.type === 'video')
+        } catch {
+          // Fallback to random if list with sort not supported
+          const result = await window.api.media.randomByTags(combinedTags, { limit: 50 })
+          vids = (Array.isArray(result) ? result : []).filter((m: any) => m.type === 'video')
+        }
+      } else if (sortMode === 'views') {
+        try {
+          const result = await window.api.media.list({ sort: 'views', limit: 50, type: 'video' })
+          vids = (Array.isArray(result) ? result : result?.items ?? []).filter((m: any) => m.type === 'video')
+        } catch {
+          const result = await window.api.media.randomByTags(combinedTags, { limit: 50 })
+          vids = (Array.isArray(result) ? result : []).filter((m: any) => m.type === 'video')
+        }
+      }
+
       setVideos(vids)
 
       // Load liked status for these videos
@@ -3306,14 +3248,14 @@ function FeedPage() {
     } finally {
       setLoading(false)
     }
-  }, [recommendedTags])
+  }, [recommendedTags, sortMode])
 
-  // Initial load
+  // Initial load & reload on sort mode change
   useEffect(() => {
     loadVideos(selectedTags)
-  }, []) // eslint-disable-line
+  }, [sortMode]) // eslint-disable-line
 
-  // Keyboard navigation
+  // Keyboard navigation: Up/Down = scroll videos, Left/Right = seek in current video
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
@@ -3324,22 +3266,32 @@ function FeedPage() {
       } else if (e.key === 'ArrowUp' || e.key === 'k') {
         e.preventDefault()
         setCurrentIndex(prev => Math.max(prev - 1, 0))
+      } else if (e.key === 'ArrowRight' || e.key === 'l') {
+        // Skip forward 5 seconds in the current video
+        e.preventDefault()
+        const video = videoRefs.current.get(currentIndex)
+        if (video && video.duration) {
+          video.currentTime = Math.min(video.currentTime + 5, video.duration)
+        }
+      } else if (e.key === 'ArrowLeft' || e.key === 'h') {
+        // Skip backward 5 seconds in the current video
+        e.preventDefault()
+        const video = videoRefs.current.get(currentIndex)
+        if (video) {
+          video.currentTime = Math.max(video.currentTime - 5, 0)
+        }
+      } else if (e.key === 'm') {
+        // Toggle mute
+        e.preventDefault()
+        setIsMuted(prev => !prev)
       }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [videos.length])
+  }, [videos.length, currentIndex])
 
-  // Scroll to current video
+  // Play/pause based on current index
   useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTo({
-        top: currentIndex * containerRef.current.clientHeight,
-        behavior: 'smooth'
-      })
-    }
-
-    // Pause all videos except current
     videoRefs.current.forEach((video, idx) => {
       if (idx === currentIndex) {
         video.play().catch(() => {})
@@ -3349,17 +3301,26 @@ function FeedPage() {
     })
   }, [currentIndex])
 
-  // Handle scroll to update current index
-  const handleScroll = useCallback(() => {
-    if (containerRef.current) {
-      const scrollTop = containerRef.current.scrollTop
-      const height = containerRef.current.clientHeight
-      const newIndex = Math.round(scrollTop / height)
-      if (newIndex !== currentIndex && newIndex >= 0 && newIndex < videos.length) {
-        setCurrentIndex(newIndex)
+  // Mouse wheel scrolling — debounced to one video per scroll gesture
+  const wheelCooldownRef = useRef(false)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      if (wheelCooldownRef.current) return
+      if (Math.abs(e.deltaY) < 30) return // ignore tiny scroll events
+      wheelCooldownRef.current = true
+      if (e.deltaY > 0) {
+        setCurrentIndex(prev => Math.min(prev + 1, videos.length - 1))
+      } else {
+        setCurrentIndex(prev => Math.max(prev - 1, 0))
       }
+      setTimeout(() => { wheelCooldownRef.current = false }, 400)
     }
-  }, [currentIndex, videos.length])
+    el.addEventListener('wheel', handleWheel, { passive: false })
+    return () => el.removeEventListener('wheel', handleWheel)
+  }, [videos.length])
 
   // Auto-hide HUD after inactivity
   const resetHudTimeout = useCallback(() => {
@@ -3477,7 +3438,7 @@ function FeedPage() {
   if (videos.length === 0) {
     return (
       <div className="h-full flex flex-col items-center justify-center bg-black text-center p-8">
-        <div className="text-6xl mb-4 opacity-30">🎬</div>
+            <div className="text-6xl mb-4 opacity-30">📅</div>
         <div className="text-lg font-medium text-white/60">No videos found</div>
         <div className="text-sm text-white/40 mt-2">Add some videos to your library first</div>
       </div>
@@ -3486,24 +3447,34 @@ function FeedPage() {
 
   return (
     <div className="h-full w-full bg-black relative" onMouseMove={resetHudTimeout}>
-      {/* HUD Controls */}
+      {/* HUD Controls - compact top-right floating bar */}
       <div
-        className={`absolute top-4 left-4 right-4 z-50 flex items-center justify-between transition-opacity duration-300 ${showHud ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`absolute top-2 sm:top-4 right-2 sm:right-4 z-50 flex items-center gap-1 sm:gap-2 transition-opacity duration-300 ${showHud ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       >
-        {/* Left: Counter */}
-        <div className="flex items-center gap-3 bg-black/90 backdrop-blur-md rounded-full px-4 py-2">
-          <span className="text-sm font-medium text-white">
-            {currentIndex + 1} / {videos.length}
-          </span>
+        {/* Sort pills */}
+        <div className="flex items-center gap-1 bg-black/90 backdrop-blur-md rounded-full px-2 py-1">
+          {(['random', 'liked', 'newest', 'views'] as FeedSortMode[]).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => {
+                setSortMode(mode)
+                setCurrentIndex(0)
+                if (containerRef.current) containerRef.current.scrollTo({ top: 0, behavior: 'auto' })
+              }}
+              className={cn(
+                'px-2.5 py-1 rounded-full text-xs transition',
+                sortMode === mode
+                  ? 'bg-white/20 text-white font-medium'
+                  : 'text-white/60 hover:text-white hover:bg-white/10'
+              )}
+            >
+              {mode.charAt(0).toUpperCase() + mode.slice(1)}
+            </button>
+          ))}
         </div>
 
-        {/* Center: Navigation hint */}
-        <div className="flex items-center gap-2 bg-black/90 backdrop-blur-md rounded-full px-4 py-2">
-          <span className="text-xs text-white/60">↑↓ or Space to navigate</span>
-        </div>
-
-        {/* Right: Controls */}
-        <div className="flex items-center gap-2 bg-black/90 backdrop-blur-md rounded-full px-2 py-1">
+        {/* Action buttons */}
+        <div className="flex items-center gap-1 bg-black/90 backdrop-blur-md rounded-full px-2 py-1">
           <button
             onClick={() => setShowTagPanel(!showTagPanel)}
             className={cn(
@@ -3514,30 +3485,30 @@ function FeedPage() {
             )}
             title="Tag filters"
           >
-            <Tag size={18} />
+            <Tag size={16} />
           </button>
           <button
             onClick={() => setIsMuted(!isMuted)}
             className="w-8 h-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition"
             title={isMuted ? 'Unmute' : 'Mute'}
           >
-            {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
           </button>
           <button
             onClick={shuffleFeed}
             className="w-8 h-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition"
             title="Shuffle feed"
           >
-            <Shuffle size={18} />
-          </button>
-          <button
-            onClick={openInPlayer}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition"
-            title="Open in player"
-          >
-            <Maximize2 size={18} />
+            <Shuffle size={16} />
           </button>
         </div>
+      </div>
+
+      {/* Subtle counter - bottom left */}
+      <div
+        className={`absolute bottom-4 left-4 z-50 text-xs text-white/40 transition-opacity duration-300 ${showHud ? 'opacity-100' : 'opacity-0'}`}
+      >
+        {currentIndex + 1} / {videos.length}
       </div>
 
       {/* Tag Panel */}
@@ -3687,45 +3658,55 @@ function FeedPage() {
         </div>
       )}
 
-      {/* Video container */}
-      <div
-        ref={containerRef}
-        onScroll={handleScroll}
-        className="h-full w-full overflow-y-auto snap-y snap-mandatory scrollbar-hide"
-        style={{ scrollSnapType: 'y mandatory' }}
-      >
-        {videos.map((video, index) => (
-          <FeedItem
-            key={video.id}
-            video={video}
-            index={index}
-            isActive={index === currentIndex}
-            onVideoRef={(el) => {
-              if (el) videoRefs.current.set(index, el)
-              else videoRefs.current.delete(index)
-            }}
-            isLiked={likedIds.has(video.id)}
-            onToggleLike={() => toggleLike(video.id)}
-            onSkip={skipToNext}
-          />
-        ))}
+      {/* Video container - render current + adjacent for preloading */}
+      <div ref={containerRef} className="h-full w-full relative">
+        {videos.map((video, index) => {
+          // Only render current and +/- 1 for preloading
+          const offset = index - currentIndex
+          if (Math.abs(offset) > 1) return null
+          return (
+            <div
+              key={video.id}
+              className="absolute inset-0"
+              style={{
+                zIndex: offset === 0 ? 10 : 1,
+                opacity: offset === 0 ? 1 : 0,
+                pointerEvents: offset === 0 ? 'auto' : 'none',
+              }}
+            >
+              <FeedItem
+                video={video}
+                index={index}
+                isActive={index === currentIndex}
+                onVideoRef={(el) => {
+                  if (el) videoRefs.current.set(index, el)
+                  else videoRefs.current.delete(index)
+                }}
+                isLiked={likedIds.has(video.id)}
+                onToggleLike={() => toggleLike(video.id)}
+                onSkip={skipToNext}
+                onOpenInPlayer={openInPlayer}
+              />
+            </div>
+          )
+        })}
       </div>
 
       {/* Side navigation */}
-      <div className="absolute right-4 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2">
+      <div className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2">
         <button
           onClick={() => setCurrentIndex(prev => Math.max(prev - 1, 0))}
           disabled={currentIndex === 0}
-          className="w-10 h-10 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center text-white/60 hover:text-white hover:bg-black/70 disabled:opacity-30 disabled:cursor-not-allowed transition"
+          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center text-white/60 hover:text-white hover:bg-black/70 disabled:opacity-30 disabled:cursor-not-allowed transition"
         >
-          <ChevronUp size={20} />
+          <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
         <button
           onClick={() => setCurrentIndex(prev => Math.min(prev + 1, videos.length - 1))}
           disabled={currentIndex === videos.length - 1}
-          className="w-10 h-10 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center text-white/60 hover:text-white hover:bg-black/70 disabled:opacity-30 disabled:cursor-not-allowed transition"
+          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center text-white/60 hover:text-white hover:bg-black/70 disabled:opacity-30 disabled:cursor-not-allowed transition"
         >
-          <ChevronDown size={20} />
+          <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
       </div>
     </div>
@@ -3741,40 +3722,59 @@ const FeedItem = React.memo(function FeedItem(props: {
   isLiked: boolean
   onToggleLike: () => void
   onSkip: () => void
+  onOpenInPlayer?: () => void
 }) {
-  const { video, isActive, onVideoRef, isLiked, onToggleLike, onSkip } = props
+  const { video, isActive, onVideoRef, isLiked, onToggleLike, onSkip, onOpenInPlayer } = props
+  const [showPlaylistPopup, setShowPlaylistPopup] = useState(false)
+  const feedPlaylistBtnRef = useRef<HTMLButtonElement>(null)
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(true)
+  const [transcodeRetried, setTranscodeRetried] = useState(false)
 
   useEffect(() => {
     let alive = true
+    setTranscodeRetried(false)
     ;(async () => {
+      try {
+        const u = await window.api.media.getPlayableUrl(video.id)
+        if (alive && u) { setUrl(u as string); return }
+      } catch {}
+      // Fallback to direct file URL
       const u = await toFileUrlCached(video.path)
       if (alive) setUrl(u)
     })()
     return () => { alive = false }
-  }, [video.path])
+  }, [video.id, video.path])
 
   const filename = video.filename || video.path.split(/[/\\]/).pop() || 'Unknown'
 
   return (
-    <div
-      className="h-full w-full snap-start flex items-center justify-center bg-black relative"
-      style={{ scrollSnapAlign: 'start', minHeight: '100vh' }}
-    >
+    <div className="h-full w-full flex items-center justify-center bg-black relative">
       {/* Video - fill height, maintain aspect ratio */}
       {url && (
         <video
           ref={onVideoRef}
           src={url}
-          className="h-full w-auto max-w-full object-contain"
-          style={{ maxHeight: '100vh' }}
+          className="h-full w-full object-contain"
           autoPlay={isActive}
           muted={!isActive}
           loop
           playsInline
           preload={isActive ? 'auto' : 'metadata'}
           onCanPlay={() => setLoading(false)}
+          onError={() => {
+            // Retry with force transcode before skipping
+            if (!transcodeRetried) {
+              setTranscodeRetried(true)
+              window.api.media.getPlayableUrl(video.id, true).then((u: any) => {
+                if (u) setUrl(u as string)
+                else { setLoading(false); onSkip() }
+              }).catch(() => { setLoading(false); onSkip() })
+              return
+            }
+            setLoading(false)
+            onSkip()
+          }}
         />
       )}
 
@@ -3786,32 +3786,58 @@ const FeedItem = React.memo(function FeedItem(props: {
       )}
 
       {/* Video info overlay */}
-      <div className="absolute bottom-20 left-4 right-20 text-white">
-        <p className="font-semibold text-lg truncate">{filename}</p>
+      <div className="absolute bottom-12 sm:bottom-20 left-3 sm:left-4 right-16 sm:right-20 text-white">
+        <p className="font-semibold text-sm sm:text-lg truncate">{filename}</p>
         {video.durationSec && (
-          <p className="text-sm text-white/60">{formatDuration(video.durationSec)}</p>
+          <p className="text-xs sm:text-sm text-white/60">{formatDuration(video.durationSec)}</p>
         )}
       </div>
 
-      {/* Side actions */}
-      <div className="absolute right-4 bottom-32 flex flex-col gap-4">
+      {/* Side actions (TikTok-style) */}
+      <div className="absolute right-2 sm:right-4 bottom-16 sm:bottom-32 flex flex-col gap-2 sm:gap-3">
         <button
           onClick={onToggleLike}
           className={cn(
-            "w-12 h-12 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center hover:bg-black/60 transition",
+            "w-9 h-9 sm:w-12 sm:h-12 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center hover:bg-black/60 transition",
             isLiked ? "text-red-500" : "text-white/80 hover:text-white"
           )}
           title={isLiked ? "Unlike" : "Like"}
         >
-          <Heart size={24} fill={isLiked ? "currentColor" : "none"} />
+          <Heart className="w-4 h-4 sm:w-6 sm:h-6" fill={isLiked ? "currentColor" : "none"} />
         </button>
+        <div className="relative">
+          <button
+            ref={feedPlaylistBtnRef}
+            onClick={() => setShowPlaylistPopup(prev => !prev)}
+            className="w-9 h-9 sm:w-12 sm:h-12 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center text-white/80 hover:text-white hover:bg-black/60 transition"
+            title="Add to playlist"
+          >
+            <Plus className="w-4 h-4 sm:w-6 sm:h-6" />
+          </button>
+          {showPlaylistPopup && (
+            <AddToPlaylistPopup
+              mediaId={video.id}
+              onClose={() => setShowPlaylistPopup(false)}
+              anchorRef={feedPlaylistBtnRef}
+            />
+          )}
+        </div>
         <button
           onClick={onSkip}
-          className="w-12 h-12 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center text-white/80 hover:text-white hover:bg-black/60 transition"
-          title="Next video"
+          className="w-9 h-9 sm:w-12 sm:h-12 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center text-white/80 hover:text-white hover:bg-black/60 transition"
+          title="Shuffle / Next"
         >
-          <Shuffle size={24} />
+          <Shuffle className="w-4 h-4 sm:w-6 sm:h-6" />
         </button>
+        {onOpenInPlayer && (
+          <button
+            onClick={onOpenInPlayer}
+            className="w-9 h-9 sm:w-12 sm:h-12 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center text-white/80 hover:text-white hover:bg-black/60 transition"
+            title="Open in Player"
+          >
+            <Maximize2 className="w-4 h-4 sm:w-6 sm:h-6" />
+          </button>
+        )}
       </div>
     </div>
   )
@@ -3890,6 +3916,8 @@ const MOOD_CONFIG: Record<Exclude<PlaylistMood, null>, { name: string; icon: str
   marathon: { name: 'Marathon', icon: '🏃', color: '#22c55e' }
 }
 
+type PlaylistSortBy = 'manual' | 'name' | 'duration' | 'added' | 'random'
+
 function PlaylistsPage() {
   const [playlists, setPlaylists] = useState<PlaylistRow[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -3901,6 +3929,12 @@ function PlaylistsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [openMediaId, setOpenMediaId] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<PlaylistSortBy>('manual')
+  const [typeFilter, setTypeFilter] = useState<'all' | 'video' | 'image' | 'gif'>('all')
+  const [showAddMedia, setShowAddMedia] = useState(false)
+  const [allMedia, setAllMedia] = useState<MediaRow[]>([])
+  const [mediaSearch, setMediaSearch] = useState('')
+  const [addingMedia, setAddingMedia] = useState(false)
 
   const refresh = async () => {
     try {
@@ -3942,9 +3976,15 @@ function PlaylistsPage() {
 
   const createPlaylist = async () => {
     if (!newName.trim()) return
-    await window.api.playlists.create(newName.trim())
-    setNewName('')
-    await refresh()
+    try {
+      const created = await window.api.playlists.create(newName.trim())
+      setNewName('')
+      await refresh()
+      if (created?.id) setSelectedId(created.id)
+    } catch (err: any) {
+      console.error('[PlaylistsPage] Failed to create playlist:', err)
+      setError(err?.message ?? 'Failed to create playlist')
+    }
   }
 
   const deletePlaylist = async (id: string) => {
@@ -3978,6 +4018,30 @@ function PlaylistsPage() {
     await loadItems(selectedId)
   }
 
+  const openAddMedia = async () => {
+    try {
+      const media = await window.api.media.list({ limit: 500 })
+      setAllMedia(media)
+      setShowAddMedia(true)
+      setMediaSearch('')
+    } catch (err: any) {
+      console.error('[PlaylistsPage] Failed to load media:', err)
+    }
+  }
+
+  const addMediaToPlaylist = async (mediaId: string) => {
+    if (!selectedId || addingMedia) return
+    setAddingMedia(true)
+    try {
+      await window.api.playlists.addItems(selectedId, [mediaId])
+      await loadItems(selectedId)
+    } catch (err: any) {
+      console.error('[PlaylistsPage] Failed to add media:', err)
+    } finally {
+      setAddingMedia(false)
+    }
+  }
+
   const handleDragStart = (idx: number) => {
     setDragIdx(idx)
   }
@@ -4006,8 +4070,53 @@ function PlaylistsPage() {
 
   const selectedPlaylist = playlists.find(p => p.id === selectedId)
 
+  // Sort items based on sortBy
+  const sortedItems = useMemo(() => {
+    // Apply type filter first
+    let filtered = items
+    if (typeFilter !== 'all') {
+      filtered = items.filter((item: any) => {
+        const t = (item.media?.type ?? item.type ?? '').toLowerCase()
+        return t === typeFilter
+      })
+    }
+    if (sortBy === 'manual') return filtered
+    const sorted = [...filtered]
+    switch (sortBy) {
+      case 'name':
+        sorted.sort((a: any, b: any) => {
+          const nameA = (a.media?.filename ?? a.filename ?? '').toLowerCase()
+          const nameB = (b.media?.filename ?? b.filename ?? '').toLowerCase()
+          return nameA.localeCompare(nameB)
+        })
+        break
+      case 'duration':
+        sorted.sort((a: any, b: any) => {
+          const durA = a.media?.durationSec ?? a.durationSec ?? 0
+          const durB = b.media?.durationSec ?? b.durationSec ?? 0
+          return durB - durA
+        })
+        break
+      case 'added':
+        sorted.sort((a: any, b: any) => {
+          const addedA = a.addedAt ?? 0
+          const addedB = b.addedAt ?? 0
+          return addedB - addedA
+        })
+        break
+      case 'random': {
+        for (let i = sorted.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1))
+          ;[sorted[i], sorted[j]] = [sorted[j], sorted[i]]
+        }
+        break
+      }
+    }
+    return sorted
+  }, [items, sortBy, typeFilter])
+
   // Build media list for the FloatingVideoPlayer from playlist items
-  const playlistMediaList: MediaRow[] = items
+  const playlistMediaList: MediaRow[] = sortedItems
     .filter((item: any) => item.media || item.path)
     .map((item: any) => ({
       id: item.media?.id ?? item.mediaId ?? item.id,
@@ -4043,7 +4152,7 @@ function PlaylistsPage() {
   return (
     <>
       <TopBar
-        title="Playlists"
+        title="Sessions"
         right={
           selectedId && (
             <div className="flex items-center gap-2">
@@ -4108,7 +4217,7 @@ function PlaylistsPage() {
                         }}
                         className="text-xs text-[var(--muted)] hover:text-white opacity-0 group-hover:opacity-100"
                       >
-                        ✏️
+
                       </button>
                     </div>
                   )}
@@ -4128,105 +4237,142 @@ function PlaylistsPage() {
           {selectedPlaylist ? (
             <div className="p-6">
               {/* Header */}
-              <div className="mb-6">
-                <h2 className="text-2xl font-bold">{selectedPlaylist.name}</h2>
-                <div className="text-sm text-[var(--muted)] mt-1">
-                  {items.length} {items.length === 1 ? 'item' : 'items'}
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">{selectedPlaylist.name}</h2>
+                  <div className="text-sm text-[var(--muted)] mt-1">
+                    {items.length} {items.length === 1 ? 'item' : 'items'}
+                  </div>
                 </div>
-              </div>
-
-              {/* Mood selector */}
-              <div className="mb-6">
-                <div className="text-xs text-[var(--muted)] mb-2">Mood</div>
-                <div className="flex gap-2">
-                  {(Object.keys(MOOD_CONFIG) as Array<Exclude<PlaylistMood, null>>).map((mood) => {
-                    const config = MOOD_CONFIG[mood]
-                    return (
+                <div className="flex items-center gap-2">
+                  {/* Type filter buttons */}
+                  <div className="flex gap-1">
+                    {(['all', 'video', 'image', 'gif'] as const).map((t) => (
                       <button
-                        key={mood}
-                        className="px-3 py-2 rounded-xl text-xs border border-[var(--border)] hover:border-white/20 transition flex items-center gap-2"
-                        style={{ backgroundColor: `${config.color}20` }}
+                        key={t}
+                        onClick={() => setTypeFilter(t)}
+                        className={cn(
+                          'px-2.5 py-1.5 rounded-lg text-xs border transition',
+                          typeFilter === t
+                            ? 'bg-white/10 border-white/20 text-white font-medium'
+                            : 'border-[var(--border)] text-[var(--muted)] hover:border-white/15 hover:text-white'
+                        )}
                       >
-                        <span>{config.icon}</span>
-                        <span>{config.name}</span>
+                        {t === 'all' ? 'All' : t === 'video' ? 'Videos' : t === 'image' ? 'Images' : 'GIFs'}
                       </button>
-                    )
-                  })}
+                    ))}
+                  </div>
+                  {/* Sort buttons */}
+                  <div className="flex gap-1">
+                    {(['manual', 'name', 'duration', 'added', 'random'] as PlaylistSortBy[]).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setSortBy(s)}
+                        className={cn(
+                          'px-2.5 py-1.5 rounded-lg text-xs border transition',
+                          sortBy === s
+                            ? 'bg-white/10 border-white/20 text-white font-medium'
+                            : 'border-[var(--border)] text-[var(--muted)] hover:border-white/15 hover:text-white'
+                        )}
+                      >
+                        {s.charAt(0).toUpperCase() + s.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                  <Btn tone="primary" onClick={openAddMedia} className="flex items-center gap-1.5">
+                    <Plus size={14} />
+                    Add Videos
+                  </Btn>
                 </div>
               </div>
 
-              {/* Items list */}
-              <div className="space-y-2">
-                {items.map((item: any, idx: number) => (
-                  <div
-                    key={item.playlistItemId}
-                    draggable
-                    onDragStart={() => handleDragStart(idx)}
-                    onDragOver={(e) => handleDragOver(e, idx)}
-                    onDrop={(e) => handleDrop(e, idx)}
-                    onClick={() => {
-                      const mediaId = item.media?.id ?? item.mediaId
-                      if (mediaId) setOpenMediaId(mediaId)
-                    }}
-                    className={cn(
-                      'flex items-center gap-4 p-3 rounded-xl border border-[var(--border)] bg-black/20 hover:border-white/15 transition cursor-pointer',
-                      dragIdx === idx && 'opacity-50',
-                      openMediaId === (item.media?.id ?? item.mediaId) && 'border-[var(--primary)]/50 bg-[var(--primary)]/10'
-                    )}
-                  >
-                    {/* Drag handle */}
-                    <div className="text-[var(--muted)] select-none cursor-grab active:cursor-grabbing">⋮⋮</div>
+              {/* Mosaic grid */}
+              <div
+                className="grid"
+                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}
+              >
+                {sortedItems.map((item: any, idx: number) => {
+                  const mediaId = item.media?.id ?? item.mediaId
+                  const isPlaying = openMediaId === mediaId
+                  return (
+                    <div
+                      key={item.playlistItemId}
+                      draggable={sortBy === 'manual'}
+                      onDragStart={sortBy === 'manual' ? () => handleDragStart(idx) : undefined}
+                      onDragOver={sortBy === 'manual' ? (e) => { e.preventDefault(); handleDragOver(e, idx) } : undefined}
+                      onDrop={sortBy === 'manual' ? (e) => handleDrop(e, idx) : undefined}
+                      onClick={() => { if (mediaId) setOpenMediaId(mediaId) }}
+                      className={cn(
+                        'relative rounded-xl border bg-black/20 overflow-hidden group cursor-pointer transition-all duration-200',
+                        'hover:scale-[1.02] hover:z-10 hover:shadow-xl hover:shadow-black/40',
+                        dragIdx === idx && 'opacity-50 scale-95',
+                        isPlaying
+                          ? 'border-[var(--primary)]/50 shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)]'
+                          : 'border-[var(--border)] hover:border-[var(--primary)]/30'
+                      )}
+                    >
+                      {/* Thumbnail */}
+                      <PlaylistGridThumb item={item} />
 
-                    {/* Position */}
-                    <div className="w-6 text-center text-xs text-[var(--muted)]">{idx + 1}</div>
+                      {/* Position badge */}
+                      <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-sm text-[10px] text-white/70">
+                        {idx + 1}
+                      </div>
 
-                    {/* Thumbnail */}
-                    <PlaylistItemThumb item={item} />
+                      {/* Drag handle (manual sort only) */}
+                      {sortBy === 'manual' && (
+                        <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-sm text-[10px] text-white/50 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition">
 
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{item.media?.filename ?? item.filename ?? 'Unknown'}</div>
-                      <div className="text-xs text-[var(--muted)] flex items-center gap-2 mt-0.5">
-                        <span>{(item.media?.type ?? item.type ?? '').toUpperCase()}</span>
-                        {(item.media?.durationSec ?? item.durationSec) && (
-                          <span>{formatDuration(item.media?.durationSec ?? item.durationSec)}</span>
-                        )}
+                        </div>
+                      )}
+
+                      {/* Remove button (hover) */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeItem(item.playlistItemId) }}
+                        className="absolute top-1.5 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition px-2 py-1 rounded bg-red-500/80 backdrop-blur-sm text-[10px] text-white hover:bg-red-500"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+
+                      {/* Now playing indicator */}
+                      {isPlaying && (
+                        <div className="absolute bottom-12 left-1.5">
+                          <div className="px-2 py-1 rounded text-[10px] backdrop-blur-sm flex items-center gap-1 bg-green-500 text-white shadow-[0_0_15px_rgba(34,197,94,0.6)] animate-pulse">
+                            <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
+                            Playing
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Info bar */}
+                      <div className="px-3 py-2">
+                        <div className="text-xs font-medium truncate">{item.media?.filename ?? item.filename ?? 'Unknown'}</div>
+                        <div className="text-[10px] text-[var(--muted)] flex items-center gap-2 mt-0.5">
+                          <span>{(item.media?.type ?? item.type ?? '').toUpperCase()}</span>
+                          {(item.media?.durationSec ?? item.durationSec) ? (
+                            <span>{formatDuration(item.media?.durationSec ?? item.durationSec)}</span>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
-
-                    {/* Play */}
-                    <Btn tone="primary" onClick={(e) => {
-                      e.stopPropagation()
-                      const mediaId = item.media?.id ?? item.mediaId
-                      if (mediaId) setOpenMediaId(mediaId)
-                    }}>
-                      <Play size={14} />
-                    </Btn>
-
-                    {/* Remove */}
-                    <Btn tone="danger" onClick={(e) => {
-                      e.stopPropagation()
-                      removeItem(item.playlistItemId)
-                    }}>
-                      Remove
-                    </Btn>
-                  </div>
-                ))}
-
-                {items.length === 0 && (
-                  <div className="text-center py-12">
-                    <div className="text-4xl mb-3 opacity-30">📋</div>
-                    <div className="text-sm text-[var(--muted)]">This playlist is empty</div>
-                    <div className="text-xs text-[var(--text-subtle)] mt-1">
-                      Add items from the Library view
-                    </div>
-                  </div>
-                )}
+                  )
+                })}
               </div>
+
+              {items.length === 0 && (
+                <div className="text-center py-12">
+                    <div className="text-4xl mb-3 opacity-30">📋</div>
+                  <div className="text-sm text-[var(--muted)]">This playlist is empty</div>
+                  <Btn tone="primary" onClick={openAddMedia} className="mt-4 flex items-center gap-1.5 mx-auto">
+                    <Plus size={14} />
+                    Add Videos
+                  </Btn>
+                </div>
+              )}
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center p-6">
-              <div className="text-6xl mb-4 opacity-30">📋</div>
+        <div className="text-6xl mb-4 opacity-30">🎬</div>
               <div className="text-lg font-medium text-[var(--muted)]">Select a playlist</div>
               <div className="text-sm text-[var(--text-subtle)] mt-1">
                 Choose a playlist from the sidebar or create a new one
@@ -4235,6 +4381,63 @@ function PlaylistsPage() {
           )}
         </div>
       </div>
+
+      {/* Add Videos Modal */}
+      {showAddMedia && selectedId && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[60]">
+          <div className="w-[700px] max-h-[80vh] rounded-3xl border border-white/10 bg-[var(--panel)] overflow-hidden shadow-2xl flex flex-col">
+            <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between shrink-0">
+              <div className="text-sm font-semibold">Add Videos to Playlist</div>
+              <div className="flex items-center gap-3">
+                <input
+                  value={mediaSearch}
+                  onChange={(e) => setMediaSearch(e.target.value)}
+                  placeholder="Search..."
+                  className="px-3 py-1.5 rounded-xl bg-black/20 border border-[var(--border)] outline-none focus:border-white/15 text-xs w-48"
+                />
+                <Btn onClick={() => setShowAddMedia(false)}>Done</Btn>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              <div className="grid grid-cols-3 gap-3">
+                {allMedia
+                  .filter((m) => {
+                    if (!mediaSearch.trim()) return true
+                    return (m.filename ?? '').toLowerCase().includes(mediaSearch.toLowerCase())
+                  })
+                  .map((m) => {
+                    const alreadyAdded = items.some((item: any) => (item.media?.id ?? item.mediaId) === m.id)
+                    return (
+                      <div
+                        key={m.id}
+                        onClick={() => !alreadyAdded && addMediaToPlaylist(m.id)}
+                        className={cn(
+                          'rounded-xl border overflow-hidden cursor-pointer transition group',
+                          alreadyAdded
+                            ? 'border-green-500/30 opacity-60 cursor-default'
+                            : 'border-[var(--border)] hover:border-white/20'
+                        )}
+                      >
+                        <SessionMediaThumb media={m} />
+                        <div className="px-3 py-2 flex items-center justify-between">
+                          <span className="text-xs truncate flex-1">{m.filename ?? 'Unknown'}</span>
+                          {alreadyAdded ? (
+                            <span className="text-green-400 text-xs ml-2 shrink-0">Added</span>
+                          ) : (
+                            <Plus size={14} className="text-[var(--muted)] group-hover:text-white ml-2 shrink-0" />
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+              </div>
+              {allMedia.length === 0 && (
+                <div className="text-center py-12 text-sm text-[var(--muted)]">No media found in library</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Video Player for playlist playback */}
       {openMediaId && currentMedia && (
@@ -4246,6 +4449,28 @@ function PlaylistsPage() {
         />
       )}
     </>
+  )
+}
+
+function SessionMediaThumb(props: { media: MediaRow }) {
+  const [url, setUrl] = useState('')
+  useEffect(() => {
+    let alive = true
+    const thumbPath = props.media.thumbPath
+    if (thumbPath) {
+      toFileUrlCached(thumbPath).then(u => { if (alive) setUrl(u) }).catch(() => {})
+    }
+    return () => { alive = false }
+  }, [props.media.thumbPath])
+
+  return (
+    <div className="aspect-video bg-black/30">
+      {url ? (
+        <img src={url} alt="" className="w-full h-full object-cover" />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center text-xs text-[var(--muted)]">No thumb</div>
+      )}
+    </div>
   )
 }
 
@@ -4273,16 +4498,40 @@ function PlaylistItemThumb(props: { item: any }) {
         <img src={url} alt="" className="w-full h-full object-cover" />
       ) : (
         <div className="w-full h-full flex items-center justify-center text-xs text-[var(--muted)]">
-          🎬
+
         </div>
       )}
     </div>
   )
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+function PlaylistGridThumb(props: { item: any }) {
+  const [url, setUrl] = useState('')
+  const item = props.item
+
+  useEffect(() => {
+    let alive = true
+    const thumbPath = item.media?.thumbPath ?? item.thumbPath
+    if (thumbPath) {
+      toFileUrlCached(thumbPath).then(u => { if (alive) setUrl(u) }).catch(() => {})
+    }
+    return () => { alive = false }
+  }, [item.media?.thumbPath, item.thumbPath])
+
+  return (
+    <div className="bg-black/30 overflow-hidden" style={{ aspectRatio: '16 / 10' }}>
+      {url ? (
+        <img src={url} alt="" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+      ) : (
+          <div className="w-full h-full flex items-center justify-center text-2xl opacity-30">🎬</div>
+      )}
+    </div>
+  )
+}
+
+//
 // GOON STATS PAGE - Track your pleasure journey
-// ═══════════════════════════════════════════════════════════════════════════
+//
 
 type GoonStats = {
   totalSessions: number
@@ -4305,6 +4554,17 @@ type GoonStats = {
   currentStreak: number
   longestStreak: number
   lastSessionDate: number | null
+  playlistsCreated: number
+  tagsAssigned: number
+  ratingsGiven: number
+  nightOwlSessions: number
+  earlyBirdSessions: number
+  weekendSessionsThisWeekend: number
+  goonWallSessions: number
+  goonWallMaxTiles: number
+  goonWallTimeMinutes: number
+  goonWallShuffles: number
+  watchedVideoIds: string[]
   achievements: string[]
   activityHeatmap: Record<string, number>
 }
@@ -4320,44 +4580,33 @@ type Achievement = {
 }
 
 function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof useConfetti>; anime?: ReturnType<typeof useAnime> }) {
-  const [stats, setStats] = useState<GoonStats | null>(null)
+  const [goonStats, setGoonStats] = useState<GoonStats | null>(null)
+  const [vaultStats, setVaultStats] = useState<any>(null)
   const [achievements, setAchievements] = useState<Achievement[]>([])
   const [loading, setLoading] = useState(true)
-  const [sessionActive, setSessionActive] = useState(false)
-  const [sessionStart, setSessionStart] = useState<number | null>(null)
-  const [sessionTime, setSessionTime] = useState(0)
+  const [achievementTab, setAchievementTab] = useState<string>('all')
 
   useEffect(() => {
-    loadStats()
-    loadAchievements()
-
-    // Listen for stats changes
-    const unsubStats = window.api.events.onGoonStatsChanged?.((s: GoonStats) => setStats(s))
+    loadAllStats()
+    const unsubStats = window.api.events.onGoonStatsChanged?.((s: GoonStats) => setGoonStats(s))
     const unsubAchievement = window.api.events.onAchievementUnlocked?.((ids: string[]) => {
-      // Celebration for achievement unlock!
       console.log('Achievements unlocked:', ids)
       confetti?.achievement()
+      loadAllStats()
     })
-
-    return () => {
-      unsubStats?.()
-      unsubAchievement?.()
-    }
+    return () => { unsubStats?.(); unsubAchievement?.() }
   }, [])
 
-  // Session timer
-  useEffect(() => {
-    if (!sessionActive || !sessionStart) return
-    const interval = setInterval(() => {
-      setSessionTime(Math.floor((Date.now() - sessionStart) / 1000))
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [sessionActive, sessionStart])
-
-  const loadStats = async () => {
+  const loadAllStats = async () => {
     try {
-      const s = await window.api.goon.getStats()
-      setStats(s)
+      const [gs, vs] = await Promise.all([
+        window.api.goon.getStats(),
+        window.api.vault.getStats()
+      ])
+      setGoonStats(gs)
+      setVaultStats(vs)
+      const a = await window.api.goon.getAchievements()
+      setAchievements(a)
     } catch (e) {
       console.error('Failed to load stats:', e)
     } finally {
@@ -4365,766 +4614,227 @@ function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof useConfet
     }
   }
 
-  const loadAchievements = async () => {
-    try {
-      const a = await window.api.goon.getAchievements()
-      setAchievements(a)
-    } catch (e) {
-      console.error('Failed to load achievements:', e)
-    }
-  }
-
-  const startSession = async () => {
-    setSessionActive(true)
-    setSessionStart(Date.now())
-    setSessionTime(0)
-    await window.api.goon.startSession()
-  }
-
-  const endSession = async () => {
-    const minutes = Math.floor(sessionTime / 60)
-    await window.api.goon.endSession(minutes)
-    setSessionActive(false)
-    setSessionStart(null)
-    setSessionTime(0)
-    loadStats()
-  }
-
-  const recordEdge = async () => {
-    const result = await window.api.goon.recordEdge()
-    setStats(result.stats)
-  }
-
-  const recordOrgasm = async (ruined = false) => {
-    const result = await window.api.goon.recordOrgasm(ruined)
-    setStats(result.stats)
-    endSession()
-  }
-
-  const formatTime = (seconds: number) => {
-    const h = Math.floor(seconds / 3600)
-    const m = Math.floor((seconds % 3600) / 60)
-    const s = seconds % 60
-    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    return `${m}:${String(s).padStart(2, '0')}`
-  }
-
-  const formatHours = (minutes: number) => {
+  const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
+  const fmtTime = (minutes: number) => {
+    if (minutes < 60) return `${minutes}m`
     const h = Math.floor(minutes / 60)
-    const m = minutes % 60
-    if (h === 0) return `${m}m`
-    return `${h}h ${m}m`
+    return h >= 24 ? `${(h / 24).toFixed(1)}d` : `${h}h ${minutes % 60}m`
   }
 
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="text-[var(--muted)] animate-pulse-subtle">Loading your stats...</div>
+        <div className="text-[var(--muted)] animate-pulse-subtle">Loading stats...</div>
       </div>
     )
   }
 
-  const unlockedAchievements = achievements.filter(a => stats?.achievements.includes(a.id))
-  const lockedAchievements = achievements.filter(a => !stats?.achievements.includes(a.id) && !a.secret)
+  const gs = goonStats
+  const vs = vaultStats
+  const unlockedIds = new Set(gs?.achievements ?? [])
+  const unlockedCount = achievements.filter(a => unlockedIds.has(a.id)).length
+  const categories = [...new Set(achievements.map(a => a.category))]
+  const filteredAchievements = achievementTab === 'all'
+    ? achievements.filter(a => !a.secret || unlockedIds.has(a.id))
+    : achievements.filter(a => a.category === achievementTab && (!a.secret || unlockedIds.has(a.id)))
+
+  // Compute progress for each achievement
+  const getProgress = (a: Achievement): number => {
+    if (!gs) return 0
+    const s = gs
+    const v = vs
+    switch (a.id) {
+      case 'first_import': return Math.min(1, s.totalVideosWatched + s.uniqueVideosWatched > 0 ? 1 : 0)
+      case 'building_collection': return Math.min(1, (v?.totalMedia ?? 0) / 100)
+      case 'organized': return Math.min(1, s.playlistsCreated)
+      case 'tagged': return Math.min(1, s.tagsAssigned / 10)
+      case 'rated': return Math.min(1, s.ratingsGiven / 10)
+      case 'night_owl': return Math.min(1, s.nightOwlSessions)
+      case 'early_bird': return Math.min(1, s.earlyBirdSessions)
+      case 'weekend_warrior': return Math.min(1, s.weekendSessionsThisWeekend / 5)
+      case 'marathon': return Math.min(1, s.longestSession / 120)
+      case 'quick_release': return s.averageSessionLength > 0 && s.averageSessionLength <= 5 ? 1 : 0
+      case 'first_edge': return Math.min(1, s.totalEdges)
+      case 'edge_apprentice': return Math.min(1, s.totalEdges / 10)
+      case 'edge_journeyman': return Math.min(1, s.totalEdges / 50)
+      case 'edge_master': return Math.min(1, s.totalEdges / 100)
+      case 'edge_god': return Math.min(1, s.edgesThisSession / 100)
+      case 'denial': return Math.min(1, s.longestEdge / 30)
+      case 'denial_king': return Math.min(1, s.longestEdge / 60)
+      case 'edge_marathon': return Math.min(1, s.edgesThisSession / 10)
+      case 'precision': return s.longestEdge === 69 ? 1 : 0
+      case 'control_freak': return s.edgesThisSession >= 20 && s.orgasmsThisWeek === 0 ? 1 : 0
+      case 'dedicated': return Math.min(1, s.totalSessions / 10)
+      case 'regular': return Math.min(1, s.totalSessions / 50)
+      case 'devoted': return Math.min(1, s.totalSessions / 100)
+      case 'obsessed': return Math.min(1, s.totalSessions / 500)
+      case 'transcendent': return Math.min(1, s.totalTimeGooning / 60000)
+      case 'iron_will': return Math.min(1, s.currentStreak / 7)
+      case 'committed': return Math.min(1, s.currentStreak / 30)
+      case 'nice': return Math.min(1, s.currentStreak / 69)
+      case 'legendary': return Math.min(1, s.currentStreak / 100)
+      case 'stamina': return Math.min(1, s.longestSession / 300)
+      case 'wall_activated': return Math.min(1, s.goonWallSessions)
+      case 'multi_tasker': return Math.min(1, s.goonWallMaxTiles / 4)
+      case 'overload': return Math.min(1, s.goonWallMaxTiles / 9)
+      case 'maximum': return Math.min(1, s.goonWallMaxTiles / 16)
+      case 'hypnotized': return Math.min(1, s.goonWallTimeMinutes / 30)
+      case 'wall_walker': return Math.min(1, s.goonWallSessions / 100)
+      case 'shuffle_master': return Math.min(1, s.goonWallShuffles / 50)
+      case 'audio_bliss': return Math.min(1, s.goonWallSessions)
+      case 'the_zone': return Math.min(1, s.goonWallTimeMinutes / 60)
+      case 'chaos_lover': return s.goonWallMaxTiles >= 12 ? Math.min(1, s.goonWallSessions / 10) : 0
+      case 'hoarder': return Math.min(1, (v?.totalMedia ?? 0) / 500)
+      case 'archivist': return Math.min(1, (v?.totalMedia ?? 0) / 1000)
+      case 'mega_library': return Math.min(1, (v?.totalMedia ?? 0) / 5000)
+      case 'playlist_pro': return Math.min(1, (v?.playlistCount ?? s.playlistsCreated) / 5)
+      case 'tag_enthusiast': return Math.min(1, s.tagsAssigned / 50)
+      case 'tag_master': return Math.min(1, s.tagsAssigned / 200)
+      case 'critic': return Math.min(1, s.ratingsGiven / 50)
+      case 'connoisseur': return Math.min(1, s.uniqueVideosWatched / 500)
+      case 'binge_watcher': return Math.min(1, s.totalVideosWatched / 100)
+      case 'explorer': return Math.min(1, s.totalVideosWatched / 1000)
+      default: return 0
+    }
+  }
+
+  const categoryLabels: Record<string, string> = {
+    getting_started: 'Getting Started',
+    edging: 'Edging',
+    session: 'Sessions',
+    goonwall: 'Goon Wall',
+    collection: 'Collection'
+  }
 
   return (
     <div className="h-full flex flex-col">
-      <TopBar title="🔥 Your Goon Stats" right={
-        <div className="flex gap-2">
-          {!sessionActive ? (
-            <Btn tone="primary" onClick={startSession} className="animate-breathe">
-              🎬 Start Session
-            </Btn>
-          ) : (
-            <>
-              <div className="px-4 py-2 bg-[var(--primary)]/20 rounded-xl text-sm font-mono animate-throb">
-                {formatTime(sessionTime)}
+      <TopBar title="Stats" />
+
+      <div className="flex-1 overflow-auto p-4 sm:p-6">
+        {/* Streak Banner at top */}
+        {gs && gs.currentStreak > 0 && (
+          <div className="mb-6 p-4 bg-gradient-to-r from-[var(--primary)]/20 to-[var(--secondary)]/20 rounded-2xl border border-[var(--primary)]/30 flex items-center gap-4">
+            <div className="text-4xl font-bold text-[var(--primary)]">{gs.currentStreak}</div>
+            <div>
+              <div className="text-sm font-semibold">Day Streak</div>
+              <div className="text-xs text-[var(--muted)]">
+                {gs.currentStreak >= 30 ? 'Legendary consistency' : gs.currentStreak >= 7 ? 'On a roll' : 'Keep it going'}
+                {gs.longestStreak > gs.currentStreak && ` \u00b7 Best: ${gs.longestStreak} days`}
               </div>
-              <Btn onClick={recordEdge}>🔥 Edge</Btn>
-              <Btn onClick={() => recordOrgasm(false)}>💦 Cum</Btn>
-              <Btn onClick={() => recordOrgasm(true)} tone="danger">😵 Ruined</Btn>
-              <Btn tone="ghost" onClick={endSession}>⏹️ End</Btn>
-            </>
-          )}
-        </div>
-      } />
-
-      <div className="flex-1 overflow-auto p-6">
-        {/* Diabella Commentary */}
-        <div className="mb-6 p-4 bg-[var(--primary)]/10 rounded-2xl border border-[var(--primary)]/20">
-          <div className="text-sm italic text-[var(--muted)]">
-            {stats && stats.totalTimeGooning > 6000
-              ? "You absolute degenerate... I love it 😏 You've spent over 100 hours gooning. I'm impressed."
-              : stats && stats.totalTimeGooning > 1000
-                ? "Mmm, you're becoming quite the dedicated gooner. I've been watching... 👀"
-                : stats && stats.totalSessions > 10
-                  ? "You keep coming back for more. I knew you would. Let me help you feel even better..."
-                  : "Welcome to your pleasure palace. Let's track your journey together, gorgeous..."}
-          </div>
-        </div>
-
-        {/* Main Stats Grid */}
-        <div className="grid grid-cols-4 gap-4 mb-8">
-          <div className="p-4 bg-white/5 rounded-2xl border border-white/10 sensual-hover">
-            <div className="text-3xl font-bold text-[var(--primary)] mb-1">
-              {formatHours(stats?.totalTimeGooning ?? 0)}
-            </div>
-            <div className="text-xs text-[var(--muted)]">Total Time Gooning</div>
-          </div>
-
-          <div className="p-4 bg-white/5 rounded-2xl border border-white/10 sensual-hover">
-            <div className="text-3xl font-bold text-red-400 mb-1">
-              {stats?.totalEdges ?? 0}
-            </div>
-            <div className="text-xs text-[var(--muted)]">Total Edges</div>
-          </div>
-
-          <div className="p-4 bg-white/5 rounded-2xl border border-white/10 sensual-hover">
-            <div className="text-3xl font-bold text-pink-400 mb-1">
-              💦 {stats?.totalOrgasms ?? 0}
-            </div>
-            <div className="text-xs text-[var(--muted)]">Times You Came</div>
-          </div>
-
-          <div className="p-4 bg-white/5 rounded-2xl border border-white/10 sensual-hover">
-            <div className="text-3xl font-bold text-amber-400 mb-1">
-              🔥 {stats?.currentStreak ?? 0}
-            </div>
-            <div className="text-xs text-[var(--muted)]">Day Streak</div>
-          </div>
-        </div>
-
-        {/* Secondary Stats */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
-          <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-            <div className="text-xl font-semibold mb-1">{stats?.totalSessions ?? 0}</div>
-            <div className="text-xs text-[var(--muted)]">Total Sessions</div>
-          </div>
-          <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-            <div className="text-xl font-semibold mb-1">{stats?.longestSession ?? 0}m</div>
-            <div className="text-xs text-[var(--muted)]">Longest Session</div>
-          </div>
-          <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-            <div className="text-xl font-semibold mb-1">{stats?.averageSessionLength ?? 0}m</div>
-            <div className="text-xs text-[var(--muted)]">Average Session</div>
-          </div>
-          <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-            <div className="text-xl font-semibold mb-1">{stats?.totalVideosWatched ?? 0}</div>
-            <div className="text-xs text-[var(--muted)]">Videos Enjoyed</div>
-          </div>
-          <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-            <div className="text-xl font-semibold mb-1">{stats?.longestStreak ?? 0}</div>
-            <div className="text-xs text-[var(--muted)]">Longest Streak</div>
-          </div>
-          <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-            <div className="text-xl font-semibold mb-1">{stats?.ruinedOrgasms ?? 0}</div>
-            <div className="text-xs text-[var(--muted)]">Ruined Orgasms</div>
-          </div>
-        </div>
-
-        {/* Achievements */}
-        <div className="mb-8">
-          <div className="text-lg font-semibold mb-4">🏆 Achievements Unlocked ({unlockedAchievements.length}/{achievements.length})</div>
-          <div className="grid grid-cols-4 gap-3">
-            {unlockedAchievements.map(a => (
-              <div key={a.id} className="p-3 bg-[var(--primary)]/10 rounded-xl border border-[var(--primary)]/30 sensual-hover">
-                <div className="text-2xl mb-1">{a.icon}</div>
-                <div className="text-sm font-medium">{a.name}</div>
-                <div className="text-xs text-[var(--muted)]">{a.description}</div>
-              </div>
-            ))}
-            {lockedAchievements.slice(0, 8).map(a => (
-              <div key={a.id} className="p-3 bg-white/5 rounded-xl border border-white/10 opacity-50">
-                <div className="text-2xl mb-1 grayscale">🔒</div>
-                <div className="text-sm font-medium">{a.name}</div>
-                <div className="text-xs text-[var(--muted)]">{a.description}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Streak Banner */}
-        {stats && stats.currentStreak > 0 && (
-          <div className="p-4 bg-gradient-to-r from-[var(--primary)]/20 to-[var(--secondary)]/20 rounded-2xl border border-[var(--primary)]/30 text-center animate-breathe">
-            <div className="text-4xl mb-2">{'🔥'.repeat(Math.min(stats.currentStreak, 10))}</div>
-            <div className="text-xl font-bold">{stats.currentStreak} Day Streak!</div>
-            <div className="text-sm text-[var(--muted)]">
-              {stats.currentStreak >= 30
-                ? "You're a goon legend! Don't break the chain!"
-                : stats.currentStreak >= 7
-                  ? "A whole week! Your dedication is... admirable 😏"
-                  : "Keep going... build that streak, gooner."}
             </div>
           </div>
         )}
-      </div>
-    </div>
-  )
-}
 
-type ChatMessage = {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: number
-}
-
-function DiabellaPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [connected, setConnected] = useState<boolean | null>(null)
-  const [personality, setPersonality] = useState<any>(null)
-  const [greeting, setGreeting] = useState('')
-  const [avatarImage, setAvatarImage] = useState<string | null>(null)
-  const [generatingAvatar, setGeneratingAvatar] = useState(false)
-  const [ttsEnabled, setTtsEnabled] = useState(false)
-  const [speaking, setSpeaking] = useState(false)
-  const [spiceLevel, setSpiceLevel] = useState(3)
-  const [showSettings, setShowSettings] = useState(false)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-
-  const checkConnection = async () => {
-    try {
-      const result = await window.api.ai.ping()
-      setConnected(result?.ok ?? false)
-    } catch {
-      setConnected(false)
-    }
-  }
-
-  const loadPersonality = async () => {
-    try {
-      const p = await window.api.settings.personality?.getActive?.()
-      setPersonality(p)
-    } catch {
-      // Settings API might not have this method yet
-    }
-  }
-
-  const loadGreeting = async () => {
-    try {
-      const line = await window.api.ai.getVoiceLine('greetings')
-      if (line) setGreeting(line)
-    } catch {
-      setGreeting("Hey there... ready to explore?")
-    }
-  }
-
-  const loadSettings = async () => {
-    try {
-      const settings = await window.api.settings.get() as any
-      if (settings?.diabella) {
-        setTtsEnabled(settings.diabella.tts?.enabled ?? false)
-        setSpiceLevel(settings.diabella.spiciness ?? 3)
-      }
-    } catch {}
-  }
-
-  // Load saved avatar or generate new one
-  const loadOrGenerateAvatar = async () => {
-    // Try to load from localStorage first
-    const savedAvatar = localStorage.getItem('diabella-avatar')
-    if (savedAvatar) {
-      setAvatarImage(savedAvatar)
-      return
-    }
-
-    // Auto-generate avatar on first load
-    setGeneratingAvatar(true)
-    try {
-      const result = await window.api.ai.generateAvatar()
-      if (result?.image) {
-        const dataUrl = `data:image/png;base64,${result.image}`
-        setAvatarImage(dataUrl)
-        localStorage.setItem('diabella-avatar', dataUrl)
-      }
-    } catch (e) {
-      console.warn('[Diabella] Failed to generate avatar:', e)
-    }
-    setGeneratingAvatar(false)
-  }
-
-  useEffect(() => {
-    void checkConnection()
-    void loadPersonality()
-    void loadGreeting()
-    void loadSettings()
-    void loadOrGenerateAvatar()
-
-    // Play greeting sound if available
-    hasSounds().then(has => {
-      if (has) {
-        void playGreeting({ volume: 0.6 })
-      }
-    })
-  }, [])
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  // Speak text using TTS
-  const speakText = async (text: string) => {
-    if (!ttsEnabled || speaking) return
-
-    setSpeaking(true)
-    try {
-      const result = await window.api.ai.speak(text)
-      if (result?.audio) {
-        const audio = new Audio(`data:audio/mp3;base64,${result.audio}`)
-        audioRef.current = audio
-        audio.onended = () => setSpeaking(false)
-        await audio.play()
-      }
-    } catch {
-      setSpeaking(false)
-    }
-  }
-
-  const stopSpeaking = () => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current = null
-    }
-    setSpeaking(false)
-  }
-
-  // Generate avatar image with Venice AI
-  const generateAvatar = async () => {
-    setGeneratingAvatar(true)
-    try {
-      const result = await window.api.ai.generateAvatar()
-      if (result?.image) {
-        const dataUrl = `data:image/png;base64,${result.image}`
-        setAvatarImage(dataUrl)
-        localStorage.setItem('diabella-avatar', dataUrl)
-      }
-    } catch (e) {
-      console.warn('[Diabella] Failed to generate avatar:', e)
-    }
-    setGeneratingAvatar(false)
-  }
-
-  const sendMessage = async () => {
-    if (!input.trim() || loading) return
-
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: input.trim(),
-      timestamp: Date.now()
-    }
-
-    setMessages((prev) => [...prev, userMessage])
-    setInput('')
-    setLoading(true)
-
-    try {
-      const chatMessages = [...messages, userMessage].map((m) => ({
-        role: m.role,
-        content: m.content
-      }))
-
-      const result = await window.api.ai.chat({ messages: chatMessages })
-
-      const responseText = result?.response || result?.error || "I couldn't process that. Try again?"
-
-      const assistantMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: responseText,
-        timestamp: Date.now()
-      }
-
-      setMessages((prev) => [...prev, assistantMessage])
-
-      // Auto-speak response if TTS is enabled
-      if (ttsEnabled && result?.response) {
-        void speakText(result.response)
-      }
-    } catch (e: any) {
-      const errorMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: `Oops, something went wrong: ${e.message || 'Unknown error'}`,
-        timestamp: Date.now()
-      }
-      setMessages((prev) => [...prev, errorMessage])
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const clearChat = () => {
-    setMessages([])
-    void loadGreeting()
-  }
-
-  return (
-    <>
-      <TopBar
-        title="Diabella"
-        right={
-          <div className="flex items-center gap-3">
-            {/* Connection status */}
-            <div className="flex items-center gap-2">
-              <div
-                className={cn(
-                  'w-2 h-2 rounded-full',
-                  connected === null ? 'bg-yellow-500 animate-pulse' : connected ? 'bg-green-500' : 'bg-red-500'
-                )}
-              />
-              <span className="text-xs text-[var(--muted)]">
-                {connected === null ? 'Checking...' : connected ? 'Connected' : 'Offline'}
-              </span>
+        {/* Stat cards — 2 rows */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          {[
+            { label: 'Total Media', value: fmt(vs?.totalMedia ?? 0), color: 'text-[var(--primary)]' },
+            { label: 'Videos', value: fmt(vs?.videoCount ?? 0), color: 'text-blue-400' },
+            { label: 'Images', value: fmt(vs?.imageCount ?? 0), color: 'text-green-400' },
+            { label: 'Tags', value: fmt(vs?.tagCount ?? 0), color: 'text-amber-400' },
+            { label: 'Videos Watched', value: fmt(gs?.totalVideosWatched ?? 0), color: 'text-pink-400' },
+            { label: 'Unique Watched', value: fmt(gs?.uniqueVideosWatched ?? 0), color: 'text-purple-400' },
+            { label: 'Playlists', value: fmt(vs?.playlistCount ?? 0), color: 'text-cyan-400' },
+            { label: 'Sessions', value: fmt(gs?.totalSessions ?? 0), color: 'text-orange-400' },
+          ].map((s, i) => (
+            <div key={i} className="p-3 sm:p-4 bg-white/5 rounded-xl border border-white/10">
+              <div className={`text-xl sm:text-2xl font-bold ${s.color} mb-0.5`}>{s.value}</div>
+              <div className="text-[10px] sm:text-xs text-[var(--muted)]">{s.label}</div>
             </div>
-            <Btn onClick={clearChat}>Clear Chat</Btn>
+          ))}
+        </div>
+
+        {/* Activity row */}
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="p-3 bg-white/5 rounded-xl border border-white/10">
+            <div className="text-lg font-semibold">{gs?.goonWallSessions ?? 0}</div>
+            <div className="text-[10px] text-[var(--muted)]">Wall Sessions</div>
           </div>
-        }
-      />
-
-      {/* SIDE-BY-SIDE LAYOUT - Large avatar panel + Chat */}
-      <div className="h-[calc(100vh-80px)] flex">
-        {/* LEFT: DIABELLA FULL BODY PANEL - 40% width */}
-        <div className="w-[40%] min-w-[350px] max-w-[500px] shrink-0 border-r border-[var(--border)] relative bg-black flex flex-col">
-          {/* Full body image - no blur, no filters */}
-          <div className="flex-1 relative overflow-hidden">
-            <DiabellaAvatar speaking={speaking} />
+          <div className="p-3 bg-white/5 rounded-xl border border-white/10">
+            <div className="text-lg font-semibold">{fmtTime(gs?.goonWallTimeMinutes ?? 0)}</div>
+            <div className="text-[10px] text-[var(--muted)]">Wall Time</div>
           </div>
-
-          {/* Bottom controls overlay */}
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent p-4">
-            {/* Name and status */}
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <div className="text-xl font-bold text-white">{personality?.name || 'Diabella'}</div>
-                <div className="text-xs text-pink-300">{personality?.description || 'Your sultry AI companion'}</div>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className={cn(
-                  'w-2 h-2 rounded-full',
-                  connected === null ? 'bg-yellow-500 animate-pulse' : connected ? 'bg-green-500' : 'bg-red-500'
-                )} />
-                <span className="text-xs text-white/60">
-                  {connected === null ? '...' : connected ? 'Online' : 'Offline'}
-                </span>
-              </div>
-            </div>
-
-            {/* Speaking indicator */}
-            {speaking && (
-              <div className="flex items-center gap-2 text-green-400 mb-3">
-                <span className="animate-pulse">🔊</span>
-                <span className="text-sm">Speaking...</span>
-                <button onClick={stopSpeaking} className="text-xs text-white/60 hover:text-white underline ml-2">Stop</button>
-              </div>
-            )}
-
-            {/* Controls row */}
-            <div className="flex items-center gap-4 flex-wrap">
-              {/* TTS Toggle */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-white/60">Voice</span>
-                <button
-                  onClick={async () => {
-                    const newValue = !ttsEnabled
-                    setTtsEnabled(newValue)
-                    await window.api.settings.diabella?.update?.({ tts: { enabled: newValue } })
-                  }}
-                  className={cn(
-                    'w-10 h-5 rounded-full relative transition',
-                    ttsEnabled ? 'bg-pink-500' : 'bg-white/20'
-                  )}
-                >
-                  <div className={cn(
-                    'absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform',
-                    ttsEnabled ? 'translate-x-5' : 'translate-x-0.5'
-                  )} />
-                </button>
-              </div>
-
-              {/* Spice Level */}
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-white/60 mr-1">Spice:</span>
-                {[1, 2, 3, 4, 5].map((level) => (
-                  <button
-                    key={level}
-                    onClick={async () => {
-                      setSpiceLevel(level)
-                      await window.api.settings.diabella?.update?.({ spiciness: level })
-                    }}
-                    className={cn(
-                      'w-6 h-6 rounded text-xs font-bold transition',
-                      level <= spiceLevel ? 'bg-pink-600 text-white' : 'bg-white/20 text-white/50 hover:bg-white/30'
-                    )}
-                  >
-                    {level}
-                  </button>
-                ))}
-              </div>
-            </div>
+          <div className="p-3 bg-white/5 rounded-xl border border-white/10">
+            <div className="text-lg font-semibold">{gs?.goonWallShuffles ?? 0}</div>
+            <div className="text-[10px] text-[var(--muted)]">Shuffles</div>
           </div>
         </div>
 
-        {/* RIGHT: CHAT AREA */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Messages */}
-          <div className="flex-1 overflow-auto p-6 space-y-4">
-            {/* Welcome when no messages */}
-            {messages.length === 0 && (
-              <div className="max-w-lg mx-auto mt-8">
-                <div className="text-lg italic text-center text-pink-300 mb-6">"{greeting}"</div>
-                <div className="text-sm text-[var(--muted)] mb-4 text-center">Start a conversation with Diabella</div>
-                <div className="grid grid-cols-2 gap-3">
-                  <SuggestionBtn onClick={() => setInput('Show me something new')}>
-                    Show me something new
-                  </SuggestionBtn>
-                  <SuggestionBtn onClick={() => setInput("What's popular?")}>
-                    What's popular?
-                  </SuggestionBtn>
-                  <SuggestionBtn onClick={() => setInput('Create a playlist for me')}>
-                    Create a playlist for me
-                  </SuggestionBtn>
-                  <SuggestionBtn onClick={() => setInput('Surprise me')}>
-                    Surprise me
-                  </SuggestionBtn>
-                </div>
-              </div>
-            )}
+        {/* Achievements section */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="text-sm font-semibold text-[var(--muted)]">
+            Achievements <span className="text-[var(--primary)]">{unlockedCount}</span>/{achievements.filter(a => !a.secret).length}
+          </div>
+        </div>
 
-            {/* Message list */}
-            {messages.map((msg) => (
+        {/* Category tabs */}
+        <div className="flex gap-1 mb-4 flex-wrap">
+          <button
+            onClick={() => setAchievementTab('all')}
+            className={cn(
+              'px-2.5 py-1 rounded-lg text-xs transition',
+              achievementTab === 'all' ? 'bg-[var(--primary)]/20 text-white font-medium' : 'bg-white/5 text-white/50 hover:text-white/80'
+            )}
+          >All</button>
+          {categories.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setAchievementTab(cat)}
+              className={cn(
+                'px-2.5 py-1 rounded-lg text-xs transition',
+                achievementTab === cat ? 'bg-[var(--primary)]/20 text-white font-medium' : 'bg-white/5 text-white/50 hover:text-white/80'
+              )}
+            >{categoryLabels[cat] ?? cat}</button>
+          ))}
+        </div>
+
+        {/* Achievement grid with progress */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {filteredAchievements.map(a => {
+            const unlocked = unlockedIds.has(a.id)
+            const progress = unlocked ? 1 : getProgress(a)
+            const pct = Math.round(progress * 100)
+            return (
               <div
-                key={msg.id}
+                key={a.id}
                 className={cn(
-                  'max-w-[85%] rounded-2xl p-4 group',
-                  msg.role === 'user'
-                    ? 'ml-auto bg-[var(--primary)] text-white'
-                    : 'mr-auto bg-black/30 border border-[var(--border)]'
+                  'p-3 rounded-xl border transition',
+                  unlocked
+                    ? 'bg-[var(--primary)]/10 border-[var(--primary)]/30'
+                    : 'bg-white/5 border-white/10 opacity-60'
                 )}
               >
-                <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
-                <div className="flex items-center justify-between mt-2">
-                  <div className="text-[10px] opacity-50">
-                    {new Date(msg.timestamp).toLocaleTimeString()}
+                <div className="flex items-start gap-2 mb-2">
+                  <div className={cn('text-xl', !unlocked && 'grayscale opacity-50')}>{unlocked ? a.icon : '🔒'}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium truncate">{a.name}</div>
+                    <div className="text-[10px] text-[var(--muted)] leading-tight">{a.description}</div>
                   </div>
-                  {msg.role === 'assistant' && (
-                    <button
-                      onClick={() => speakText(msg.content)}
-                      disabled={speaking}
-                      className="opacity-0 group-hover:opacity-100 text-xs text-[var(--muted)] hover:text-[var(--primary)] transition"
-                    >
-                      {speaking ? '...' : '🔊'}
-                    </button>
-                  )}
                 </div>
+                {/* Progress bar */}
+                {!unlocked && (
+                  <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[var(--primary)] rounded-full transition-all duration-500"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                )}
+                {!unlocked && pct > 0 && (
+                  <div className="text-[9px] text-[var(--muted)] mt-1">{pct}%</div>
+                )}
+                {unlocked && (
+                  <div className="text-[9px] text-[var(--primary)] font-medium mt-1">Unlocked</div>
+                )}
               </div>
-            ))}
-
-            {/* Loading */}
-            {loading && (
-              <div className="mr-auto bg-black/30 border border-[var(--border)] rounded-2xl p-4 max-w-[85%]">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-pink-500 animate-bounce" />
-                  <div className="w-2 h-2 rounded-full bg-pink-500 animate-bounce" style={{ animationDelay: '0.1s' }} />
-                  <div className="w-2 h-2 rounded-full bg-pink-500 animate-bounce" style={{ animationDelay: '0.2s' }} />
-                </div>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input */}
-          <div className="p-4 border-t border-[var(--border)] bg-[var(--panel)]">
-            <div className="flex gap-3">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                placeholder="Ask Diabella anything..."
-                disabled={loading}
-                className="flex-1 px-4 py-3 rounded-xl bg-black/20 border border-[var(--border)] outline-none focus:border-pink-500 text-sm disabled:opacity-50"
-              />
-              <Btn tone="primary" onClick={sendMessage} disabled={loading || !input.trim()}>
-                Send
-              </Btn>
-            </div>
-            {!connected && (
-              <div className="text-xs text-[var(--warning)] mt-2">
-                AI not connected. Configure in Settings.
-              </div>
-            )}
-          </div>
+            )
+          })}
         </div>
       </div>
-    </>
-  )
-}
-
-function SuggestionBtn(props: { children: React.ReactNode; onClick: () => void }) {
-  return (
-    <button
-      onClick={props.onClick}
-      className="px-4 py-3 rounded-xl border border-[var(--border)] bg-black/20 hover:border-[var(--primary)] transition text-sm text-left"
-    >
-      {props.children}
-    </button>
-  )
-}
-
-function QuickPhrase(props: { text: string; onSpeak?: (text: string) => void }) {
-  return (
-    <div className="text-xs text-[var(--muted)] italic p-3 rounded-xl bg-black/20 border border-[var(--border)] flex items-start justify-between gap-2 group">
-      <span>"{props.text}"</span>
-      {props.onSpeak && (
-        <button
-          onClick={() => props.onSpeak?.(props.text)}
-          className="opacity-0 group-hover:opacity-100 text-[var(--primary)] hover:text-white transition flex-shrink-0"
-        >
-          🔊
-        </button>
-      )}
     </div>
   )
 }
 
-function GIFPage() {
-  const [gifs, setGifs] = useState<MediaRow[]>([])
-  const [query, setQuery] = useState('')
-  const [tags, setTags] = useState<TagRow[]>([])
-  const [activeTags, setActiveTags] = useState<string[]>([])
-  const [previewId, setPreviewId] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'grid' | 'mosaic'>('grid')
-
-  const refresh = async () => {
-    const result = await window.api.media.list({
-      q: query,
-      type: 'gif',
-      tags: activeTags,
-      limit: 500
-    })
-    const items = Array.isArray(result) ? result : result?.items ?? []
-    setGifs(items)
-  }
-
-  useEffect(() => {
-    let alive = true
-    ;(async () => {
-      // Use listWithCounts and filter out tags with no media attached
-      const t = await window.api.tags.listWithCounts?.() ?? await window.api.tags.list()
-      if (!alive) return
-      // Filter to only show tags that have at least 1 media item
-      const filtered = Array.isArray(t) ? t.filter((tag: any) => tag.count === undefined || tag.count > 0) : t
-      setTags(filtered)
-      await refresh()
-    })()
-    const unsub = window.api.events?.onVaultChanged?.(() => void refresh())
-    return () => {
-      alive = false
-      unsub?.()
-    }
-  }, [])
-
-  useEffect(() => {
-    void refresh()
-  }, [query, activeTags.join('|')])
-
-  const toggleTag = (name: string) => {
-    setActiveTags((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]))
-  }
-
-  return (
-    <>
-      <TopBar
-        title="GIFs"
-        right={
-          <div className="flex items-center gap-2">
-            <Btn tone={viewMode === 'grid' ? 'primary' : 'ghost'} onClick={() => setViewMode('grid')}>
-              Grid
-            </Btn>
-            <Btn tone={viewMode === 'mosaic' ? 'primary' : 'ghost'} onClick={() => setViewMode('mosaic')}>
-              Mosaic
-            </Btn>
-            <Btn onClick={() => void refresh()}>Refresh</Btn>
-          </div>
-        }
-      >
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search GIFs..."
-          className="w-full px-4 py-2.5 rounded-xl bg-black/20 border border-[var(--border)] outline-none focus:border-white/15 text-sm"
-        />
-      </TopBar>
-
-      <div className="h-[calc(100vh-130px)] flex">
-        {/* Tags sidebar */}
-        <div className="w-[200px] shrink-0 border-r border-[var(--border)] bg-[var(--panel2)] overflow-auto">
-          <div className="p-4">
-            <div className="text-xs text-[var(--muted)] mb-3 font-medium">Filter by Tag</div>
-            <div className="space-y-1">
-              {tags.map((t) => {
-                const active = activeTags.includes(t.name)
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => toggleTag(t.name)}
-                    className={cn(
-                      'w-full text-left px-3 py-2 rounded-lg text-xs transition',
-                      active
-                        ? 'bg-[var(--primary-muted)] text-[var(--primary)]'
-                        : 'hover:bg-white/5'
-                    )}
-                  >
-                    {t.name}
-                  </button>
-                )
-              })}
-              {!tags.length && <div className="text-xs text-[var(--muted)]">No tags yet</div>}
-            </div>
-          </div>
-        </div>
-
-        {/* GIF Grid */}
-        <div className="flex-1 overflow-auto p-4">
-          {gifs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="text-6xl mb-4 opacity-30">🎞️</div>
-              <div className="text-lg font-medium text-[var(--muted)]">No GIFs found</div>
-              <div className="text-sm text-[var(--text-subtle)] mt-1">
-                Add some GIFs to your media folders to see them here
-              </div>
-            </div>
-          ) : (
-            <div
-              className={cn(
-                'gap-3',
-                viewMode === 'grid'
-                  ? 'grid'
-                  : 'columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 space-y-3'
-              )}
-              style={viewMode === 'grid' ? { gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' } : undefined}
-            >
-              {gifs.map((gif) => (
-                <GIFTile
-                  key={gif.id}
-                  gif={gif}
-                  isPreview={previewId === gif.id}
-                  onHover={() => setPreviewId(gif.id)}
-                  onLeave={() => setPreviewId(null)}
-                  viewMode={viewMode}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </>
-  )
-}
 
 function GIFTile(props: {
   gif: MediaRow
@@ -5198,49 +4908,9 @@ function SettingsPage(props: {
   settings: VaultSettings | null
   patchSettings: (p: Partial<VaultSettings>) => void
   onThemeChange: (themeId: string) => void
-  visualEffectsEnabled: boolean
-  setVisualEffectsEnabled: (v: boolean) => void
-  ambientHeatLevel: number
-  setAmbientHeatLevel: (v: number) => void
-  // Overlay states
-  sparklesEnabled: boolean
-  setSparklesEnabled: (v: boolean) => void
-  bokehEnabled: boolean
-  setBokehEnabled: (v: boolean) => void
-  starfieldEnabled: boolean
-  setStarfieldEnabled: (v: boolean) => void
-  filmGrainEnabled: boolean
-  setFilmGrainEnabled: (v: boolean) => void
-  dreamyHazeEnabled: boolean
-  setDreamyHazeEnabled: (v: boolean) => void
-  // Pixel background
-  pixelBackgroundEnabled: boolean
-  setPixelBackgroundEnabled: (v: boolean) => void
-  pixelTheme: PixelTheme
-  setPixelTheme: (v: PixelTheme) => void
-  pixelParallaxStrength: number
-  setPixelParallaxStrength: (v: number) => void
-  pixelOpacity: number
-  setPixelOpacity: (v: number) => void
-  pixelCursorEnabled: boolean
-  setPixelCursorEnabled: (v: boolean) => void
 }) {
-  const {
-    visualEffectsEnabled, setVisualEffectsEnabled,
-    ambientHeatLevel, setAmbientHeatLevel,
-    sparklesEnabled, setSparklesEnabled,
-    bokehEnabled, setBokehEnabled,
-    starfieldEnabled, setStarfieldEnabled,
-    filmGrainEnabled, setFilmGrainEnabled,
-    dreamyHazeEnabled, setDreamyHazeEnabled,
-    pixelBackgroundEnabled, setPixelBackgroundEnabled,
-    pixelTheme, setPixelTheme,
-    pixelParallaxStrength, setPixelParallaxStrength,
-    pixelOpacity, setPixelOpacity,
-    pixelCursorEnabled, setPixelCursorEnabled
-  } = props
   const s = props.settings as any
-  const [activeTab, setActiveTab] = useState<'library' | 'diabella' | 'appearance' | 'privacy' | 'playback'>('library')
+  const [activeTab, setActiveTab] = useState<'library' | 'appearance' | 'privacy' | 'playback'>('library')
   const [isPremium, setIsPremium] = useState(false)
 
   useEffect(() => {
@@ -5250,13 +4920,11 @@ function SettingsPage(props: {
   // Support both new and legacy settings structure
   const mediaDirs = s?.library?.mediaDirs ?? s?.mediaDirs ?? []
   const cacheDir = s?.library?.cacheDir ?? s?.cacheDir ?? ''
-  const diabellaSettings = s?.diabella ?? {}
   const privacySettings = s?.privacy ?? {}
   const playbackSettings = s?.playback ?? {}
 
   const tabs = [
     { id: 'library', name: 'Library', icon: Library },
-    { id: 'diabella', name: 'Diabella', icon: Heart },
     { id: 'appearance', name: 'Appearance', icon: Sparkles },
     { id: 'playback', name: 'Playback', icon: Play },
     { id: 'privacy', name: 'Privacy', icon: Eye },
@@ -5345,134 +5013,19 @@ function SettingsPage(props: {
             </>
           )}
 
-          {/* Diabella Tab */}
-          {activeTab === 'diabella' && (
-            MAINTENANCE_MODE.diabella ? (
-              <div className="rounded-3xl border border-amber-500/30 bg-amber-500/5 p-6 flex flex-col items-center text-center">
-                <Construction size={32} className="text-amber-500 mb-3" />
-                <div className="text-sm font-semibold mb-2">Under Maintenance</div>
-                <div className="text-xs text-white/60">
-                  Diabella settings are temporarily unavailable while we work on improvements.
-                </div>
-              </div>
-            ) : (
-            <>
-              <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5">
-                <div className="text-sm font-semibold mb-4 flex items-center gap-2">
-                  <Heart size={18} className="text-[var(--primary)]" />
-                  AI Companion
-                  {!isPremium && (
-                    <span className="ml-auto text-xs bg-[var(--primary)]/20 text-[var(--primary)] px-2 py-1 rounded-full">
-                      Premium
-                    </span>
-                  )}
-                </div>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm">Enable Diabella</div>
-                      <div className="text-xs text-[var(--muted)]">Your AI companion for sessions</div>
-                    </div>
-                    <ToggleSwitch
-                      checked={diabellaSettings.enabled ?? true}
-                      onChange={async (v) => {
-                        await window.api.settings.diabella?.update?.({ enabled: v })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
-                      }}
-                      disabled={!isPremium}
-                    />
-                  </div>
-
-                  <div>
-                    <div className="text-sm mb-2">Spice Level</div>
-                    <div className="text-xs text-[var(--muted)] mb-3">How explicit should Diabella be?</div>
-                    <div className="flex gap-2">
-                      {[1, 2, 3, 4, 5].map((level) => (
-                        <button
-                          key={level}
-                          onClick={async () => {
-                            await window.api.settings.diabella?.update?.({ spiciness: level })
-                            const next = await window.api.settings.get()
-                            props.patchSettings(next)
-                          }}
-                          disabled={!isPremium}
-                          className={cn(
-                            'flex-1 py-2 rounded-lg text-sm transition',
-                            (diabellaSettings.spiciness ?? 3) === level
-                              ? 'bg-[var(--primary)] text-white'
-                              : 'bg-black/20 border border-[var(--border)] hover:border-[var(--primary)]/40',
-                            !isPremium && 'opacity-50 cursor-not-allowed'
-                          )}
-                        >
-                          {level}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="text-xs text-[var(--muted)] mt-2 text-center">
-                      {diabellaSettings.spiciness === 1 && 'Subtle flirting'}
-                      {diabellaSettings.spiciness === 2 && 'Playful teasing'}
-                      {diabellaSettings.spiciness === 3 && 'Sensual & suggestive'}
-                      {diabellaSettings.spiciness === 4 && 'Explicit dirty talk'}
-                      {diabellaSettings.spiciness === 5 && 'Maximum filth'}
-                      {!diabellaSettings.spiciness && 'Sensual & suggestive'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5">
-                <div className="text-sm font-semibold mb-4">Voice & TTS</div>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm">Enable Voice</div>
-                      <div className="text-xs text-[var(--muted)]">Let Diabella speak to you</div>
-                    </div>
-                    <ToggleSwitch
-                      checked={diabellaSettings.tts?.enabled ?? false}
-                      onChange={async (v) => {
-                        await window.api.settings.diabella?.update?.({ tts: { ...diabellaSettings.tts, enabled: v } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
-                      }}
-                      disabled={!isPremium}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm">Moans & Sounds</div>
-                      <div className="text-xs text-[var(--muted)]">Audio reactions during sessions</div>
-                    </div>
-                    <ToggleSwitch
-                      checked={diabellaSettings.moansEnabled ?? false}
-                      onChange={async (v) => {
-                        await window.api.settings.diabella?.update?.({ moansEnabled: v })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
-                      }}
-                      disabled={!isPremium}
-                    />
-                  </div>
-                </div>
-              </div>
-            </>
-            )
-          )}
 
           {/* Appearance Tab */}
           {activeTab === 'appearance' && (
             <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5">
               <div className="text-sm font-semibold mb-4">Appearance</div>
 
-              {/* Theme Selectors - hidden when THEMES_DISABLED */}
-              {!THEMES_DISABLED && (() => {
+              {/* Theme Selectors */}
+              {(() => {
                 const currentTheme = s?.appearance?.themeId ?? s?.ui?.themeId ?? 'obsidian'
                 const goonThemes = GOON_THEME_LIST.map(g => ({ id: g.id, name: g.name, subtitle: g.vibe, colors: themes[g.id as ThemeId]?.colors }))
                 const darkThemes = DARK_THEME_LIST.map(t => ({ id: t.id, name: t.name, subtitle: t.description, colors: t.colors }))
                 const lightThemes = LIGHT_THEME_LIST.map(t => ({ id: t.id, name: t.name, subtitle: t.description, colors: t.colors }))
-                const renderGrid = (items: typeof goonThemes) => (
+                const renderGrid = (items: Array<{ id: string; name: string; subtitle: string; colors: any }>) => (
                   <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
                     {items.map((t) => {
                       const active = currentTheme === t.id
@@ -5494,7 +5047,7 @@ function SettingsPage(props: {
                           </div>
                           {active && (
                             <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ background: primary }}>
-                              ✓
+
                             </div>
                           )}
                         </button>
@@ -5521,206 +5074,6 @@ function SettingsPage(props: {
                   </div>
                 )
               })()}
-
-              {/* Pixel Art Background - hidden during maintenance */}
-              {!APPEARANCE_DISABLED && <div className="mt-6 pt-6 border-t border-[var(--border)]">
-                <div className="text-xs text-[var(--muted)] mb-3 flex items-center gap-2">
-                  <Star size={14} className="text-cyan-400" /> Pixel Art Background
-                </div>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-[var(--border)]">
-                    <div>
-                      <div className="text-sm">Enable Pixel Background</div>
-                      <div className="text-xs text-[var(--muted)]">Parallax pixel art with theme colors</div>
-                    </div>
-                    <ToggleSwitch
-                      checked={pixelBackgroundEnabled}
-                      onChange={(v) => setPixelBackgroundEnabled(v)}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-[var(--border)]">
-                    <div>
-                      <div className="text-sm">Pixel Cursor</div>
-                      <div className="text-xs text-[var(--muted)]">Custom pixel art cursor</div>
-                    </div>
-                    <ToggleSwitch
-                      checked={pixelCursorEnabled}
-                      onChange={(v) => setPixelCursorEnabled(v)}
-                    />
-                  </div>
-
-                  {pixelBackgroundEnabled && (
-                    <>
-                      {/* Theme Selector */}
-                      <div className="p-3 rounded-xl bg-black/20 border border-[var(--border)]">
-                        <div className="text-sm mb-3">Theme (overrides app colors)</div>
-                        <div className="grid grid-cols-5 gap-2">
-                          {([
-                            { id: 'neonMetropolis', name: 'Neon Metropolis', color: 'from-pink-500 to-cyan-500' },
-                            { id: 'cyberpunkCity', name: 'Cyberpunk', color: 'from-violet-500 to-fuchsia-500' },
-                            { id: 'retroCity', name: 'Retro City', color: 'from-amber-400 to-orange-500' },
-                            { id: 'dreamyClouds', name: 'Dreamy Clouds', color: 'from-sky-400 to-blue-500' },
-                            { id: 'stormClouds', name: 'Storm', color: 'from-slate-400 to-slate-600' },
-                            { id: 'aquarium', name: 'Aquarium', color: 'from-cyan-400 to-teal-600' },
-                            { id: 'none', name: 'None', color: 'from-gray-600 to-gray-800' },
-                          ] as { id: PixelTheme; name: string; color: string }[]).map((theme) => (
-                            <button
-                              key={theme.id}
-                              onClick={() => setPixelTheme(theme.id)}
-                              className={cn(
-                                'p-2 rounded-lg border transition text-center',
-                                pixelTheme === theme.id
-                                  ? 'bg-cyan-500/20 border-cyan-500/50 ring-1 ring-cyan-400'
-                                  : 'bg-black/20 border-[var(--border)] hover:border-white/20'
-                              )}
-                            >
-                              <div className={cn('w-full h-5 rounded mb-1 bg-gradient-to-r', theme.color)} />
-                              <div className="text-[9px] truncate">{theme.name}</div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Sliders */}
-                      <div className="p-3 rounded-xl bg-black/20 border border-[var(--border)]">
-                        <div className="space-y-4">
-                          <div>
-                            <div className="flex justify-between text-xs mb-1">
-                              <span className="text-[var(--muted)]">Background Opacity</span>
-                              <span className="text-cyan-400">{pixelOpacity}%</span>
-                            </div>
-                            <input
-                              type="range" min="20" max="70" step="5"
-                              value={pixelOpacity}
-                              onChange={(e) => setPixelOpacity(Number(e.target.value))}
-                              className="w-full h-1.5 rounded-full appearance-none bg-white/10 cursor-pointer accent-cyan-500"
-                            />
-                          </div>
-                          <div>
-                            <div className="flex justify-between text-xs mb-1">
-                              <span className="text-[var(--muted)]">Parallax Strength</span>
-                              <span className="text-cyan-400">{pixelParallaxStrength}%</span>
-                            </div>
-                            <input
-                              type="range" min="0" max="60" step="5"
-                              value={pixelParallaxStrength}
-                              onChange={(e) => setPixelParallaxStrength(Number(e.target.value))}
-                              className="w-full h-1.5 rounded-full appearance-none bg-white/10 cursor-pointer accent-cyan-500"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>}
-
-              {/* Visual Effects - hidden during maintenance */}
-              {!APPEARANCE_DISABLED && <div className="mt-6 pt-6 border-t border-[var(--border)]">
-                <div className="text-xs text-[var(--muted)] mb-3 flex items-center gap-2">
-                  <Sparkles size={14} className="text-pink-500" /> Visual Effects
-                </div>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-[var(--border)]">
-                    <div>
-                      <div className="text-sm">Enable Overlays</div>
-                      <div className="text-xs text-[var(--muted)]">Particles, glow, heat effects</div>
-                    </div>
-                    <ToggleSwitch
-                      checked={visualEffectsEnabled}
-                      onChange={(v) => setVisualEffectsEnabled(v)}
-                    />
-                  </div>
-                  <div className="p-3 rounded-xl bg-black/20 border border-[var(--border)]">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="text-sm">Ambient Heat Level</div>
-                      <span className="text-xs text-pink-400 font-medium">{ambientHeatLevel}/10</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="10"
-                      step="1"
-                      value={ambientHeatLevel}
-                      onChange={(e) => setAmbientHeatLevel(Number(e.target.value))}
-                      className="w-full h-2 rounded-full appearance-none bg-white/10 cursor-pointer accent-pink-500"
-                    />
-                    <div className="flex justify-between text-[10px] text-[var(--muted)] mt-1">
-                      <span>Off</span>
-                      <span>Subtle</span>
-                      <span>Intense</span>
-                    </div>
-                  </div>
-
-                  {/* Overlay Effects */}
-                  <div className="p-3 rounded-xl bg-black/20 border border-[var(--border)]">
-                    <div className="text-sm mb-3">Overlay Effects</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => setSparklesEnabled(!sparklesEnabled)}
-                        className={cn(
-                          'p-3 rounded-xl border transition text-left',
-                          sparklesEnabled
-                            ? 'bg-yellow-500/20 border-yellow-500/50'
-                            : 'bg-black/20 border-[var(--border)] hover:border-white/20'
-                        )}
-                      >
-                        <div className="text-lg mb-1">✨</div>
-                        <div className="text-xs">Sparkles</div>
-                      </button>
-                      <button
-                        onClick={() => setBokehEnabled(!bokehEnabled)}
-                        className={cn(
-                          'p-3 rounded-xl border transition text-left',
-                          bokehEnabled
-                            ? 'bg-pink-500/20 border-pink-500/50'
-                            : 'bg-black/20 border-[var(--border)] hover:border-white/20'
-                        )}
-                      >
-                        <div className="text-lg mb-1">○</div>
-                        <div className="text-xs">Bokeh</div>
-                      </button>
-                      <button
-                        onClick={() => setStarfieldEnabled(!starfieldEnabled)}
-                        className={cn(
-                          'p-3 rounded-xl border transition text-left',
-                          starfieldEnabled
-                            ? 'bg-blue-500/20 border-blue-500/50'
-                            : 'bg-black/20 border-[var(--border)] hover:border-white/20'
-                        )}
-                      >
-                        <div className="text-lg mb-1">★</div>
-                        <div className="text-xs">Starfield</div>
-                      </button>
-                      <button
-                        onClick={() => setFilmGrainEnabled(!filmGrainEnabled)}
-                        className={cn(
-                          'p-3 rounded-xl border transition text-left',
-                          filmGrainEnabled
-                            ? 'bg-amber-500/20 border-amber-500/50'
-                            : 'bg-black/20 border-[var(--border)] hover:border-white/20'
-                        )}
-                      >
-                        <div className="text-lg mb-1">▓</div>
-                        <div className="text-xs">Film Grain</div>
-                      </button>
-                      <button
-                        onClick={() => setDreamyHazeEnabled(!dreamyHazeEnabled)}
-                        className={cn(
-                          'p-3 rounded-xl border transition text-left col-span-2',
-                          dreamyHazeEnabled
-                            ? 'bg-purple-500/20 border-purple-500/50'
-                            : 'bg-black/20 border-[var(--border)] hover:border-white/20'
-                        )}
-                      >
-                        <div className="text-lg mb-1">☁</div>
-                        <div className="text-xs">Dreamy Haze</div>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>}
             </div>
           )}
 
@@ -5847,7 +5200,7 @@ function LibraryToolsSection() {
 
   // Check if Ollama is available on mount
   useEffect(() => {
-    window.api.hybridTag?.isVisionAvailable?.().then(available => {
+    window.api.hybridTag?.isVisionAvailable?.().then((available: any) => {
       setOllamaAvailable(available)
       console.log('[LibraryTools] Ollama available:', available)
     }).catch(() => setOllamaAvailable(false))
@@ -5862,14 +5215,14 @@ function LibraryToolsSection() {
     addTask({ id: taskId, name: 'AI Library Analysis', progress: 0, status: 'Starting...' })
 
     // Set up progress listeners
-    const unsubHybrid = window.api.events?.onHybridTagProgress?.((progress) => {
+    const unsubHybrid = window.api.events?.onHybridTagProgress?.((progress: any) => {
       const percent = Math.round(10 + (progress.processed / progress.total) * 55)
       const status = `AI tagging... ${progress.processed}/${progress.total} (${progress.tagged} tagged)`
       setAnalysisProgress({ stage: status, current: Math.min(65, percent), total: 100 })
       updateTask(taskId, { progress: Math.min(65, percent), status })
     })
 
-    const unsubDeep = window.api.events?.onVideoAnalysisBatchProgress?.((progress) => {
+    const unsubDeep = window.api.events?.onVideoAnalysisBatchProgress?.((progress: any) => {
       const percent = Math.round(65 + (progress.current / progress.total) * 30)
       const status = `Deep analysis... ${progress.current}/${progress.total}`
       setAnalysisProgress({ stage: status, current: Math.min(95, percent), total: 100 })
@@ -6102,7 +5455,6 @@ function LibraryToolsSection() {
 
       <div className="space-y-3">
         {/* Unified AI Analyze Button */}
-        {!AI_DEEP_ANALYSIS_DISABLED && (
         <div className="p-4 rounded-xl bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -6166,10 +5518,8 @@ function LibraryToolsSection() {
             </div>
           </div>
         </div>
-        )}
 
         {/* AI Clean Tags Button */}
-        {!AI_DEEP_ANALYSIS_DISABLED && (
         <div className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-[var(--border)]">
           <div>
             <div className="text-sm flex items-center gap-2">
@@ -6200,7 +5550,6 @@ function LibraryToolsSection() {
             )}
           </button>
         </div>
-        )}
 
         {/* AI Create Tags Button */}
         <div className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-[var(--border)]">

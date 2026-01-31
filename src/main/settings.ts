@@ -38,7 +38,7 @@ export type GoonThemeId =
 
 export type ThemeId = ClassicThemeId | GoonThemeId
 
-export type GoonWallLayout = 'grid' | 'columns' | 'mosaic' | 'chaos'
+export type GoonWallLayout = 'grid' | 'mosaic'
 export type GoonWallTransition = 'crossfade' | 'cut' | 'slide' | 'zoom' | 'glitch' | 'melt' | 'swipe'
 export type ShuffleInterval = 10 | 20 | 30 | 40 | 50 | 60
 
@@ -141,8 +141,8 @@ export interface GoonStats {
   goonWallMaxTiles: number
   goonWallTimeMinutes: number
   goonWallShuffles: number
-  diabellaConversations: number
-  diabellaTimeMinutes: number
+  // Watched video tracking
+  watchedVideoIds: string[]
 
   // Achievement IDs unlocked
   achievements: string[]
@@ -156,7 +156,7 @@ export interface Achievement {
   name: string
   description: string
   icon: string
-  category: 'session' | 'edge' | 'content' | 'streak' | 'goonwall' | 'diabella'
+  category: 'getting_started' | 'session' | 'edge' | 'edging' | 'content' | 'streak' | 'goonwall' | 'collection'
   target: number
   secret?: boolean
 }
@@ -328,7 +328,7 @@ export interface DaylistSettings {
 }
 
 export type VeniceVoiceId = 'af_sky' | 'af_bella' | 'af_sarah' | 'af_nicole'
-export type VeniceImageModel = 'default' | 'flux-dev' | 'flux-dev-uncensored'
+export type VeniceImageModel = 'default' | 'flux-dev' | 'flux-dev-uncensored' | 'fluently-xl'
 
 export interface DiabellaSettings {
   enabled: boolean
@@ -920,8 +920,7 @@ const DEFAULTS: VaultSettings = {
     goonWallMaxTiles: 0,
     goonWallTimeMinutes: 0,
     goonWallShuffles: 0,
-    diabellaConversations: 0,
-    diabellaTimeMinutes: 0,
+    watchedVideoIds: [],
     achievements: [],
     activityHeatmap: {}
   },
@@ -1215,21 +1214,7 @@ export function recordGoonWallShuffle(): GoonStats {
   })
 }
 
-export function recordDiabellaConversation(): GoonStats {
-  const stats = getGoonStats()
-  return updateGoonStats({
-    diabellaConversations: stats.diabellaConversations + 1
-  })
-}
-
-export function recordDiabellaTime(minutes: number): GoonStats {
-  const stats = getGoonStats()
-  return updateGoonStats({
-    diabellaTimeMinutes: stats.diabellaTimeMinutes + minutes
-  })
-}
-
-export function checkAndUnlockAchievements(): string[] {
+export function checkAndUnlockAchievements(vaultStats?: { totalMedia?: number; playlistCount?: number; tagCount?: number }): string[] {
   const stats = getGoonStats()
   const newlyUnlocked: string[] = []
 
@@ -1367,36 +1352,36 @@ export function checkAndUnlockAchievements(): string[] {
         unlocked = stats.goonWallMaxTiles >= 12 && stats.goonWallSessions >= 10
         break
 
-      // Diabella (10)
-      case 'first_contact':
-        unlocked = stats.diabellaConversations >= 1
+      // Collection (10)
+      case 'hoarder':
+        unlocked = (vaultStats?.totalMedia ?? 0) >= 500
         break
-      case 'getting_acquainted':
-        unlocked = stats.diabellaConversations >= 10
+      case 'archivist':
+        unlocked = (vaultStats?.totalMedia ?? 0) >= 1000
         break
-      case 'friends':
-        unlocked = stats.diabellaConversations >= 50
+      case 'mega_library':
+        unlocked = (vaultStats?.totalMedia ?? 0) >= 5000
         break
-      case 'intimate':
-        unlocked = stats.diabellaConversations >= 100
+      case 'playlist_pro':
+        unlocked = (vaultStats?.playlistCount ?? stats.playlistsCreated) >= 5
         break
-      case 'devoted_companion':
-        unlocked = stats.diabellaTimeMinutes >= 3000 // 50 hours
+      case 'tag_enthusiast':
+        unlocked = stats.tagsAssigned >= 50
         break
-      case 'she_likes_you':
-        unlocked = stats.diabellaConversations >= 5
+      case 'tag_master':
+        unlocked = stats.tagsAssigned >= 200
         break
-      case 'made_her_moan':
-        unlocked = stats.diabellaConversations >= 20
+      case 'critic':
+        unlocked = stats.ratingsGiven >= 50
         break
-      case 'watch_together':
-        unlocked = stats.diabellaConversations >= 1 && stats.totalVideosWatched >= 1
+      case 'connoisseur':
+        unlocked = stats.uniqueVideosWatched >= 500
         break
-      case 'voice_activated':
-        unlocked = stats.diabellaConversations >= 1 // Will be set when TTS is enabled
+      case 'binge_watcher':
+        unlocked = stats.totalVideosWatched >= 100
         break
-      case 'soulmates':
-        unlocked = stats.diabellaConversations >= 500
+      case 'explorer':
+        unlocked = stats.totalVideosWatched >= 1000
         break
     }
 
@@ -1734,18 +1719,18 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'chaos_lover', name: 'Chaos Lover', description: 'Use all tiles for 30 minutes', icon: '🌪️', category: 'goonwall', target: 30 },
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // DIABELLA (10)
+  // COLLECTION (10)
   // ═══════════════════════════════════════════════════════════════════════════
-  { id: 'first_contact', name: 'First Contact', description: 'First chat with Diabella', icon: '💬', category: 'diabella', target: 1 },
-  { id: 'getting_acquainted', name: 'Getting Acquainted', description: '10 conversations with Diabella', icon: '🤝', category: 'diabella', target: 10 },
-  { id: 'friends', name: 'Friends', description: '50 conversations with Diabella', icon: '👯', category: 'diabella', target: 50 },
-  { id: 'intimate', name: 'Intimate', description: '100 conversations with Diabella', icon: '❤️', category: 'diabella', target: 100 },
-  { id: 'devoted_companion', name: 'Devoted Companion', description: '50 hours with Diabella active', icon: '💕', category: 'diabella', target: 3000 },
-  { id: 'she_likes_you', name: 'She Likes You', description: 'Get a positive reaction from Diabella', icon: '😊', category: 'diabella', target: 1 },
-  { id: 'made_her_moan', name: 'Made Her Moan', description: 'Trigger an aroused response', icon: '😩', category: 'diabella', target: 1 },
-  { id: 'watch_together', name: 'Watch Together', description: 'Use Watch-Along mode', icon: '📺', category: 'diabella', target: 1 },
-  { id: 'voice_activated', name: 'Voice Activated', description: 'Enable Diabella voice', icon: '🔊', category: 'diabella', target: 1 },
-  { id: 'soulmates', name: 'Soulmates', description: '500 conversations with Diabella', icon: '💞', category: 'diabella', target: 500 },
+  { id: 'hoarder', name: 'Hoarder', description: 'Have 500 items in your library', icon: '📦', category: 'collection', target: 500 },
+  { id: 'archivist', name: 'Archivist', description: 'Have 1000 items in your library', icon: '🗄️', category: 'collection', target: 1000 },
+  { id: 'mega_library', name: 'Mega Library', description: 'Have 5000 items in your library', icon: '🏛️', category: 'collection', target: 5000 },
+  { id: 'playlist_pro', name: 'Playlist Pro', description: 'Create 5 playlists', icon: '📋', category: 'collection', target: 5 },
+  { id: 'tag_enthusiast', name: 'Tag Enthusiast', description: 'Add tags to 50 items', icon: '🏷️', category: 'collection', target: 50 },
+  { id: 'tag_master', name: 'Tag Master', description: 'Add tags to 200 items', icon: '🏷️', category: 'collection', target: 200 },
+  { id: 'critic', name: 'Critic', description: 'Rate 50 items', icon: '⭐', category: 'collection', target: 50 },
+  { id: 'connoisseur', name: 'Connoisseur', description: 'Watch 500 unique videos', icon: '🎬', category: 'collection', target: 500 },
+  { id: 'binge_watcher', name: 'Binge Watcher', description: 'Watch 100 videos total', icon: '📺', category: 'collection', target: 100 },
+  { id: 'explorer', name: 'Explorer', description: 'Watch 1000 videos total', icon: '🌍', category: 'collection', target: 1000 },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1823,7 +1808,7 @@ export const SESSION_MODES: SessionMode[] = [
     description: 'Random everything, embrace chaos',
     icon: '🎰',
     settings: {
-      goonwall: { defaultTileCount: 6, defaultIntervalSec: 20, defaultLayout: 'chaos' },
+      goonwall: { defaultTileCount: 6, defaultIntervalSec: 20, defaultLayout: 'mosaic' },
       diabella: { spiceLevel: 4, personality: 'pepper' },
       suggestedDuration: 'until_done',
       soundtrack: 'random'

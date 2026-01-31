@@ -1,7 +1,6 @@
 // File: src/renderer/components/FloatingVideoPlayer.tsx
 // Floating Picture-in-Picture style video player with fullscreen support
 
-const AI_DEEP_ANALYSIS_DISABLED = true // Maintenance flag - disable AI deep analysis button
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart } from 'lucide-react'
@@ -59,6 +58,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0, posX: 0, posY: 0 })
   const [isMuted, setIsMuted] = useState(false)
   const [volume, setVolume] = useState(0.5) // Volume 0-1
+  const prevVolumeRef = useRef(0.5) // Remember volume before muting/zeroing
   const [isPaused, setIsPaused] = useState(false)
   const [showControls, setShowControls] = useState(true)
   const [isLoading, setIsLoading] = useState(true)
@@ -66,6 +66,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [showVolumeSlider, setShowVolumeSlider] = useState(false)
+  const [volumeDragging, setVolumeDragging] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisResult, setAnalysisResult] = useState<string | null>(null)
   const [isLiked, setIsLiked] = useState(false)
@@ -124,9 +125,23 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   // Apply volume to video element
   useEffect(() => {
     if (videoRef.current) {
-      videoRef.current.volume = isMuted ? 0 : volume
+      videoRef.current.volume = volume
+      videoRef.current.muted = isMuted
     }
   }, [volume, isMuted])
+
+  // Navigation functions (declared before hooks that reference them)
+  const goToPrev = useCallback(() => {
+    if (hasPrev) {
+      onMediaChange(mediaList[currentIndex - 1].id)
+    }
+  }, [currentIndex, hasPrev, mediaList, onMediaChange])
+
+  const goToNext = useCallback(() => {
+    if (hasNext) {
+      onMediaChange(mediaList[currentIndex + 1].id)
+    }
+  }, [currentIndex, hasNext, mediaList, onMediaChange])
 
   // Record view
   useEffect(() => {
@@ -155,7 +170,8 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     if (videoRef.current) {
       setDuration(videoRef.current.duration)
       // Apply initial volume
-      videoRef.current.volume = isMuted ? 0 : volume
+      videoRef.current.volume = volume
+      videoRef.current.muted = isMuted
     }
   }, [isMuted, volume])
 
@@ -174,7 +190,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       if (!transcodeRetried && (videoError.code === 3 || videoError.code === 4)) {
         setTranscodeRetried(true)
         errorHandled.current = false // Allow one more error after transcode retry
-        window.api.media.getPlayableUrl(media.id, true).then(u => {
+        window.api.media.getPlayableUrl(media.id, true).then((u: any) => {
           if (u) {
             setUrl(u as string)
             setHasError(false)
@@ -206,19 +222,6 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       setCurrentTime(videoRef.current.currentTime)
     }
   }, [])
-
-  // Navigation functions
-  const goToPrev = useCallback(() => {
-    if (hasPrev) {
-      onMediaChange(mediaList[currentIndex - 1].id)
-    }
-  }, [currentIndex, hasPrev, mediaList, onMediaChange])
-
-  const goToNext = useCallback(() => {
-    if (hasNext) {
-      onMediaChange(mediaList[currentIndex + 1].id)
-    }
-  }, [currentIndex, hasNext, mediaList, onMediaChange])
 
   // Toggle play/pause
   const togglePlay = useCallback(() => {
@@ -279,7 +282,14 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         e.preventDefault()
         togglePlay()
       } else if (e.key === 'm' || e.key === 'M') {
-        setIsMuted(prev => !prev)
+        if (isMuted || volume === 0) {
+          const restored = prevVolumeRef.current > 0 ? prevVolumeRef.current : 0.5
+          setVolume(restored)
+          setIsMuted(false)
+        } else {
+          prevVolumeRef.current = volume
+          setIsMuted(true)
+        }
       } else if (e.key === 'f' || e.key === 'F') {
         toggleFullscreen()
       } else if (e.key === 'l' || e.key === 'L') {
@@ -829,34 +839,69 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
             {media.type === 'video' && (
               <div
                 className="relative flex items-center"
-                onMouseEnter={() => setShowVolumeSlider(true)}
-                onMouseLeave={() => setShowVolumeSlider(false)}
+                onMouseLeave={() => { if (!volumeDragging) setShowVolumeSlider(false) }}
               >
                 <button
-                  onClick={() => setIsMuted(!isMuted)}
+                  onClick={() => {
+                    if (isMuted || volume === 0) {
+                      // Unmute: restore previous volume
+                      const restored = prevVolumeRef.current > 0 ? prevVolumeRef.current : 0.5
+                      setVolume(restored)
+                      setIsMuted(false)
+                    } else {
+                      // Mute: save current volume and mute
+                      prevVolumeRef.current = volume
+                      setIsMuted(true)
+                    }
+                  }}
+                  onMouseEnter={() => setShowVolumeSlider(true)}
                   className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition"
-                  title={isMuted ? 'Unmute (M)' : 'Mute (M)'}
+                  title={isMuted || volume === 0 ? 'Click to unmute (M)' : 'Click to mute (M)'}
                 >
                   {isMuted || volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
                 </button>
                 {/* Volume slider */}
-                <div className={`absolute bottom-full left-1/2 -translate-x-1/2 px-2 pt-3 pb-5 bg-black/90 rounded-lg border border-white/20 transition-all duration-200 ${showVolumeSlider ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={volume}
-                    onChange={(e) => {
-                      const v = parseFloat(e.target.value)
-                      setVolume(v)
-                      if (v > 0 && isMuted) setIsMuted(false)
-                    }}
-                    className="w-20 h-1 appearance-none bg-white/30 rounded-full cursor-pointer accent-white"
-                    style={{ writingMode: 'horizontal-tb' }}
-                  />
-                  <div className="text-[10px] text-white/60 text-center mt-1">{Math.round(volume * 100)}%</div>
-                </div>
+                {showVolumeSlider && (
+                  <div
+                    className="no-drag absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-3 py-3 bg-black/90 rounded-lg border border-white/20"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onMouseMove={(e) => e.stopPropagation()}
+                    onMouseUp={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onPointerMove={(e) => e.stopPropagation()}
+                    onPointerUp={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={volume}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value)
+                        if (v > 0) prevVolumeRef.current = v
+                        setVolume(v)
+                        if (v > 0 && isMuted) setIsMuted(false)
+                      }}
+                      onPointerDown={(e) => {
+                        e.stopPropagation()
+                        setVolumeDragging(true)
+                      }}
+                      onPointerUp={() => setVolumeDragging(false)}
+                      onLostPointerCapture={() => setVolumeDragging(false)}
+                      className="volume-slider w-24 cursor-pointer"
+                      style={{
+                        writingMode: 'horizontal-tb',
+                        background: `linear-gradient(to right, rgba(255,255,255,0.8) ${volume * 100}%, rgba(255,255,255,0.2) ${volume * 100}%)`
+                      }}
+                    />
+                    <div className="text-[10px] text-white/60 text-center mt-1">{Math.round(volume * 100)}%</div>
+                  </div>
+                )}
+                {/* Transparent bridge to prevent mouseLeave gap */}
+                {showVolumeSlider && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 w-12 h-2" />
+                )}
               </div>
             )}
 
@@ -876,7 +921,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               <FolderOpen size={16} />
             </button>
 
-            {media.type === 'video' && !AI_DEEP_ANALYSIS_DISABLED && (
+            {media.type === 'video' && (
               <button
                 onClick={handleAiAnalyze}
                 disabled={isAnalyzing}

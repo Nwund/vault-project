@@ -508,6 +508,6 @@ export function RoadmapParticles({ enabled = true }: { enabled?: boolean }) {
 
 // Export presets for customization
 export { PRESETS as PARTICLE_PRESETS }
-export type { ParticleConfig }
+export type { ParticleConfig as ParticleConfigType }
 
 export default ParticlesBackground

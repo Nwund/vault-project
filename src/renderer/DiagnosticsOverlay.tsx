@@ -38,7 +38,7 @@ export function DiagnosticsOverlay() {
       // ignore
     })
 
-    unsubEvent = window.vaultDiagnostics.onEvent((ev) => {
+    unsubEvent = window.vaultDiagnostics.onEvent((ev: any) => {
       setEvents((prev) => {
         const next = [...prev, ev]
         return next.length > 500 ? next.slice(next.length - 500) : next

@@ -158,9 +158,9 @@ class LicenseService {
       os.platform(),
       os.arch(),
       cpus[0]?.model || '',
-      Object.values(networkInterfaces)
+      (Object.values(networkInterfaces)
         .flat()
-        .find((i: any) => !i?.internal && i?.mac)?.mac || '',
+        .find((i: any) => !i?.internal && i?.mac) as any)?.mac || '',
     ]
 
     return components.join('|')

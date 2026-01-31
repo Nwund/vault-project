@@ -2,7 +2,7 @@
 // Virtualized media grid for performance with large libraries
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { FixedSizeGrid } from 'react-window'
+const { Grid: FixedSizeGrid } = require('react-window') as any
 
 // Inline type to avoid import issues
 interface GridChildComponentProps {
@@ -242,7 +242,7 @@ export const VirtualizedMediaGrid: React.FC<VirtualizedMediaGridProps> = ({
         width={containerSize.width}
         overscanRowCount={2}
       >
-        {Cell}
+        {Cell as any}
       </FixedSizeGrid>
     </div>
   )

@@ -13,7 +13,7 @@ import { getSmartTagger } from './services/tagging/smart-tagger'
 import { getHybridTagger } from './services/tagging/hybrid-tagger'
 import { analyzeVideo, isAnalyzerAvailable, type VideoAnalysis } from './services/ai/video-analyzer'
 import { aiCleanupTags, aiGenerateTags, aiSuggestFilename, aiBatchRename, isOllamaAvailable } from './services/ai/ai-library-tools'
-import { diabella, initDiabellaService } from './services/diabella'
+
 import {
   getSettings,
   updateSettings,
@@ -25,7 +25,6 @@ import {
   updatePlaybackSettings,
   updateGoonwallSettings,
   updateDaylistSettings,
-  updateDiabellaSettings,
   updateQuickcutsSettings,
   updateAppearanceSettings,
   updatePrivacySettings,
@@ -57,8 +56,6 @@ import {
   recordGoonWallSession,
   recordGoonWallTime,
   recordGoonWallShuffle,
-  recordDiabellaConversation,
-  recordDiabellaTime,
   GOON_THEMES,
   SESSION_MODES,
   ACHIEVEMENTS,
@@ -72,7 +69,7 @@ import {
 import { toVaultUrl } from './vaultProtocol'
 import { getAICacheService } from './services/ai-cache-service'
 import { getLicenseService } from './services/license-service'
-import { needsTranscode, transcodeToMp4, getTranscodedPath } from './services/transcode'
+import { needsTranscode, probeNeedsTranscode, transcodeToMp4, getTranscodedPath, transcodeLowRes } from './services/transcode'
 import { makeVideoThumb, makeImageThumb, probeVideoDurationSec } from './thumbs'
 
 type OnDirsChanged = (newDirs: string[]) => Promise<void>
@@ -134,6 +131,14 @@ function getNSFWTagger(): NSFWTagger {
 }
 
 export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChanged): void {
+  // Helper: get vault stats and check achievements
+  function checkAchievements() {
+    const totalMedia = db.countMedia({ q: '', type: '', tag: '' })
+    const playlistCount = db.playlistList().length
+    const tagCount = db.listTags().length
+    return checkAndUnlockAchievements({ totalMedia, playlistCount, tagCount })
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // SETTINGS - General
   // ═══════════════════════════════════════════════════════════════════════════
@@ -228,30 +233,24 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   // Goon Wall achievement tracking
   ipcMain.handle('goonwall:startSession', async (_ev, tileCount: number) => {
     recordGoonWallSession(tileCount)
-    checkAndUnlockAchievements()
+    checkAchievements()
     return true
   })
 
   ipcMain.handle('goonwall:recordTime', async (_ev, minutes: number) => {
     recordGoonWallTime(minutes)
-    checkAndUnlockAchievements()
+    checkAchievements()
     return true
   })
 
   ipcMain.handle('goonwall:shuffle', async () => {
     recordGoonWallShuffle()
-    checkAndUnlockAchievements()
+    checkAchievements()
     return true
   })
 
   ipcMain.handle('settings:daylist:update', async (_ev, patch: any) => {
     const next = updateDaylistSettings(patch)
-    broadcast('settings:changed', next)
-    return next
-  })
-
-  ipcMain.handle('settings:diabella:update', async (_ev, patch: any) => {
-    const next = updateDiabellaSettings(patch)
     broadcast('settings:changed', next)
     return next
   })
@@ -380,7 +379,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('media:setRating', async (_ev, mediaId: string, rating: number) => {
     const result = db.statsSetRating(mediaId, rating)
     recordRatingGiven()  // Track for achievements
-    checkAndUnlockAchievements()  // Check 'rated' achievement
+    checkAchievements()  // Check 'rated' achievement
     return result
   })
 
@@ -444,7 +443,20 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     const media = db.getMedia(mediaId)
     if (!media) return null
     const ext = path.extname(media.path).toLowerCase()
-    if (forceTranscode || needsTranscode(ext)) {
+
+    // Determine if transcoding is needed: by extension, by force flag, or by codec probe
+    let shouldTranscode = forceTranscode || needsTranscode(ext)
+
+    // For files that pass the extension check (e.g. .mp4 with HEVC), probe actual codecs
+    if (!shouldTranscode && ['.mp4', '.webm', '.ogg', '.ogv'].includes(ext)) {
+      try {
+        shouldTranscode = await probeNeedsTranscode(media.path)
+      } catch (e) {
+        console.warn('[IPC] Codec probe failed, serving raw:', media.path, e)
+      }
+    }
+
+    if (shouldTranscode) {
       // Check if already transcoded
       let tp = getTranscodedPath(mediaId)
       if (!tp) {
@@ -454,6 +466,18 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       return toVaultUrl(tp)
     }
     return toVaultUrl(media.path)
+  })
+
+  ipcMain.handle('media:getLowResUrl', async (_ev, mediaId: string, maxHeight: number) => {
+    const media = db.getMedia(mediaId)
+    if (!media) return null
+    try {
+      const tp = await transcodeLowRes(media.path, mediaId, maxHeight)
+      return toVaultUrl(tp)
+    } catch (e) {
+      console.warn('[IPC] Low-res transcode failed, falling back to original:', e)
+      return toVaultUrl(media.path)
+    }
   })
 
   ipcMain.handle('media:getLoudnessPeak', async (_ev, mediaId: string) => {
@@ -611,7 +635,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('tags:addToMedia', async (_ev, mediaId: string, tagName: string) => {
     db.addTagToMedia(mediaId, tagName)
     recordTagAssigned()  // Track for achievements
-    checkAndUnlockAchievements()  // Check 'tagged' achievement
+    checkAchievements()  // Check 'tagged' achievement
     broadcast('vault:changed')
     return db.listMediaTags(mediaId)
   })
@@ -685,7 +709,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('playlists:create', async (_ev, name: string) => {
     const playlist = db.playlistCreate(name)
     recordPlaylistCreated()  // Track for achievements
-    checkAndUnlockAchievements()  // Check 'organized' achievement
+    checkAchievements()  // Check 'organized' achievement
     broadcast('vault:changed')
     return playlist
   })
@@ -752,7 +776,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
     let content = '#EXTM3U\n'
     for (const item of items) {
-      const media = db.getMedia(item.mediaId)
+      const media = db.getMedia((item as any).mediaId ?? item.media?.id)
       if (media) {
         content += `#EXTINF:-1,${media.filename}\n`
         content += `${media.path}\n`
@@ -913,9 +937,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       }
     }
 
-    // Track Diabella conversation for achievements
-    recordDiabellaConversation()
-    checkAndUnlockAchievements()
+    checkAchievements()
 
     if (provider === 'ollama') {
       return handleOllamaChat(settings, payload)
@@ -996,152 +1018,16 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return handleVeniceImageGen(settings, prompt, options)
   })
 
-  // Generate Diabella Avatar using dedicated service
-  ipcMain.handle('ai:generateAvatar', async (_ev, options?: {
-    style?: string
-    outfit?: string
-    expression?: string
-    pose?: string
-    arousalLevel?: number
-    regenerate?: boolean
-  }) => {
-    try {
-      const service = diabella.avatar
-      const result = await service.generate({
-        style: (options?.style || 'anime') as any,
-        outfit: options?.outfit || 'elegant-dress',
-        expression: options?.expression || 'flirty',
-        pose: options?.pose || 'standing',
-        arousalLevel: options?.arousalLevel || 1,
-        regenerate: options?.regenerate || false
-      })
-
-      if (result.success && result.path) {
-        return { success: true, path: result.path }
-      } else {
-        return { success: false, error: result.error || 'Failed to generate avatar' }
-      }
-    } catch (error: any) {
-      console.error('[IPC] Avatar generation failed:', error)
-      return { success: false, error: error.message || 'Unknown error' }
-    }
+  ipcMain.handle('ai:generateAvatar', async () => {
+    return { success: false, error: 'Feature removed' }
   })
 
-  // Clear Diabella avatar cache
   ipcMain.handle('ai:clearAvatarCache', async () => {
-    try {
-      diabella.avatar.clearCache()
-      return { success: true }
-    } catch (error: any) {
-      return { success: false, error: error.message }
-    }
+    return { success: true }
   })
 
-  // Get avatar customization options
   ipcMain.handle('ai:getAvatarOptions', async () => {
-    const service = diabella.avatar
-    return {
-      styles: service.getStyleOptions(),
-      outfits: service.getOutfitOptions(),
-      expressions: service.getExpressionOptions(),
-    }
-  })
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DIABELLA - Chat Service
-  // ═══════════════════════════════════════════════════════════════════════════
-  ipcMain.handle('diabella:chat', async (_ev, message: string, context?: any) => {
-    try {
-      const result = await diabella.chat.chat(message, context)
-      return { success: true, ...result }
-    } catch (error: any) {
-      console.error('[IPC] Diabella chat error:', error)
-      return { success: false, error: error.message }
-    }
-  })
-
-  ipcMain.handle('diabella:greeting', async () => {
-    try {
-      const result = await diabella.chat.getGreeting()
-      return { success: true, ...result }
-    } catch (error: any) {
-      return { success: false, error: error.message }
-    }
-  })
-
-  ipcMain.handle('diabella:resetChat', async () => {
-    try {
-      diabella.chat.reset()
-      return { success: true }
-    } catch (error: any) {
-      return { success: false, error: error.message }
-    }
-  })
-
-  ipcMain.handle('diabella:getVideoReaction', async (_ev, tags: string[]) => {
-    try {
-      const reaction = diabella.chat.getVideoReaction(tags)
-      return { success: true, message: reaction }
-    } catch (error: any) {
-      return { success: false, error: error.message }
-    }
-  })
-
-  ipcMain.handle('diabella:getMemory', async () => {
-    return diabella.chat.getMemory()
-  })
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DIABELLA - Voice Service
-  // ═══════════════════════════════════════════════════════════════════════════
-  ipcMain.handle('diabella:speak', async (_ev, text: string) => {
-    try {
-      const result = await diabella.voice.speak(text)
-      return result
-    } catch (error: any) {
-      return { success: false, error: error.message }
-    }
-  })
-
-  ipcMain.handle('diabella:setVoicePreset', async (_ev, preset: string) => {
-    diabella.voice.setPreset(preset)
-    return { success: true, preset }
-  })
-
-  ipcMain.handle('diabella:getVoicePresets', async () => {
-    return diabella.voice.getPresets()
-  })
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DIABELLA - Sound Service
-  // ═══════════════════════════════════════════════════════════════════════════
-  ipcMain.handle('diabella:getSound', async (_ev, event: string) => {
-    try {
-      const soundPath = diabella.sounds.getSoundForEvent(event)
-      return { success: true, path: soundPath }
-    } catch (error: any) {
-      return { success: false, error: error.message }
-    }
-  })
-
-  ipcMain.handle('diabella:getSoundStats', async () => {
-    return diabella.sounds.getStats()
-  })
-
-  ipcMain.handle('diabella:rescanSounds', async () => {
-    diabella.sounds.scanSounds()
-    return { success: true, stats: diabella.sounds.getStats() }
-  })
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DIABELLA - Settings
-  // ═══════════════════════════════════════════════════════════════════════════
-  ipcMain.handle('diabella:getServiceSettings', async () => {
-    return diabella.instance.getSettings()
-  })
-
-  ipcMain.handle('diabella:updateServiceSettings', async (_ev, updates: any) => {
-    return diabella.instance.updateSettings(updates)
+    return { styles: [], outfits: [], expressions: [] }
   })
 
   // Get available TTS voices
@@ -1290,23 +1176,6 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return db.recommendForMedia(mediaId, limit ?? 20)
   })
 
-  // Diabella video recommendations - returns random/popular videos for AI to suggest
-  ipcMain.handle('recommend:forDiabella', async (_ev, limit?: number) => {
-    const n = limit ?? 5
-    // Get a mix of popular and random videos
-    const videos = db.listMedia({ q: '', type: 'video', tag: '', limit: 50, offset: 0 })
-    if (!videos.items.length) return []
-
-    // Shuffle and return random selection
-    const shuffled = videos.items.sort(() => Math.random() - 0.5)
-    return shuffled.slice(0, n).map(v => ({
-      id: v.id,
-      filename: v.filename,
-      path: v.path,
-      durationSec: v.durationSec
-    }))
-  })
-
   // ═══════════════════════════════════════════════════════════════════════════
   // SEARCH SUGGESTIONS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1367,7 +1236,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('goon:recordEdge', async () => {
     const stats = recordEdge()
-    const newAchievements = checkAndUnlockAchievements()
+    const newAchievements = checkAchievements()
     broadcast('goon:statsChanged', stats)
     if (newAchievements.length > 0) {
       broadcast('goon:achievementUnlocked', newAchievements)
@@ -1377,7 +1246,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('goon:recordOrgasm', async (_ev, ruined?: boolean) => {
     const stats = recordOrgasm(ruined ?? false)
-    const newAchievements = checkAndUnlockAchievements()
+    const newAchievements = checkAchievements()
     broadcast('goon:statsChanged', stats)
     if (newAchievements.length > 0) {
       broadcast('goon:achievementUnlocked', newAchievements)
@@ -1387,7 +1256,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('goon:startSession', async () => {
     const stats = startSession()
-    const newAchievements = checkAndUnlockAchievements()
+    const newAchievements = checkAchievements()
     broadcast('goon:statsChanged', stats)
     broadcast('goon:sessionStarted', stats)
     return { stats, newAchievements }
@@ -1395,10 +1264,29 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('goon:endSession', async (_ev, durationMinutes: number) => {
     const stats = endSession(durationMinutes)
-    const newAchievements = checkAndUnlockAchievements()
+    const newAchievements = checkAchievements()
     broadcast('goon:statsChanged', stats)
     broadcast('goon:sessionEnded', stats)
     return { stats, newAchievements }
+  })
+
+  // Record a video watch (called when user opens a video)
+  ipcMain.handle('goon:recordWatch', async (_ev, mediaId: string) => {
+    const stats = getGoonStats()
+    const watchedSet = new Set(stats.watchedVideoIds ?? [])
+    const isNew = !watchedSet.has(mediaId)
+    if (isNew) watchedSet.add(mediaId)
+    const updated = updateGoonStats({
+      totalVideosWatched: stats.totalVideosWatched + 1,
+      uniqueVideosWatched: isNew ? stats.uniqueVideosWatched + 1 : stats.uniqueVideosWatched,
+      watchedVideoIds: Array.from(watchedSet)
+    })
+    const newAchievements = checkAchievements()
+    broadcast('goon:statsChanged', updated)
+    if (newAchievements.length > 0) {
+      broadcast('goon:achievementUnlocked', newAchievements)
+    }
+    return updated
   })
 
   ipcMain.handle('goon:getAchievements', async () => {
@@ -1406,7 +1294,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   ipcMain.handle('goon:checkAchievements', async () => {
-    const newAchievements = checkAndUnlockAchievements()
+    const newAchievements = checkAchievements()
     if (newAchievements.length > 0) {
       broadcast('goon:achievementUnlocked', newAchievements)
     }
@@ -1487,7 +1375,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       const settings = getSettings()
       const options = {
         spiceLevel: settings.diabella.spiciness,
-        personality: settings.diabella.activePersonalityPack
+        personality: (settings.diabella as any).activePersonalityPack ?? settings.diabella.activePackId
       }
 
       const line = vls.getVoiceLine(category, subcategory, options)
@@ -1512,7 +1400,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       const settings = getSettings()
       const options = {
         spiceLevel: settings.diabella.spiciness,
-        personality: settings.diabella.activePersonalityPack
+        personality: (settings.diabella as any).activePersonalityPack ?? settings.diabella.activePackId
       }
 
       const sequence = vls.getVoiceLineSequence(categories, options)
@@ -1560,6 +1448,34 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     } catch (e: any) {
       return { success: false, error: e.message }
     }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // UI SOUNDS - Click sounds from "UI Sound Effects" folder
+  // ═══════════════════════════════════════════════════════════════════════════
+  let uiSoundFiles: string[] | null = null
+
+  ipcMain.handle('uiSounds:list', async () => {
+    if (uiSoundFiles) return uiSoundFiles
+    const dir = path.join(app.getAppPath(), 'UI Sound Effects')
+    // Also check project root (dev mode)
+    const devDir = path.join(process.cwd(), 'UI Sound Effects')
+    const checkDir = fs.existsSync(dir) ? dir : fs.existsSync(devDir) ? devDir : null
+    if (!checkDir) return []
+    try {
+      const files = fs.readdirSync(checkDir)
+        .filter(f => /\.(wav|mp3|ogg|m4a)$/i.test(f))
+        .map(f => path.join(checkDir, f))
+      uiSoundFiles = files
+      return files
+    } catch {
+      return []
+    }
+  })
+
+  ipcMain.handle('uiSounds:getUrl', async (_ev, filePath: string) => {
+    // Return vault:// protocol URL for the sound file
+    return `vault://${encodeURIComponent(filePath)}`
   })
 
   // ═══════════════════════════════════════════════════════════════════════════

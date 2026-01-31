@@ -5,10 +5,12 @@ Private media library manager for Windows with AI companion, smart tagging, and 
 ## Features
 
 - **Universal Playback** - Plays all video formats (MP4, MKV, AVI, WMV, FLV, MOV, and more) via automatic on-demand transcoding
-- **Smart Library** - Auto-scanning, thumbnails, search, tags, playlists, and daylists
-- **Goon Wall** - Multi-tile video wall with loudness-based seek and shuffle
+- **Smart Library** - Auto-scanning, thumbnails, search, tags, playlists with grid and mosaic views
+- **Goon Wall** - Multi-tile video wall with loudness-based seek and shuffle (up to 30 tiles)
+- **Feed** - Vertical swipe-style video browsing with keyboard and scroll support
 - **AI Companion (Diabella)** - Chat, voice lines, video reactions, and smart tagging powered by local AI
-- **Stats & Achievements** - View counts, ratings, session tracking, and unlockable achievements
+- **Stats & Achievements** - View counts, ratings, session tracking, streaks, and 40+ unlockable achievements
+- **Themes** - 20+ themes including goon themes, dark themes, and light themes
 
 ## Download
 

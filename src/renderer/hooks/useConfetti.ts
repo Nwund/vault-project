@@ -23,7 +23,7 @@ interface ConfettiOptions {
 
 export function useConfetti() {
   const confettiCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const confettiInstanceRef = useRef<confetti.CreateTypes | null>(null)
+  const confettiInstanceRef = useRef<any>(null)
 
   // Initialize confetti canvas
   useEffect(() => {

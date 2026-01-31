@@ -341,6 +341,49 @@ input[type="range"]::-webkit-slider-thumb:active {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   VOLUME SLIDER - Dark overlay variant for video players
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.volume-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 9999px;
+  padding: 0;
+  outline: none;
+}
+
+.volume-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: transparent;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border: none;
+  border-radius: 50%;
+  cursor: grab;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  margin-top: -4px;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.volume-slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.0);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    CARDS & PANELS
    ═══════════════════════════════════════════════════════════════════════════ */
 

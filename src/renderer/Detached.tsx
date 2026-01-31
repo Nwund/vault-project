@@ -1,7 +1,14 @@
 // File: src/renderer/Detached.tsx
 import React, { useEffect, useMemo, useState } from 'react'
 
-type MediaRow = import('../preload/index').MediaRow
+type MediaRow = {
+  id: string
+  path: string
+  type: 'video' | 'image'
+  filename: string
+  durationSec?: number | null
+  thumbPath?: string | null
+}
 
 export default function Detached(props: { mediaId: string }) {
   const [media, setMedia] = useState<MediaRow | null>(null)

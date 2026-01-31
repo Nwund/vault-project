@@ -123,7 +123,7 @@ export async function makeImageThumb(params: {
   if (fs.existsSync(outFile)) return outFile
 
   // Use ffmpeg as a universal image scaler/encoder.
-  return await new Promise((resolve, reject) => {
+  return await new Promise<string>((resolve, reject) => {
     ffmpeg(params.filePath)
       .on('error', (e) => reject(e))
       .on('end', () => resolve(outFile))

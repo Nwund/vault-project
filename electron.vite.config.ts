@@ -1,3 +1,4 @@
+// @ts-nocheck
 // File: electron.vite.config.ts
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'

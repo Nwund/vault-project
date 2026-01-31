@@ -1,7 +1,7 @@
 // File: src/renderer/hooks/index.ts
 // Export all hooks
 
-export { usePerformance } from './usePerformance'
+export { useDebounce, useThrottle, useLazyLoad, toFileUrlCached } from './usePerformance'
 export { useVideoCleanup } from './useVideoCleanup'
 export { useVideoPreview } from './useVideoPreview'
 export { usePhysicsSimulation } from './usePhysicsSimulation'

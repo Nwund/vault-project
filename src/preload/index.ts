@@ -47,9 +47,6 @@ const api = {
     daylist: {
       update: (patch: any) => invoke('settings:daylist:update', patch),
     },
-    diabella: {
-      update: (patch: any) => invoke('settings:diabella:update', patch),
-    },
     quickcuts: {
       update: (patch: any) => invoke('settings:quickcuts:update', patch),
     },
@@ -107,6 +104,7 @@ const api = {
     moveBroken: (mediaId: string, reason?: string) => invoke('media:moveBroken', mediaId, reason),
     // Transcode & playback
     getPlayableUrl: (mediaId: string, forceTranscode?: boolean) => invoke<string | null>('media:getPlayableUrl', mediaId, forceTranscode),
+    getLowResUrl: (mediaId: string, maxHeight: number) => invoke<string | null>('media:getLowResUrl', mediaId, maxHeight),
     getLoudnessPeak: (mediaId: string) => invoke<number | null>('media:getLoudnessPeak', mediaId),
     // On-demand thumbnail generation
     generateThumb: (mediaId: string) => invoke<string | null>('media:generateThumb', mediaId),
@@ -193,61 +191,6 @@ const api = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // AI (Diabella) - Full Venice AI Integration
-  // ═══════════════════════════════════════════════════════════════════════════
-  ai: {
-    // Chat
-    chat: (payload: any) => invoke('ai:chat', payload),
-    summarize: (payload: any) => invoke('ai:summarize', payload),
-    getVoiceLine: (category: string) => invoke('ai:getVoiceLine', category),
-    ping: () => invoke('ai:ping'),
-
-    // Text-to-Speech
-    speak: (text: string) => invoke('ai:speak', text),
-    getVoices: () => invoke('ai:getVoices'),
-
-    // Image Generation
-    generateImage: (prompt: string, options?: { nsfw?: boolean }) =>
-      invoke('ai:generateImage', prompt, options),
-    generateAvatar: (options?: {
-      style?: string
-      outfit?: string
-      expression?: string
-      pose?: string
-      arousalLevel?: number
-      regenerate?: boolean
-    }) => invoke('ai:generateAvatar', options),
-    clearAvatarCache: () => invoke('ai:clearAvatarCache'),
-    getAvatarOptions: () => invoke('ai:getAvatarOptions'),
-  },
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DIABELLA - Direct Service Access
-  // ═══════════════════════════════════════════════════════════════════════════
-  diabella: {
-    // Chat
-    chat: (message: string, context?: any) => invoke('diabella:chat', message, context),
-    greeting: () => invoke('diabella:greeting'),
-    resetChat: () => invoke('diabella:resetChat'),
-    getVideoReaction: (tags: string[]) => invoke('diabella:getVideoReaction', tags),
-    getMemory: () => invoke('diabella:getMemory'),
-
-    // Voice
-    speak: (text: string) => invoke('diabella:speak', text),
-    setVoicePreset: (preset: string) => invoke('diabella:setVoicePreset', preset),
-    getVoicePresets: () => invoke('diabella:getVoicePresets'),
-
-    // Sounds
-    getSound: (event: string) => invoke('diabella:getSound', event),
-    getSoundStats: () => invoke('diabella:getSoundStats'),
-    rescanSounds: () => invoke('diabella:rescanSounds'),
-
-    // Settings
-    getSettings: () => invoke('diabella:getServiceSettings'),
-    updateSettings: (updates: any) => invoke('diabella:updateServiceSettings', updates),
-  },
-
-  // ═══════════════════════════════════════════════════════════════════════════
   // AUDIO - Sound Packs & Voice Lines
   // ═══════════════════════════════════════════════════════════════════════════
   audio: {
@@ -258,6 +201,14 @@ const api = {
       invoke('audio:getVoiceLineSequence', categories),
     getStats: () => invoke('audio:getStats'),
     reloadVoiceLines: () => invoke('audio:reloadVoiceLines'),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // UI SOUNDS - Click sounds
+  // ═══════════════════════════════════════════════════════════════════════════
+  uiSounds: {
+    list: () => invoke<string[]>('uiSounds:list'),
+    getUrl: (filePath: string) => invoke<string>('uiSounds:getUrl', filePath),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -365,7 +316,6 @@ const api = {
   // ═══════════════════════════════════════════════════════════════════════════
   recommend: {
     forMedia: (mediaId: string, limit?: number) => invoke('recommend:forMedia', mediaId, limit),
-    forDiabella: (limit?: number) => invoke('recommend:forDiabella', limit),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -406,6 +356,7 @@ const api = {
     endSession: (durationMinutes: number) => invoke('goon:endSession', durationMinutes),
     getAchievements: () => invoke('goon:getAchievements'),
     checkAchievements: () => invoke('goon:checkAchievements'),
+    recordWatch: (mediaId: string) => invoke('goon:recordWatch', mediaId),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -498,8 +449,8 @@ const api = {
   // ═══════════════════════════════════════════════════════════════════════════
   shell: {
     openExternal: (url: string) => shell.openExternal(url),
-    openPath: (p: string) => shell.openPath(p),
-    showItemInFolder: (p: string) => shell.showItemInFolder(p),
+    openPath: (p: string) => invoke('shell:openPath', p),
+    showItemInFolder: (p: string) => invoke('shell:showItemInFolder', p),
   },
 }
 

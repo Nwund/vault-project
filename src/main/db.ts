@@ -33,7 +33,7 @@ export function createDb() {
   const dir = path.join(app.getPath('userData'), 'db')
   ensureDir(dir)
   const dbPath = path.join(dir, 'vault.sqlite3')
-  const db = new Database(dbPath)
+  const db = new (Database as any)(dbPath)
   db.pragma('journal_mode = WAL')
   runMigrations(db)
 
