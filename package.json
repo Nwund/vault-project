@@ -9,8 +9,9 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:raw": "electron-vite dev",
-    "build": "electron-vite build && electron-builder --config.npmRebuild=false",
-    "build:dir": "electron-vite build && electron-builder --dir --config.npmRebuild=false",
+    "build": "electron-vite build && electron-builder",
+    "build:dir": "electron-vite build && electron-builder --dir",
+    "build:local": "electron-vite build && electron-builder --config.npmRebuild=false",
     "watch": "node scripts/watch-build.mjs",
     "preview": "electron-vite preview"
   },
