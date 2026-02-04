@@ -8,10 +8,10 @@ import path from 'node:path'
 import os from 'node:os'
 import crypto from 'node:crypto'
 import ffmpeg from 'fluent-ffmpeg'
-import ffmpegPath from 'ffmpeg-static'
+import { ffmpegBin } from '../../ffpaths'
 import { getAiConfig } from '../../ai/aiTagger'
 
-ffmpeg.setFfmpegPath(ffmpegPath as string)
+if (ffmpegBin) ffmpeg.setFfmpegPath(ffmpegBin)
 
 export interface VideoScene {
   startTime: number      // seconds

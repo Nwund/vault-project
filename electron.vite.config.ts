@@ -8,7 +8,7 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
-        // Native modules MUST stay external so their .node binaries load correctly.
+        // Native modules must stay external. Binary paths resolved at runtime.
         external: ['better-sqlite3']
       }
     },

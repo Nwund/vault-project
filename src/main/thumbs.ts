@@ -3,12 +3,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import ffmpeg from 'fluent-ffmpeg'
-import ffmpegPath from 'ffmpeg-static'
-import ffprobeStatic from 'ffprobe-static'
+import { ffmpegBin, ffprobeBin } from './ffpaths'
 import { getCacheDir } from './settings'
 
-if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath)
-if (ffprobeStatic?.path) ffmpeg.setFfprobePath(ffprobeStatic.path)
+if (ffmpegBin) ffmpeg.setFfmpegPath(ffmpegBin)
+if (ffprobeBin) ffmpeg.setFfprobePath(ffprobeBin)
 
 function ensureDir(p: string): void {
   fs.mkdirSync(p, { recursive: true })

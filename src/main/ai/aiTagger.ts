@@ -5,9 +5,9 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import Store from 'electron-store'
 import ffmpeg from 'fluent-ffmpeg'
-import ffmpegPath from 'ffmpeg-static'
+import { ffmpegBin } from '../ffpaths'
 
-ffmpeg.setFfmpegPath(ffmpegPath as string)
+if (ffmpegBin) ffmpeg.setFfmpegPath(ffmpegBin)
 
 export type AiProvider = 'none' | 'ollama'
 

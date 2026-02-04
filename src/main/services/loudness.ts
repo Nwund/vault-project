@@ -1,10 +1,9 @@
 // Service: FFmpeg loudness/peak analysis for video seek points
 import ffmpeg from 'fluent-ffmpeg'
-import ffmpegPath from 'ffmpeg-static'
-import ffprobeStatic from 'ffprobe-static'
+import { ffmpegBin, ffprobeBin } from '../ffpaths'
 
-if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath)
-if (ffprobeStatic?.path) ffmpeg.setFfprobePath(ffprobeStatic.path)
+if (ffmpegBin) ffmpeg.setFfmpegPath(ffmpegBin)
+if (ffprobeBin) ffmpeg.setFfprobePath(ffprobeBin)
 
 export interface LoudnessResult {
   peakTime: number
