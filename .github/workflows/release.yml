@@ -25,14 +25,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build
+      - name: Build app
+        run: npx electron-vite build
+
+      - name: Package installer
+        run: npx electron-builder --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v2
         with:
+          draft: false
+          prerelease: false
+          generate_release_notes: true
           files: |
             release/*.exe
             release/*.blockmap

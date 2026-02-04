@@ -472,7 +472,7 @@ export default function App() {
               </div>
               <div>
                 <div className="text-sm font-semibold">Vault</div>
-                <div className="text-xs text-[var(--muted)]">1.0.5</div>
+                <div className="text-xs text-[var(--muted)]">2.1.0</div>
               </div>
             </div>
           </div>
@@ -5720,7 +5720,7 @@ function AboutPage() {
             <Sparkles size={40} className="text-white" />
           </div>
           <h1 className="text-2xl font-bold">Vault</h1>
-          <p className="text-[var(--muted)] mt-1">Version 1.0.5 "First Light"</p>
+          <p className="text-[var(--muted)] mt-1">Version 2.1.0 "First Light"</p>
           <div className="mt-4 flex items-center justify-center gap-2">
             <span
               className={cn(
