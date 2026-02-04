@@ -444,17 +444,10 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     if (!media) return null
     const ext = path.extname(media.path).toLowerCase()
 
-    // Determine if transcoding is needed: by extension, by force flag, or by codec probe
-    let shouldTranscode = forceTranscode || needsTranscode(ext)
-
-    // For files that pass the extension check (e.g. .mp4 with HEVC), probe actual codecs
-    if (!shouldTranscode && ['.mp4', '.webm', '.ogg', '.ogv'].includes(ext)) {
-      try {
-        shouldTranscode = await probeNeedsTranscode(media.path)
-      } catch (e) {
-        console.warn('[IPC] Codec probe failed, serving raw:', media.path, e)
-      }
-    }
+    // Determine if transcoding is needed: by extension or by force flag
+    // Skip proactive codec probing for .mp4/.webm/.ogg/.ogv — they play natively 95%+ of the time
+    // The error-retry-transcode path in the renderer handles rare HEVC/etc cases
+    const shouldTranscode = forceTranscode || needsTranscode(ext)
 
     if (shouldTranscode) {
       // Check if already transcoded

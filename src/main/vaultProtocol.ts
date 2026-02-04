@@ -5,7 +5,6 @@
 import { app, protocol } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { getCacheDir, getMediaDirs } from './settings'
 
 // Register scheme as privileged BEFORE app ready
@@ -129,46 +128,85 @@ export function registerVaultProtocol(): void {
     throw new Error('registerVaultProtocol must be called after app.whenReady()')
   }
 
-  protocol.registerFileProtocol('vault', (request, callback) => {
+  protocol.handle('vault', async (request) => {
     try {
       const url = new URL(request.url)
       const rawPath = url.searchParams.get('path')
 
       if (!rawPath) {
         console.error('[vault protocol] No path parameter:', request.url)
-        return callback({ error: -6 })
+        return new Response('Not found', { status: 404 })
       }
 
       const decoded = decodeURIComponent(rawPath)
       const absolutePath = path.resolve(decoded)
 
-      // Check if file exists
-      if (!fs.existsSync(absolutePath)) {
-        console.error('[vault protocol] File not found:', absolutePath)
-        return callback({ error: -6 })
-      }
-
-      // Check file is readable
+      // Check if file exists and is readable
+      let stat: fs.Stats
       try {
+        stat = fs.statSync(absolutePath)
         fs.accessSync(absolutePath, fs.constants.R_OK)
       } catch {
-        console.error('[vault protocol] File not readable:', absolutePath)
-        return callback({ error: -6 })
+        console.error('[vault protocol] File not found or not readable:', absolutePath)
+        return new Response('Not found', { status: 404 })
       }
 
-      // Get MIME type for better codec handling
-      const mimeType = getMimeType(absolutePath)
+      const mimeType = getMimeType(absolutePath) || 'application/octet-stream'
+      const fileSize = stat.size
+      const rangeHeader = request.headers.get('Range')
 
-      // Log successful file access (only first 50 chars of path to avoid log spam)
-      const shortPath = absolutePath.length > 50
-        ? '...' + absolutePath.slice(-47)
-        : absolutePath
-      console.log('[vault protocol] Serving:', shortPath, mimeType ? `(${mimeType})` : '')
+      // Range request — return 206 Partial Content
+      if (rangeHeader) {
+        const match = rangeHeader.match(/bytes=(\d+)-(\d*)/)
+        if (match) {
+          const start = parseInt(match[1], 10)
+          const end = match[2] ? parseInt(match[2], 10) : fileSize - 1
+          const chunkSize = end - start + 1
 
-      callback({ path: absolutePath, mimeType })
+          const stream = fs.createReadStream(absolutePath, { start, end })
+          const readable = new ReadableStream({
+            start(controller) {
+              stream.on('data', (chunk: Buffer | string) => controller.enqueue(typeof chunk === 'string' ? Buffer.from(chunk) : chunk))
+              stream.on('end', () => controller.close())
+              stream.on('error', (err) => controller.error(err))
+            },
+            cancel() { stream.destroy() }
+          })
+
+          return new Response(readable, {
+            status: 206,
+            headers: {
+              'Content-Type': mimeType,
+              'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+              'Content-Length': String(chunkSize),
+              'Accept-Ranges': 'bytes',
+            }
+          })
+        }
+      }
+
+      // Full file response
+      const stream = fs.createReadStream(absolutePath)
+      const readable = new ReadableStream({
+        start(controller) {
+          stream.on('data', (chunk: Buffer | string) => controller.enqueue(typeof chunk === 'string' ? Buffer.from(chunk) : chunk))
+          stream.on('end', () => controller.close())
+          stream.on('error', (err) => controller.error(err))
+        },
+        cancel() { stream.destroy() }
+      })
+
+      return new Response(readable, {
+        status: 200,
+        headers: {
+          'Content-Type': mimeType,
+          'Content-Length': String(fileSize),
+          'Accept-Ranges': 'bytes',
+        }
+      })
     } catch (err) {
       console.error('[vault protocol] Error:', err)
-      callback({ error: -2 })
+      return new Response('Internal error', { status: 500 })
     }
   })
 }

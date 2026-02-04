@@ -56,6 +56,9 @@ import {
   Crown,
   Zap,
   Maximize2,
+  Minimize2,
+  EyeOff,
+  Check,
   Tag
 } from 'lucide-react'
 import { playGreeting, playSoundFromCategory, playClimaxForType, hasSounds } from './utils/soundPlayer'
@@ -610,13 +613,11 @@ function TopBar(props: { title: string; right?: React.ReactNode; children?: Reac
   )
 }
 
-// Maintenance placeholder for features under development
-
 function Btn(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { tone?: 'primary' | 'ghost' | 'danger' | 'subtle' }) {
   const tone = props.tone ?? 'ghost'
   const cls =
     tone === 'primary'
-      ? 'bg-white/15 hover:bg-white/20 border-white/20'
+      ? 'bg-[var(--primary)]/20 hover:bg-[var(--primary)]/30 border-[var(--primary)]/30'
       : tone === 'danger'
         ? 'bg-red-500/10 hover:bg-red-500/15 border-red-500/20'
         : tone === 'subtle'
@@ -627,7 +628,7 @@ function Btn(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { tone?: 'pr
     <button
       {...rest}
       className={cn(
-        'px-3 py-2 rounded-xl text-xs border transition disabled:opacity-50 disabled:cursor-not-allowed',
+        'px-3 py-2 rounded-xl text-xs border transition disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-1 active:scale-95',
         cls,
         className
       )}
@@ -2832,7 +2833,7 @@ function GoonWallPage(props: {
       >
           {/* Video count slider */}
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-white/40">Small</span>
+            <span className="text-[10px] text-white/40">{tileCount}</span>
             <input
               type="range"
               min={2}
@@ -2846,7 +2847,7 @@ function GoonWallPage(props: {
               className="w-28 h-1.5 rounded-full appearance-none bg-white/20 cursor-pointer accent-pink-500"
               title={`Tiles: ${tileCount}`}
             />
-            <span className="text-[10px] text-white/40">XLarge</span>
+            <span className="text-[10px] text-white/40">max</span>
             <span className="text-[10px] text-pink-400 font-medium w-5 text-center">{tileCount}</span>
           </div>
 
@@ -2858,7 +2859,7 @@ function GoonWallPage(props: {
             className="px-2 py-1.5 rounded-lg text-xs bg-white/10 hover:bg-white/20 transition"
             title="Shuffle All (S)"
           >
-
+            <Shuffle size={16} />
           </button>
 
           <div className="w-px h-6 bg-white/20" />
@@ -2873,7 +2874,7 @@ function GoonWallPage(props: {
               )}
               title="Grid layout"
             >
-
+              <LayoutGrid size={14} />
             </button>
             <button
               onClick={() => { setLayout('mosaic'); saveSettings({ layout: 'mosaic' }) }}
@@ -2883,7 +2884,7 @@ function GoonWallPage(props: {
               )}
               title="Mosaic layout"
             >
-
+              <Sparkles size={14} />
             </button>
           </div>
 
@@ -2901,7 +2902,7 @@ function GoonWallPage(props: {
             )}
             title={muted ? 'Unmute (M)' : 'Mute (M)'}
           >
-            {muted ? '🔇' : '🔊'}
+            {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
           </button>
 
           <div className="w-px h-6 bg-white/20" />
@@ -2912,7 +2913,7 @@ function GoonWallPage(props: {
             className="w-7 h-7 rounded-lg text-sm bg-white/5 hover:bg-white/15 transition flex items-center justify-center"
             title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen (F)'}
           >
-            {isFullscreen ? '⤓' : '⤢'}
+            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
         </div>
 
@@ -2925,7 +2926,7 @@ function GoonWallPage(props: {
         className="absolute top-3 right-3 z-50 w-8 h-8 rounded-lg text-xs bg-gray-800/90 hover:bg-gray-700/90 border border-white/20 flex items-center justify-center transition group"
         title={showHud ? 'Hide HUD (H)' : 'Show HUD (H)'}
       >
-        {showHud ? '👁' : '👁‍🗨'}
+        {showHud ? <Eye size={16} /> : <EyeOff size={16} />}
       </button>
 
       {/* Keyboard shortcuts hint - bottom left with slide animation */}
@@ -3110,8 +3111,8 @@ const GoonTile = React.memo(function GoonTile(props: {
 
   return (
     <div
-      className="relative overflow-hidden bg-black group cursor-pointer"
-      style={{ ...style, contain: 'strict' }}
+      className="relative overflow-hidden bg-black group cursor-pointer animate-fadeIn"
+      style={{ ...style, contain: 'strict', animationDelay: `${index * 50}ms`, animationFillMode: 'backwards' }}
       onClick={onShuffle}
       onContextMenu={handleContextMenu}
     >
@@ -3132,7 +3133,7 @@ const GoonTile = React.memo(function GoonTile(props: {
           loop
           muted={muted}
           playsInline
-          preload="metadata"
+          preload={index < 4 ? 'auto' : 'metadata'}
           className={`w-full h-full ${isMosaic ? 'object-cover' : 'object-contain'}`}
           style={{ opacity: ready ? 1 : 0 }}
           onLoadedMetadata={handleLoadedMetadata}
@@ -3176,6 +3177,16 @@ function FeedPage() {
   const containerRef = useRef<HTMLDivElement>(null)
   const videoRefs = useRef<Map<number, HTMLVideoElement>>(new Map())
   const hudTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const [preloadedUrls, setPreloadedUrls] = useState<Record<string, string>>({})
+
+  // Preload URL for the next video when current index changes
+  useEffect(() => {
+    const nextVideo = videos[currentIndex + 1]
+    if (!nextVideo || preloadedUrls[nextVideo.id]) return
+    window.api.media.getPlayableUrl(nextVideo.id).then((u: any) => {
+      if (u) setPreloadedUrls(prev => ({ ...prev, [nextVideo.id]: u as string }))
+    }).catch(() => {})
+  }, [currentIndex, videos]) // eslint-disable-line
 
   // Suggested tags = tags that have at least 1 video, sorted by video count
   const suggestedTags = useMemo(() => {
@@ -3676,6 +3687,7 @@ function FeedPage() {
                 video={video}
                 index={index}
                 isActive={index === currentIndex}
+                preloadedUrl={preloadedUrls[video.id]}
                 onVideoRef={(el) => {
                   if (el) videoRefs.current.set(index, el)
                   else videoRefs.current.delete(index)
@@ -3716,20 +3728,22 @@ const FeedItem = React.memo(function FeedItem(props: {
   video: MediaRow
   index: number
   isActive: boolean
+  preloadedUrl?: string
   onVideoRef: (el: HTMLVideoElement | null) => void
   isLiked: boolean
   onToggleLike: () => void
   onSkip: () => void
   onOpenInPlayer?: () => void
 }) {
-  const { video, isActive, onVideoRef, isLiked, onToggleLike, onSkip, onOpenInPlayer } = props
+  const { video, isActive, preloadedUrl, onVideoRef, isLiked, onToggleLike, onSkip, onOpenInPlayer } = props
   const [showPlaylistPopup, setShowPlaylistPopup] = useState(false)
   const feedPlaylistBtnRef = useRef<HTMLButtonElement>(null)
-  const [url, setUrl] = useState('')
+  const [url, setUrl] = useState(preloadedUrl || '')
   const [loading, setLoading] = useState(true)
   const [transcodeRetried, setTranscodeRetried] = useState(false)
 
   useEffect(() => {
+    if (preloadedUrl) { setUrl(preloadedUrl); return }
     let alive = true
     setTranscodeRetried(false)
     ;(async () => {
@@ -3742,7 +3756,7 @@ const FeedItem = React.memo(function FeedItem(props: {
       if (alive) setUrl(u)
     })()
     return () => { alive = false }
-  }, [video.id, video.path])
+  }, [video.id, video.path, preloadedUrl])
 
   const filename = video.filename || video.path.split(/[/\\]/).pop() || 'Unknown'
 
@@ -4931,9 +4945,31 @@ function SettingsPage(props: {
   return (
     <>
       <TopBar title="Settings" />
-      <div className="flex">
-        {/* Settings Tabs */}
-        <div className="w-48 p-4 border-r border-[var(--border)]">
+      {/* Mobile tab bar */}
+      <div className="flex sm:hidden overflow-x-auto border-b border-[var(--border)] bg-[var(--panel)]">
+        {tabs.map((tab) => {
+          const Icon = tab.icon
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2.5 text-xs whitespace-nowrap transition border-b-2',
+                activeTab === tab.id
+                  ? 'border-[var(--primary)] text-[var(--primary)]'
+                  : 'border-transparent text-[var(--muted)] hover:text-white'
+              )}
+            >
+              <Icon size={14} />
+              {tab.name}
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="flex h-[calc(100vh-56px)]">
+        {/* Settings Tabs - desktop sidebar */}
+        <div className="hidden sm:block w-48 p-4 border-r border-[var(--border)]">
           {tabs.map((tab) => {
             const Icon = tab.icon
             return (
@@ -4948,14 +4984,14 @@ function SettingsPage(props: {
                 )}
               >
                 <Icon size={18} />
-                {tab.name}
+                <span className="truncate">{tab.name}</span>
               </button>
             )
           })}
         </div>
 
         {/* Settings Content */}
-        <div className="flex-1 p-6 space-y-6 overflow-y-auto max-h-[calc(100vh-80px)]">
+        <div className="flex-1 p-6 space-y-6 overflow-y-auto" key={activeTab} style={{ animation: 'fadeIn 200ms ease' }}>
           {/* Library Tab */}
           {activeTab === 'library' && (
             <>
@@ -5045,7 +5081,7 @@ function SettingsPage(props: {
                           </div>
                           {active && (
                             <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ background: primary }}>
-
+                              <Check size={12} />
                             </div>
                           )}
                         </button>
@@ -5720,7 +5756,7 @@ function AboutPage() {
             <Sparkles size={40} className="text-white" />
           </div>
           <h1 className="text-2xl font-bold">Vault</h1>
-          <p className="text-[var(--muted)] mt-1">Version 2.1.0 "First Light"</p>
+          <p className="text-[var(--muted)] mt-1">Version 2.1.0</p>
           <div className="mt-4 flex items-center justify-center gap-2">
             <span
               className={cn(
