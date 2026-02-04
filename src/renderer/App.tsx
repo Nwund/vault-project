@@ -186,10 +186,6 @@ type VaultSettings = {
     muted?: boolean
     showHud?: boolean
   }
-  daylist?: {
-    spice?: number
-    motifs?: Record<string, string>
-  }
 }
 
 declare global {
@@ -231,7 +227,6 @@ const NAV = [
   { id: 'library', name: 'Library' },
   { id: 'goonwall', name: 'Goon Wall' },
   { id: 'feed', name: 'Feed' },
-  { id: 'daylist', name: 'Quick Mix' },
   { id: 'playlists', name: 'Sessions' },
   { id: 'stats', name: 'Stats' },
   { id: 'settings', name: 'Settings' },
@@ -518,17 +513,6 @@ export default function App() {
                 >
                   <Flame size={14} />
                   Start Goon Wall
-                </button>
-                <button
-                  onClick={(e) => {
-                    anime.wiggle(e.currentTarget)
-                    confetti.burst()
-                    setPage('daylist')
-                  }}
-                  className="w-full px-3 py-2 rounded-lg text-xs bg-black/20 border border-[var(--border)] hover:border-white/15 transition text-left flex items-center gap-2"
-                >
-                  <Sparkles size={14} />
-                  Quick Mix
                 </button>
               </div>
             </div>
@@ -3855,69 +3839,6 @@ const FeedItem = React.memo(function FeedItem(props: {
   )
 })
 
-function DaylistItem(props: { media: MediaRow; index: number; intensity: number; onClick: () => void }) {
-  const { media, index, intensity, onClick } = props
-  const [thumbUrl, setThumbUrl] = useState('')
-
-  useEffect(() => {
-    let alive = true
-    ;(async () => {
-      if (media.thumbPath) {
-        const u = await toFileUrlCached(media.thumbPath)
-        if (alive) setThumbUrl(u)
-      }
-    })()
-    return () => {
-      alive = false
-    }
-  }, [media.id, media.thumbPath])
-
-  return (
-    <div
-      onClick={onClick}
-      className="rounded-2xl border border-[var(--border)] bg-black/20 overflow-hidden hover:border-[var(--primary)] transition cursor-pointer group"
-    >
-      {/* Thumbnail */}
-      <div className="aspect-video relative overflow-hidden bg-black/30">
-        {thumbUrl ? (
-          <img src={thumbUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-2xl opacity-30">🎬</div>
-        )}
-
-        {/* Index badge */}
-        <div className="absolute top-2 left-2 px-2 py-1 rounded-lg bg-black/60 border border-white/10 text-xs font-medium">
-          #{index + 1}
-        </div>
-
-        {/* Duration */}
-        {media.durationSec && (
-          <div className="absolute bottom-2 right-2 px-2 py-1 rounded-lg bg-black/60 border border-white/10 text-[10px]">
-            {formatDuration(media.durationSec)}
-          </div>
-        )}
-
-        {/* Intensity indicator */}
-        <div
-          className="absolute bottom-0 left-0 h-1"
-          style={{
-            width: `${intensity * 100}%`,
-            background: 'linear-gradient(to right, var(--primary), var(--secondary))'
-          }}
-        />
-      </div>
-
-      {/* Info */}
-      <div className="p-3">
-        <div className="text-sm font-medium truncate">{media.filename}</div>
-        <div className="text-xs text-[var(--muted)] mt-1">
-          {media.type.toUpperCase()}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 type PlaylistMood = 'chill' | 'intense' | 'sensual' | 'quick' | 'marathon' | null
 
 const MOOD_CONFIG: Record<Exclude<PlaylistMood, null>, { name: string; icon: string; color: string }> = {
@@ -5042,8 +4963,6 @@ function SettingsPage(props: {
                 </div>
               </div>
 
-              {/* Library Tools - Smart Tagging */}
-              <LibraryToolsSection />
             </>
           )}
 
@@ -5222,483 +5141,6 @@ function SettingsPage(props: {
   )
 }
 
-// Library Tools Section - Smart Tagging & Cleanup
-function LibraryToolsSection() {
-  const { addTask, updateTask, removeTask } = useGlobalTasks()
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [isCleaning, setIsCleaning] = useState(false)
-  const [isCleaningNames, setIsCleaningNames] = useState(false)
-  const [analysisProgress, setAnalysisProgress] = useState<{ stage: string; current: number; total: number } | null>(null)
-  const [ollamaAvailable, setOllamaAvailable] = useState<boolean | null>(null)
-  const [results, setResults] = useState<{ type: 'ai' | 'clean' | 'names'; message: string } | null>(null)
-
-  // Check if Ollama is available on mount
-  useEffect(() => {
-    window.api.hybridTag?.isVisionAvailable?.().then((available: any) => {
-      setOllamaAvailable(available)
-      console.log('[LibraryTools] Ollama available:', available)
-    }).catch(() => setOllamaAvailable(false))
-  }, [])
-
-  // Unified AI analysis - does everything
-  const handleAiAnalyzeAll = async () => {
-    const taskId = 'ai-analyze-all'
-    setIsAnalyzing(true)
-    setResults(null)
-    setAnalysisProgress({ stage: 'Starting...', current: 0, total: 100 })
-    addTask({ id: taskId, name: 'AI Library Analysis', progress: 0, status: 'Starting...' })
-
-    // Set up progress listeners
-    const unsubHybrid = window.api.events?.onHybridTagProgress?.((progress: any) => {
-      const percent = Math.round(10 + (progress.processed / progress.total) * 55)
-      const status = `AI tagging... ${progress.processed}/${progress.total} (${progress.tagged} tagged)`
-      setAnalysisProgress({ stage: status, current: Math.min(65, percent), total: 100 })
-      updateTask(taskId, { progress: Math.min(65, percent), status })
-    })
-
-    const unsubDeep = window.api.events?.onVideoAnalysisBatchProgress?.((progress: any) => {
-      const percent = Math.round(65 + (progress.current / progress.total) * 30)
-      const status = `Deep analysis... ${progress.current}/${progress.total}`
-      setAnalysisProgress({ stage: status, current: Math.min(95, percent), total: 100 })
-      updateTask(taskId, { progress: Math.min(95, percent), status })
-    })
-
-    try {
-      let totalTagged = 0
-      let totalProcessed = 0
-      const methods: string[] = []
-
-      // Stage 1: Smart tagging (filename-based) - fast, free
-      setAnalysisProgress({ stage: 'Smart tagging (filenames)...', current: 5, total: 100 })
-      updateTask(taskId, { progress: 5, status: 'Smart tagging (filenames)...' })
-      try {
-        const smartResult = await window.api.smartTag.autoTagAll({ minConfidence: 0.6 })
-        if (smartResult.success) {
-          totalTagged += smartResult.tagged
-          totalProcessed += smartResult.processed
-          methods.push('filename')
-        }
-      } catch (e) {
-        console.error('[AI] Smart tagging failed:', e)
-      }
-
-      // Stage 2: Filename-based tagging (fast, no AI vision)
-      setAnalysisProgress({ stage: 'Pattern matching all files...', current: 10, total: 100 })
-      updateTask(taskId, { progress: 10, status: 'Pattern matching all files...' })
-      try {
-        const hybridResult = await window.api.hybridTag.autoTagAll({
-          onlyUntagged: false,
-          maxItems: 10000,
-          useVision: false  // No vision for large batches - too slow
-        })
-        if (hybridResult.success) {
-          totalTagged += hybridResult.tagged
-          totalProcessed = Math.max(totalProcessed, hybridResult.processed)
-          methods.push('patterns')
-        }
-      } catch (e) {
-        console.error('[AI] Pattern tagging failed:', e)
-      }
-
-      // Stage 3: AI Vision on small sample (only 20 items with no tags)
-      setAnalysisProgress({ stage: 'AI vision sample (20 items)...', current: 50, total: 100 })
-      updateTask(taskId, { progress: 50, status: 'AI vision sample (20 items)...' })
-      try {
-        const visionResult = await window.api.hybridTag.autoTagAll({
-          onlyUntagged: true,
-          maxItems: 20,  // Only 20 items with vision - takes ~10 minutes
-          useVision: true
-        })
-        if (visionResult.success && visionResult.tagged > 0) {
-          totalTagged += visionResult.tagged
-          methods.push('AI vision')
-        }
-      } catch (e) {
-        console.error('[AI] Vision tagging failed:', e)
-      }
-
-      // Stage 4: Deep analysis for a few videos
-      setAnalysisProgress({ stage: 'Deep analysis (10 videos)...', current: 75, total: 100 })
-      updateTask(taskId, { progress: 75, status: 'Deep analysis (10 videos)...' })
-      try {
-        const deepResult = await window.api.videoAnalysis.analyzeBatch({
-          limit: 10,  // Only 10 videos for deep analysis
-          onlyUnanalyzed: true
-        })
-        if (deepResult.success && deepResult.analyzed > 0) {
-          methods.push('deep analysis')
-        }
-      } catch (e) {
-        console.error('[AI] Deep analysis failed:', e)
-      }
-
-      setAnalysisProgress({ stage: 'Complete!', current: 100, total: 100 })
-      updateTask(taskId, { progress: 100, status: 'Complete!' })
-
-      const methodStr = methods.length > 0 ? methods.join(' + ') : 'filename patterns'
-      setResults({
-        type: 'ai',
-        message: `AI analyzed ${totalProcessed} items, applied ${totalTagged} tags using ${methodStr}`
-      })
-      // Auto-remove task after 3 seconds
-      setTimeout(() => removeTask(taskId), 3000)
-    } catch (e: any) {
-      setResults({ type: 'ai', message: `Error: ${e.message}` })
-      updateTask(taskId, { progress: 100, status: `Error: ${e.message}` })
-      setTimeout(() => removeTask(taskId), 5000)
-    } finally {
-      // Clean up listeners
-      unsubHybrid?.()
-      unsubDeep?.()
-      setIsAnalyzing(false)
-      setAnalysisProgress(null)
-    }
-  }
-
-  // AI-powered tag cleanup - merge similar, fix typos, normalize
-  const handleCleanTags = async () => {
-    const taskId = 'ai-clean-tags'
-    setIsCleaning(true)
-    setResults(null)
-    setAnalysisProgress({ stage: 'AI analyzing tags...', current: 0, total: 100 })
-    addTask({ id: taskId, name: 'AI Tag Cleanup', progress: 0, status: 'Analyzing tags...' })
-
-    try {
-      updateTask(taskId, { progress: 30, status: 'AI analyzing tag patterns...' })
-      // Use AI-powered cleanup
-      const result = await window.api.aiTools.cleanupTags()
-      if (result.success) {
-        const actions = []
-        if (result.merged > 0) actions.push(`${result.merged} merged`)
-        if (result.renamed > 0) actions.push(`${result.renamed} renamed`)
-        if (result.deleted > 0) actions.push(`${result.deleted} deleted`)
-
-        const message = result.applied > 0
-          ? `AI cleaned ${result.analyzed} tags: ${actions.join(', ')}`
-          : `AI analyzed ${result.analyzed} tags - all look good!`
-        setResults({ type: 'clean', message })
-        updateTask(taskId, { progress: 100, status: 'Complete!' })
-      } else {
-        // Fallback to basic cleanup
-        updateTask(taskId, { progress: 60, status: 'Running basic cleanup...' })
-        const fallbackResult = await window.api.tags.cleanup()
-        const message = fallbackResult.removedCount > 0
-          ? `Removed ${fallbackResult.removedCount} inappropriate tags`
-          : 'No inappropriate tags found'
-        setResults({ type: 'clean', message })
-        updateTask(taskId, { progress: 100, status: 'Complete!' })
-      }
-      setTimeout(() => removeTask(taskId), 3000)
-    } catch (e: any) {
-      setResults({ type: 'clean', message: `Error: ${e.message}` })
-      updateTask(taskId, { progress: 100, status: `Error: ${e.message}` })
-      setTimeout(() => removeTask(taskId), 5000)
-    } finally {
-      setIsCleaning(false)
-      setAnalysisProgress(null)
-    }
-  }
-
-  // AI-powered tag creation for entire library
-  const handleCreateTags = async () => {
-    const taskId = 'ai-create-tags'
-    setIsCleaning(true)
-    setResults(null)
-    setAnalysisProgress({ stage: 'AI generating new tags...', current: 0, total: 100 })
-    addTask({ id: taskId, name: 'AI Tag Creation', progress: 0, status: 'Generating tags...' })
-
-    try {
-      updateTask(taskId, { progress: 20, status: 'Analyzing content...' })
-      const result = await window.api.aiTools.generateTagsAll({ maxItems: 500, onlyUntagged: false })
-      if (result.success) {
-        const message = `AI processed ${result.processed} items: ${result.tagsApplied} tags applied, ${result.newTagsCreated} new tags created`
-        setResults({ type: 'clean', message })
-        updateTask(taskId, { progress: 100, status: 'Complete!' })
-      } else {
-        setResults({ type: 'clean', message: `Error: ${result.error}` })
-        updateTask(taskId, { progress: 100, status: `Error: ${result.error}` })
-      }
-      setTimeout(() => removeTask(taskId), 3000)
-    } catch (e: any) {
-      setResults({ type: 'clean', message: `Error: ${e.message}` })
-      updateTask(taskId, { progress: 100, status: `Error: ${e.message}` })
-      setTimeout(() => removeTask(taskId), 5000)
-    } finally {
-      setIsCleaning(false)
-      setAnalysisProgress(null)
-    }
-  }
-
-  // AI-powered file renaming based on video content
-  const handleCleanNames = async () => {
-    const taskId = 'ai-rename-files'
-    setIsCleaningNames(true)
-    setResults(null)
-    setAnalysisProgress({ stage: 'AI renaming files...', current: 0, total: 100 })
-    addTask({ id: taskId, name: 'AI File Renaming', progress: 0, status: 'Analyzing files...' })
-
-    try {
-      updateTask(taskId, { progress: 20, status: 'AI analyzing content...' })
-      // Use AI-powered renaming
-      const result = await window.api.aiTools.renameAll({ maxItems: 500 })
-      if (result.success) {
-        let message = `AI renamed ${result.renamed} files`
-        if (result.skipped > 0) message += ` (${result.skipped} skipped)`
-        if (result.failed > 0) message += ` (${result.failed} failed)`
-        setResults({ type: 'names', message })
-        updateTask(taskId, { progress: 100, status: 'Complete!' })
-      } else {
-        // Fallback to basic cleanup
-        updateTask(taskId, { progress: 60, status: 'Running pattern cleanup...' })
-        const fallbackResult = await window.api.media.optimizeAllNames()
-        setResults({
-          type: 'names',
-          message: `Pattern-cleaned ${fallbackResult.optimized} filenames`
-        })
-        updateTask(taskId, { progress: 100, status: 'Complete!' })
-      }
-      setTimeout(() => removeTask(taskId), 3000)
-    } catch (e: any) {
-      setResults({ type: 'names', message: `Error: ${e.message}` })
-      updateTask(taskId, { progress: 100, status: `Error: ${e.message}` })
-      setTimeout(() => removeTask(taskId), 5000)
-    } finally {
-      setIsCleaningNames(false)
-      setAnalysisProgress(null)
-    }
-  }
-
-  // Listen for progress events (optional, main progress is tracked locally)
-  useEffect(() => {
-    const unsubs: Array<(() => void) | undefined> = []
-    unsubs.push(window.api.events?.onSmartTagProgress?.(() => {}))
-    unsubs.push(window.api.events?.onHybridTagProgress?.(() => {}))
-    unsubs.push(window.api.events?.onVideoAnalysisBatchProgress?.(() => {}))
-    return () => unsubs.forEach(u => u?.())
-  }, [])
-
-  return (
-    <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5">
-      <div className="text-sm font-semibold mb-1 flex items-center gap-2">
-        <Zap size={16} className="text-amber-400" />
-        Library Tools
-      </div>
-      <div className="text-xs text-[var(--muted)] mb-4">
-        Automatically organize and tag your content
-      </div>
-
-      <div className="space-y-3">
-        {/* Unified AI Analyze Button */}
-        <div className="p-4 rounded-xl bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <div className="text-sm font-semibold flex items-center gap-2">
-                AI Analyze Entire Library
-                <span className="px-2 py-0.5 text-[10px] rounded-full bg-green-500/30 text-green-400 border border-green-500/30">
-                  AI Powered
-                </span>
-              </div>
-              <div className="text-xs text-[var(--muted)] mt-1">
-                Filename patterns + AI vision + scene detection + auto-tagging
-              </div>
-            </div>
-            <button
-              onClick={handleAiAnalyzeAll}
-              disabled={isAnalyzing}
-              className={cn(
-                'px-5 py-2.5 rounded-xl text-sm font-semibold transition',
-                isAnalyzing
-                  ? 'bg-purple-500/30 text-purple-300 cursor-wait'
-                  : 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg shadow-purple-500/25'
-              )}
-            >
-              {isAnalyzing ? (
-                <span className="flex items-center gap-2">
-                  <RefreshCw size={14} className="animate-spin" />
-                  Analyzing...
-                </span>
-              ) : (
-                'Analyze All'
-              )}
-            </button>
-          </div>
-
-          {/* Progress bar */}
-          {analysisProgress && (
-            <div className="mt-3">
-              <div className="flex justify-between text-xs text-[var(--muted)] mb-1">
-                <span>{analysisProgress.stage}</span>
-                <span>{analysisProgress.current}%</span>
-              </div>
-              <div className="h-2 bg-black/30 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300"
-                  style={{ width: `${analysisProgress.current}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* What it does */}
-          <div className="mt-3 text-[10px] text-[var(--muted)] grid grid-cols-3 gap-2">
-            <div className="flex items-center gap-1">
-              <span className="text-green-400">✓</span> Smart filename tags
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-green-400">✓</span> AI vision analysis
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-green-400">✓</span> Scene detection
-            </div>
-          </div>
-        </div>
-
-        {/* AI Clean Tags Button */}
-        <div className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-[var(--border)]">
-          <div>
-            <div className="text-sm flex items-center gap-2">
-              AI Clean Tags
-              <span className="px-1.5 py-0.5 text-[9px] rounded bg-purple-500/30 text-purple-300">AI</span>
-            </div>
-            <div className="text-xs text-[var(--muted)]">
-              Merge similar, fix typos, normalize naming
-            </div>
-          </div>
-          <button
-            onClick={handleCleanTags}
-            disabled={isCleaning}
-            className={cn(
-              'px-4 py-2 rounded-lg text-xs font-medium transition',
-              isCleaning
-                ? 'bg-purple-500/20 text-purple-400 cursor-wait'
-                : 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30'
-            )}
-          >
-            {isCleaning ? (
-              <span className="flex items-center gap-2">
-                <RefreshCw size={12} className="animate-spin" />
-                Cleaning...
-              </span>
-            ) : (
-              'Clean Tags'
-            )}
-          </button>
-        </div>
-
-        {/* AI Create Tags Button */}
-        <div className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-[var(--border)]">
-          <div>
-            <div className="text-sm flex items-center gap-2">
-              AI Create Tags
-              <span className="px-1.5 py-0.5 text-[9px] rounded bg-green-500/30 text-green-300">AI</span>
-            </div>
-            <div className="text-xs text-[var(--muted)]">
-              Generate new descriptive tags from video content
-            </div>
-          </div>
-          <button
-            onClick={handleCreateTags}
-            disabled={isCleaning}
-            className={cn(
-              'px-4 py-2 rounded-lg text-xs font-medium transition',
-              isCleaning
-                ? 'bg-green-500/20 text-green-400 cursor-wait'
-                : 'bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30'
-            )}
-          >
-            {isCleaning ? (
-              <span className="flex items-center gap-2">
-                <RefreshCw size={12} className="animate-spin" />
-                Creating...
-              </span>
-            ) : (
-              'Create Tags'
-            )}
-          </button>
-        </div>
-
-        {/* AI Rename Files */}
-        <div className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-[var(--border)]">
-          <div>
-            <div className="text-sm flex items-center gap-2">
-              AI Rename Files
-              <span className="px-1.5 py-0.5 text-[9px] rounded bg-blue-500/30 text-blue-300">AI</span>
-            </div>
-            <div className="text-xs text-[var(--muted)]">
-              Generate clean, descriptive filenames from content
-            </div>
-          </div>
-          <button
-            onClick={handleCleanNames}
-            disabled={isCleaningNames}
-            className={cn(
-              'px-4 py-2 rounded-lg text-xs font-medium transition',
-              isCleaningNames
-                ? 'bg-blue-500/20 text-blue-400 cursor-wait'
-                : 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30'
-            )}
-          >
-            {isCleaningNames ? (
-              <span className="flex items-center gap-2">
-                <RefreshCw size={12} className="animate-spin" />
-                Renaming...
-              </span>
-            ) : (
-              'Rename All'
-            )}
-          </button>
-        </div>
-
-        {/* Cleanup & Rescan */}
-        <div className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-[var(--border)]">
-          <div>
-            <div className="text-sm">Cleanup & Rescan</div>
-            <div className="text-xs text-[var(--muted)]">
-              Remove deleted files, re-index folders
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={async () => {
-                const result = await window.api.vault.cleanup()
-                if (result.success) {
-                  setResults({ type: 'clean', message: `Removed ${result.removed} stale entries from ${result.checked} checked` })
-                }
-              }}
-              className="px-3 py-2 rounded-lg text-xs font-medium bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 transition"
-            >
-              Cleanup
-            </button>
-            <button
-              onClick={async () => {
-                setResults({ type: 'ai', message: 'Cleaning up & rescanning...' })
-                await window.api.vault.rescan()
-                setResults({ type: 'ai', message: 'Library cleanup & rescan complete!' })
-              }}
-              className="px-3 py-2 rounded-lg text-xs font-medium bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 transition"
-            >
-              Rescan
-            </button>
-          </div>
-        </div>
-
-        {/* Results Message */}
-        {results && (
-          <div className={cn(
-            'p-3 rounded-xl text-xs',
-            results.type === 'clean'
-              ? 'bg-red-500/10 border border-red-500/20 text-red-300'
-              : results.type === 'names'
-                ? 'bg-purple-500/10 border border-purple-500/20 text-purple-300'
-                : 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 text-purple-300'
-          )}>
-            {results.message}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
 
 // Toggle Switch Component
 function ToggleSwitch({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
@@ -5723,29 +5165,12 @@ function ToggleSwitch({ checked, onChange, disabled }: { checked: boolean; onCha
 
 function AboutPage() {
   const [tier, setTier] = useState<string>('free')
-  const [cacheStats, setCacheStats] = useState<any>(null)
   const [vaultStats, setVaultStats] = useState<any>(null)
 
   useEffect(() => {
-    // Load license tier
     window.api.license?.getTier?.().then((t: any) => setTier(t || 'free'))
-    // Load cache stats
-    window.api.aiCache?.getStats?.().then((s: any) => setCacheStats(s))
-    // Load vault stats
     window.api.vault?.getStats?.().then((s: any) => setVaultStats(s))
   }, [])
-
-  const clearCache = async (namespace?: string) => {
-    await window.api.aiCache?.clear?.(namespace)
-    const stats = await window.api.aiCache?.getStats?.()
-    setCacheStats(stats)
-  }
-
-  const formatBytes = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
 
   return (
     <div className="h-full flex flex-col">
@@ -5802,38 +5227,11 @@ function AboutPage() {
           </div>
         )}
 
-        {/* AI Cache Stats */}
-        {cacheStats && (
-          <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5">
-            <div className="text-sm font-semibold mb-4">AI Cache</div>
-            <div className="grid grid-cols-3 gap-4 mb-4">
-              <div className="text-center">
-                <div className="text-xl font-bold">{cacheStats.totalEntries}</div>
-                <div className="text-xs text-[var(--muted)]">Entries</div>
-              </div>
-              <div className="text-center">
-                <div className="text-xl font-bold">{formatBytes(cacheStats.cacheSize)}</div>
-                <div className="text-xs text-[var(--muted)]">Size</div>
-              </div>
-              <div className="text-center">
-                <div className="text-xl font-bold">{(cacheStats.hitRate * 100).toFixed(0)}%</div>
-                <div className="text-xs text-[var(--muted)]">Hit Rate</div>
-              </div>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <Btn tone="subtle" onClick={() => clearCache('chat')}>Clear Chat</Btn>
-              <Btn tone="subtle" onClick={() => clearCache('tts')}>Clear TTS</Btn>
-              <Btn tone="subtle" onClick={() => clearCache('image')}>Clear Images</Btn>
-              <Btn tone="danger" onClick={() => clearCache()}>Clear All</Btn>
-            </div>
-          </div>
-        )}
-
         {/* Credits */}
         <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5">
           <div className="text-sm font-semibold mb-4">Credits</div>
           <div className="space-y-2 text-sm text-[var(--muted)]">
-            <p>Built with Electron, React, and Venice AI</p>
+            <p>Built with Electron and React</p>
             <p>Icons by Lucide</p>
             <p>Made with passion for passionate people</p>
           </div>
@@ -5849,10 +5247,6 @@ function AboutPage() {
             </p>
             <p>
               By using this software, you agree that you are of legal adult age in your jurisdiction.
-            </p>
-            <p className="opacity-60">
-              All AI features powered by Venice AI. Image generation may produce adult content
-              when enabled in settings.
             </p>
           </div>
         </div>
