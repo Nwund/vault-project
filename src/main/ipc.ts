@@ -79,11 +79,12 @@ import {
   type VaultSettings,
   type GoonStats,
   type SessionModeId,
-  type DailyChallengeType
+  type DailyChallengeType,
+  type ThemeId
 } from './settings'
 import { toVaultUrl } from './vaultProtocol'
 import { getAICacheService } from './services/ai-cache-service'
-import { getLicenseService } from './services/license-service'
+import { getLicenseService, type TierLimits } from './services/license-service'
 import { errorLogger } from './services/error-logger'
 import { needsTranscode, transcodeToMp4, getTranscodedPath, transcodeLowRes } from './services/transcode'
 import { makeVideoThumb, makeImageThumb, probeVideoDurationSec } from './thumbs'
@@ -206,7 +207,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   ipcMain.handle('settings:resetSection', async (_ev, section: string) => {
-    const updated = resetSettingsSection(section as any)
+    const updated = resetSettingsSection(section as keyof VaultSettings)
     broadcast('settings:changed', updated)
     return updated
   })
@@ -554,7 +555,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   ipcMain.handle('settings:setTheme', async (_ev, themeId: string) => {
-    setTheme(themeId as any)
+    setTheme(themeId as ThemeId)
     const settings = getSettings()
     broadcast('settings:changed', settings)
     return settings
@@ -1194,7 +1195,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     if (!original) return null
     const newPlaylist = db.playlistCreate(`${original.name} (Copy)`)
     const items = db.playlistItems(playlistId)
-    const mediaIds = items.map((i: any) => i.mediaId)
+    const mediaIds = items.map(i => i.media.id)
     if (mediaIds.length > 0) {
       db.playlistAddItems(newPlaylist.id, mediaIds)
     }
@@ -1217,7 +1218,8 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
     let content = '#EXTM3U\n'
     for (const item of items) {
-      const media = db.getMedia((item as any).mediaId ?? item.media?.id)
+      // item.media is already populated by playlistItems()
+      const media = item.media
       if (media) {
         content += `#EXTINF:-1,${media.filename}\n`
         content += `${media.path}\n`
@@ -1897,7 +1899,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   ipcMain.handle('themes:getGoonTheme', async (_ev, themeId: string) => {
-    return getGoonTheme(themeId as any)
+    return getGoonTheme(themeId as ThemeId)
   })
 
   ipcMain.handle('vocabulary:get', async () => {
@@ -3188,11 +3190,11 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   ipcMain.handle('license:hasFeature', async (_ev, feature: string) => {
-    return getLicenseService().hasFeature(feature as any)
+    return getLicenseService().hasFeature(feature as keyof TierLimits)
   })
 
   ipcMain.handle('license:getLimit', async (_ev, feature: string) => {
-    return getLicenseService().getLimit(feature as any)
+    return getLicenseService().getLimit(feature as 'playlists' | 'goonWallTiles')
   })
 
   // Get machine ID for owner setup
