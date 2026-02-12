@@ -15,6 +15,8 @@ import { analyzeVideo, isAnalyzerAvailable } from './services/ai/video-analyzer'
 import { aiCleanupTags, aiGenerateTags, aiSuggestFilename, aiBatchRename, isOllamaAvailable } from './services/ai/ai-library-tools'
 import { getDLNAService } from './services/dlna-service'
 import { getSmartPlaylistService, SMART_PLAYLIST_PRESETS } from './services/smart-playlists'
+import { getBatchOperationsService } from './services/batch-operations'
+import { getGlobalSearchService, type SearchOptions } from './services/global-search'
 
 import {
   getSettings,
@@ -3474,6 +3476,156 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     } catch (e: any) {
       console.error('[SmartPlaylist] Refresh stale error:', e)
       return { refreshed: 0, total: 0 }
+    }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GLOBAL SEARCH
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('search:global', async (_ev, options: SearchOptions) => {
+    try {
+      const search = getGlobalSearchService(db)
+      const results = search.search(options)
+      // Save to history if it's a meaningful query
+      if (options.query && options.query.length >= 3) {
+        search.saveToHistory(options.query)
+      }
+      return results
+    } catch (e: any) {
+      console.error('[Search] Global search error:', e)
+      return []
+    }
+  })
+
+  ipcMain.handle('search:suggestions', async (_ev, query: string) => {
+    try {
+      const search = getGlobalSearchService(db)
+      return search.getSuggestions(query)
+    } catch (e: any) {
+      console.error('[Search] Suggestions error:', e)
+      return []
+    }
+  })
+
+  ipcMain.handle('search:recent', async (_ev, limit?: number) => {
+    try {
+      const search = getGlobalSearchService(db)
+      return search.getRecentSearches(limit)
+    } catch (e: any) {
+      console.error('[Search] Recent searches error:', e)
+      return []
+    }
+  })
+
+  ipcMain.handle('search:clear-history', async () => {
+    try {
+      const search = getGlobalSearchService(db)
+      search.clearHistory()
+      return { success: true }
+    } catch (e: any) {
+      console.error('[Search] Clear history error:', e)
+      return { success: false }
+    }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BATCH OPERATIONS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('batch:add-tags', async (_ev, mediaIds: string[], tagNames: string[]) => {
+    try {
+      const batch = getBatchOperationsService(db)
+      return batch.batchAddTags(mediaIds, tagNames, (progress) => {
+        broadcast('batch:progress', progress)
+      })
+    } catch (e: any) {
+      console.error('[Batch] Add tags error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('batch:remove-tags', async (_ev, mediaIds: string[], tagNames: string[]) => {
+    try {
+      const batch = getBatchOperationsService(db)
+      return batch.batchRemoveTags(mediaIds, tagNames, (progress) => {
+        broadcast('batch:progress', progress)
+      })
+    } catch (e: any) {
+      console.error('[Batch] Remove tags error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('batch:set-rating', async (_ev, mediaIds: string[], rating: number) => {
+    try {
+      const batch = getBatchOperationsService(db)
+      return batch.batchSetRating(mediaIds, rating, (progress) => {
+        broadcast('batch:progress', progress)
+      })
+    } catch (e: any) {
+      console.error('[Batch] Set rating error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('batch:delete', async (_ev, mediaIds: string[], deleteFiles: boolean) => {
+    try {
+      const batch = getBatchOperationsService(db)
+      return batch.batchDelete(mediaIds, deleteFiles, (progress) => {
+        broadcast('batch:progress', progress)
+      })
+    } catch (e: any) {
+      console.error('[Batch] Delete error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('batch:add-to-playlist', async (_ev, mediaIds: string[], playlistId: string) => {
+    try {
+      const batch = getBatchOperationsService(db)
+      return batch.batchAddToPlaylist(mediaIds, playlistId, (progress) => {
+        broadcast('batch:progress', progress)
+      })
+    } catch (e: any) {
+      console.error('[Batch] Add to playlist error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('batch:remove-from-playlist', async (_ev, mediaIds: string[], playlistId: string) => {
+    try {
+      const batch = getBatchOperationsService(db)
+      return batch.batchRemoveFromPlaylist(mediaIds, playlistId, (progress) => {
+        broadcast('batch:progress', progress)
+      })
+    } catch (e: any) {
+      console.error('[Batch] Remove from playlist error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('batch:rename', async (_ev, mediaIds: string[], pattern: string) => {
+    try {
+      const batch = getBatchOperationsService(db)
+      return batch.batchRename(mediaIds, pattern, (progress) => {
+        broadcast('batch:progress', progress)
+      })
+    } catch (e: any) {
+      console.error('[Batch] Rename error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('batch:move', async (_ev, mediaIds: string[], targetDir: string) => {
+    try {
+      const batch = getBatchOperationsService(db)
+      return batch.batchMove(mediaIds, targetDir, (progress) => {
+        broadcast('batch:progress', progress)
+      })
+    } catch (e: any) {
+      console.error('[Batch] Move error:', e)
+      throw e
     }
   })
 
