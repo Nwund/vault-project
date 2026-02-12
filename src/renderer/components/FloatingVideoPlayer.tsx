@@ -3,7 +3,10 @@
 
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2 } from 'lucide-react'
+import { RelatedMediaPanel } from './RelatedMediaPanel'
+import { MediaNotesPanel } from './MediaNotesPanel'
+import { BookmarksPanel } from './BookmarksPanel'
 
 interface MediaRow {
   id: string
@@ -97,9 +100,23 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [isPanning, setIsPanning] = useState(false)
   const [panStart, setPanStart] = useState({ x: 0, y: 0, panX: 0, panY: 0 })
   const [bookmarkFeedback, setBookmarkFeedback] = useState<string | null>(null)
+  const [showRelatedPanel, setShowRelatedPanel] = useState(false)
+  const [showNotesPanel, setShowNotesPanel] = useState(false)
+  const [showBookmarksPanel, setShowBookmarksPanel] = useState(false)
+  const [resumePosition, setResumePosition] = useState<number | null>(null)
+  const [showResumePrompt, setShowResumePrompt] = useState(false)
+  const [isInPiP, setIsInPiP] = useState(false) // Browser Picture-in-Picture mode
+  // A-B loop state
+  const [loopStart, setLoopStart] = useState<number | null>(null) // Point A
+  const [loopEnd, setLoopEnd] = useState<number | null>(null) // Point B
+  const [isLooping, setIsLooping] = useState(false) // Loop active
+  // Playback speed
+  const [playbackSpeed, setPlaybackSpeed] = useState(1)
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false)
   const imageContainerRef = useRef<HTMLDivElement>(null)
   const errorHandled = useRef(false) // Prevent duplicate error handling
   const videoRef = useRef<HTMLVideoElement>(null)
+  const watchSessionStarted = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const hideControlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const progressRef = useRef<HTMLDivElement>(null)
@@ -125,6 +142,59 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const currentIndex = mediaList.findIndex(m => m.id === media.id)
   const hasPrev = currentIndex > 0
   const hasNext = currentIndex < mediaList.length - 1
+
+  // Watch session tracking - start on first play, end on unmount or media change
+  useEffect(() => {
+    if (media.type !== 'video') return
+    watchSessionStarted.current = false
+    return () => {
+      // End watch session when media changes or component unmounts
+      if (watchSessionStarted.current) {
+        window.api.invoke('watch:end-session', media.id).catch(() => {})
+        watchSessionStarted.current = false
+      }
+    }
+  }, [media.id, media.type])
+
+  const handleVideoPlay = useCallback(() => {
+    setIsPaused(false)
+    // Start watch session on first play
+    if (media.type === 'video' && !watchSessionStarted.current) {
+      window.api.invoke('watch:start-session', media.id).catch(() => {})
+      watchSessionStarted.current = true
+    }
+  }, [media.id, media.type])
+
+  // Fetch resume position for this video
+  useEffect(() => {
+    if (media.type !== 'video') {
+      setResumePosition(null)
+      setShowResumePrompt(false)
+      return
+    }
+    let alive = true
+    window.api.invoke('watch:get-resume-position', media.id)
+      .then((pos: number) => {
+        if (!alive) return
+        // Only show resume prompt if position is significant (>10 seconds and >5% of video)
+        const minResume = 10
+        const duration = media.durationSec || 0
+        if (pos > minResume && duration > 0 && (pos / duration) > 0.05 && (pos / duration) < 0.95) {
+          setResumePosition(pos)
+          setShowResumePrompt(true)
+        } else {
+          setResumePosition(null)
+          setShowResumePrompt(false)
+        }
+      })
+      .catch(() => {
+        if (alive) {
+          setResumePosition(null)
+          setShowResumePrompt(false)
+        }
+      })
+    return () => { alive = false }
+  }, [media.id, media.type, media.durationSec])
 
   // Load video URL - respect persisted resolution setting
   useEffect(() => {
@@ -339,9 +409,19 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
 
   const handleTimeUpdate = useCallback(() => {
     if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime)
+      const time = videoRef.current.currentTime
+      const dur = videoRef.current.duration || 0
+      setCurrentTime(time)
+      // Update watch session every 10 seconds for resume position tracking
+      if (Math.floor(time) % 10 === 0 && dur > 0) {
+        window.api.invoke('watch:update-session', media.id, time, dur).catch(() => {})
+      }
+      // A-B loop: jump back to point A when reaching point B
+      if (isLooping && loopStart !== null && loopEnd !== null && time >= loopEnd) {
+        videoRef.current.currentTime = loopStart
+      }
     }
-  }, [])
+  }, [media.id, isLooping, loopStart, loopEnd])
 
   // Toggle play/pause
   const togglePlay = useCallback(() => {
@@ -355,6 +435,13 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       }
     }
   }, [])
+
+  // Apply playback speed
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = playbackSpeed
+    }
+  }, [playbackSpeed, url])
 
   // Seek
   const handleProgressClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -538,7 +625,11 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         toggleFullscreen()
       } else if (e.key === 'l' || e.key === 'L') {
         handleToggleLike()
-      } else if (e.key === 'b' || e.key === 'B') {
+      } else if (e.key === 'B' && e.shiftKey && media.type === 'video') {
+        // Toggle bookmarks panel (Shift+B)
+        e.preventDefault()
+        setShowBookmarksPanel(prev => !prev)
+      } else if ((e.key === 'b' || e.key === 'B') && !e.shiftKey) {
         // Quick bookmark at current time
         if (media.type === 'video' && videoRef.current) {
           const time = videoRef.current.currentTime
@@ -553,11 +644,84 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               setTimeout(() => setBookmarkFeedback(null), 2000)
             })
         }
+      } else if (e.key === 'r' || e.key === 'R') {
+        // Toggle related media panel
+        e.preventDefault()
+        setShowRelatedPanel(prev => !prev)
+      } else if (e.key === 'n' || e.key === 'N') {
+        // Toggle notes panel
+        e.preventDefault()
+        setShowNotesPanel(prev => !prev)
+      } else if (e.key === 'p' || e.key === 'P') {
+        // Toggle Picture-in-Picture
+        e.preventDefault()
+        if (media.type === 'video' && videoRef.current && document.pictureInPictureEnabled) {
+          if (document.pictureInPictureElement) {
+            document.exitPictureInPicture().catch(() => {})
+          } else {
+            videoRef.current.requestPictureInPicture().catch(() => {})
+          }
+        }
+      } else if (e.key === 'a' || e.key === 'A') {
+        // A-B Loop: Set point A, or clear loop if already looping
+        e.preventDefault()
+        if (media.type === 'video' && videoRef.current) {
+          if (isLooping) {
+            // Clear loop
+            setLoopStart(null)
+            setLoopEnd(null)
+            setIsLooping(false)
+            setBookmarkFeedback('Loop cleared')
+            setTimeout(() => setBookmarkFeedback(null), 1500)
+          } else if (loopStart === null) {
+            // Set point A
+            const time = videoRef.current.currentTime
+            setLoopStart(time)
+            setBookmarkFeedback(`Loop A: ${formatDuration(time)}`)
+            setTimeout(() => setBookmarkFeedback(null), 1500)
+          } else {
+            // Set point B and start looping
+            const time = videoRef.current.currentTime
+            if (time > loopStart) {
+              setLoopEnd(time)
+              setIsLooping(true)
+              setBookmarkFeedback(`Looping ${formatDuration(loopStart)} - ${formatDuration(time)}`)
+              setTimeout(() => setBookmarkFeedback(null), 2000)
+            } else {
+              // If B is before A, use B as new A
+              setLoopStart(time)
+              setBookmarkFeedback(`Loop A: ${formatDuration(time)}`)
+              setTimeout(() => setBookmarkFeedback(null), 1500)
+            }
+          }
+        }
+      } else if (e.key === '[') {
+        // Slow down playback
+        e.preventDefault()
+        setPlaybackSpeed(prev => {
+          const speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+          const idx = speeds.indexOf(prev)
+          const newSpeed = idx > 0 ? speeds[idx - 1] : speeds[0]
+          setBookmarkFeedback(`Speed: ${newSpeed}x`)
+          setTimeout(() => setBookmarkFeedback(null), 1000)
+          return newSpeed
+        })
+      } else if (e.key === ']') {
+        // Speed up playback
+        e.preventDefault()
+        setPlaybackSpeed(prev => {
+          const speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+          const idx = speeds.indexOf(prev)
+          const newSpeed = idx < speeds.length - 1 ? speeds[idx + 1] : speeds[speeds.length - 1]
+          setBookmarkFeedback(`Speed: ${newSpeed}x`)
+          setTimeout(() => setBookmarkFeedback(null), 1000)
+          return newSpeed
+        })
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [goToPrev, goToNext, onClose, isFullscreen, togglePlay, handleToggleLike, media.id, media.type])
+  }, [goToPrev, goToNext, onClose, isFullscreen, togglePlay, handleToggleLike, media.id, media.type, isLooping, loopStart])
 
   // Fullscreen handling
   const toggleFullscreen = useCallback(async () => {
@@ -585,6 +749,39 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       console.warn('[FloatingPlayer] Exit fullscreen error:', e)
     }
   }, [])
+
+  // Picture-in-Picture toggle (browser native)
+  const togglePiP = useCallback(async () => {
+    if (media.type !== 'video' || !videoRef.current) return
+
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture()
+        setIsInPiP(false)
+      } else if (document.pictureInPictureEnabled) {
+        await videoRef.current.requestPictureInPicture()
+        setIsInPiP(true)
+      }
+    } catch (e) {
+      console.warn('[FloatingPlayer] PiP error:', e)
+    }
+  }, [media.type])
+
+  // Listen for PiP changes
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    const handleEnterPiP = () => setIsInPiP(true)
+    const handleLeavePiP = () => setIsInPiP(false)
+
+    video.addEventListener('enterpictureinpicture', handleEnterPiP)
+    video.addEventListener('leavepictureinpicture', handleLeavePiP)
+    return () => {
+      video.removeEventListener('enterpictureinpicture', handleEnterPiP)
+      video.removeEventListener('leavepictureinpicture', handleLeavePiP)
+    }
+  }, [url])
 
   // Listen for fullscreen changes
   useEffect(() => {
@@ -978,6 +1175,35 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         </div>
       )}
 
+      {/* Resume prompt - shows when video has a saved position */}
+      {showResumePrompt && resumePosition !== null && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-black/95 text-white rounded-xl backdrop-blur-md border border-white/20 shadow-2xl overflow-hidden animate-scaleIn">
+          <div className="p-4">
+            <div className="text-sm font-medium mb-1">Continue Watching?</div>
+            <div className="text-xs text-white/60 mb-4">You stopped at {formatDuration(resumePosition)}</div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (videoRef.current) {
+                    videoRef.current.currentTime = resumePosition
+                  }
+                  setShowResumePrompt(false)
+                }}
+                className="flex-1 px-4 py-2 bg-[var(--primary)] hover:bg-[var(--primary)]/80 rounded-lg text-sm font-medium transition"
+              >
+                Resume
+              </button>
+              <button
+                onClick={() => setShowResumePrompt(false)}
+                className="flex-1 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm transition"
+              >
+                Start Over
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Draggable header (not in fullscreen) */}
       {!isFullscreen && (
         <div
@@ -989,6 +1215,15 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
             {filename}
           </div>
           <div className="flex items-center gap-1 no-drag">
+            {media.type === 'video' && document.pictureInPictureEnabled && (
+              <button
+                onClick={togglePiP}
+                className={`p-1 hover:bg-white/20 rounded transition ${isInPiP ? 'text-blue-400' : ''}`}
+                title={isInPiP ? 'Exit Picture-in-Picture' : 'Picture-in-Picture (P)'}
+              >
+                <PictureInPicture2 size={14} />
+              </button>
+            )}
             <button
               onClick={toggleFullscreen}
               className="p-1 hover:bg-white/20 rounded transition"
@@ -1083,7 +1318,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
             }}
             onError={handleError}
             onTimeUpdate={handleTimeUpdate}
-            onPlay={() => setIsPaused(false)}
+            onPlay={handleVideoPlay}
             onPause={() => setIsPaused(true)}
             onStalled={() => console.warn('[FloatingPlayer] Video stalled:', media.path)}
             onWaiting={() => setIsLoading(true)}
@@ -1178,6 +1413,23 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                 }}
               />
             ))}
+            {/* A-B Loop region indicator */}
+            {loopStart !== null && (
+              <div
+                className="absolute top-0 bottom-0 bg-blue-500/30 border-l-2 border-blue-400"
+                style={{
+                  left: `${(loopStart / duration) * 100}%`,
+                  width: loopEnd !== null ? `${((loopEnd - loopStart) / duration) * 100}%` : '2px'
+                }}
+                title={loopEnd !== null ? `Loop: ${formatDuration(loopStart)} - ${formatDuration(loopEnd)}` : `Point A: ${formatDuration(loopStart)}`}
+              />
+            )}
+            {/* Loop indicator badge */}
+            {isLooping && (
+              <div className="absolute -top-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 bg-blue-500 rounded text-[9px] text-white font-medium">
+                A-B Loop
+              </div>
+            )}
           </div>
         )}
 
@@ -1370,6 +1622,32 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               </div>
             )}
 
+            {/* Speed control */}
+            {media.type === 'video' && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowSpeedMenu(prev => !prev)}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-medium transition ${playbackSpeed !== 1 ? 'bg-orange-500/80 text-white' : 'bg-white/10 hover:bg-white/20'}`}
+                  title="Playback Speed ([ / ])"
+                >
+                  {playbackSpeed}x
+                </button>
+                {showSpeedMenu && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 py-1 bg-black/95 rounded-lg border border-white/20 min-w-[80px]">
+                    {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(speed => (
+                      <button
+                        key={speed}
+                        onClick={() => { setPlaybackSpeed(speed); setShowSpeedMenu(false) }}
+                        className={`w-full px-3 py-1 text-[11px] text-left hover:bg-white/10 transition ${playbackSpeed === speed ? 'text-orange-400' : 'text-white/80'}`}
+                      >
+                        {speed}x
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <button
               onClick={handleToggleLike}
               className={`p-2 rounded-lg transition ${isLiked ? 'bg-pink-500/80 shadow-[0_0_12px_rgba(236,72,153,0.5)]' : 'bg-white/10 hover:bg-pink-500/60'}`}
@@ -1519,6 +1797,35 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               </button>
             )}
 
+            {/* Related Media Toggle */}
+            <button
+              onClick={() => setShowRelatedPanel(!showRelatedPanel)}
+              className={`p-2 rounded-lg transition ${showRelatedPanel ? 'bg-cyan-500/80' : 'bg-white/10 hover:bg-cyan-500/60'}`}
+              title="Related Media (R)"
+            >
+              <Link2 size={16} />
+            </button>
+
+            {/* Notes Toggle */}
+            <button
+              onClick={() => setShowNotesPanel(!showNotesPanel)}
+              className={`p-2 rounded-lg transition ${showNotesPanel ? 'bg-yellow-500/80' : 'bg-white/10 hover:bg-yellow-500/60'}`}
+              title="Notes (N)"
+            >
+              <StickyNote size={16} />
+            </button>
+
+            {/* Bookmarks List Toggle - Video only */}
+            {media.type === 'video' && (
+              <button
+                onClick={() => setShowBookmarksPanel(!showBookmarksPanel)}
+                className={`p-2 rounded-lg transition ${showBookmarksPanel ? 'bg-blue-500/80' : 'bg-white/10 hover:bg-blue-500/60'}`}
+                title="Bookmarks List (Shift+B)"
+              >
+                <ListOrdered size={16} />
+              </button>
+            )}
+
             {isFullscreen && (
               <button
                 onClick={exitFullscreen}
@@ -1547,6 +1854,53 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               <X size={20} />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Related Media Panel */}
+      {showRelatedPanel && (
+        <div
+          className={`absolute ${isFullscreen ? 'top-20 right-4 bottom-32' : 'top-0 right-0 bottom-12'} w-64 z-40 transform transition-transform duration-200`}
+        >
+          <RelatedMediaPanel
+            mediaId={media.id}
+            onPlayMedia={(mediaId) => {
+              onMediaChange(mediaId)
+              setShowRelatedPanel(false)
+            }}
+            className="h-full"
+          />
+        </div>
+      )}
+
+      {/* Notes Panel */}
+      {showNotesPanel && (
+        <div
+          className={`absolute ${isFullscreen ? 'top-20 left-4 bottom-32' : 'top-0 left-0 bottom-12'} w-64 z-40 transform transition-transform duration-200`}
+        >
+          <MediaNotesPanel
+            mediaId={media.id}
+            className="h-full"
+          />
+        </div>
+      )}
+
+      {/* Bookmarks Panel - Video only */}
+      {showBookmarksPanel && media.type === 'video' && (
+        <div
+          className={`absolute ${isFullscreen ? 'top-20 left-72 bottom-32' : 'top-0 left-72 bottom-12'} w-72 z-40 transform transition-transform duration-200`}
+        >
+          <BookmarksPanel
+            mediaId={media.id}
+            currentTime={currentTime}
+            duration={duration}
+            onSeek={(time) => {
+              if (videoRef.current) {
+                videoRef.current.currentTime = time
+              }
+            }}
+            isCompact={!isFullscreen}
+          />
         </div>
       )}
 

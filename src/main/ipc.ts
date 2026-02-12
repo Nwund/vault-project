@@ -3756,6 +3756,16 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  ipcMain.handle('watch:get-most-viewed', async (_ev, limit?: number) => {
+    try {
+      const history = getWatchHistoryService(db)
+      return history.getMostViewed(limit)
+    } catch (e: any) {
+      console.error('[Watch] Get most viewed error:', e)
+      return []
+    }
+  })
+
   // ═══════════════════════════════════════════════════════════════════════════
   // AUTO-ORGANIZE
   // ═══════════════════════════════════════════════════════════════════════════

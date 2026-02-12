@@ -231,6 +231,40 @@ Verify ALL sliders, toggles, dropdowns, and buttons function and persist correct
 - [x] **FloatingVideoPlayer Enhancement** - B key creates quick bookmark at current timestamp
 - [x] **Keyboard Shortcuts Help** - Added W/L/B shortcuts to help modal
 
+### Home Dashboard Enhancements (Latest Session):
+- [x] **HomeDashboard** (`HomeDashboard.tsx`) - Full home dashboard with 7 sections
+- [x] **Time-based Greeting** - Dynamic greeting based on time of day (Morning/Afternoon/Evening/Night)
+- [x] **Quick Stats Card** - Library overview showing total media, videos, images, favorites, watch time
+- [x] **Quick Actions Bar** - Random Pick, Browse Library, Quick Resume buttons
+- [x] **Continue Watching** - Resume where you left off with progress bars
+- [x] **Recommendations** - AI-powered content suggestions
+- [x] **Favorites Section** - Quick access to liked content with heart badges
+- [x] **Watch Later Section** - Queued content with priority badges
+- [x] **Most Watched Section** - Popular content by view count
+- [x] **Recently Added Section** - New content in your library
+
+### Feed Enhancements (Latest Session):
+- [x] **Toast Feedback** - B (Bookmark) and W (Watch Later) shortcuts now show toast notifications
+- [x] **Button Toast Feedback** - Side action buttons for Bookmark and Watch Later now show toasts
+- [x] **Keyboard Shortcuts Help** - Updated help modal with Feed B/W shortcuts
+
+### Command Palette Enhancements (Latest Session):
+- [x] **Play Random Video (R)** - Instantly play a random video from library
+- [x] **Open Watch Later (L)** - Quick access to watch later queue
+- [x] **Toggle Fullscreen (F11)** - System fullscreen toggle
+
+### Backend Additions (Latest Session):
+- [x] **getMostViewed** - Watch history method to get most viewed media
+- [x] **watch:get-most-viewed IPC** - IPC handler for frontend access
+
+### Video Player Enhancements (Latest Session):
+- [x] **Picture-in-Picture** - Browser native PiP mode (P key), allows video to float outside app
+- [x] **A-B Loop** - Loop a specific section of video (A key to set points, visual indicator on timeline)
+- [x] **Playback Speed Control** - Speed menu + keyboard shortcuts ([ / ] keys), shows current speed
+- [x] **Visual Feedback** - Loop region shown on progress bar, speed indicator badge
+
+**Build Stats:** 69 modules transformed, main.js 847.82 kB, renderer 1.50 MB
+
 ---
 
 ## QUICK WINS (Can do in <30 min each)

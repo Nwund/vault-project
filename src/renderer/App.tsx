@@ -31,8 +31,10 @@ import { MediaNotesPanel } from './components/MediaNotesPanel'
 import { RelatedMediaPanel } from './components/RelatedMediaPanel'
 import { DuplicatesModal } from './components/DuplicatesModal'
 import { BookmarksPanel } from './components/BookmarksPanel'
+import { HomeDashboard } from './components/HomeDashboard'
 import {
   Library,
+  Home,
   Repeat,
   LayoutGrid,
   Flame,
@@ -326,6 +328,41 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
             showToast('success', 'Added to Watch Later')
           } catch (e) {
             showToast('error', 'Failed to add to Watch Later')
+          }
+        }
+        hideContextMenu()
+      }
+    },
+    {
+      label: 'Quick Bookmark',
+      icon: <Bookmark size={14} />,
+      action: async () => {
+        if (contextMenu.mediaId && contextMenu.mediaData?.type === 'video') {
+          try {
+            await window.api.invoke('bookmarks:quickAdd', contextMenu.mediaId, 0)
+            showToast('success', 'Bookmarked at start')
+          } catch (e) {
+            showToast('error', 'Failed to add bookmark')
+          }
+        } else {
+          showToast('info', 'Bookmarks are only available for videos')
+        }
+        hideContextMenu()
+      }
+    },
+    {
+      label: 'Add Note',
+      icon: <MessageSquare size={14} />,
+      action: async () => {
+        if (contextMenu.mediaId) {
+          const note = window.prompt('Enter a note for this media:')
+          if (note && note.trim()) {
+            try {
+              await window.api.invoke('notes:add', contextMenu.mediaId, note.trim())
+              showToast('success', 'Note added')
+            } catch (e) {
+              showToast('error', 'Failed to add note')
+            }
           }
         }
         hideContextMenu()
@@ -712,6 +749,7 @@ function formatDuration(sec: number | null | undefined) {
 const THEMES = THEME_LIST.map(t => ({ id: t.id, name: t.name }))
 
 const NAV = [
+  { id: 'home', name: 'Home', tip: 'Dashboard with continue watching and recommendations' },
   { id: 'library', name: 'Library', tip: 'Browse and manage your media collection' },
   { id: 'goonwall', name: 'Goon Wall', tip: 'Multi-tile video wall with immersive features' },
   { id: 'captions', name: 'Brainwash', tip: 'Add captions and filters to images' },
@@ -727,6 +765,7 @@ const NAV = [
 const NavIcon: React.FC<{ id: string; active?: boolean }> = ({ id, active }) => {
   const iconProps = { size: 18, strokeWidth: active ? 2 : 1.5 }
   switch (id) {
+    case 'home': return <Home {...iconProps} />
     case 'library': return <Library {...iconProps} />
     case 'goonwall': return <LayoutGrid {...iconProps} />
     case 'captions': return <MessageSquare {...iconProps} />
@@ -743,7 +782,7 @@ const NavIcon: React.FC<{ id: string; active?: boolean }> = ({ id, active }) => 
 type NavId = (typeof NAV)[number]['id']
 
 export default function App() {
-  const [page, setPage] = useState<NavId>('library')
+  const [page, setPage] = useState<NavId>('home')
   const [settings, setSettings] = useState<VaultSettings | null>(null)
   const [sessionActive, setSessionActive] = useState(false)
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
@@ -1533,7 +1572,19 @@ export default function App() {
         </aside>
 
         <main ref={mainContentRef} role="main" aria-label="Main content" className="flex-1 min-w-0 min-h-0 h-full overflow-hidden transition-all duration-300 ease-in-out">
-          {page === 'library' ? (
+          {page === 'home' ? (
+            <ErrorBoundary pageName="Home">
+              <HomeDashboard
+                onPlayMedia={(mediaId) => {
+                  // Navigate to library and set pending media to open
+                  window.api.goon?.recordWatch?.(mediaId).catch(() => {})
+                  sessionStorage.setItem('vault_pending_media', mediaId)
+                  setPage('library')
+                }}
+                onNavigateToLibrary={() => setPage('library')}
+              />
+            </ErrorBoundary>
+          ) : page === 'library' ? (
             <ErrorBoundary pageName="Library">
               <LibraryPage settings={settings} selected={selected} setSelected={setSelected} tagBarOpen={tagBarOpen} setTagBarOpen={setTagBarOpen} confetti={confetti} anime={anime} />
             </ErrorBoundary>
@@ -1806,6 +1857,14 @@ export default function App() {
                     <span className="text-white/70">Hide UI</span>
                   </div>
                   <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">B</kbd>
+                    <span className="text-white/70">Quick Bookmark</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">W</kbd>
+                    <span className="text-white/70">Watch Later</span>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <kbd className="px-2 py-1 bg-black/30 rounded text-xs">Swipe ↑↓</kbd>
                     <span className="text-white/70">Navigate (touch)</span>
                   </div>
@@ -1856,6 +1915,56 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     <kbd className="px-2 py-1 bg-black/30 rounded text-xs">↑/↓</kbd>
                     <span className="text-white/70">Navigate playlists</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-xs text-[var(--muted)] uppercase tracking-wider mb-2">Video Player</h3>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">Space</kbd>
+                    <span className="text-white/70">Play/Pause</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">F</kbd>
+                    <span className="text-white/70">Fullscreen</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">B</kbd>
+                    <span className="text-white/70">Quick Bookmark</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">Shift+B</kbd>
+                    <span className="text-white/70">Bookmarks List</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">R</kbd>
+                    <span className="text-white/70">Related Media</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">N</kbd>
+                    <span className="text-white/70">Notes Panel</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">M</kbd>
+                    <span className="text-white/70">Toggle Mute</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">L</kbd>
+                    <span className="text-white/70">Like/Unlike</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">P</kbd>
+                    <span className="text-white/70">Picture-in-Picture</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">A</kbd>
+                    <span className="text-white/70">A-B Loop (tap twice)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">[ / ]</kbd>
+                    <span className="text-white/70">Speed Down/Up</span>
                   </div>
                 </div>
               </div>
@@ -1922,6 +2031,7 @@ export default function App() {
             <div className="max-h-[50vh] overflow-y-auto p-2">
               {(() => {
                 const commands = [
+                  { id: 'home', icon: Home, label: 'Go to Home', shortcut: '0', action: () => { setPage('home'); setShowCommandPalette(false) } },
                   { id: 'library', icon: Library, label: 'Go to Library', shortcut: '1', action: () => { setPage('library'); setShowCommandPalette(false) } },
                   { id: 'feed', icon: Play, label: 'Go to Feed', shortcut: '2', action: () => { setPage('feed'); setShowCommandPalette(false) } },
                   { id: 'goonwall', icon: LayoutGrid, label: 'Go to Goon Wall', shortcut: '3', action: () => { setPage('goonwall'); setShowCommandPalette(false) } },
@@ -1934,6 +2044,22 @@ export default function App() {
                   { id: 'shortcuts', icon: HelpCircle, label: 'Show Keyboard Shortcuts', shortcut: '?', action: () => { setShowShortcutsHelp(true); setShowCommandPalette(false) } },
                   { id: 'refresh', icon: RefreshCw, label: 'Refresh Library', action: async () => { await window.api.scanner?.rescan?.(); setShowCommandPalette(false); globalShowToast('info', 'Library scan started') } },
                   { id: 'divider2', divider: true },
+                  { id: 'randomVideo', icon: Shuffle, label: 'Play Random Video', shortcut: 'R', action: async () => {
+                    try {
+                      const result = await window.api.media.list({ limit: 100, type: 'video' })
+                      const items = Array.isArray(result) ? result : (result as any)?.items ?? []
+                      if (items.length > 0) {
+                        const randomItem = items[Math.floor(Math.random() * items.length)]
+                        addFloatingPlayer(randomItem.id)
+                        setShowCommandPalette(false)
+                      } else {
+                        globalShowToast('info', 'No videos found')
+                      }
+                    } catch { globalShowToast('error', 'Failed to find videos') }
+                  }},
+                  { id: 'watchLater', icon: Clock, label: 'Open Watch Later', shortcut: 'L', action: () => { setShowWatchLaterPanel(true); setShowCommandPalette(false) } },
+                  { id: 'fullscreen', icon: Maximize2, label: 'Toggle Fullscreen', shortcut: 'F11', action: () => { window.api.window?.toggleFullscreen?.(); setShowCommandPalette(false) } },
+                  { id: 'divider3', divider: true },
                   { id: 'addFolder', icon: FolderPlus, label: 'Add Media Folder', action: async () => { await window.api.settings.chooseMediaDir?.(); setShowCommandPalette(false) } },
                   { id: 'clearThumbCache', icon: Trash2, label: 'Clear Thumbnail Cache', action: async () => { await window.api.thumbs?.clearCache?.(); globalShowToast('success', 'Thumbnail cache cleared'); setShowCommandPalette(false) } },
                   { id: 'exportSettings', icon: Download, label: 'Export Settings', action: async () => { await window.api.data?.exportSettings?.(); setShowCommandPalette(false) } },
@@ -2310,7 +2436,7 @@ function Dropdown<T extends string>(props: {
   )
 }
 
-type SortOption = 'newest' | 'oldest' | 'name' | 'views' | 'duration' | 'type' | 'size' | 'random'
+type SortOption = 'newest' | 'oldest' | 'name' | 'views' | 'duration' | 'type' | 'size' | 'random' | 'recentlyViewed' | 'rating'
 
 // Page size options for library
 const PAGE_SIZE_OPTIONS = [
@@ -2483,6 +2609,18 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   const closeAllFloatingPlayers = useCallback(() => {
     setOpenIds([])
   }, [])
+
+  // Auto-open media if coming from Home dashboard with pending media
+  useEffect(() => {
+    const pendingMedia = sessionStorage.getItem('vault_pending_media')
+    if (pendingMedia) {
+      sessionStorage.removeItem('vault_pending_media')
+      // Wait a bit for media to load, then open the floating player
+      setTimeout(() => {
+        addFloatingPlayer(pendingMedia)
+      }, 500)
+    }
+  }, [addFloatingPlayer])
 
   // Wall autoscroll effect
   useEffect(() => {
@@ -2900,6 +3038,10 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
         dbSortBy = sortAscending ? 'duration_asc' : 'duration'
       } else if (sortBy === 'random') {
         dbSortBy = 'random' // Random has no direction
+      } else if (sortBy === 'recentlyViewed') {
+        dbSortBy = sortAscending ? 'lastViewed_asc' : 'lastViewed'
+      } else if (sortBy === 'rating') {
+        dbSortBy = sortAscending ? 'rating_asc' : 'rating'
       }
       const m = await window.api.media.search({
         q: parsed.text,
@@ -3459,7 +3601,9 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
                 if (v === 'random') setRandomSeed(Date.now())
               }}
               options={[
-                { value: 'newest', label: 'Date' },
+                { value: 'newest', label: 'Date Added' },
+                { value: 'recentlyViewed', label: 'Recently Viewed' },
+                { value: 'rating', label: 'Rating' },
                 { value: 'name', label: 'Name' },
                 { value: 'type', label: 'Type' },
                 { value: 'size', label: 'Size' },
@@ -9526,6 +9670,7 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
 type FeedSortMode = 'random' | 'liked' | 'newest' | 'views'
 
 function FeedPage() {
+  const { showToast } = useToast()
   const [videos, setVideos] = useState<MediaRow[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -9700,11 +9845,33 @@ function FeedPage() {
         // Toggle UI visibility (Shift+H)
         e.preventDefault()
         setHideUI(prev => !prev)
+      } else if (e.key === 'b' || e.key === 'B') {
+        // Quick bookmark at current position
+        e.preventDefault()
+        const video = videoRefs.current.get(currentIndex)
+        const currentVideo = videos[currentIndex]
+        if (video && currentVideo) {
+          const time = video.currentTime
+          const mins = Math.floor(time / 60)
+          const secs = Math.floor(time % 60)
+          window.api.invoke('bookmarks:quickAdd', currentVideo.id, time)
+            .then(() => showToast('success', `Bookmarked at ${mins}:${secs.toString().padStart(2, '0')}`))
+            .catch(() => showToast('error', 'Failed to add bookmark'))
+        }
+      } else if (e.key === 'w' || e.key === 'W') {
+        // Add to Watch Later
+        e.preventDefault()
+        const currentVideo = videos[currentIndex]
+        if (currentVideo) {
+          window.api.invoke('watchLater:add', currentVideo.id)
+            .then(() => showToast('success', 'Added to Watch Later'))
+            .catch(() => showToast('error', 'Failed to add to Watch Later'))
+        }
       }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [videos.length, currentIndex])
+  }, [videos.length, currentIndex, videos])
 
   // Play/pause based on current index
   useEffect(() => {
@@ -10426,6 +10593,7 @@ const FeedItem = React.memo(function FeedItem(props: {
   resolution?: 'original' | '720p' | '480p' | '360p'
 }) {
   const { video, isActive, preloadedUrl, onVideoRef, isLiked, onToggleLike, onSkip, onOpenInPlayer, infiniteMode, onVideoEnded, resolution = 'original' } = props
+  const { showToast } = useToast()
   const [showPlaylistPopup, setShowPlaylistPopup] = useState(false)
   const feedPlaylistBtnRef = useRef<HTMLButtonElement>(null)
   const [url, setUrl] = useState(preloadedUrl || '')
@@ -10435,6 +10603,36 @@ const FeedItem = React.memo(function FeedItem(props: {
   const [showHeartAnimation, setShowHeartAnimation] = useState(false)
   const lastTapRef = useRef<number>(0)
   const doubleTapTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  // Progress bar and bookmarks
+  const [progress, setProgress] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [bookmarks, setBookmarks] = useState<Array<{ id: string; timestamp: number; title: string }>>([])
+  const videoElementRef = useRef<HTMLVideoElement | null>(null)
+
+  // Load bookmarks for this video
+  useEffect(() => {
+    window.api.invoke('bookmarks:getForMedia', video.id)
+      .then((items: any) => setBookmarks(items || []))
+      .catch(() => setBookmarks([]))
+  }, [video.id])
+
+  // Track video progress
+  const handleTimeUpdate = useCallback(() => {
+    if (videoElementRef.current) {
+      setProgress(videoElementRef.current.currentTime)
+      setDuration(videoElementRef.current.duration || 0)
+    }
+  }, [])
+
+  // Enhanced video ref callback
+  const handleVideoRef = useCallback((el: HTMLVideoElement | null) => {
+    videoElementRef.current = el
+    onVideoRef(el)
+    if (el) {
+      el.addEventListener('timeupdate', handleTimeUpdate)
+      el.addEventListener('loadedmetadata', () => setDuration(el.duration || 0))
+    }
+  }, [onVideoRef, handleTimeUpdate])
 
   const handleDoubleTap = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     // Ignore if clicking on buttons or other interactive elements
@@ -10510,7 +10708,7 @@ const FeedItem = React.memo(function FeedItem(props: {
       {/* Video - fill height, maintain aspect ratio */}
       {url && (
         <video
-          ref={onVideoRef}
+          ref={handleVideoRef}
           src={url}
           className="h-full w-full object-contain"
           autoPlay={isActive}
@@ -10538,6 +10736,43 @@ const FeedItem = React.memo(function FeedItem(props: {
             onSkip()
           }}
         />
+      )}
+
+      {/* Progress bar with bookmark markers */}
+      {isActive && duration > 0 && (
+        <div
+          className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 cursor-pointer group z-20"
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect()
+            const percent = (e.clientX - rect.left) / rect.width
+            if (videoElementRef.current) {
+              videoElementRef.current.currentTime = percent * duration
+            }
+          }}
+        >
+          {/* Progress fill */}
+          <div
+            className="h-full bg-[var(--primary)] transition-all duration-100"
+            style={{ width: `${(progress / duration) * 100}%` }}
+          />
+          {/* Bookmark markers */}
+          {bookmarks.map((bm) => (
+            <div
+              key={bm.id}
+              className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-yellow-400 cursor-pointer hover:scale-150 transition-transform"
+              style={{ left: `${(bm.timestamp / duration) * 100}%` }}
+              title={bm.title || `Bookmark at ${formatDuration(bm.timestamp)}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (videoElementRef.current) {
+                  videoElementRef.current.currentTime = bm.timestamp
+                }
+              }}
+            />
+          ))}
+          {/* Hover expand */}
+          <div className="absolute inset-x-0 -top-2 h-5 group-hover:bg-black/20 transition-colors" />
+        </div>
       )}
 
       {/* Loading state */}
@@ -10590,6 +10825,42 @@ const FeedItem = React.memo(function FeedItem(props: {
           title="Shuffle / Next"
         >
           <Shuffle className="w-4 h-4 sm:w-6 sm:h-6" />
+        </button>
+        <button
+          onClick={async () => {
+            try {
+              await window.api.invoke('watchLater:add', video.id)
+              showToast('success', 'Added to Watch Later')
+            } catch {
+              showToast('error', 'Failed to add to Watch Later')
+            }
+          }}
+          className="w-9 h-9 sm:w-12 sm:h-12 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center text-white/80 hover:text-white hover:bg-black/60 transition"
+          title="Add to Watch Later (W)"
+        >
+          <Clock className="w-4 h-4 sm:w-6 sm:h-6" />
+        </button>
+        <button
+          onClick={async () => {
+            if (videoElementRef.current) {
+              const time = videoElementRef.current.currentTime
+              const mins = Math.floor(time / 60)
+              const secs = Math.floor(time % 60)
+              try {
+                await window.api.invoke('bookmarks:quickAdd', video.id, time)
+                // Reload bookmarks
+                const items = await window.api.invoke('bookmarks:getForMedia', video.id)
+                setBookmarks(items || [])
+                showToast('success', `Bookmarked at ${mins}:${secs.toString().padStart(2, '0')}`)
+              } catch {
+                showToast('error', 'Failed to add bookmark')
+              }
+            }
+          }}
+          className="w-9 h-9 sm:w-12 sm:h-12 rounded-full bg-black/85 backdrop-blur-md flex items-center justify-center text-white/80 hover:text-white hover:bg-black/60 transition"
+          title="Bookmark Current Position (B)"
+        >
+          <Bookmark className="w-4 h-4 sm:w-6 sm:h-6" />
         </button>
         {onOpenInPlayer && (
           <button
@@ -12267,6 +12538,14 @@ function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof useConfet
   const [loading, setLoading] = useState(true)
   const [achievementTab, setAchievementTab] = useState<string>('all')
   const [dailyChallenges, setDailyChallenges] = useState<DailyChallengeStateUI | null>(null)
+  const [sessionAnalytics, setSessionAnalytics] = useState<{
+    totalSessions: number
+    totalDuration: number
+    avgSessionDuration: number
+    avgMediaPerSession: number
+    mostActiveHour: number
+    mostActiveDay: string
+  } | null>(null)
   const { showToast } = useToast()
 
   useEffect(() => {
@@ -12299,12 +12578,14 @@ function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof useConfet
 
   const loadAllStats = async () => {
     try {
-      const [gs, vs] = await Promise.all([
+      const [gs, vs, sa] = await Promise.all([
         window.api.goon.getStats(),
-        window.api.vault.getStats()
+        window.api.vault.getStats(),
+        window.api.invoke('sessionHistory:getAnalytics', 30).catch(() => null)
       ])
       setGoonStats(gs)
       setVaultStats(vs)
+      if (sa) setSessionAnalytics(sa as any)
       const a = await window.api.goon.getAchievements()
       setAchievements(a)
     } catch (e) {
@@ -12560,6 +12841,48 @@ function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof useConfet
             <div className="text-[10px] text-[var(--muted)]">Shuffles</div>
           </div>
         </div>
+
+        {/* Session Analytics - 30 day insights */}
+        {sessionAnalytics && (
+          <div className="mb-6 p-4 bg-gradient-to-br from-violet-500/10 to-purple-600/10 rounded-2xl border border-violet-500/20">
+            <div className="flex items-center gap-2 mb-4">
+              <Clock size={16} className="text-violet-400" />
+              <span className="text-sm font-semibold text-violet-300">Session Insights</span>
+              <span className="text-[10px] text-[var(--muted)]">last 30 days</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <div>
+                <div className="text-2xl font-bold text-violet-400">{sessionAnalytics.totalSessions}</div>
+                <div className="text-[10px] text-[var(--muted)]">Total Sessions</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-purple-400">{fmtDuration(sessionAnalytics.totalDuration)}</div>
+                <div className="text-[10px] text-[var(--muted)]">Total Time</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-pink-400">{fmtDuration(sessionAnalytics.avgSessionDuration)}</div>
+                <div className="text-[10px] text-[var(--muted)]">Avg Session</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-fuchsia-400">{sessionAnalytics.avgMediaPerSession.toFixed(1)}</div>
+                <div className="text-[10px] text-[var(--muted)]">Media/Session</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-indigo-400">
+                  {sessionAnalytics.mostActiveHour === 0 ? '12 AM' :
+                   sessionAnalytics.mostActiveHour < 12 ? `${sessionAnalytics.mostActiveHour} AM` :
+                   sessionAnalytics.mostActiveHour === 12 ? '12 PM' :
+                   `${sessionAnalytics.mostActiveHour - 12} PM`}
+                </div>
+                <div className="text-[10px] text-[var(--muted)]">Peak Hour</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-blue-400">{sessionAnalytics.mostActiveDay}</div>
+                <div className="text-[10px] text-[var(--muted)]">Peak Day</div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Top Tags and Quick Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">

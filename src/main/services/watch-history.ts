@@ -337,6 +337,22 @@ export class WatchHistoryService {
   }
 
   /**
+   * Get most viewed media
+   */
+  getMostViewed(limit = 12): Array<{ id: string; viewCount: number }> {
+    const rows = this.db.raw.prepare(`
+      SELECT mediaId as id, COUNT(*) as viewCount
+      FROM watch_sessions
+      WHERE endedAt IS NOT NULL
+      GROUP BY mediaId
+      ORDER BY viewCount DESC
+      LIMIT ?
+    `).all(limit) as any[]
+
+    return rows
+  }
+
+  /**
    * Clear watch history
    */
   clearHistory(olderThanDays?: number): number {
