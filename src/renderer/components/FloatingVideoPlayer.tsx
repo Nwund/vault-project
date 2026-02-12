@@ -537,11 +537,18 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         toggleFullscreen()
       } else if (e.key === 'l' || e.key === 'L') {
         handleToggleLike()
+      } else if (e.key === 'b' || e.key === 'B') {
+        // Quick bookmark at current time
+        if (media.type === 'video' && videoRef.current) {
+          const time = videoRef.current.currentTime
+          window.api.invoke('bookmarks:quickAdd', media.id, time)
+            .catch(() => {})
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [goToPrev, goToNext, onClose, isFullscreen, togglePlay, handleToggleLike])
+  }, [goToPrev, goToNext, onClose, isFullscreen, togglePlay, handleToggleLike, media.id, media.type])
 
   // Fullscreen handling
   const toggleFullscreen = useCallback(async () => {
