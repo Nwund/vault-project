@@ -301,11 +301,17 @@ class DLNAService extends EventEmitter {
 
       this.activeDevice = browserDevice
 
-      const playOptions = {
+      // Build play options - only include seek if we have a start position
+      // Some TVs (like webOS) don't support seek mode
+      const playOptions: any = {
         title: options.title || path.basename(mediaPath),
         type: isVideo ? 'video/mp4' : 'image/jpeg',
         autoplay: options.autoplay !== false,
-        seek: options.startPosition || 0,
+      }
+
+      // Only add seek if we actually need to start somewhere other than beginning
+      if (options.startPosition && options.startPosition > 0) {
+        playOptions.seek = options.startPosition
       }
 
       browserDevice.play(mediaUrl, playOptions, (err: Error | null) => {
@@ -461,7 +467,7 @@ class DLNAService extends EventEmitter {
   }
 
   /**
-   * Seek to position
+   * Seek to position (gracefully handles unsupported devices)
    */
   async seek(position: number): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -471,8 +477,17 @@ class DLNAService extends EventEmitter {
       }
 
       this.activeDevice.seek(position, (err: Error | null) => {
-        if (err) reject(err)
-        else resolve()
+        if (err) {
+          // Handle "Seek mode not supported" (error 710) gracefully
+          if (err.message?.includes('710') || err.message?.includes('Seek mode not supported')) {
+            console.log('[DLNA] Seek not supported on this device, ignoring')
+            resolve() // Don't fail, just ignore
+          } else {
+            reject(err)
+          }
+        } else {
+          resolve()
+        }
       })
     })
   }

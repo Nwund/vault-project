@@ -17,6 +17,8 @@ import { getDLNAService } from './services/dlna-service'
 import { getSmartPlaylistService, SMART_PLAYLIST_PRESETS } from './services/smart-playlists'
 import { getBatchOperationsService } from './services/batch-operations'
 import { getGlobalSearchService, type SearchOptions } from './services/global-search'
+import { getWatchHistoryService } from './services/watch-history'
+import { getAutoOrganizeService, ORGANIZE_PRESETS, type OrganizeRule } from './services/auto-organize'
 
 import {
   getSettings,
@@ -3627,6 +3629,161 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       console.error('[Batch] Move error:', e)
       throw e
     }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WATCH HISTORY & RECOMMENDATIONS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('watch:start-session', async (_ev, mediaId: string) => {
+    try {
+      const history = getWatchHistoryService(db)
+      return history.startSession(mediaId)
+    } catch (e: any) {
+      console.error('[Watch] Start session error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('watch:update-session', async (_ev, mediaId: string, currentTime: number, duration: number) => {
+    try {
+      const history = getWatchHistoryService(db)
+      history.updateSession(mediaId, currentTime, duration)
+      return { success: true }
+    } catch (e: any) {
+      return { success: false }
+    }
+  })
+
+  ipcMain.handle('watch:end-session', async (_ev, mediaId: string) => {
+    try {
+      const history = getWatchHistoryService(db)
+      history.endSession(mediaId)
+      return { success: true }
+    } catch (e: any) {
+      console.error('[Watch] End session error:', e)
+      return { success: false }
+    }
+  })
+
+  ipcMain.handle('watch:get-resume-position', async (_ev, mediaId: string) => {
+    try {
+      const history = getWatchHistoryService(db)
+      return history.getResumePosition(mediaId)
+    } catch (e: any) {
+      return 0
+    }
+  })
+
+  ipcMain.handle('watch:get-history', async (_ev, limit?: number) => {
+    try {
+      const history = getWatchHistoryService(db)
+      return history.getRecentHistory(limit)
+    } catch (e: any) {
+      console.error('[Watch] Get history error:', e)
+      return []
+    }
+  })
+
+  ipcMain.handle('watch:get-stats', async () => {
+    try {
+      const history = getWatchHistoryService(db)
+      return history.getStats()
+    } catch (e: any) {
+      console.error('[Watch] Get stats error:', e)
+      return null
+    }
+  })
+
+  ipcMain.handle('watch:get-recommendations', async (_ev, limit?: number) => {
+    try {
+      const history = getWatchHistoryService(db)
+      return history.getRecommendations(limit)
+    } catch (e: any) {
+      console.error('[Watch] Get recommendations error:', e)
+      return []
+    }
+  })
+
+  ipcMain.handle('watch:get-continue-watching', async (_ev, limit?: number) => {
+    try {
+      const history = getWatchHistoryService(db)
+      return history.getContinueWatching(limit)
+    } catch (e: any) {
+      console.error('[Watch] Get continue watching error:', e)
+      return []
+    }
+  })
+
+  ipcMain.handle('watch:clear-history', async (_ev, olderThanDays?: number) => {
+    try {
+      const history = getWatchHistoryService(db)
+      const deleted = history.clearHistory(olderThanDays)
+      return { success: true, deleted }
+    } catch (e: any) {
+      console.error('[Watch] Clear history error:', e)
+      return { success: false, deleted: 0 }
+    }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AUTO-ORGANIZE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('organize:preview', async (_ev, targetDir: string, rules: OrganizeRule[], mediaIds?: string[]) => {
+    try {
+      const organize = getAutoOrganizeService(db)
+      return organize.previewOrganize(targetDir, rules, mediaIds)
+    } catch (e: any) {
+      console.error('[Organize] Preview error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('organize:execute', async (_ev, previews: any[]) => {
+    try {
+      const organize = getAutoOrganizeService(db)
+      return organize.executeOrganize(previews, (current, total) => {
+        broadcast('organize:progress', { current, total })
+      })
+    } catch (e: any) {
+      console.error('[Organize] Execute error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('organize:by-tags', async (_ev, targetDir: string, primaryTags: string[], mediaIds?: string[]) => {
+    try {
+      const organize = getAutoOrganizeService(db)
+      return organize.organizeByTags(targetDir, primaryTags, mediaIds)
+    } catch (e: any) {
+      console.error('[Organize] By tags error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('organize:flatten', async (_ev, targetDir: string, mediaIds?: string[]) => {
+    try {
+      const organize = getAutoOrganizeService(db)
+      return organize.flattenTo(targetDir, mediaIds)
+    } catch (e: any) {
+      console.error('[Organize] Flatten error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('organize:find-orphans', async (_ev, directories: string[]) => {
+    try {
+      const organize = getAutoOrganizeService(db)
+      return organize.findOrphans(directories)
+    } catch (e: any) {
+      console.error('[Organize] Find orphans error:', e)
+      return []
+    }
+  })
+
+  ipcMain.handle('organize:get-presets', async () => {
+    return ORGANIZE_PRESETS
   })
 
   // ═══════════════════════════════════════════════════════════════════════════
