@@ -262,8 +262,12 @@ Verify ALL sliders, toggles, dropdowns, and buttons function and persist correct
 - [x] **A-B Loop** - Loop a specific section of video (A key to set points, visual indicator on timeline)
 - [x] **Playback Speed Control** - Speed menu + keyboard shortcuts ([ / ] keys), shows current speed
 - [x] **Visual Feedback** - Loop region shown on progress bar, speed indicator badge
+- [x] **Theater Mode** - Expanded view (T key), 90% viewport, disables drag/resize
 
-**Build Stats:** 69 modules transformed, main.js 847.82 kB, renderer 1.50 MB
+### Library Enhancements (Latest Session):
+- [x] **Play Shuffled Button** - Quick action to open Feed with random videos
+
+**Build Stats:** 69 modules transformed, main.js 847.82 kB, renderer 1.51 MB
 
 ---
 
