@@ -3,7 +3,7 @@
 
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock } from 'lucide-react'
 
 interface MediaRow {
   id: string
@@ -1400,6 +1400,24 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                 <Bookmark size={16} />
               </button>
             )}
+
+            <button
+              onClick={() => {
+                window.api.invoke('watchLater:add', media.id)
+                  .then(() => {
+                    setBookmarkFeedback('Added to Watch Later')
+                    setTimeout(() => setBookmarkFeedback(null), 2000)
+                  })
+                  .catch(() => {
+                    setBookmarkFeedback('Failed to add to Watch Later')
+                    setTimeout(() => setBookmarkFeedback(null), 2000)
+                  })
+              }}
+              className="p-2 rounded-lg bg-white/10 hover:bg-cyan-500/60 transition"
+              title="Add to Watch Later"
+            >
+              <Clock size={16} />
+            </button>
 
             <button
               onClick={handleBlacklist}
