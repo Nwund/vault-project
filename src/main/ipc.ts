@@ -3279,6 +3279,170 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // DLNA TV STREAMING
+  // ═══════════════════════════════════════════════════════════════════════════
+  const { getDLNAService } = require('./services/dlna-service')
+
+  // Start scanning for DLNA devices
+  ipcMain.handle('dlna:startDiscovery', async () => {
+    try {
+      const dlna = getDLNAService()
+      await dlna.startDiscovery()
+      return { success: true }
+    } catch (e: any) {
+      console.error('[DLNA] Discovery error:', e)
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Stop scanning
+  ipcMain.handle('dlna:stopDiscovery', async () => {
+    try {
+      const dlna = getDLNAService()
+      dlna.stopDiscovery()
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Get discovered devices
+  ipcMain.handle('dlna:getDevices', async () => {
+    try {
+      const dlna = getDLNAService()
+      return dlna.getDevices()
+    } catch (e: any) {
+      console.error('[DLNA] Get devices error:', e)
+      return []
+    }
+  })
+
+  // Cast media to device
+  ipcMain.handle('dlna:cast', async (_ev, deviceId: string, mediaPath: string, options?: {
+    title?: string
+    type?: 'video' | 'image'
+    autoplay?: boolean
+    startPosition?: number
+  }) => {
+    try {
+      const dlna = getDLNAService()
+      await dlna.cast(deviceId, mediaPath, options)
+      return { success: true }
+    } catch (e: any) {
+      console.error('[DLNA] Cast error:', e)
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Playback controls
+  ipcMain.handle('dlna:play', async () => {
+    try {
+      const dlna = getDLNAService()
+      await dlna.play()
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  ipcMain.handle('dlna:pause', async () => {
+    try {
+      const dlna = getDLNAService()
+      await dlna.pause()
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  ipcMain.handle('dlna:stop', async () => {
+    try {
+      const dlna = getDLNAService()
+      await dlna.stop()
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  ipcMain.handle('dlna:seek', async (_ev, position: number) => {
+    try {
+      const dlna = getDLNAService()
+      await dlna.seek(position)
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  ipcMain.handle('dlna:setVolume', async (_ev, volume: number) => {
+    try {
+      const dlna = getDLNAService()
+      await dlna.setVolume(volume)
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Get playback status
+  ipcMain.handle('dlna:getStatus', async () => {
+    try {
+      const dlna = getDLNAService()
+      return await dlna.getPlaybackStatus()
+    } catch (e: any) {
+      return {
+        deviceId: '',
+        state: 'idle' as const,
+        currentTime: 0,
+        duration: 0,
+        volume: 1,
+        muted: false,
+        mediaPath: null
+      }
+    }
+  })
+
+  // Check if currently casting
+  ipcMain.handle('dlna:isCasting', async () => {
+    try {
+      const dlna = getDLNAService()
+      return dlna.isCasting()
+    } catch {
+      return false
+    }
+  })
+
+  // Get active device
+  ipcMain.handle('dlna:getActiveDevice', async () => {
+    try {
+      const dlna = getDLNAService()
+      return dlna.getActiveDevice()
+    } catch {
+      return null
+    }
+  })
+
+  // Set up DLNA event forwarding to renderer
+  try {
+    const dlnaService = getDLNAService()
+    dlnaService.on('deviceFound', (device: any) => {
+      broadcast('dlna:deviceFound', device)
+    })
+    dlnaService.on('statusUpdate', (status: any) => {
+      broadcast('dlna:statusUpdate', status)
+    })
+    dlnaService.on('discoveryStarted', () => {
+      broadcast('dlna:discoveryStarted')
+    })
+    dlnaService.on('discoveryStopped', () => {
+      broadcast('dlna:discoveryStopped')
+    })
+  } catch (e) {
+    console.warn('[DLNA] Failed to set up event listeners:', e)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // ERROR LOGGING - Persistent log management
   // ═══════════════════════════════════════════════════════════════════════════
   ipcMain.handle('logs:getRecent', async (_ev, limit?: number) => {

@@ -3,7 +3,7 @@
 
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle } from 'lucide-react'
 
 interface MediaRow {
   id: string
@@ -71,6 +71,32 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [analysisResult, setAnalysisResult] = useState<string | null>(null)
   const [isLiked, setIsLiked] = useState(false)
   const [transcodeRetried, setTranscodeRetried] = useState(false)
+  const [showQualityMenu, setShowQualityMenu] = useState(false)
+  const [currentResolution, setCurrentResolution] = useState<string>(() => {
+    // Load persisted resolution from localStorage
+    return localStorage.getItem('vault-video-resolution') || 'original'
+  })
+  const [lowQualityMode, setLowQualityMode] = useState(() => {
+    return localStorage.getItem('vault-low-quality-mode') === 'true'
+  })
+  const [lowQualityIntensity, setLowQualityIntensity] = useState(5)
+  // Scene markers state
+  const [markers, setMarkers] = useState<Array<{ id: string; timeSec: number; title: string }>>([])
+  const [showMarkerInput, setShowMarkerInput] = useState<{ timeSec: number } | null>(null)
+  const [newMarkerTitle, setNewMarkerTitle] = useState('')
+  // DLNA casting state
+  const [showCastMenu, setShowCastMenu] = useState(false)
+  const [dlnaDevices, setDlnaDevices] = useState<Array<{ id: string; name: string; host: string; type: string; status: string }>>([])
+  const [isScanning, setIsScanning] = useState(false)
+  const [isCasting, setIsCasting] = useState(false)
+  const [activeDevice, setActiveDevice] = useState<{ id: string; name: string } | null>(null)
+  const [castError, setCastError] = useState<string | null>(null)
+  // Image zoom and pan state
+  const [imageZoom, setImageZoom] = useState(1)
+  const [imagePan, setImagePan] = useState({ x: 0, y: 0 })
+  const [isPanning, setIsPanning] = useState(false)
+  const [panStart, setPanStart] = useState({ x: 0, y: 0, panX: 0, panY: 0 })
+  const imageContainerRef = useRef<HTMLDivElement>(null)
   const errorHandled = useRef(false) // Prevent duplicate error handling
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -99,7 +125,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const hasPrev = currentIndex > 0
   const hasNext = currentIndex < mediaList.length - 1
 
-  // Load video URL - prefer getPlayableUrl for transcode support, fallback to direct
+  // Load video URL - respect persisted resolution setting
   useEffect(() => {
     let alive = true
     setIsLoading(true)
@@ -109,6 +135,23 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     errorHandled.current = false
     ;(async () => {
       try {
+        // Check if we have a non-original resolution set
+        if (currentResolution !== 'original') {
+          const heightMap: Record<string, number> = {
+            '1080p': 1080,
+            '720p': 720,
+            '480p': 480,
+            '360p': 360,
+            '240p': 240,
+          }
+          const targetHeight = heightMap[currentResolution] || 720
+          const u = await window.api.media.getLowResUrl?.(media.id, targetHeight)
+          if (alive && u) {
+            setUrl(u as string)
+            return
+          }
+        }
+        // Load original or fallback
         const u = await window.api.media.getPlayableUrl(media.id)
         if (alive && u) {
           setUrl(u as string)
@@ -120,7 +163,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       if (alive) setUrl(u)
     })()
     return () => { alive = false }
-  }, [media.id, media.path])
+  }, [media.id, media.path, currentResolution])
 
   // Apply volume to video element
   useEffect(() => {
@@ -143,10 +186,86 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     }
   }, [currentIndex, hasNext, mediaList, onMediaChange])
 
+  // Image zoom handlers
+  const handleImageWheel = useCallback((e: React.WheelEvent) => {
+    if (media.type === 'video') return
+    e.preventDefault()
+    e.stopPropagation()
+    const delta = e.deltaY > 0 ? -0.1 : 0.1
+    setImageZoom(prev => Math.max(0.5, Math.min(5, prev + delta)))
+  }, [media.type])
+
+  const handleImageDoubleClick = useCallback(() => {
+    if (media.type === 'video') return
+    // Toggle between fit (1x) and 100% (actual size or 2x for small images)
+    if (imageZoom === 1) {
+      setImageZoom(2)
+      setImagePan({ x: 0, y: 0 })
+    } else {
+      setImageZoom(1)
+      setImagePan({ x: 0, y: 0 })
+    }
+  }, [media.type, imageZoom])
+
+  const handleImageMouseDown = useCallback((e: React.MouseEvent) => {
+    if (media.type === 'video' || imageZoom <= 1) return
+    e.preventDefault()
+    setIsPanning(true)
+    setPanStart({ x: e.clientX, y: e.clientY, panX: imagePan.x, panY: imagePan.y })
+  }, [media.type, imageZoom, imagePan])
+
+  const handleImageMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isPanning) return
+    const dx = e.clientX - panStart.x
+    const dy = e.clientY - panStart.y
+    setImagePan({ x: panStart.panX + dx, y: panStart.panY + dy })
+  }, [isPanning, panStart])
+
+  const handleImageMouseUp = useCallback(() => {
+    setIsPanning(false)
+  }, [])
+
+  // Reset zoom/pan when media changes
+  useEffect(() => {
+    setImageZoom(1)
+    setImagePan({ x: 0, y: 0 })
+  }, [media.id])
+
   // Record view
   useEffect(() => {
     window.api.media.recordView(media.id)
   }, [media.id])
+
+  // Load markers for current media
+  useEffect(() => {
+    if (media.type !== 'video') {
+      setMarkers([])
+      return
+    }
+    window.api.markers?.list?.(media.id)
+      .then((m: any) => setMarkers(m || []))
+      .catch(() => setMarkers([]))
+  }, [media.id, media.type])
+
+  // Preload next 3 videos for smoother navigation
+  useEffect(() => {
+    if (currentIndex < 0 || mediaList.length === 0) return
+
+    const preloadPromises: Promise<void>[] = []
+    for (let i = 1; i <= 3; i++) {
+      const nextIdx = currentIndex + i
+      if (nextIdx < mediaList.length) {
+        const nextMedia = mediaList[nextIdx]
+        // Preload the URL (just warm the cache, don't store result)
+        preloadPromises.push(
+          window.api.media.getPlayableUrl(nextMedia.id).catch(() => {})
+        )
+      }
+    }
+
+    // Execute preloads in parallel
+    Promise.all(preloadPromises)
+  }, [currentIndex, mediaList])
 
   // Loading timeout - if video doesn't load within 10 seconds, auto-skip or show error
   useEffect(() => {
@@ -256,6 +375,130 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       setIsLiked(wasLiked)
     }
   }, [isLiked, media.id])
+
+  const handleBlacklist = useCallback(async () => {
+    try {
+      await window.api.settings.blacklist?.addMedia?.(media.id)
+      // Move to next item and close if this was the only one
+      const currentIndex = mediaList.findIndex(m => m.id === media.id)
+      if (mediaList.length > 1) {
+        const nextIndex = currentIndex < mediaList.length - 1 ? currentIndex + 1 : currentIndex - 1
+        onMediaChange(mediaList[nextIndex].id)
+      } else {
+        onClose()
+      }
+    } catch (err) {
+      console.error('[FloatingPlayer] Blacklist failed:', err)
+    }
+  }, [media.id, mediaList, onMediaChange, onClose])
+
+  // DLNA casting handlers
+  const handleOpenCastMenu = useCallback(async () => {
+    setShowCastMenu(true)
+    setCastError(null)
+    setIsScanning(true)
+
+    try {
+      // Start discovery
+      await window.api.dlna?.startDiscovery?.()
+      // Get initial devices
+      const devices = await window.api.dlna?.getDevices?.() || []
+      setDlnaDevices(devices)
+    } catch (err: any) {
+      console.error('[DLNA] Discovery error:', err)
+      setCastError(err.message || 'Failed to scan for devices')
+    } finally {
+      setIsScanning(false)
+    }
+  }, [])
+
+  const handleCloseCastMenu = useCallback(async () => {
+    setShowCastMenu(false)
+    setCastError(null)
+    try {
+      await window.api.dlna?.stopDiscovery?.()
+    } catch {}
+  }, [])
+
+  const handleCastToDevice = useCallback(async (deviceId: string, deviceName: string) => {
+    if (media.type !== 'video') return
+
+    setCastError(null)
+    setIsCasting(true)
+
+    try {
+      // Pause local playback
+      if (videoRef.current) {
+        videoRef.current.pause()
+        setIsPaused(true)
+      }
+
+      const result = await window.api.dlna?.cast?.(deviceId, media.path, {
+        title: media.filename || 'Vault Video',
+        type: 'video',
+        autoplay: true,
+        startPosition: currentTime
+      })
+
+      if (result?.success) {
+        setActiveDevice({ id: deviceId, name: deviceName })
+        setShowCastMenu(false)
+      } else {
+        setCastError(result?.error || 'Failed to cast')
+        setIsCasting(false)
+      }
+    } catch (err: any) {
+      console.error('[DLNA] Cast error:', err)
+      setCastError(err.message || 'Cast failed')
+      setIsCasting(false)
+    }
+  }, [media.type, media.path, media.filename, currentTime])
+
+  const handleStopCasting = useCallback(async () => {
+    try {
+      await window.api.dlna?.stop?.()
+      setIsCasting(false)
+      setActiveDevice(null)
+      // Resume local playback
+      if (videoRef.current) {
+        videoRef.current.play()
+        setIsPaused(false)
+      }
+    } catch (err) {
+      console.error('[DLNA] Stop cast error:', err)
+    }
+  }, [])
+
+  // Listen for DLNA device discoveries
+  useEffect(() => {
+    if (!showCastMenu) return
+
+    const unsubscribe = window.api.dlna?.onDeviceFound?.((device: any) => {
+      setDlnaDevices(prev => {
+        const exists = prev.some(d => d.id === device.id)
+        if (exists) return prev
+        return [...prev, device]
+      })
+    })
+
+    return () => {
+      unsubscribe?.()
+    }
+  }, [showCastMenu])
+
+  // Check casting status on mount
+  useEffect(() => {
+    window.api.dlna?.isCasting?.().then((casting: boolean) => {
+      setIsCasting(casting)
+      if (casting) {
+        window.api.dlna?.getActiveDevice?.().then((device: any) => {
+          if (device) {
+            setActiveDevice({ id: device.id, name: device.name })
+          }
+        })
+      }
+    }).catch(() => {})
+  }, [])
 
   // Keyboard navigation
   useEffect(() => {
@@ -541,6 +784,71 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     return () => { alive = false }
   }, [media.id])
 
+  // Load playback settings for quality mode
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const settings = await window.api.settings.get()
+        const playback = settings?.playback || {}
+        setLowQualityMode(playback.lowQualityMode ?? false)
+        setLowQualityIntensity(playback.lowQualityIntensity ?? 5)
+        if (playback.defaultResolution && playback.defaultResolution !== 'original') {
+          setCurrentResolution(playback.defaultResolution)
+        }
+      } catch {}
+    })()
+  }, [])
+
+  // Handle resolution change - persists across all videos
+  const handleResolutionChange = useCallback(async (resolution: string) => {
+    setCurrentResolution(resolution)
+    localStorage.setItem('vault-video-resolution', resolution)
+    setShowQualityMenu(false)
+    setIsLoading(true)
+    setHasError(false)
+    errorHandled.current = false
+
+    try {
+      if (resolution === 'original') {
+        // Load original quality
+        const u = await window.api.media.getPlayableUrl(media.id)
+        if (u) {
+          setUrl(u as string)
+          return
+        }
+      } else {
+        // Request transcoded version at specific resolution
+        const heightMap: Record<string, number> = {
+          '1080p': 1080,
+          '720p': 720,
+          '480p': 480,
+          '360p': 360,
+          '240p': 240,
+        }
+        const targetHeight = heightMap[resolution] || 720
+        const u = await window.api.media.getLowResUrl?.(media.id, targetHeight)
+        if (u) {
+          setUrl(u as string)
+          return
+        }
+      }
+      // Fallback to original if transcoding fails
+      const u = await toFileUrlCached(media.path)
+      setUrl(u)
+    } catch (e) {
+      console.error('[FloatingPlayer] Resolution change failed:', e)
+      const u = await toFileUrlCached(media.path)
+      setUrl(u)
+    }
+  }, [media.id, media.path])
+
+  // Toggle low quality mode
+  const toggleLowQualityMode = useCallback(() => {
+    const newValue = !lowQualityMode
+    setLowQualityMode(newValue)
+    localStorage.setItem('vault-low-quality-mode', String(newValue))
+  }, [lowQualityMode])
+
   const handleRevealInFolder = async () => {
     await window.api.shell.showItemInFolder(media.path)
   }
@@ -728,6 +1036,10 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
             playsInline
             preload="auto"
             className={`w-full h-full object-contain bg-black ${isFullscreen ? '' : ''}`}
+            style={lowQualityMode ? {
+              filter: `blur(${lowQualityIntensity * 0.15}px) contrast(${1 + lowQualityIntensity * 0.05}) saturate(${Math.max(0.5, 1 - lowQualityIntensity * 0.05)})`,
+              imageRendering: lowQualityIntensity > 5 ? 'pixelated' : 'auto',
+            } : undefined}
             onClick={togglePlay}
             onCanPlay={handleCanPlay}
             onLoadedMetadata={(e) => {
@@ -759,13 +1071,41 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         )
       ) : (
         url ? (
-          <img
-            src={url}
-            alt={filename}
-            className="w-full h-full object-contain bg-black"
-            onLoad={() => setIsLoading(false)}
-            onError={handleError}
-          />
+          <div
+            ref={imageContainerRef}
+            className="w-full h-full bg-black overflow-hidden"
+            onWheel={handleImageWheel}
+            onDoubleClick={handleImageDoubleClick}
+            onMouseDown={handleImageMouseDown}
+            onMouseMove={handleImageMouseMove}
+            onMouseUp={handleImageMouseUp}
+            onMouseLeave={handleImageMouseUp}
+            style={{ cursor: imageZoom > 1 ? (isPanning ? 'grabbing' : 'grab') : 'zoom-in' }}
+          >
+            <img
+              src={url}
+              alt={filename}
+              className="w-full h-full object-contain select-none"
+              draggable={false}
+              style={{
+                transform: `scale(${imageZoom}) translate(${imagePan.x / imageZoom}px, ${imagePan.y / imageZoom}px)`,
+                transformOrigin: 'center center',
+                transition: isPanning ? 'none' : 'transform 0.1s ease-out',
+                ...(lowQualityMode ? {
+                  filter: `blur(${lowQualityIntensity * 0.2}px) contrast(${1 + lowQualityIntensity * 0.05}) saturate(${Math.max(0.5, 1 - lowQualityIntensity * 0.05)})`,
+                  imageRendering: lowQualityIntensity > 5 ? 'pixelated' : 'auto',
+                } : {})
+              }}
+              onLoad={() => setIsLoading(false)}
+              onError={handleError}
+            />
+            {/* Zoom level indicator */}
+            {imageZoom !== 1 && (
+              <div className="absolute bottom-16 left-1/2 -translate-x-1/2 px-3 py-1 bg-black/70 rounded-full text-xs text-white/80 backdrop-blur-sm">
+                {Math.round(imageZoom * 100)}%
+              </div>
+            )}
+          </div>
         ) : (
           <div className="w-full h-full bg-black" />
         )
@@ -780,14 +1120,101 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         {media.type === 'video' && duration > 0 && (
           <div
             ref={progressRef}
-            className="w-full h-1 bg-white/20 rounded-full mb-3 cursor-pointer group"
+            className="w-full h-1.5 bg-white/20 rounded-full mb-3 cursor-pointer group relative"
             onClick={handleProgressClick}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              if (progressRef.current && duration > 0) {
+                const rect = progressRef.current.getBoundingClientRect()
+                const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+                const timeSec = percent * duration
+                setShowMarkerInput({ timeSec })
+                setNewMarkerTitle('')
+              }
+            }}
           >
+            {/* Progress fill */}
             <div
               className="h-full bg-white/80 rounded-full relative"
               style={{ width: `${(currentTime / duration) * 100}%` }}
             >
               <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition" />
+            </div>
+            {/* Markers */}
+            {markers.map((marker) => (
+              <div
+                key={marker.id}
+                className="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-amber-400 rounded-full cursor-pointer hover:scale-150 transition z-10"
+                style={{ left: `${(marker.timeSec / duration) * 100}%`, marginLeft: '-4px' }}
+                title={`${marker.title} (${formatDuration(marker.timeSec)})`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (videoRef.current) {
+                    videoRef.current.currentTime = marker.timeSec
+                  }
+                }}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Marker input popup */}
+        {showMarkerInput && (
+          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/95 backdrop-blur-xl rounded-xl border border-white/20 p-3 z-50 min-w-[200px]">
+            <div className="text-xs text-white/60 mb-2">
+              Add marker at {formatDuration(showMarkerInput.timeSec)}
+            </div>
+            <input
+              type="text"
+              value={newMarkerTitle}
+              onChange={(e) => setNewMarkerTitle(e.target.value)}
+              placeholder="Marker title..."
+              className="w-full px-2 py-1.5 text-xs bg-white/10 border border-white/20 rounded-lg outline-none focus:border-white/40 mb-2"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newMarkerTitle.trim()) {
+                  window.api.markers?.upsert?.({
+                    mediaId: media.id,
+                    timeSec: showMarkerInput.timeSec,
+                    title: newMarkerTitle.trim()
+                  }).then(() => {
+                    // Reload markers
+                    return window.api.markers?.list?.(media.id)
+                  }).then((m: any) => {
+                    setMarkers(m || [])
+                    setShowMarkerInput(null)
+                    setNewMarkerTitle('')
+                  })
+                } else if (e.key === 'Escape') {
+                  setShowMarkerInput(null)
+                }
+              }}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (!newMarkerTitle.trim()) return
+                  window.api.markers?.upsert?.({
+                    mediaId: media.id,
+                    timeSec: showMarkerInput.timeSec,
+                    title: newMarkerTitle.trim()
+                  }).then(() => window.api.markers?.list?.(media.id))
+                    .then((m: any) => {
+                      setMarkers(m || [])
+                      setShowMarkerInput(null)
+                      setNewMarkerTitle('')
+                    })
+                }}
+                className="flex-1 px-3 py-1.5 text-xs bg-amber-500/80 hover:bg-amber-500 rounded-lg transition"
+              >
+                Add
+              </button>
+              <button
+                onClick={() => setShowMarkerInput(null)}
+                className="px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-lg transition"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         )}
@@ -875,19 +1302,34 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                       type="range"
                       min="0"
                       max="1"
-                      step="0.05"
+                      step="0.01"
                       value={volume}
+                      onInput={(e) => {
+                        const v = parseFloat((e.target as HTMLInputElement).value)
+                        if (v > 0) prevVolumeRef.current = v
+                        setVolume(v)
+                        if (v > 0 && isMuted) setIsMuted(false)
+                      }}
                       onChange={(e) => {
                         const v = parseFloat(e.target.value)
                         if (v > 0) prevVolumeRef.current = v
                         setVolume(v)
                         if (v > 0 && isMuted) setIsMuted(false)
                       }}
-                      onPointerDown={(e) => {
+                      onMouseDown={(e) => {
                         e.stopPropagation()
                         setVolumeDragging(true)
                       }}
-                      onPointerUp={() => setVolumeDragging(false)}
+                      onMouseUp={() => setVolumeDragging(false)}
+                      onPointerDown={(e) => {
+                        e.stopPropagation()
+                        e.currentTarget.setPointerCapture(e.pointerId)
+                        setVolumeDragging(true)
+                      }}
+                      onPointerUp={(e) => {
+                        e.currentTarget.releasePointerCapture(e.pointerId)
+                        setVolumeDragging(false)
+                      }}
                       onLostPointerCapture={() => setVolumeDragging(false)}
                       className="volume-slider w-24 cursor-pointer"
                       style={{
@@ -914,12 +1356,93 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
             </button>
 
             <button
+              onClick={handleBlacklist}
+              className="p-2 rounded-lg bg-white/10 hover:bg-red-500/60 transition"
+              title="Blacklist this item"
+            >
+              <Ban size={16} />
+            </button>
+
+            <button
               onClick={handleRevealInFolder}
               className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition"
               title="Show in folder"
             >
               <FolderOpen size={16} />
             </button>
+
+            {/* Low Quality Mode Toggle */}
+            <button
+              onClick={toggleLowQualityMode}
+              className={`p-2 rounded-lg transition ${lowQualityMode ? 'bg-amber-500/70 shadow-[0_0_10px_rgba(245,158,11,0.4)]' : 'bg-white/10 hover:bg-white/20'}`}
+              title={lowQualityMode ? 'Low Quality Mode ON (click to disable)' : 'Enable Low Quality Mode'}
+            >
+              <Tv size={16} />
+            </button>
+
+            {/* Quality/Resolution Selector */}
+            {media.type === 'video' && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowQualityMenu(!showQualityMenu)}
+                  className={`p-2 rounded-lg transition ${showQualityMenu ? 'bg-white/30' : 'bg-white/10 hover:bg-white/20'}`}
+                  title="Video Quality"
+                >
+                  <Settings2 size={16} />
+                </button>
+                {showQualityMenu && (
+                  <div
+                    className="absolute bottom-full right-0 mb-2 py-2 bg-black/95 rounded-xl border border-white/20 shadow-2xl min-w-[140px] z-50"
+                    onMouseLeave={() => setShowQualityMenu(false)}
+                  >
+                    <div className="px-3 py-1 text-[10px] text-white/50 uppercase tracking-wider">Quality</div>
+                    {['original', '1080p', '720p', '480p', '360p', '240p'].map((res) => (
+                      <button
+                        key={res}
+                        onClick={() => handleResolutionChange(res)}
+                        className={`w-full px-3 py-1.5 text-left text-sm transition hover:bg-white/10 flex items-center justify-between ${
+                          currentResolution === res ? 'text-[var(--primary)]' : 'text-white/80'
+                        }`}
+                      >
+                        <span>{res === 'original' ? 'Original' : res}</span>
+                        {currentResolution === res && <span className="text-xs">✓</span>}
+                      </button>
+                    ))}
+                    {lowQualityMode && (
+                      <>
+                        <div className="border-t border-white/10 my-1" />
+                        <div className="px-3 py-1 text-[10px] text-pink-400/80">
+                          Low Quality Mode Active
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* DLNA Cast Button */}
+            {media.type === 'video' && (
+              <div className="relative">
+                {isCasting && activeDevice ? (
+                  <button
+                    onClick={handleStopCasting}
+                    className="p-2 rounded-lg bg-blue-500/80 hover:bg-red-500/80 transition shadow-[0_0_12px_rgba(59,130,246,0.5)]"
+                    title={`Casting to ${activeDevice.name} - Click to stop`}
+                  >
+                    <StopCircle size={16} />
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleOpenCastMenu}
+                    className={`p-2 rounded-lg transition ${showCastMenu ? 'bg-blue-500/80' : 'bg-white/10 hover:bg-blue-500/60'}`}
+                    title="Cast to TV"
+                  >
+                    <Cast size={16} />
+                  </button>
+                )}
+              </div>
+            )}
 
             {media.type === 'video' && (
               <button
@@ -959,6 +1482,120 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
             >
               <X size={20} />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* DLNA Cast Menu Modal */}
+      {showCastMenu && (
+        <div
+          className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center"
+          onClick={handleCloseCastMenu}
+        >
+          <div
+            className="bg-zinc-900 rounded-2xl border border-white/20 shadow-2xl w-[90%] max-w-[360px] max-h-[80%] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Cast size={18} className="text-blue-400" />
+                <span className="font-medium">Cast to TV</span>
+              </div>
+              <button
+                onClick={handleCloseCastMenu}
+                className="p-1 hover:bg-white/10 rounded-lg transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-4 max-h-[400px] overflow-y-auto">
+              {/* Casting indicator */}
+              {isCasting && activeDevice && (
+                <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/30 rounded-xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Monitor size={16} className="text-blue-400" />
+                      <span className="text-sm">Casting to {activeDevice.name}</span>
+                    </div>
+                    <button
+                      onClick={handleStopCasting}
+                      className="px-3 py-1 text-xs bg-red-500/80 hover:bg-red-500 rounded-lg transition"
+                    >
+                      Stop
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Error message */}
+              {castError && (
+                <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-xl text-sm text-red-300">
+                  {castError}
+                </div>
+              )}
+
+              {/* Scanning indicator */}
+              {isScanning && (
+                <div className="flex items-center justify-center gap-2 py-4 text-white/60">
+                  <Loader2 size={18} className="animate-spin" />
+                  <span className="text-sm">Scanning for devices...</span>
+                </div>
+              )}
+
+              {/* Device list */}
+              {dlnaDevices.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="text-xs text-white/50 uppercase tracking-wider mb-2">
+                    Available Devices
+                  </div>
+                  {dlnaDevices.map((device) => (
+                    <button
+                      key={device.id}
+                      onClick={() => handleCastToDevice(device.id, device.name)}
+                      disabled={isCasting && activeDevice?.id === device.id}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl transition ${
+                        isCasting && activeDevice?.id === device.id
+                          ? 'bg-blue-500/30 border border-blue-500/50'
+                          : 'bg-white/5 hover:bg-white/10 border border-white/10'
+                      }`}
+                    >
+                      <Monitor size={20} className={
+                        isCasting && activeDevice?.id === device.id ? 'text-blue-400' : 'text-white/60'
+                      } />
+                      <div className="flex-1 text-left">
+                        <div className="text-sm font-medium">{device.name}</div>
+                        <div className="text-xs text-white/40">{device.host}</div>
+                      </div>
+                      {isCasting && activeDevice?.id === device.id && (
+                        <div className="text-xs text-blue-400">Playing</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : !isScanning ? (
+                <div className="text-center py-8 text-white/40">
+                  <Monitor size={32} className="mx-auto mb-2 opacity-50" />
+                  <div className="text-sm">No devices found</div>
+                  <div className="text-xs mt-1">Make sure your TV is on the same network</div>
+                  <button
+                    onClick={handleOpenCastMenu}
+                    className="mt-4 px-4 py-2 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition"
+                  >
+                    Scan Again
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Footer */}
+            <div className="px-4 py-3 border-t border-white/10 bg-white/5">
+              <div className="text-[10px] text-white/40 text-center">
+                Supports DLNA/UPnP compatible TVs and devices
+              </div>
+            </div>
           </div>
         </div>
       )}

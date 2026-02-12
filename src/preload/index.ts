@@ -664,6 +664,62 @@ const api = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // DLNA TV STREAMING
+  // ═══════════════════════════════════════════════════════════════════════════
+  dlna: {
+    // Device discovery
+    startDiscovery: () => invoke<{ success: boolean; error?: string }>('dlna:startDiscovery'),
+    stopDiscovery: () => invoke<{ success: boolean; error?: string }>('dlna:stopDiscovery'),
+    getDevices: () => invoke<Array<{
+      id: string
+      name: string
+      host: string
+      type: 'dlna' | 'chromecast'
+      status: 'idle' | 'playing' | 'paused' | 'buffering'
+    }>>('dlna:getDevices'),
+
+    // Casting
+    cast: (deviceId: string, mediaPath: string, options?: {
+      title?: string
+      type?: 'video' | 'image'
+      autoplay?: boolean
+      startPosition?: number
+    }) => invoke<{ success: boolean; error?: string }>('dlna:cast', deviceId, mediaPath, options),
+
+    // Playback controls
+    play: () => invoke<{ success: boolean; error?: string }>('dlna:play'),
+    pause: () => invoke<{ success: boolean; error?: string }>('dlna:pause'),
+    stop: () => invoke<{ success: boolean; error?: string }>('dlna:stop'),
+    seek: (position: number) => invoke<{ success: boolean; error?: string }>('dlna:seek', position),
+    setVolume: (volume: number) => invoke<{ success: boolean; error?: string }>('dlna:setVolume', volume),
+
+    // Status
+    getStatus: () => invoke<{
+      deviceId: string
+      state: 'idle' | 'playing' | 'paused' | 'buffering' | 'stopped'
+      currentTime: number
+      duration: number
+      volume: number
+      muted: boolean
+      mediaPath: string | null
+    }>('dlna:getStatus'),
+    isCasting: () => invoke<boolean>('dlna:isCasting'),
+    getActiveDevice: () => invoke<{
+      id: string
+      name: string
+      host: string
+      type: 'dlna' | 'chromecast'
+      status: 'idle' | 'playing' | 'paused' | 'buffering'
+    } | null>('dlna:getActiveDevice'),
+
+    // Event subscriptions
+    onDeviceFound: (cb: (device: any) => void) => on('dlna:deviceFound', cb),
+    onStatusUpdate: (cb: (status: any) => void) => on('dlna:statusUpdate', cb),
+    onDiscoveryStarted: (cb: () => void) => on('dlna:discoveryStarted', cb),
+    onDiscoveryStopped: (cb: () => void) => on('dlna:discoveryStopped', cb),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // SHELL
   // ═══════════════════════════════════════════════════════════════════════════
   shell: {

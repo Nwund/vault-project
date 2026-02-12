@@ -1,6 +1,6 @@
 {
   "name": "vault",
-  "version": "2.1.0",
+  "version": "2.1.5",
   "description": "Your private media sanctuary with AI companion",
   "author": "Vault Team",
   "private": true,
@@ -21,6 +21,7 @@
     "better-sqlite3": "^11.10.0",
     "canvas-confetti": "^1.9.4",
     "chokidar": "^3.6.0",
+    "dlnacasts2": "^0.2.0",
     "electron-store": "^10.0.0",
     "fast-glob": "^3.3.2",
     "ffmpeg-static": "^5.3.0",
@@ -29,9 +30,11 @@
     "gsap": "^3.14.2",
     "lucide-react": "^0.516.0",
     "nanoid": "^5.0.9",
+    "onnxruntime-node": "^1.24.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-window": "^2.2.5",
+    "sharp": "^0.34.5",
     "simplex-noise": "^4.0.3"
   },
   "devDependencies": {
