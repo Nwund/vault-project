@@ -2322,7 +2322,7 @@ export interface ArousalEffectsConfig {
   climaxTrigger?: number
   climaxType?: 'cum' | 'squirt' | 'orgasm'
   onClimaxComplete?: () => void
-  // New effects
+  // Visual effects
   inversion?: boolean
   inversionIntensity?: number
   thermal?: boolean
@@ -2337,6 +2337,44 @@ export interface ArousalEffectsConfig {
   breatheSync?: boolean
   colorCycle?: boolean
   vaporwave?: boolean
+  // Ambient overlays
+  hearts?: boolean
+  heartsColor?: string
+  rain?: boolean
+  rainColor?: string
+  glitch?: boolean
+  bubbles?: boolean
+  bubblesColor?: string
+  matrixRain?: boolean
+  matrixRainColor?: string
+  confetti?: boolean
+  // New 15 overlays
+  smoke?: boolean
+  smokeColor?: string
+  lightning?: boolean
+  lightningColor?: string
+  aurora?: boolean
+  fireflies?: boolean
+  firefliesColor?: string
+  snow?: boolean
+  lensFlare?: boolean
+  lensFlarePosition?: { x: number; y: number }
+  waterRipple?: boolean
+  waterRippleColor?: string
+  kaleidoscope?: boolean
+  kaleidoscopeSpeed?: number
+  pulseRing?: boolean
+  pulseRingColor?: string
+  fireEmbers?: boolean
+  prismaticRainbow?: boolean
+  prismaticRainbowSpeed?: number
+  scanlineSweep?: boolean
+  scanlineSweepColor?: string
+  plasmaWave?: boolean
+  neonDrip?: boolean
+  neonDripColor?: string
+  staticNoise?: boolean
+  staticNoiseSpeed?: number
 }
 
 export const ArousalEffects: React.FC<ArousalEffectsConfig> = ({
@@ -2362,7 +2400,7 @@ export const ArousalEffects: React.FC<ArousalEffectsConfig> = ({
   climaxTrigger = 0,
   climaxType = 'orgasm',
   onClimaxComplete,
-  // New effects
+  // Visual effects
   inversion = false,
   inversionIntensity = 1,
   thermal = false,
@@ -2377,6 +2415,44 @@ export const ArousalEffects: React.FC<ArousalEffectsConfig> = ({
   breatheSync = false,
   colorCycle = false,
   vaporwave = false,
+  // Ambient overlays
+  hearts = false,
+  heartsColor = '#ff6b9d',
+  rain = false,
+  rainColor = 'rgba(150, 200, 255, 0.4)',
+  glitch = false,
+  bubbles = false,
+  bubblesColor = 'rgba(255, 255, 255, 0.3)',
+  matrixRain = false,
+  matrixRainColor = '#00ff00',
+  confetti = false,
+  // New 15 overlays
+  smoke = false,
+  smokeColor = 'rgba(200, 200, 200, 0.3)',
+  lightning = false,
+  lightningColor = 'rgba(200, 220, 255, 0.8)',
+  aurora = false,
+  fireflies = false,
+  firefliesColor = '#ffff00',
+  snow = false,
+  lensFlare = false,
+  lensFlarePosition = { x: 20, y: 20 },
+  waterRipple = false,
+  waterRippleColor = 'rgba(100, 200, 255, 0.3)',
+  kaleidoscope = false,
+  kaleidoscopeSpeed = 5,
+  pulseRing = false,
+  pulseRingColor = '#ff6b9d',
+  fireEmbers = false,
+  prismaticRainbow = false,
+  prismaticRainbowSpeed = 5,
+  scanlineSweep = false,
+  scanlineSweepColor = 'rgba(100, 255, 150, 0.5)',
+  plasmaWave = false,
+  neonDrip = false,
+  neonDripColor = '#ff00ff',
+  staticNoise = false,
+  staticNoiseSpeed = 5,
 }) => {
   // Calculate BPM based on heat level (60-120 BPM)
   const bpm = 60 + heatLevel * 6
@@ -2393,7 +2469,7 @@ export const ArousalEffects: React.FC<ArousalEffectsConfig> = ({
       {filmGrain && <FilmGrainOverlay opacity={0.12 + heatLevel * 0.01} scanlines={true} scanlineIntensity={0.25 + heatLevel * 0.02} />}
       {dreamyHaze && <DreamyHazeOverlay intensity={heatLevel} />}
 
-      {/* NEW: Advanced visual effects */}
+      {/* Visual effects */}
       {inversion && <InversionOverlay intensity={inversionIntensity} />}
       {thermal && <ThermalOverlay intensity={thermalIntensity} />}
       {hypnoSpiral && <HypnoSpiralOverlay speed={hypnoSpiralSpeed} opacity={0.1 + heatLevel * 0.02} />}
@@ -2404,6 +2480,31 @@ export const ArousalEffects: React.FC<ArousalEffectsConfig> = ({
       {breatheSync && <BreatheSyncOverlay />}
       {colorCycle && <ColorCycleOverlay speed={heatLevel} opacity={0.1 + heatLevel * 0.02} />}
       {vaporwave && <VaporwaveOverlay opacity={0.15 + heatLevel * 0.02} />}
+
+      {/* Ambient particle overlays */}
+      {hearts && <HeartsOverlay intensity={heatLevel} color={heartsColor} />}
+      {rain && <RainOverlay intensity={heatLevel} color={rainColor} />}
+      {glitch && <GlitchOverlay intensity={heatLevel} />}
+      {bubbles && <BubblesOverlay intensity={heatLevel} color={bubblesColor} />}
+      {matrixRain && <MatrixRainOverlay intensity={heatLevel} color={matrixRainColor} />}
+      {confetti && <ConfettiOverlay intensity={heatLevel} />}
+
+      {/* New 15 ambient overlays */}
+      {smoke && <SmokeOverlay intensity={heatLevel} color={smokeColor} />}
+      {lightning && <LightningOverlay intensity={heatLevel} color={lightningColor} />}
+      {aurora && <AuroraOverlay intensity={heatLevel} />}
+      {fireflies && <FirefliesOverlay intensity={heatLevel} color={firefliesColor} />}
+      {snow && <SnowOverlay intensity={heatLevel} />}
+      {lensFlare && <LensFlareOverlay intensity={heatLevel} position={lensFlarePosition} />}
+      {waterRipple && <WaterRippleOverlay intensity={heatLevel} color={waterRippleColor} />}
+      {kaleidoscope && <KaleidoscopeOverlay intensity={heatLevel} speed={kaleidoscopeSpeed} />}
+      {pulseRing && <PulseRingOverlay intensity={heatLevel} color={pulseRingColor} />}
+      {fireEmbers && <FireEmbersOverlay intensity={heatLevel} />}
+      {prismaticRainbow && <PrismaticRainbowOverlay intensity={heatLevel} speed={prismaticRainbowSpeed} />}
+      {scanlineSweep && <ScanlineSweepOverlay intensity={heatLevel} color={scanlineSweepColor} />}
+      {plasmaWave && <PlasmaWaveOverlay intensity={heatLevel} />}
+      {neonDrip && <NeonDripOverlay intensity={heatLevel} color={neonDripColor} />}
+      {staticNoise && <StaticNoiseOverlay intensity={heatLevel} speed={staticNoiseSpeed} />}
 
       {/* Heat-based effects */}
       {particles && heatLevel >= 3 && <PleasureParticles count={heatLevel * 2} />}
@@ -3266,6 +3367,1196 @@ export const ConfettiOverlay: React.FC<{
     <canvas
       ref={canvasRef}
       className="fixed inset-0 pointer-events-none z-30"
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SMOKE/FOG OVERLAY - Drifting smoke/fog effect
+// ═══════════════════════════════════════════════════════════════════════════
+export const SmokeOverlay: React.FC<{
+  intensity?: number // 1-10
+  color?: string
+}> = ({ intensity = 5, color = 'rgba(200, 200, 200, 0.3)' }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    interface SmokeParticle {
+      x: number
+      y: number
+      radius: number
+      speedX: number
+      speedY: number
+      opacity: number
+      phase: number
+    }
+
+    const particles: SmokeParticle[] = []
+    const count = Math.floor(15 + intensity * 3)
+
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: canvas.height + Math.random() * 200,
+        radius: 80 + Math.random() * 120,
+        speedX: (Math.random() - 0.5) * 0.5,
+        speedY: -0.3 - Math.random() * 0.5,
+        opacity: 0.1 + Math.random() * 0.2 * (intensity / 10),
+        phase: Math.random() * Math.PI * 2,
+      })
+    }
+
+    let animationId: number
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      particles.forEach((p, i) => {
+        p.x += p.speedX + Math.sin(p.phase) * 0.5
+        p.y += p.speedY
+        p.phase += 0.01
+
+        const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius)
+        gradient.addColorStop(0, color.replace(/[\d.]+\)$/, `${p.opacity})`))
+        gradient.addColorStop(0.5, color.replace(/[\d.]+\)$/, `${p.opacity * 0.5})`))
+        gradient.addColorStop(1, 'transparent')
+
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2)
+        ctx.fillStyle = gradient
+        ctx.fill()
+
+        if (p.y < -p.radius * 2) {
+          particles[i] = {
+            x: Math.random() * canvas.width,
+            y: canvas.height + p.radius,
+            radius: p.radius,
+            speedX: (Math.random() - 0.5) * 0.5,
+            speedY: -0.3 - Math.random() * 0.5,
+            opacity: p.opacity,
+            phase: Math.random() * Math.PI * 2,
+          }
+        }
+      })
+
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', resize)
+    }
+  }, [intensity, color])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-25"
+      style={{ mixBlendMode: 'screen' }}
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LIGHTNING OVERLAY - Dramatic lightning flashes
+// ═══════════════════════════════════════════════════════════════════════════
+export const LightningOverlay: React.FC<{
+  intensity?: number // 1-10
+  color?: string
+}> = ({ intensity = 5, color = 'rgba(200, 220, 255, 0.8)' }) => {
+  const [flash, setFlash] = useState<{ active: boolean; x: number; branches: { points: {x: number, y: number}[] }[] }>({
+    active: false,
+    x: 50,
+    branches: []
+  })
+
+  useEffect(() => {
+    const triggerLightning = () => {
+      if (Math.random() < 0.02 + intensity * 0.01) {
+        const x = Math.random() * 100
+        const branches: { points: {x: number, y: number}[] }[] = []
+
+        // Create main bolt
+        const mainBolt: {x: number, y: number}[] = []
+        let currentX = x
+        let currentY = 0
+
+        while (currentY < 100) {
+          mainBolt.push({ x: currentX, y: currentY })
+          currentX += (Math.random() - 0.5) * 15
+          currentY += 5 + Math.random() * 10
+        }
+        branches.push({ points: mainBolt })
+
+        // Create sub-branches
+        for (let i = 0; i < 2 + Math.floor(intensity / 3); i++) {
+          const startPoint = mainBolt[Math.floor(Math.random() * (mainBolt.length - 3)) + 1]
+          if (startPoint) {
+            const subBolt: {x: number, y: number}[] = [{ ...startPoint }]
+            let subX = startPoint.x
+            let subY = startPoint.y
+            const direction = Math.random() > 0.5 ? 1 : -1
+
+            for (let j = 0; j < 3 + Math.floor(Math.random() * 3); j++) {
+              subX += direction * (5 + Math.random() * 10)
+              subY += 5 + Math.random() * 8
+              subBolt.push({ x: subX, y: subY })
+            }
+            branches.push({ points: subBolt })
+          }
+        }
+
+        setFlash({ active: true, x, branches })
+
+        setTimeout(() => {
+          setFlash(prev => ({ ...prev, active: false }))
+        }, 100 + Math.random() * 150)
+      }
+    }
+
+    const interval = setInterval(triggerLightning, 100)
+    return () => clearInterval(interval)
+  }, [intensity])
+
+  if (!flash.active) return null
+
+  return (
+    <>
+      {/* Screen flash */}
+      <div
+        className="fixed inset-0 pointer-events-none z-50"
+        style={{
+          background: `radial-gradient(circle at ${flash.x}% 0%, ${color}, transparent 70%)`,
+          animation: 'lightningFlash 0.15s ease-out',
+        }}
+      />
+
+      {/* Lightning bolts */}
+      <svg className="fixed inset-0 pointer-events-none z-50" style={{ width: '100%', height: '100%' }}>
+        {flash.branches.map((branch, bi) => (
+          <polyline
+            key={bi}
+            points={branch.points.map(p => `${p.x}%,${p.y}%`).join(' ')}
+            fill="none"
+            stroke={color}
+            strokeWidth={bi === 0 ? 3 : 2}
+            strokeLinecap="round"
+            style={{ filter: 'drop-shadow(0 0 10px white) drop-shadow(0 0 20px white)' }}
+          />
+        ))}
+      </svg>
+
+      <style>{`
+        @keyframes lightningFlash {
+          0% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+      `}</style>
+    </>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AURORA OVERLAY - Northern lights effect
+// ═══════════════════════════════════════════════════════════════════════════
+export const AuroraOverlay: React.FC<{
+  intensity?: number // 1-10
+}> = ({ intensity = 5 }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    let time = 0
+    const colors = [
+      'rgba(0, 255, 150, 0.3)',
+      'rgba(0, 200, 255, 0.25)',
+      'rgba(100, 0, 255, 0.2)',
+      'rgba(255, 0, 150, 0.15)',
+    ]
+
+    let animationId: number
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      time += 0.003
+
+      colors.forEach((color, i) => {
+        const offset = i * 0.5
+        const amplitude = 50 + intensity * 10
+        const frequency = 0.002 + i * 0.0005
+
+        ctx.beginPath()
+        ctx.moveTo(0, canvas.height * 0.3)
+
+        for (let x = 0; x <= canvas.width; x += 10) {
+          const y = canvas.height * 0.3 +
+            Math.sin(x * frequency + time + offset) * amplitude +
+            Math.sin(x * frequency * 2 + time * 1.5 + offset) * (amplitude * 0.5)
+
+          ctx.lineTo(x, y)
+        }
+
+        ctx.lineTo(canvas.width, 0)
+        ctx.lineTo(0, 0)
+        ctx.closePath()
+
+        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.5)
+        gradient.addColorStop(0, 'transparent')
+        gradient.addColorStop(0.5, color)
+        gradient.addColorStop(1, 'transparent')
+
+        ctx.fillStyle = gradient
+        ctx.fill()
+      })
+
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', resize)
+    }
+  }, [intensity])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-20"
+      style={{ mixBlendMode: 'screen', filter: 'blur(20px)' }}
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FIREFLIES OVERLAY - Glowing fireflies floating around
+// ═══════════════════════════════════════════════════════════════════════════
+export const FirefliesOverlay: React.FC<{
+  intensity?: number // 1-10
+  color?: string
+}> = ({ intensity = 5, color = '#ffff00' }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    interface Firefly {
+      x: number
+      y: number
+      size: number
+      speedX: number
+      speedY: number
+      glowPhase: number
+      glowSpeed: number
+      wanderAngle: number
+    }
+
+    const fireflies: Firefly[] = []
+    const count = Math.floor(20 + intensity * 5)
+
+    for (let i = 0; i < count; i++) {
+      fireflies.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: 2 + Math.random() * 3,
+        speedX: (Math.random() - 0.5) * 0.5,
+        speedY: (Math.random() - 0.5) * 0.5,
+        glowPhase: Math.random() * Math.PI * 2,
+        glowSpeed: 0.02 + Math.random() * 0.03,
+        wanderAngle: Math.random() * Math.PI * 2,
+      })
+    }
+
+    let animationId: number
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      fireflies.forEach((f) => {
+        // Update wander
+        f.wanderAngle += (Math.random() - 0.5) * 0.1
+        f.speedX += Math.cos(f.wanderAngle) * 0.02
+        f.speedY += Math.sin(f.wanderAngle) * 0.02
+
+        // Limit speed
+        const speed = Math.sqrt(f.speedX * f.speedX + f.speedY * f.speedY)
+        if (speed > 1) {
+          f.speedX *= 0.9
+          f.speedY *= 0.9
+        }
+
+        f.x += f.speedX
+        f.y += f.speedY
+        f.glowPhase += f.glowSpeed
+
+        // Wrap around
+        if (f.x < -20) f.x = canvas.width + 20
+        if (f.x > canvas.width + 20) f.x = -20
+        if (f.y < -20) f.y = canvas.height + 20
+        if (f.y > canvas.height + 20) f.y = -20
+
+        // Calculate glow
+        const glow = 0.3 + Math.abs(Math.sin(f.glowPhase)) * 0.7
+
+        // Draw glow
+        const gradient = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.size * 6)
+        gradient.addColorStop(0, color.replace(')', `, ${glow})`).replace('rgb', 'rgba'))
+        gradient.addColorStop(0.3, color.replace(')', `, ${glow * 0.5})`).replace('rgb', 'rgba'))
+        gradient.addColorStop(1, 'transparent')
+
+        ctx.beginPath()
+        ctx.arc(f.x, f.y, f.size * 6, 0, Math.PI * 2)
+        ctx.fillStyle = gradient
+        ctx.fill()
+
+        // Draw center
+        ctx.beginPath()
+        ctx.arc(f.x, f.y, f.size, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(255, 255, 255, ${glow})`
+        ctx.fill()
+      })
+
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', resize)
+    }
+  }, [intensity, color])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-25"
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SNOW OVERLAY - Falling snowflakes
+// ═══════════════════════════════════════════════════════════════════════════
+export const SnowOverlay: React.FC<{
+  intensity?: number // 1-10
+}> = ({ intensity = 5 }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    interface Snowflake {
+      x: number
+      y: number
+      size: number
+      speed: number
+      wobble: number
+      wobbleSpeed: number
+      opacity: number
+    }
+
+    const flakes: Snowflake[] = []
+    const count = Math.floor(80 + intensity * 20)
+
+    const createFlake = (startAtTop = true): Snowflake => ({
+      x: Math.random() * canvas.width,
+      y: startAtTop ? -10 : Math.random() * canvas.height,
+      size: 2 + Math.random() * 4,
+      speed: 1 + Math.random() * 2 + intensity * 0.1,
+      wobble: Math.random() * Math.PI * 2,
+      wobbleSpeed: 0.01 + Math.random() * 0.02,
+      opacity: 0.5 + Math.random() * 0.5,
+    })
+
+    for (let i = 0; i < count; i++) {
+      flakes.push(createFlake(false))
+    }
+
+    let animationId: number
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      flakes.forEach((f, i) => {
+        f.y += f.speed
+        f.wobble += f.wobbleSpeed
+        const wobbleX = Math.sin(f.wobble) * 2
+
+        ctx.beginPath()
+        ctx.arc(f.x + wobbleX, f.y, f.size, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(255, 255, 255, ${f.opacity})`
+        ctx.fill()
+
+        if (f.y > canvas.height + 10) {
+          flakes[i] = createFlake(true)
+        }
+      })
+
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', resize)
+    }
+  }, [intensity])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-25"
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LENS FLARE OVERLAY - Cinematic lens flare effect
+// ═══════════════════════════════════════════════════════════════════════════
+export const LensFlareOverlay: React.FC<{
+  intensity?: number // 1-10
+  position?: { x: number; y: number }
+  color?: string
+}> = ({ intensity = 5, position = { x: 20, y: 20 }, color = '#fff8e7' }) => {
+  const flareElements = [
+    { offset: 0, size: 1, opacity: 0.3 },
+    { offset: 0.3, size: 0.4, opacity: 0.15 },
+    { offset: 0.5, size: 0.2, opacity: 0.1 },
+    { offset: 0.7, size: 0.3, opacity: 0.08 },
+    { offset: 0.9, size: 0.15, opacity: 0.1 },
+    { offset: 1.2, size: 0.25, opacity: 0.05 },
+  ]
+
+  const centerX = 50
+  const centerY = 50
+
+  return (
+    <div className="fixed inset-0 pointer-events-none z-35" style={{ overflow: 'hidden' }}>
+      {/* Main sun/light source */}
+      <div
+        className="absolute rounded-full"
+        style={{
+          left: `${position.x}%`,
+          top: `${position.y}%`,
+          width: `${10 + intensity * 2}vmin`,
+          height: `${10 + intensity * 2}vmin`,
+          transform: 'translate(-50%, -50%)',
+          background: `radial-gradient(circle, ${color} 0%, transparent 70%)`,
+          boxShadow: `0 0 ${20 + intensity * 5}px ${color}`,
+        }}
+      />
+
+      {/* Flare elements along the axis */}
+      {flareElements.map((flare, i) => {
+        const flareX = position.x + (centerX - position.x) * flare.offset
+        const flareY = position.y + (centerY - position.y) * flare.offset
+
+        return (
+          <div
+            key={i}
+            className="absolute rounded-full"
+            style={{
+              left: `${flareX}%`,
+              top: `${flareY}%`,
+              width: `${flare.size * (5 + intensity)}vmin`,
+              height: `${flare.size * (5 + intensity)}vmin`,
+              transform: 'translate(-50%, -50%)',
+              background: `radial-gradient(circle, ${color.replace(')', `, ${flare.opacity * intensity / 5})`).replace('rgb', 'rgba')}, transparent 70%)`,
+            }}
+          />
+        )
+      })}
+
+      {/* Anamorphic streak */}
+      <div
+        className="absolute"
+        style={{
+          left: `${position.x}%`,
+          top: `${position.y}%`,
+          width: `${30 + intensity * 5}vw`,
+          height: '2px',
+          transform: 'translate(-50%, -50%)',
+          background: `linear-gradient(90deg, transparent, ${color.replace(')', ', 0.2)').replace('rgb', 'rgba')}, transparent)`,
+          filter: 'blur(3px)',
+        }}
+      />
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WATER RIPPLE OVERLAY - Concentric water ripple effect
+// ═══════════════════════════════════════════════════════════════════════════
+export const WaterRippleOverlay: React.FC<{
+  intensity?: number // 1-10
+  color?: string
+}> = ({ intensity = 5, color = 'rgba(100, 200, 255, 0.3)' }) => {
+  const [ripples, setRipples] = useState<{ id: number; x: number; y: number }[]>([])
+  const idRef = useRef(0)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (ripples.length < 5 + intensity) {
+        setRipples(prev => [
+          ...prev.slice(-10),
+          { id: idRef.current++, x: Math.random() * 100, y: Math.random() * 100 }
+        ])
+      }
+    }, 2000 - intensity * 150)
+
+    return () => clearInterval(interval)
+  }, [intensity, ripples.length])
+
+  return (
+    <div className="fixed inset-0 pointer-events-none z-20 overflow-hidden">
+      {ripples.map((ripple) => (
+        <div
+          key={ripple.id}
+          className="absolute"
+          style={{
+            left: `${ripple.x}%`,
+            top: `${ripple.y}%`,
+            transform: 'translate(-50%, -50%)',
+          }}
+        >
+          {[0, 1, 2].map((ring) => (
+            <div
+              key={ring}
+              className="absolute rounded-full"
+              style={{
+                left: '50%',
+                top: '50%',
+                transform: 'translate(-50%, -50%)',
+                border: `2px solid ${color}`,
+                animation: `waterRipple 4s ease-out ${ring * 0.3}s forwards`,
+              }}
+            />
+          ))}
+        </div>
+      ))}
+
+      <style>{`
+        @keyframes waterRipple {
+          0% { width: 0; height: 0; opacity: 0.8; }
+          100% { width: 50vmax; height: 50vmax; opacity: 0; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KALEIDOSCOPE OVERLAY - Psychedelic rotating patterns
+// ═══════════════════════════════════════════════════════════════════════════
+export const KaleidoscopeOverlay: React.FC<{
+  intensity?: number // 1-10
+  speed?: number
+}> = ({ intensity = 5, speed = 5 }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    let time = 0
+    const segments = 6 + Math.floor(intensity / 2)
+
+    let animationId: number
+    const animate = () => {
+      time += 0.01 * (speed / 5)
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      const cx = canvas.width / 2
+      const cy = canvas.height / 2
+      const maxRadius = Math.sqrt(cx * cx + cy * cy)
+
+      ctx.save()
+      ctx.translate(cx, cy)
+
+      for (let s = 0; s < segments; s++) {
+        ctx.save()
+        ctx.rotate((s * Math.PI * 2) / segments)
+
+        // Draw petal shapes
+        for (let r = 0; r < 3; r++) {
+          const radius = maxRadius * (0.3 + r * 0.25)
+          const hue = (time * 50 + s * 30 + r * 20) % 360
+
+          ctx.beginPath()
+          ctx.moveTo(0, 0)
+          ctx.quadraticCurveTo(
+            radius * 0.5 * Math.cos(time + r),
+            radius * 0.3,
+            radius * Math.cos(time * 0.5 + r * 0.5),
+            radius * 0.5
+          )
+          ctx.quadraticCurveTo(
+            radius * 0.5 * Math.cos(time + r + 1),
+            radius * 0.7,
+            0,
+            0
+          )
+
+          ctx.fillStyle = `hsla(${hue}, 70%, 50%, ${0.05 + intensity * 0.01})`
+          ctx.fill()
+        }
+
+        ctx.restore()
+      }
+
+      ctx.restore()
+
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', resize)
+    }
+  }, [intensity, speed])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-20"
+      style={{ mixBlendMode: 'screen' }}
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PULSE RING OVERLAY - Expanding pulse rings from center
+// ═══════════════════════════════════════════════════════════════════════════
+export const PulseRingOverlay: React.FC<{
+  intensity?: number // 1-10
+  color?: string
+  interval?: number
+}> = ({ intensity = 5, color = '#ff6b9d', interval = 2000 }) => {
+  const [rings, setRings] = useState<number[]>([])
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setRings(prev => [...prev.slice(-5), Date.now()])
+    }, interval)
+
+    return () => clearInterval(timer)
+  }, [interval])
+
+  return (
+    <div className="fixed inset-0 pointer-events-none z-20 flex items-center justify-center overflow-hidden">
+      {rings.map((id) => (
+        <div
+          key={id}
+          className="absolute rounded-full"
+          style={{
+            border: `${2 + intensity * 0.3}px solid ${color}`,
+            boxShadow: `0 0 ${10 + intensity * 2}px ${color}`,
+            animation: 'pulseRingExpand 3s ease-out forwards',
+          }}
+        />
+      ))}
+
+      <style>{`
+        @keyframes pulseRingExpand {
+          0% { width: 0; height: 0; opacity: 0.8; }
+          100% { width: 150vmax; height: 150vmax; opacity: 0; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FIRE EMBERS OVERLAY - Floating fire sparks
+// ═══════════════════════════════════════════════════════════════════════════
+export const FireEmbersOverlay: React.FC<{
+  intensity?: number // 1-10
+}> = ({ intensity = 5 }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    interface Ember {
+      x: number
+      y: number
+      size: number
+      speedX: number
+      speedY: number
+      life: number
+      maxLife: number
+      hue: number
+    }
+
+    const embers: Ember[] = []
+    const count = Math.floor(30 + intensity * 10)
+
+    const createEmber = (): Ember => ({
+      x: canvas.width * 0.3 + Math.random() * canvas.width * 0.4,
+      y: canvas.height + 10,
+      size: 2 + Math.random() * 4,
+      speedX: (Math.random() - 0.5) * 2,
+      speedY: -2 - Math.random() * 3 - intensity * 0.3,
+      life: 0,
+      maxLife: 100 + Math.random() * 100,
+      hue: 15 + Math.random() * 30, // Orange to red
+    })
+
+    for (let i = 0; i < count; i++) {
+      const ember = createEmber()
+      ember.y = Math.random() * canvas.height
+      ember.life = Math.random() * ember.maxLife
+      embers.push(ember)
+    }
+
+    let animationId: number
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      embers.forEach((e, i) => {
+        e.x += e.speedX + Math.sin(e.life * 0.1) * 0.5
+        e.y += e.speedY
+        e.speedY *= 0.995 // Slow down
+        e.life++
+
+        const lifeProgress = e.life / e.maxLife
+        const opacity = 1 - lifeProgress
+
+        // Draw glow
+        const gradient = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, e.size * 4)
+        gradient.addColorStop(0, `hsla(${e.hue}, 100%, 60%, ${opacity * 0.5})`)
+        gradient.addColorStop(0.5, `hsla(${e.hue}, 100%, 50%, ${opacity * 0.2})`)
+        gradient.addColorStop(1, 'transparent')
+
+        ctx.beginPath()
+        ctx.arc(e.x, e.y, e.size * 4, 0, Math.PI * 2)
+        ctx.fillStyle = gradient
+        ctx.fill()
+
+        // Draw ember core
+        ctx.beginPath()
+        ctx.arc(e.x, e.y, e.size * (1 - lifeProgress * 0.5), 0, Math.PI * 2)
+        ctx.fillStyle = `hsla(${e.hue + 20}, 100%, 70%, ${opacity})`
+        ctx.fill()
+
+        if (e.life > e.maxLife || e.y < -20) {
+          embers[i] = createEmber()
+        }
+      })
+
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', resize)
+    }
+  }, [intensity])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-25"
+      style={{ mixBlendMode: 'screen' }}
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PRISMATIC RAINBOW OVERLAY - Shifting rainbow colors
+// ═══════════════════════════════════════════════════════════════════════════
+export const PrismaticRainbowOverlay: React.FC<{
+  intensity?: number // 1-10
+  speed?: number
+}> = ({ intensity = 5, speed = 5 }) => {
+  const [hue, setHue] = useState(0)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setHue(h => (h + speed * 0.5) % 360)
+    }, 50)
+
+    return () => clearInterval(interval)
+  }, [speed])
+
+  return (
+    <div
+      className="fixed inset-0 pointer-events-none z-15"
+      style={{
+        background: `linear-gradient(
+          ${hue}deg,
+          hsla(${hue}, 80%, 50%, ${0.05 + intensity * 0.01}) 0%,
+          hsla(${(hue + 60) % 360}, 80%, 50%, ${0.05 + intensity * 0.01}) 25%,
+          hsla(${(hue + 120) % 360}, 80%, 50%, ${0.05 + intensity * 0.01}) 50%,
+          hsla(${(hue + 180) % 360}, 80%, 50%, ${0.05 + intensity * 0.01}) 75%,
+          hsla(${(hue + 240) % 360}, 80%, 50%, ${0.05 + intensity * 0.01}) 100%
+        )`,
+        mixBlendMode: 'overlay',
+      }}
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SCANLINE SWEEP OVERLAY - Horizontal scanning line
+// ═══════════════════════════════════════════════════════════════════════════
+export const ScanlineSweepOverlay: React.FC<{
+  intensity?: number // 1-10
+  color?: string
+  speed?: number
+}> = ({ intensity = 5, color = 'rgba(100, 255, 150, 0.5)', speed = 5 }) => {
+  const [position, setPosition] = useState(0)
+
+  useEffect(() => {
+    let animationId: number
+    const animate = () => {
+      setPosition(prev => (prev + speed * 0.2) % 100)
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animationId = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(animationId)
+  }, [speed])
+
+  return (
+    <div className="fixed inset-0 pointer-events-none z-30 overflow-hidden">
+      {/* Main scan line */}
+      <div
+        className="absolute left-0 right-0"
+        style={{
+          top: `${position}%`,
+          height: `${3 + intensity}px`,
+          background: color,
+          boxShadow: `0 0 ${10 + intensity * 3}px ${color}, 0 0 ${20 + intensity * 5}px ${color}`,
+        }}
+      />
+
+      {/* Trailing glow */}
+      <div
+        className="absolute left-0 right-0"
+        style={{
+          top: `${position}%`,
+          height: `${30 + intensity * 5}px`,
+          background: `linear-gradient(to bottom, ${color}, transparent)`,
+          transform: 'translateY(-100%)',
+          opacity: 0.3,
+        }}
+      />
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PLASMA WAVE OVERLAY - Organic plasma-like movement
+// ═══════════════════════════════════════════════════════════════════════════
+export const PlasmaWaveOverlay: React.FC<{
+  intensity?: number // 1-10
+}> = ({ intensity = 5 }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    // Lower resolution for performance
+    const scale = 0.25
+    const resize = () => {
+      canvas.width = Math.floor(window.innerWidth * scale)
+      canvas.height = Math.floor(window.innerHeight * scale)
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    let time = 0
+
+    let animationId: number
+    const animate = () => {
+      time += 0.02
+
+      const imageData = ctx.createImageData(canvas.width, canvas.height)
+      const data = imageData.data
+
+      for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+          const px = (y * canvas.width + x) * 4
+
+          // Plasma formula
+          const v1 = Math.sin(x * 0.05 + time)
+          const v2 = Math.sin((y * 0.05 + time) * 0.5)
+          const v3 = Math.sin((x * 0.05 + y * 0.05 + time) * 0.3)
+          const v4 = Math.sin(Math.sqrt((x - canvas.width / 2) ** 2 + (y - canvas.height / 2) ** 2) * 0.05 - time)
+
+          const v = (v1 + v2 + v3 + v4) / 4
+
+          const hue = (v + 1) * 180 + time * 20
+          const saturation = 80
+          const lightness = 50
+
+          // HSL to RGB conversion
+          const c = (1 - Math.abs(2 * lightness / 100 - 1)) * saturation / 100
+          const x2 = c * (1 - Math.abs((hue / 60) % 2 - 1))
+          const m = lightness / 100 - c / 2
+
+          let r = 0, g = 0, b = 0
+          if (hue < 60) { r = c; g = x2; }
+          else if (hue < 120) { r = x2; g = c; }
+          else if (hue < 180) { g = c; b = x2; }
+          else if (hue < 240) { g = x2; b = c; }
+          else if (hue < 300) { r = x2; b = c; }
+          else { r = c; b = x2; }
+
+          data[px] = (r + m) * 255
+          data[px + 1] = (g + m) * 255
+          data[px + 2] = (b + m) * 255
+          data[px + 3] = (intensity / 10) * 100
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0)
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', resize)
+    }
+  }, [intensity])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-15"
+      style={{
+        width: '100%',
+        height: '100%',
+        mixBlendMode: 'screen',
+        filter: 'blur(10px)',
+        imageRendering: 'auto',
+      }}
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NEON DRIP OVERLAY - Glowing drips from top
+// ═══════════════════════════════════════════════════════════════════════════
+export const NeonDripOverlay: React.FC<{
+  intensity?: number // 1-10
+  color?: string
+}> = ({ intensity = 5, color = '#ff00ff' }) => {
+  const [drips, setDrips] = useState<{ id: number; x: number; delay: number; speed: number }[]>([])
+
+  useEffect(() => {
+    const count = Math.floor(8 + intensity * 2)
+    const newDrips = Array.from({ length: count }, (_, i) => ({
+      id: i,
+      x: 5 + Math.random() * 90,
+      delay: Math.random() * 5,
+      speed: 3 + Math.random() * 4 + intensity * 0.5,
+    }))
+    setDrips(newDrips)
+  }, [intensity])
+
+  return (
+    <div className="fixed inset-0 pointer-events-none z-25 overflow-hidden">
+      {drips.map((drip) => (
+        <div
+          key={drip.id}
+          className="absolute top-0"
+          style={{
+            left: `${drip.x}%`,
+            width: '3px',
+            height: '100px',
+            background: `linear-gradient(to bottom, ${color}, transparent)`,
+            boxShadow: `0 0 10px ${color}, 0 0 20px ${color}`,
+            animation: `neonDrip ${drip.speed}s linear infinite`,
+            animationDelay: `${drip.delay}s`,
+          }}
+        />
+      ))}
+
+      {/* Drip blobs at bottom */}
+      {drips.map((drip) => (
+        <div
+          key={`blob-${drip.id}`}
+          className="absolute rounded-full"
+          style={{
+            left: `${drip.x}%`,
+            bottom: '5%',
+            width: '20px',
+            height: '20px',
+            transform: 'translateX(-50%)',
+            background: color,
+            boxShadow: `0 0 20px ${color}, 0 0 40px ${color}`,
+            opacity: 0.6,
+            animation: 'neonBlobPulse 2s ease-in-out infinite',
+            animationDelay: `${drip.delay}s`,
+          }}
+        />
+      ))}
+
+      <style>{`
+        @keyframes neonDrip {
+          0% { transform: translateY(-100%); opacity: 0; }
+          10% { opacity: 1; }
+          90% { opacity: 0.8; }
+          100% { transform: translateY(100vh); opacity: 0; }
+        }
+        @keyframes neonBlobPulse {
+          0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.4; }
+          50% { transform: translateX(-50%) scale(1.3); opacity: 0.7; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STATIC NOISE OVERLAY - TV static/white noise
+// ═══════════════════════════════════════════════════════════════════════════
+export const StaticNoiseOverlay: React.FC<{
+  intensity?: number // 1-10
+  speed?: number
+}> = ({ intensity = 5, speed = 5 }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const scale = 0.5
+    const resize = () => {
+      canvas.width = Math.floor(window.innerWidth * scale)
+      canvas.height = Math.floor(window.innerHeight * scale)
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    let frameCount = 0
+    const updateInterval = Math.max(1, 6 - Math.floor(speed / 2))
+
+    let animationId: number
+    const animate = () => {
+      frameCount++
+
+      if (frameCount % updateInterval === 0) {
+        const imageData = ctx.createImageData(canvas.width, canvas.height)
+        const data = imageData.data
+
+        for (let i = 0; i < data.length; i += 4) {
+          const v = Math.random() * 255
+          data[i] = v
+          data[i + 1] = v
+          data[i + 2] = v
+          data[i + 3] = 255
+        }
+
+        ctx.putImageData(imageData, 0, 0)
+      }
+
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', resize)
+    }
+  }, [speed])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-35"
+      style={{
+        width: '100%',
+        height: '100%',
+        opacity: 0.03 + intensity * 0.01,
+        mixBlendMode: 'overlay',
+        imageRendering: 'pixelated',
+      }}
     />
   )
 }

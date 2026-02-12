@@ -13,6 +13,7 @@ import { getSmartTagger } from './services/tagging/smart-tagger'
 import { getHybridTagger } from './services/tagging/hybrid-tagger'
 import { analyzeVideo, isAnalyzerAvailable } from './services/ai/video-analyzer'
 import { aiCleanupTags, aiGenerateTags, aiSuggestFilename, aiBatchRename, isOllamaAvailable } from './services/ai/ai-library-tools'
+import { getDLNAService } from './services/dlna-service'
 
 import {
   getSettings,
@@ -3381,7 +3382,6 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   // ═══════════════════════════════════════════════════════════════════════════
   // DLNA TV STREAMING
   // ═══════════════════════════════════════════════════════════════════════════
-  const { getDLNAService } = require('./services/dlna-service')
 
   // Start scanning for DLNA devices
   ipcMain.handle('dlna:startDiscovery', async () => {

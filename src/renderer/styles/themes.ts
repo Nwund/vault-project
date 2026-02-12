@@ -25,6 +25,15 @@ export type ClassicThemeId =
   | 'slate'
   | 'cherry-blossom'
   | 'electric-lime'
+  // New light themes
+  | 'arctic'
+  | 'linen'
+  | 'mint-cream'
+  | 'peach-blossom'
+  | 'sky-blue'
+  | 'lavender-mist'
+  | 'sage'
+  | 'coral-reef'
 
 // Hypersexual goon themes
 export type GoonThemeId =
@@ -38,6 +47,12 @@ export type GoonThemeId =
   | 'wet-dreams'     // Dreamy, fluid, surreal - indigo
   | 'flesh'          // Raw, primal, carnal - skin tones
   | 'void'           // Total focus - pure black
+  // New goon themes
+  | 'submissive'     // Soft, yielding, devotion - pastel pink
+  | 'dominant'       // Power, control, authority - deep red/black
+  | 'latex'          // Shiny, sleek, fetish - glossy black
+  | 'bimbo'          // Bubbly, pink, playful - hot pink
+  | 'hypno'          // Trance, spiral, mindless - swirling purple
 
 export type ThemeId = ClassicThemeId | GoonThemeId
 
@@ -104,42 +119,42 @@ export interface Theme {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const themes: Record<ThemeId, Theme> = {
-  // 1. OBSIDIAN - Default Dark (Purple accent)
+  // 1. OBSIDIAN - Default Dark (Purple accent) - Enhanced
   obsidian: {
     id: 'obsidian',
     name: 'Obsidian',
-    description: 'Deep blacks with purple accents. Elegant and minimal.',
+    description: 'Deep blacks with vivid purple accents. Elegant and powerful.',
     isDark: true,
     colors: {
-      background: '#05070d',
-      backgroundAlt: '#0e1028',
-      surface: 'rgba(255, 255, 255, 0.04)',
-      surfaceHover: 'rgba(255, 255, 255, 0.06)',
-      surfaceActive: 'rgba(255, 255, 255, 0.08)',
-      border: 'rgba(255, 255, 255, 0.08)',
-      borderHover: 'rgba(255, 255, 255, 0.12)',
-      borderActive: 'rgba(255, 255, 255, 0.16)',
+      background: '#030508',
+      backgroundAlt: '#0a0f1e',
+      surface: 'rgba(139, 92, 246, 0.04)',
+      surfaceHover: 'rgba(139, 92, 246, 0.08)',
+      surfaceActive: 'rgba(139, 92, 246, 0.12)',
+      border: 'rgba(139, 92, 246, 0.12)',
+      borderHover: 'rgba(139, 92, 246, 0.2)',
+      borderActive: 'rgba(139, 92, 246, 0.28)',
       text: '#f8fafc',
-      textMuted: 'rgba(255, 255, 255, 0.6)',
-      textSubtle: 'rgba(255, 255, 255, 0.4)',
-      primary: '#8b5cf6',
-      primaryHover: '#a78bfa',
-      primaryMuted: 'rgba(139, 92, 246, 0.2)',
-      secondary: '#ec4899',
-      secondaryHover: '#f472b6',
+      textMuted: 'rgba(255, 255, 255, 0.65)',
+      textSubtle: 'rgba(255, 255, 255, 0.45)',
+      primary: '#a855f7',
+      primaryHover: '#c084fc',
+      primaryMuted: 'rgba(168, 85, 247, 0.25)',
+      secondary: '#f472b6',
+      secondaryHover: '#f9a8d4',
       success: '#22c55e',
       warning: '#f59e0b',
       error: '#ef4444',
-      info: '#3b82f6',
-      gradient: 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)',
-      glow: 'rgba(139, 92, 246, 0.4)',
-      overlay: 'rgba(0, 0, 0, 0.7)'
+      info: '#60a5fa',
+      gradient: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 50%, #ec4899 100%)',
+      glow: 'rgba(168, 85, 247, 0.5)',
+      overlay: 'rgba(0, 0, 0, 0.75)'
     },
     shadows: {
-      sm: '0 1px 2px rgba(0, 0, 0, 0.5)',
-      md: '0 4px 12px rgba(0, 0, 0, 0.5)',
-      lg: '0 8px 32px rgba(0, 0, 0, 0.6)',
-      glow: '0 0 20px rgba(139, 92, 246, 0.3)'
+      sm: '0 1px 2px rgba(0, 0, 0, 0.6)',
+      md: '0 4px 12px rgba(0, 0, 0, 0.6)',
+      lg: '0 8px 32px rgba(0, 0, 0, 0.7)',
+      glow: '0 0 25px rgba(168, 85, 247, 0.4)'
     },
     blur: {
       sm: '8px',
@@ -192,42 +207,42 @@ export const themes: Record<ThemeId, Theme> = {
     }
   },
 
-  // 3. EMBER - Dark with warm orange/red accents
+  // 3. EMBER - Dark with warm orange/red accents - Enhanced
   ember: {
     id: 'ember',
     name: 'Ember',
-    description: 'Dark with warm orange and red accents. Passionate and intense.',
+    description: 'Smoldering dark with fiery orange accents. Passionate heat.',
     isDark: true,
     colors: {
-      background: '#0c0806',
-      backgroundAlt: '#1e1208',
-      surface: 'rgba(251, 146, 60, 0.04)',
-      surfaceHover: 'rgba(251, 146, 60, 0.07)',
-      surfaceActive: 'rgba(251, 146, 60, 0.1)',
-      border: 'rgba(251, 146, 60, 0.1)',
-      borderHover: 'rgba(251, 146, 60, 0.15)',
-      borderActive: 'rgba(251, 146, 60, 0.2)',
-      text: '#fef3c7',
-      textMuted: 'rgba(254, 243, 199, 0.65)',
-      textSubtle: 'rgba(254, 243, 199, 0.4)',
-      primary: '#f97316',
-      primaryHover: '#fb923c',
-      primaryMuted: 'rgba(249, 115, 22, 0.2)',
-      secondary: '#ef4444',
-      secondaryHover: '#f87171',
-      success: '#84cc16',
-      warning: '#eab308',
-      error: '#dc2626',
-      info: '#f59e0b',
-      gradient: 'linear-gradient(135deg, #dc2626 0%, #f97316 50%, #fbbf24 100%)',
-      glow: 'rgba(249, 115, 22, 0.4)',
-      overlay: 'rgba(12, 8, 6, 0.8)'
+      background: '#080402',
+      backgroundAlt: '#181008',
+      surface: 'rgba(255, 120, 50, 0.05)',
+      surfaceHover: 'rgba(255, 120, 50, 0.09)',
+      surfaceActive: 'rgba(255, 120, 50, 0.13)',
+      border: 'rgba(255, 120, 50, 0.12)',
+      borderHover: 'rgba(255, 120, 50, 0.2)',
+      borderActive: 'rgba(255, 120, 50, 0.28)',
+      text: '#fff5e6',
+      textMuted: 'rgba(255, 245, 230, 0.7)',
+      textSubtle: 'rgba(255, 245, 230, 0.45)',
+      primary: '#ff6a00',
+      primaryHover: '#ff8c33',
+      primaryMuted: 'rgba(255, 106, 0, 0.25)',
+      secondary: '#ff3333',
+      secondaryHover: '#ff6666',
+      success: '#9acd32',
+      warning: '#ffd700',
+      error: '#ff2020',
+      info: '#ff9500',
+      gradient: 'linear-gradient(135deg, #ff2020 0%, #ff6a00 40%, #ffd700 100%)',
+      glow: 'rgba(255, 106, 0, 0.5)',
+      overlay: 'rgba(8, 4, 2, 0.85)'
     },
     shadows: {
-      sm: '0 1px 2px rgba(0, 0, 0, 0.5)',
-      md: '0 4px 12px rgba(0, 0, 0, 0.5)',
-      lg: '0 8px 32px rgba(0, 0, 0, 0.6)',
-      glow: '0 0 20px rgba(249, 115, 22, 0.3)'
+      sm: '0 1px 2px rgba(0, 0, 0, 0.6)',
+      md: '0 4px 12px rgba(0, 0, 0, 0.6), 0 0 15px rgba(255, 106, 0, 0.1)',
+      lg: '0 8px 32px rgba(0, 0, 0, 0.7), 0 0 30px rgba(255, 106, 0, 0.15)',
+      glow: '0 0 25px rgba(255, 106, 0, 0.4), 0 0 50px rgba(255, 50, 0, 0.2)'
     },
     blur: {
       sm: '8px',
@@ -236,42 +251,42 @@ export const themes: Record<ThemeId, Theme> = {
     }
   },
 
-  // 4. VELVET - Deep purple/burgundy tones
+  // 4. VELVET - Deep purple/burgundy tones - Enhanced
   velvet: {
     id: 'velvet',
     name: 'Velvet',
-    description: 'Deep purple and burgundy tones. Luxurious and sensual.',
+    description: 'Rich purple and deep burgundy. Opulent and seductive.',
     isDark: true,
     colors: {
-      background: '#0d0611',
-      backgroundAlt: '#1a0e2a',
-      surface: 'rgba(192, 132, 252, 0.04)',
-      surfaceHover: 'rgba(192, 132, 252, 0.07)',
-      surfaceActive: 'rgba(192, 132, 252, 0.1)',
-      border: 'rgba(192, 132, 252, 0.1)',
-      borderHover: 'rgba(192, 132, 252, 0.15)',
-      borderActive: 'rgba(192, 132, 252, 0.2)',
-      text: '#fae8ff',
-      textMuted: 'rgba(250, 232, 255, 0.65)',
-      textSubtle: 'rgba(250, 232, 255, 0.4)',
-      primary: '#a855f7',
-      primaryHover: '#c084fc',
-      primaryMuted: 'rgba(168, 85, 247, 0.2)',
-      secondary: '#be185d',
-      secondaryHover: '#db2777',
-      success: '#10b981',
-      warning: '#d97706',
-      error: '#be123c',
-      info: '#8b5cf6',
-      gradient: 'linear-gradient(135deg, #581c87 0%, #831843 100%)',
-      glow: 'rgba(168, 85, 247, 0.4)',
-      overlay: 'rgba(13, 6, 17, 0.8)'
+      background: '#0a0414',
+      backgroundAlt: '#150a28',
+      surface: 'rgba(200, 100, 255, 0.05)',
+      surfaceHover: 'rgba(200, 100, 255, 0.09)',
+      surfaceActive: 'rgba(200, 100, 255, 0.13)',
+      border: 'rgba(200, 100, 255, 0.12)',
+      borderHover: 'rgba(200, 100, 255, 0.2)',
+      borderActive: 'rgba(200, 100, 255, 0.28)',
+      text: '#fce8ff',
+      textMuted: 'rgba(252, 232, 255, 0.7)',
+      textSubtle: 'rgba(252, 232, 255, 0.45)',
+      primary: '#c850ff',
+      primaryHover: '#d980ff',
+      primaryMuted: 'rgba(200, 80, 255, 0.25)',
+      secondary: '#e6197a',
+      secondaryHover: '#ff4090',
+      success: '#20d997',
+      warning: '#e6a000',
+      error: '#e6194b',
+      info: '#a855f7',
+      gradient: 'linear-gradient(135deg, #6b21a8 0%, #c850ff 50%, #e6197a 100%)',
+      glow: 'rgba(200, 80, 255, 0.5)',
+      overlay: 'rgba(10, 4, 20, 0.85)'
     },
     shadows: {
-      sm: '0 1px 2px rgba(0, 0, 0, 0.5)',
-      md: '0 4px 12px rgba(0, 0, 0, 0.5)',
-      lg: '0 8px 32px rgba(0, 0, 0, 0.6)',
-      glow: '0 0 20px rgba(168, 85, 247, 0.3)'
+      sm: '0 1px 2px rgba(0, 0, 0, 0.6)',
+      md: '0 4px 12px rgba(0, 0, 0, 0.6), 0 0 15px rgba(200, 80, 255, 0.1)',
+      lg: '0 8px 32px rgba(0, 0, 0, 0.7), 0 0 30px rgba(200, 80, 255, 0.15)',
+      glow: '0 0 25px rgba(200, 80, 255, 0.4), 0 0 50px rgba(230, 25, 122, 0.2)'
     },
     blur: {
       sm: '8px',
@@ -324,42 +339,42 @@ export const themes: Record<ThemeId, Theme> = {
     }
   },
 
-  // 6. NEON DREAMS - Dark with cyan/pink neon accents
+  // 6. NEON DREAMS - Dark with cyan/pink neon accents - Enhanced
   'neon-dreams': {
     id: 'neon-dreams',
     name: 'Neon Dreams',
-    description: 'Dark with cyan and pink neon accents. Cyberpunk and electric.',
+    description: 'Electric cyberpunk with intense neon glows. Futuristic and vivid.',
     isDark: true,
     colors: {
-      background: '#0a0a12',
-      backgroundAlt: '#0e1825',
-      surface: 'rgba(34, 211, 238, 0.04)',
-      surfaceHover: 'rgba(34, 211, 238, 0.07)',
-      surfaceActive: 'rgba(34, 211, 238, 0.1)',
-      border: 'rgba(34, 211, 238, 0.12)',
-      borderHover: 'rgba(34, 211, 238, 0.2)',
-      borderActive: 'rgba(34, 211, 238, 0.3)',
-      text: '#ecfeff',
-      textMuted: 'rgba(236, 254, 255, 0.7)',
-      textSubtle: 'rgba(236, 254, 255, 0.5)',
-      primary: '#22d3ee',
-      primaryHover: '#67e8f9',
-      primaryMuted: 'rgba(34, 211, 238, 0.2)',
-      secondary: '#f472b6',
-      secondaryHover: '#f9a8d4',
-      success: '#4ade80',
-      warning: '#facc15',
-      error: '#fb7185',
-      info: '#38bdf8',
-      gradient: 'linear-gradient(135deg, #06b6d4 0%, #ec4899 100%)',
-      glow: 'rgba(34, 211, 238, 0.5)',
-      overlay: 'rgba(10, 10, 18, 0.85)'
+      background: '#050510',
+      backgroundAlt: '#0a1220',
+      surface: 'rgba(0, 255, 255, 0.05)',
+      surfaceHover: 'rgba(0, 255, 255, 0.08)',
+      surfaceActive: 'rgba(0, 255, 255, 0.12)',
+      border: 'rgba(0, 255, 255, 0.15)',
+      borderHover: 'rgba(0, 255, 255, 0.25)',
+      borderActive: 'rgba(0, 255, 255, 0.35)',
+      text: '#f0ffff',
+      textMuted: 'rgba(240, 255, 255, 0.75)',
+      textSubtle: 'rgba(240, 255, 255, 0.5)',
+      primary: '#00ffff',
+      primaryHover: '#7fffff',
+      primaryMuted: 'rgba(0, 255, 255, 0.25)',
+      secondary: '#ff00ff',
+      secondaryHover: '#ff77ff',
+      success: '#00ff88',
+      warning: '#ffff00',
+      error: '#ff3366',
+      info: '#00ccff',
+      gradient: 'linear-gradient(135deg, #00ffff 0%, #ff00ff 100%)',
+      glow: 'rgba(0, 255, 255, 0.6)',
+      overlay: 'rgba(5, 5, 16, 0.88)'
     },
     shadows: {
-      sm: '0 1px 2px rgba(0, 0, 0, 0.5)',
-      md: '0 4px 12px rgba(0, 0, 0, 0.5)',
-      lg: '0 8px 32px rgba(0, 0, 0, 0.6)',
-      glow: '0 0 30px rgba(34, 211, 238, 0.4)'
+      sm: '0 1px 2px rgba(0, 0, 0, 0.6)',
+      md: '0 4px 12px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 255, 255, 0.15)',
+      lg: '0 8px 32px rgba(0, 0, 0, 0.7), 0 0 40px rgba(0, 255, 255, 0.2)',
+      glow: '0 0 35px rgba(0, 255, 255, 0.5), 0 0 60px rgba(255, 0, 255, 0.3)'
     },
     blur: {
       sm: '8px',
@@ -456,6 +471,330 @@ export const themes: Record<ThemeId, Theme> = {
     }
   },
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW LIGHT THEMES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ARCTIC - Cool white and ice blue (LIGHT)
+  arctic: {
+    id: 'arctic',
+    name: 'Arctic',
+    description: 'Crisp white with ice blue accents. Clean and refreshing.',
+    isDark: false,
+    colors: {
+      background: '#f8fbff',
+      backgroundAlt: '#e8f4fc',
+      surface: 'rgba(100, 180, 230, 0.06)',
+      surfaceHover: 'rgba(100, 180, 230, 0.1)',
+      surfaceActive: 'rgba(100, 180, 230, 0.14)',
+      border: 'rgba(100, 180, 230, 0.15)',
+      borderHover: 'rgba(100, 180, 230, 0.25)',
+      borderActive: 'rgba(100, 180, 230, 0.35)',
+      text: '#1e3a5f',
+      textMuted: 'rgba(30, 58, 95, 0.65)',
+      textSubtle: 'rgba(30, 58, 95, 0.45)',
+      primary: '#0ea5e9',
+      primaryHover: '#38bdf8',
+      primaryMuted: 'rgba(14, 165, 233, 0.15)',
+      secondary: '#64748b',
+      secondaryHover: '#94a3b8',
+      success: '#10b981',
+      warning: '#f59e0b',
+      error: '#ef4444',
+      info: '#0ea5e9',
+      gradient: 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)',
+      glow: 'rgba(14, 165, 233, 0.3)',
+      overlay: 'rgba(248, 251, 255, 0.9)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(100, 180, 230, 0.1)',
+      md: '0 4px 12px rgba(100, 180, 230, 0.12)',
+      lg: '0 8px 32px rgba(100, 180, 230, 0.15)',
+      glow: '0 0 20px rgba(14, 165, 233, 0.2)'
+    },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // LINEN - Warm cream and natural beige (LIGHT)
+  linen: {
+    id: 'linen',
+    name: 'Linen',
+    description: 'Warm natural tones. Cozy and organic.',
+    isDark: false,
+    colors: {
+      background: '#faf6f1',
+      backgroundAlt: '#f0e8dd',
+      surface: 'rgba(160, 130, 100, 0.06)',
+      surfaceHover: 'rgba(160, 130, 100, 0.1)',
+      surfaceActive: 'rgba(160, 130, 100, 0.14)',
+      border: 'rgba(160, 130, 100, 0.15)',
+      borderHover: 'rgba(160, 130, 100, 0.25)',
+      borderActive: 'rgba(160, 130, 100, 0.35)',
+      text: '#3d3229',
+      textMuted: 'rgba(61, 50, 41, 0.65)',
+      textSubtle: 'rgba(61, 50, 41, 0.45)',
+      primary: '#8b7355',
+      primaryHover: '#a08970',
+      primaryMuted: 'rgba(139, 115, 85, 0.15)',
+      secondary: '#6b5c4c',
+      secondaryHover: '#8b7a68',
+      success: '#6b8e23',
+      warning: '#d4a017',
+      error: '#c75050',
+      info: '#5c8a8a',
+      gradient: 'linear-gradient(135deg, #8b7355 0%, #c4a77d 100%)',
+      glow: 'rgba(139, 115, 85, 0.3)',
+      overlay: 'rgba(250, 246, 241, 0.9)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(160, 130, 100, 0.1)',
+      md: '0 4px 12px rgba(160, 130, 100, 0.12)',
+      lg: '0 8px 32px rgba(160, 130, 100, 0.15)',
+      glow: '0 0 20px rgba(139, 115, 85, 0.2)'
+    },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // MINT CREAM - Fresh mint green (LIGHT)
+  'mint-cream': {
+    id: 'mint-cream',
+    name: 'Mint Cream',
+    description: 'Fresh mint green. Light and refreshing.',
+    isDark: false,
+    colors: {
+      background: '#f5fdf8',
+      backgroundAlt: '#e0f5e9',
+      surface: 'rgba(80, 200, 140, 0.06)',
+      surfaceHover: 'rgba(80, 200, 140, 0.1)',
+      surfaceActive: 'rgba(80, 200, 140, 0.14)',
+      border: 'rgba(80, 200, 140, 0.15)',
+      borderHover: 'rgba(80, 200, 140, 0.25)',
+      borderActive: 'rgba(80, 200, 140, 0.35)',
+      text: '#1e4d3a',
+      textMuted: 'rgba(30, 77, 58, 0.65)',
+      textSubtle: 'rgba(30, 77, 58, 0.45)',
+      primary: '#10b981',
+      primaryHover: '#34d399',
+      primaryMuted: 'rgba(16, 185, 129, 0.15)',
+      secondary: '#64748b',
+      secondaryHover: '#94a3b8',
+      success: '#10b981',
+      warning: '#f59e0b',
+      error: '#ef4444',
+      info: '#06b6d4',
+      gradient: 'linear-gradient(135deg, #10b981 0%, #6ee7b7 100%)',
+      glow: 'rgba(16, 185, 129, 0.3)',
+      overlay: 'rgba(245, 253, 248, 0.9)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(80, 200, 140, 0.1)',
+      md: '0 4px 12px rgba(80, 200, 140, 0.12)',
+      lg: '0 8px 32px rgba(80, 200, 140, 0.15)',
+      glow: '0 0 20px rgba(16, 185, 129, 0.2)'
+    },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // PEACH BLOSSOM - Soft peachy pink (LIGHT)
+  'peach-blossom': {
+    id: 'peach-blossom',
+    name: 'Peach Blossom',
+    description: 'Soft peachy pink. Warm and gentle.',
+    isDark: false,
+    colors: {
+      background: '#fff8f5',
+      backgroundAlt: '#ffe8df',
+      surface: 'rgba(255, 160, 130, 0.06)',
+      surfaceHover: 'rgba(255, 160, 130, 0.1)',
+      surfaceActive: 'rgba(255, 160, 130, 0.14)',
+      border: 'rgba(255, 160, 130, 0.18)',
+      borderHover: 'rgba(255, 160, 130, 0.28)',
+      borderActive: 'rgba(255, 160, 130, 0.38)',
+      text: '#5c3d36',
+      textMuted: 'rgba(92, 61, 54, 0.65)',
+      textSubtle: 'rgba(92, 61, 54, 0.45)',
+      primary: '#f97316',
+      primaryHover: '#fb923c',
+      primaryMuted: 'rgba(249, 115, 22, 0.15)',
+      secondary: '#ec4899',
+      secondaryHover: '#f472b6',
+      success: '#22c55e',
+      warning: '#f59e0b',
+      error: '#ef4444',
+      info: '#f97316',
+      gradient: 'linear-gradient(135deg, #f97316 0%, #fbbf24 100%)',
+      glow: 'rgba(249, 115, 22, 0.3)',
+      overlay: 'rgba(255, 248, 245, 0.9)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(255, 160, 130, 0.15)',
+      md: '0 4px 12px rgba(255, 160, 130, 0.18)',
+      lg: '0 8px 32px rgba(255, 160, 130, 0.22)',
+      glow: '0 0 20px rgba(249, 115, 22, 0.2)'
+    },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // SKY BLUE - Light airy blue (LIGHT)
+  'sky-blue': {
+    id: 'sky-blue',
+    name: 'Sky Blue',
+    description: 'Light airy blue. Open and expansive.',
+    isDark: false,
+    colors: {
+      background: '#f0f9ff',
+      backgroundAlt: '#dbeafe',
+      surface: 'rgba(59, 130, 246, 0.06)',
+      surfaceHover: 'rgba(59, 130, 246, 0.1)',
+      surfaceActive: 'rgba(59, 130, 246, 0.14)',
+      border: 'rgba(59, 130, 246, 0.15)',
+      borderHover: 'rgba(59, 130, 246, 0.25)',
+      borderActive: 'rgba(59, 130, 246, 0.35)',
+      text: '#1e3a5f',
+      textMuted: 'rgba(30, 58, 95, 0.65)',
+      textSubtle: 'rgba(30, 58, 95, 0.45)',
+      primary: '#3b82f6',
+      primaryHover: '#60a5fa',
+      primaryMuted: 'rgba(59, 130, 246, 0.15)',
+      secondary: '#8b5cf6',
+      secondaryHover: '#a78bfa',
+      success: '#22c55e',
+      warning: '#f59e0b',
+      error: '#ef4444',
+      info: '#3b82f6',
+      gradient: 'linear-gradient(135deg, #3b82f6 0%, #93c5fd 100%)',
+      glow: 'rgba(59, 130, 246, 0.3)',
+      overlay: 'rgba(240, 249, 255, 0.9)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(59, 130, 246, 0.1)',
+      md: '0 4px 12px rgba(59, 130, 246, 0.12)',
+      lg: '0 8px 32px rgba(59, 130, 246, 0.15)',
+      glow: '0 0 20px rgba(59, 130, 246, 0.2)'
+    },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // LAVENDER MIST - Soft purple haze (LIGHT)
+  'lavender-mist': {
+    id: 'lavender-mist',
+    name: 'Lavender Mist',
+    description: 'Soft purple haze. Calming and dreamy.',
+    isDark: false,
+    colors: {
+      background: '#faf5ff',
+      backgroundAlt: '#ede9fe',
+      surface: 'rgba(139, 92, 246, 0.06)',
+      surfaceHover: 'rgba(139, 92, 246, 0.1)',
+      surfaceActive: 'rgba(139, 92, 246, 0.14)',
+      border: 'rgba(139, 92, 246, 0.15)',
+      borderHover: 'rgba(139, 92, 246, 0.25)',
+      borderActive: 'rgba(139, 92, 246, 0.35)',
+      text: '#3b2d5c',
+      textMuted: 'rgba(59, 45, 92, 0.65)',
+      textSubtle: 'rgba(59, 45, 92, 0.45)',
+      primary: '#8b5cf6',
+      primaryHover: '#a78bfa',
+      primaryMuted: 'rgba(139, 92, 246, 0.15)',
+      secondary: '#ec4899',
+      secondaryHover: '#f472b6',
+      success: '#22c55e',
+      warning: '#f59e0b',
+      error: '#ef4444',
+      info: '#8b5cf6',
+      gradient: 'linear-gradient(135deg, #8b5cf6 0%, #c4b5fd 100%)',
+      glow: 'rgba(139, 92, 246, 0.3)',
+      overlay: 'rgba(250, 245, 255, 0.9)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(139, 92, 246, 0.1)',
+      md: '0 4px 12px rgba(139, 92, 246, 0.12)',
+      lg: '0 8px 32px rgba(139, 92, 246, 0.15)',
+      glow: '0 0 20px rgba(139, 92, 246, 0.2)'
+    },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // SAGE - Soft muted green (LIGHT)
+  sage: {
+    id: 'sage',
+    name: 'Sage',
+    description: 'Soft muted sage green. Natural and serene.',
+    isDark: false,
+    colors: {
+      background: '#f6f9f4',
+      backgroundAlt: '#e4ece0',
+      surface: 'rgba(130, 160, 120, 0.06)',
+      surfaceHover: 'rgba(130, 160, 120, 0.1)',
+      surfaceActive: 'rgba(130, 160, 120, 0.14)',
+      border: 'rgba(130, 160, 120, 0.15)',
+      borderHover: 'rgba(130, 160, 120, 0.25)',
+      borderActive: 'rgba(130, 160, 120, 0.35)',
+      text: '#3d4a35',
+      textMuted: 'rgba(61, 74, 53, 0.65)',
+      textSubtle: 'rgba(61, 74, 53, 0.45)',
+      primary: '#65a30d',
+      primaryHover: '#84cc16',
+      primaryMuted: 'rgba(101, 163, 13, 0.15)',
+      secondary: '#78716c',
+      secondaryHover: '#a8a29e',
+      success: '#22c55e',
+      warning: '#eab308',
+      error: '#dc2626',
+      info: '#65a30d',
+      gradient: 'linear-gradient(135deg, #65a30d 0%, #a3e635 100%)',
+      glow: 'rgba(101, 163, 13, 0.3)',
+      overlay: 'rgba(246, 249, 244, 0.9)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(130, 160, 120, 0.1)',
+      md: '0 4px 12px rgba(130, 160, 120, 0.12)',
+      lg: '0 8px 32px rgba(130, 160, 120, 0.15)',
+      glow: '0 0 20px rgba(101, 163, 13, 0.2)'
+    },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // CORAL REEF - Warm coral and turquoise (LIGHT)
+  'coral-reef': {
+    id: 'coral-reef',
+    name: 'Coral Reef',
+    description: 'Warm coral tones. Tropical and vibrant.',
+    isDark: false,
+    colors: {
+      background: '#fff5f5',
+      backgroundAlt: '#ffe4e6',
+      surface: 'rgba(251, 113, 133, 0.06)',
+      surfaceHover: 'rgba(251, 113, 133, 0.1)',
+      surfaceActive: 'rgba(251, 113, 133, 0.14)',
+      border: 'rgba(251, 113, 133, 0.18)',
+      borderHover: 'rgba(251, 113, 133, 0.28)',
+      borderActive: 'rgba(251, 113, 133, 0.38)',
+      text: '#5c2d3a',
+      textMuted: 'rgba(92, 45, 58, 0.65)',
+      textSubtle: 'rgba(92, 45, 58, 0.45)',
+      primary: '#f43f5e',
+      primaryHover: '#fb7185',
+      primaryMuted: 'rgba(244, 63, 94, 0.15)',
+      secondary: '#14b8a6',
+      secondaryHover: '#2dd4bf',
+      success: '#10b981',
+      warning: '#f59e0b',
+      error: '#ef4444',
+      info: '#14b8a6',
+      gradient: 'linear-gradient(135deg, #f43f5e 0%, #fb7185 100%)',
+      glow: 'rgba(244, 63, 94, 0.3)',
+      overlay: 'rgba(255, 245, 245, 0.9)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(251, 113, 133, 0.15)',
+      md: '0 4px 12px rgba(251, 113, 133, 0.18)',
+      lg: '0 8px 32px rgba(251, 113, 133, 0.22)',
+      glow: '0 0 20px rgba(244, 63, 94, 0.2)'
+    },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
   // 9. MIDNIGHT GARDEN - Dark green and gold
   'midnight-garden': {
     id: 'midnight-garden',
@@ -500,42 +839,42 @@ export const themes: Record<ThemeId, Theme> = {
     }
   },
 
-  // 10. SAPPHIRE - Deep blue with ice blue accents
+  // 10. SAPPHIRE - Deep blue with ice blue accents - Enhanced
   sapphire: {
     id: 'sapphire',
     name: 'Sapphire',
-    description: 'Deep blue with ice blue accents. Cool and professional.',
+    description: 'Royal deep blue with brilliant ice accents. Elegant and striking.',
     isDark: true,
     colors: {
-      background: '#030712',
-      backgroundAlt: '#0a1a38',
-      surface: 'rgba(59, 130, 246, 0.04)',
-      surfaceHover: 'rgba(59, 130, 246, 0.07)',
-      surfaceActive: 'rgba(59, 130, 246, 0.1)',
-      border: 'rgba(59, 130, 246, 0.1)',
-      borderHover: 'rgba(59, 130, 246, 0.18)',
-      borderActive: 'rgba(59, 130, 246, 0.25)',
-      text: '#e0f2fe',
-      textMuted: 'rgba(224, 242, 254, 0.65)',
-      textSubtle: 'rgba(224, 242, 254, 0.4)',
-      primary: '#3b82f6',
-      primaryHover: '#60a5fa',
-      primaryMuted: 'rgba(59, 130, 246, 0.2)',
-      secondary: '#06b6d4',
-      secondaryHover: '#22d3ee',
-      success: '#10b981',
-      warning: '#f59e0b',
-      error: '#ef4444',
-      info: '#0ea5e9',
-      gradient: 'linear-gradient(135deg, #1e3a8a 0%, #0284c7 100%)',
-      glow: 'rgba(59, 130, 246, 0.4)',
-      overlay: 'rgba(3, 7, 18, 0.85)'
+      background: '#020410',
+      backgroundAlt: '#081430',
+      surface: 'rgba(80, 150, 255, 0.05)',
+      surfaceHover: 'rgba(80, 150, 255, 0.09)',
+      surfaceActive: 'rgba(80, 150, 255, 0.13)',
+      border: 'rgba(80, 150, 255, 0.12)',
+      borderHover: 'rgba(80, 150, 255, 0.22)',
+      borderActive: 'rgba(80, 150, 255, 0.3)',
+      text: '#e8f4ff',
+      textMuted: 'rgba(232, 244, 255, 0.7)',
+      textSubtle: 'rgba(232, 244, 255, 0.45)',
+      primary: '#4d9fff',
+      primaryHover: '#80b8ff',
+      primaryMuted: 'rgba(77, 159, 255, 0.25)',
+      secondary: '#00d4ff',
+      secondaryHover: '#66e5ff',
+      success: '#20d997',
+      warning: '#ffc000',
+      error: '#ff5050',
+      info: '#00aaff',
+      gradient: 'linear-gradient(135deg, #1e3a8a 0%, #4d9fff 50%, #00d4ff 100%)',
+      glow: 'rgba(77, 159, 255, 0.5)',
+      overlay: 'rgba(2, 4, 16, 0.88)'
     },
     shadows: {
-      sm: '0 1px 2px rgba(0, 0, 0, 0.5)',
-      md: '0 4px 12px rgba(0, 0, 0, 0.5)',
-      lg: '0 8px 32px rgba(0, 0, 0, 0.6)',
-      glow: '0 0 20px rgba(59, 130, 246, 0.3)'
+      sm: '0 1px 2px rgba(0, 0, 0, 0.6)',
+      md: '0 4px 12px rgba(0, 0, 0, 0.6), 0 0 15px rgba(77, 159, 255, 0.1)',
+      lg: '0 8px 32px rgba(0, 0, 0, 0.7), 0 0 30px rgba(77, 159, 255, 0.15)',
+      glow: '0 0 25px rgba(77, 159, 255, 0.4), 0 0 50px rgba(0, 212, 255, 0.2)'
     },
     blur: {
       sm: '8px',
@@ -1336,6 +1675,210 @@ export const themes: Record<ThemeId, Theme> = {
       md: '16px',
       lg: '32px'
     }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW GOON THEMES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // SUBMISSIVE - Soft, yielding, devotion
+  'submissive': {
+    id: 'submissive' as ThemeId,
+    name: 'Submissive',
+    description: 'Soft, yielding, devoted surrender',
+    isDark: true,
+    colors: {
+      background: '#0f0810',
+      backgroundAlt: '#1a1020',
+      surface: 'rgba(255, 182, 193, 0.05)',
+      surfaceHover: 'rgba(255, 182, 193, 0.08)',
+      surfaceActive: 'rgba(255, 182, 193, 0.12)',
+      border: 'rgba(255, 182, 193, 0.1)',
+      borderHover: 'rgba(255, 182, 193, 0.18)',
+      borderActive: 'rgba(255, 182, 193, 0.25)',
+      text: '#ffe8ec',
+      textMuted: 'rgba(255, 232, 236, 0.7)',
+      textSubtle: 'rgba(255, 232, 236, 0.5)',
+      primary: '#ffb6c1',
+      primaryHover: '#ffc8d0',
+      primaryMuted: 'rgba(255, 182, 193, 0.2)',
+      secondary: '#dda0dd',
+      secondaryHover: '#e8b8e8',
+      success: '#90ee90',
+      warning: '#ffd700',
+      error: '#ff6b6b',
+      info: '#ffb6c1',
+      gradient: 'linear-gradient(135deg, #ffb6c1 0%, #dda0dd 100%)',
+      glow: 'rgba(255, 182, 193, 0.4)',
+      overlay: 'rgba(15, 8, 16, 0.9)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(0, 0, 0, 0.5)',
+      md: '0 4px 12px rgba(0, 0, 0, 0.5)',
+      lg: '0 8px 32px rgba(0, 0, 0, 0.6)',
+      glow: '0 0 25px rgba(255, 182, 193, 0.35)'
+    },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // DOMINANT - Power, control, authority
+  'dominant': {
+    id: 'dominant' as ThemeId,
+    name: 'Dominant',
+    description: 'Power, control, absolute authority',
+    isDark: true,
+    colors: {
+      background: '#080204',
+      backgroundAlt: '#180608',
+      surface: 'rgba(180, 0, 30, 0.06)',
+      surfaceHover: 'rgba(180, 0, 30, 0.1)',
+      surfaceActive: 'rgba(180, 0, 30, 0.15)',
+      border: 'rgba(180, 0, 30, 0.12)',
+      borderHover: 'rgba(180, 0, 30, 0.22)',
+      borderActive: 'rgba(180, 0, 30, 0.32)',
+      text: '#f5e8e8',
+      textMuted: 'rgba(245, 232, 232, 0.7)',
+      textSubtle: 'rgba(245, 232, 232, 0.5)',
+      primary: '#b4001e',
+      primaryHover: '#d40025',
+      primaryMuted: 'rgba(180, 0, 30, 0.25)',
+      secondary: '#8b0000',
+      secondaryHover: '#a50000',
+      success: '#228b22',
+      warning: '#cd853f',
+      error: '#dc143c',
+      info: '#b4001e',
+      gradient: 'linear-gradient(135deg, #4a0010 0%, #8b0000 50%, #b4001e 100%)',
+      glow: 'rgba(180, 0, 30, 0.5)',
+      overlay: 'rgba(8, 2, 4, 0.92)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(0, 0, 0, 0.7)',
+      md: '0 4px 12px rgba(0, 0, 0, 0.7)',
+      lg: '0 8px 32px rgba(0, 0, 0, 0.8)',
+      glow: '0 0 30px rgba(180, 0, 30, 0.4)'
+    },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // LATEX - Shiny, sleek, fetish
+  'latex': {
+    id: 'latex' as ThemeId,
+    name: 'Latex',
+    description: 'Shiny, sleek, glossy fetish',
+    isDark: true,
+    colors: {
+      background: '#050505',
+      backgroundAlt: '#101012',
+      surface: 'rgba(80, 80, 90, 0.08)',
+      surfaceHover: 'rgba(80, 80, 90, 0.14)',
+      surfaceActive: 'rgba(80, 80, 90, 0.2)',
+      border: 'rgba(100, 100, 110, 0.15)',
+      borderHover: 'rgba(100, 100, 110, 0.28)',
+      borderActive: 'rgba(100, 100, 110, 0.4)',
+      text: '#e8e8f0',
+      textMuted: 'rgba(232, 232, 240, 0.7)',
+      textSubtle: 'rgba(232, 232, 240, 0.5)',
+      primary: '#3a3a45',
+      primaryHover: '#505060',
+      primaryMuted: 'rgba(58, 58, 69, 0.3)',
+      secondary: '#ff0066',
+      secondaryHover: '#ff3388',
+      success: '#00ff88',
+      warning: '#ffcc00',
+      error: '#ff0044',
+      info: '#8888aa',
+      gradient: 'linear-gradient(135deg, #1a1a22 0%, #3a3a45 50%, #505060 100%)',
+      glow: 'rgba(255, 255, 255, 0.15)',
+      overlay: 'rgba(5, 5, 5, 0.95)'
+    },
+    shadows: {
+      sm: '0 1px 3px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.8)',
+      md: '0 4px 12px rgba(255, 255, 255, 0.05), 0 4px 12px rgba(0, 0, 0, 0.8)',
+      lg: '0 8px 32px rgba(255, 255, 255, 0.08), 0 8px 32px rgba(0, 0, 0, 0.9)',
+      glow: '0 0 20px rgba(255, 255, 255, 0.1), 0 0 40px rgba(255, 0, 102, 0.15)'
+    },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // BIMBO - Bubbly, pink, playful
+  'bimbo': {
+    id: 'bimbo' as ThemeId,
+    name: 'Bimbo',
+    description: 'Bubbly, pink, totally brainless',
+    isDark: true,
+    colors: {
+      background: '#12060c',
+      backgroundAlt: '#220a16',
+      surface: 'rgba(255, 20, 147, 0.06)',
+      surfaceHover: 'rgba(255, 20, 147, 0.1)',
+      surfaceActive: 'rgba(255, 20, 147, 0.15)',
+      border: 'rgba(255, 20, 147, 0.15)',
+      borderHover: 'rgba(255, 20, 147, 0.28)',
+      borderActive: 'rgba(255, 20, 147, 0.4)',
+      text: '#ffe0f0',
+      textMuted: 'rgba(255, 224, 240, 0.75)',
+      textSubtle: 'rgba(255, 224, 240, 0.5)',
+      primary: '#ff1493',
+      primaryHover: '#ff69b4',
+      primaryMuted: 'rgba(255, 20, 147, 0.25)',
+      secondary: '#ff69b4',
+      secondaryHover: '#ff85c2',
+      success: '#00ff7f',
+      warning: '#ffd700',
+      error: '#ff1493',
+      info: '#ff69b4',
+      gradient: 'linear-gradient(135deg, #ff1493 0%, #ff69b4 50%, #ffb6c1 100%)',
+      glow: 'rgba(255, 20, 147, 0.5)',
+      overlay: 'rgba(18, 6, 12, 0.9)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(0, 0, 0, 0.5)',
+      md: '0 4px 12px rgba(0, 0, 0, 0.5), 0 0 15px rgba(255, 20, 147, 0.15)',
+      lg: '0 8px 32px rgba(0, 0, 0, 0.6), 0 0 30px rgba(255, 20, 147, 0.2)',
+      glow: '0 0 30px rgba(255, 20, 147, 0.5), 0 0 60px rgba(255, 105, 180, 0.3)'
+    },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // HYPNO - Trance, spiral, mindless
+  'hypno': {
+    id: 'hypno' as ThemeId,
+    name: 'Hypno',
+    description: 'Trance, spiral, empty mind',
+    isDark: true,
+    colors: {
+      background: '#08040c',
+      backgroundAlt: '#12081a',
+      surface: 'rgba(148, 0, 211, 0.06)',
+      surfaceHover: 'rgba(148, 0, 211, 0.1)',
+      surfaceActive: 'rgba(148, 0, 211, 0.15)',
+      border: 'rgba(148, 0, 211, 0.12)',
+      borderHover: 'rgba(148, 0, 211, 0.22)',
+      borderActive: 'rgba(148, 0, 211, 0.32)',
+      text: '#e8d8f8',
+      textMuted: 'rgba(232, 216, 248, 0.7)',
+      textSubtle: 'rgba(232, 216, 248, 0.5)',
+      primary: '#9400d3',
+      primaryHover: '#a020f0',
+      primaryMuted: 'rgba(148, 0, 211, 0.25)',
+      secondary: '#8a2be2',
+      secondaryHover: '#9932cc',
+      success: '#00fa9a',
+      warning: '#ffa500',
+      error: '#ff00ff',
+      info: '#ba55d3',
+      gradient: 'linear-gradient(135deg, #4b0082 0%, #9400d3 40%, #ff00ff 100%)',
+      glow: 'rgba(148, 0, 211, 0.5)',
+      overlay: 'rgba(8, 4, 12, 0.92)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(0, 0, 0, 0.6)',
+      md: '0 4px 12px rgba(0, 0, 0, 0.6), 0 0 15px rgba(148, 0, 211, 0.15)',
+      lg: '0 8px 32px rgba(0, 0, 0, 0.7), 0 0 30px rgba(148, 0, 211, 0.2)',
+      glow: '0 0 35px rgba(148, 0, 211, 0.45), 0 0 70px rgba(255, 0, 255, 0.25)'
+    },
+    blur: { sm: '8px', md: '16px', lg: '32px' }
   }
 }
 
@@ -1591,7 +2134,8 @@ export function injectEroticAnimations(): void {
 export function isGoonTheme(themeId: ThemeId): boolean {
   const goonThemes: GoonThemeId[] = [
     'afterglow', 'edgelands', 'red-room', 'midnight-velvet',
-    'neon-lust', 'honeypot', 'sinners-paradise', 'wet-dreams', 'flesh', 'void'
+    'neon-lust', 'honeypot', 'sinners-paradise', 'wet-dreams', 'flesh', 'void',
+    'submissive', 'dominant', 'latex', 'bimbo', 'hypno'
   ]
   return goonThemes.includes(themeId as GoonThemeId)
 }
@@ -1613,6 +2157,12 @@ export const GOON_THEME_LIST = [
   { id: 'wet-dreams', name: 'Wet Dreams', vibe: 'dreamy' },
   { id: 'flesh', name: 'Flesh', vibe: 'primal' },
   { id: 'void', name: 'Void', vibe: 'focused' },
+  // New goon themes
+  { id: 'submissive', name: 'Submissive', vibe: 'devoted' },
+  { id: 'dominant', name: 'Dominant', vibe: 'powerful' },
+  { id: 'latex', name: 'Latex', vibe: 'fetish' },
+  { id: 'bimbo', name: 'Bimbo', vibe: 'brainless' },
+  { id: 'hypno', name: 'Hypno', vibe: 'trance' },
 ] as const
 
 // Goon theme IDs set for filtering
