@@ -10659,6 +10659,19 @@ function PlaylistsPage() {
   const [smartSortDir, setSmartSortDir] = useState<'asc' | 'desc'>('desc')
   const [smartCreating, setSmartCreating] = useState(false)
 
+  // Playlist statistics cache (item count, duration, thumbnail)
+  const [playlistStats, setPlaylistStats] = useState<Map<string, { count: number; durationSec: number; thumbPath?: string }>>(new Map())
+
+  // Session Templates
+  const [showTemplates, setShowTemplates] = useState(false)
+  const SESSION_TEMPLATES = [
+    { id: 'quick', name: 'Quick Session', icon: '⚡', duration: 10, intensity: 'medium' as const, description: '10 min warm-up' },
+    { id: 'chill', name: 'Chill Mode', icon: '🌙', duration: 30, intensity: 'chill' as const, description: 'Relaxed 30 min' },
+    { id: 'intense', name: 'Intense', icon: '🔥', duration: 45, intensity: 'intense' as const, description: 'High energy 45 min' },
+    { id: 'marathon', name: 'Marathon', icon: '🏃', duration: 90, intensity: 'medium' as const, description: 'Extended 90 min' },
+    { id: 'edging', name: 'Edge Session', icon: '💜', duration: 60, intensity: 'intense' as const, description: '60 min edging focus' },
+  ]
+
   const refresh = async () => {
     try {
       setIsLoading(true)
@@ -10683,6 +10696,38 @@ function PlaylistsPage() {
     }
   }
 
+  // Load statistics for all playlists (count, duration, thumbnail)
+  const loadPlaylistStats = async (playlistList: PlaylistRow[]) => {
+    const stats = new Map<string, { count: number; durationSec: number; thumbPath?: string }>()
+    await Promise.all(playlistList.map(async (pl) => {
+      try {
+        const its = await window.api.playlists.getItems(pl.id)
+        const count = its.length
+        const durationSec = its.reduce((sum: number, item: any) => {
+          return sum + (item.media?.durationSec ?? item.durationSec ?? 0)
+        }, 0)
+        const firstItem = its[0]
+        const thumbPath = firstItem?.media?.thumbPath ?? firstItem?.thumbPath
+        stats.set(pl.id, { count, durationSec, thumbPath })
+      } catch {
+        stats.set(pl.id, { count: 0, durationSec: 0 })
+      }
+    }))
+    setPlaylistStats(stats)
+  }
+
+  // Create playlist from template
+  const createFromTemplate = async (template: typeof SESSION_TEMPLATES[0]) => {
+    try {
+      setAiDuration(template.duration)
+      setAiIntensity(template.intensity)
+      setShowTemplates(false)
+      setShowAiGenerator(true)
+    } catch (err: any) {
+      showToast('error', err?.message ?? 'Failed to create from template')
+    }
+  }
+
   useEffect(() => {
     void refresh()
     // Load available tags for AI generator
@@ -10695,6 +10740,13 @@ function PlaylistsPage() {
     })
     return () => unsub?.()
   }, [])
+
+  // Load playlist stats when playlists change
+  useEffect(() => {
+    if (playlists.length > 0) {
+      void loadPlaylistStats(playlists)
+    }
+  }, [playlists])
 
   useEffect(() => {
     if (selectedId) void loadItems(selectedId)
@@ -11234,9 +11286,39 @@ function PlaylistsPage() {
               </button>
             </div>
 
+            {/* Session Templates */}
+            <div className="mb-4">
+              <button
+                onClick={() => setShowTemplates(!showTemplates)}
+                className="w-full px-3 py-2 rounded-lg bg-black/20 border border-[var(--border)] hover:border-white/20 transition flex items-center justify-between"
+              >
+                <span className="text-xs text-[var(--muted)]">Quick Start Templates</span>
+                <ChevronDown size={12} className={cn('text-[var(--muted)] transition-transform', showTemplates && 'rotate-180')} />
+              </button>
+              {showTemplates && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {SESSION_TEMPLATES.map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => createFromTemplate(t)}
+                      className="p-2 rounded-lg bg-black/30 border border-[var(--border)] hover:border-white/20 transition text-left"
+                    >
+                      <div className="text-lg mb-1">{t.icon}</div>
+                      <div className="text-xs font-medium">{t.name}</div>
+                      <div className="text-[10px] text-[var(--muted)]">{t.description}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Playlist list */}
-            <div className="space-y-1">
-              {playlists.map((p) => (
+            <div className="space-y-1.5">
+              {playlists.map((p) => {
+                const stats = playlistStats.get(p.id)
+                const duration = stats?.durationSec ?? 0
+                const durationStr = duration > 0 ? formatDuration(duration) : ''
+                return (
                 <div
                   key={p.id}
                   onClick={() => setSelectedId(p.id)}
@@ -11244,7 +11326,7 @@ function PlaylistsPage() {
                   onDragLeave={handlePlaylistDragLeave}
                   onDrop={(e) => handlePlaylistDrop(e, p.id)}
                   className={cn(
-                    'px-3 py-2.5 rounded-xl cursor-pointer transition border',
+                    'px-3 py-2.5 rounded-xl cursor-pointer transition border group',
                     selectedId === p.id
                       ? 'bg-white/10 border-white/15'
                       : 'border-transparent hover:bg-white/5',
@@ -11265,12 +11347,31 @@ function PlaylistsPage() {
                       className="w-full px-2 py-1 rounded bg-black/30 border border-white/20 text-sm outline-none"
                     />
                   ) : (
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        {p.isSmart === 1 && (
-                          <span title="Smart Playlist"><Zap size={12} className="text-cyan-400 shrink-0" /></span>
+                    <div className="flex items-center gap-3">
+                      {/* Thumbnail preview */}
+                      <div className="w-10 h-10 rounded-lg bg-black/40 overflow-hidden shrink-0 flex items-center justify-center">
+                        {stats?.thumbPath ? (
+                          <img
+                            src={`vault://${stats.thumbPath}`}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                          />
+                        ) : (
+                          <ListMusic size={16} className="text-[var(--muted)]" />
                         )}
-                        <span className="text-sm font-medium truncate">{p.name}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          {p.isSmart === 1 && (
+                            <span title="Smart Playlist"><Zap size={10} className="text-cyan-400 shrink-0" /></span>
+                          )}
+                          <span className="text-sm font-medium truncate">{p.name}</span>
+                        </div>
+                        <div className="text-[10px] text-[var(--muted)] flex items-center gap-2">
+                          <span>{stats?.count ?? 0} items</span>
+                          {durationStr && <span>• {durationStr}</span>}
+                        </div>
                       </div>
                       {dropTargetPlaylistId === p.id && p.id !== selectedId && (
                         <span className="text-xs text-green-400 flex items-center gap-1">
@@ -11283,7 +11384,7 @@ function PlaylistsPage() {
                             e.stopPropagation()
                             refreshSmartPlaylist(p.id)
                           }}
-                          className="text-xs text-cyan-400 hover:text-cyan-200 p-1"
+                          className="text-xs text-cyan-400 hover:text-cyan-200 p-1 opacity-0 group-hover:opacity-100"
                           title="Refresh smart playlist"
                         >
                           <RefreshCw size={12} />
@@ -11295,14 +11396,15 @@ function PlaylistsPage() {
                           setRenaming(p.id)
                           setRenamingValue(p.name)
                         }}
-                        className="text-xs text-[var(--muted)] hover:text-white opacity-0 group-hover:opacity-100"
+                        className="text-xs text-[var(--muted)] hover:text-white opacity-0 group-hover:opacity-100 p-1"
+                        title="Rename"
                       >
-
+                        <Edit2 size={12} />
                       </button>
                     </div>
                   )}
                 </div>
-              ))}
+              )})}
               {playlists.length === 0 && (
                 <div className="text-xs text-[var(--muted)] text-center py-4">
                   No playlists yet. Create one above.
@@ -11319,9 +11421,19 @@ function PlaylistsPage() {
               {/* Header */}
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-bold">{selectedPlaylist.name}</h2>
-                  <div className="text-sm text-[var(--muted)] mt-1">
-                    {items.length} {items.length === 1 ? 'item' : 'items'}
+                  <h2 className="text-2xl font-bold flex items-center gap-2">
+                    {selectedPlaylist.isSmart === 1 && <Zap size={20} className="text-cyan-400" />}
+                    {selectedPlaylist.name}
+                  </h2>
+                  <div className="text-sm text-[var(--muted)] mt-1 flex items-center gap-3">
+                    <span>{items.length} {items.length === 1 ? 'item' : 'items'}</span>
+                    {(() => {
+                      const totalDuration = items.reduce((sum: number, item: any) => {
+                        return sum + (item.media?.durationSec ?? item.durationSec ?? 0)
+                      }, 0)
+                      return totalDuration > 0 ? <span>• {formatDuration(totalDuration)} total</span> : null
+                    })()}
+                    {selectedPlaylist.isSmart === 1 && <span className="text-cyan-400 text-xs">Smart Playlist</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
