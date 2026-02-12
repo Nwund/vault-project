@@ -90,7 +90,7 @@ import { toVaultUrl } from './vaultProtocol'
 import { getAICacheService } from './services/ai-cache-service'
 import { getLicenseService, type TierLimits } from './services/license-service'
 import { errorLogger } from './services/error-logger'
-import { needsTranscode, transcodeToMp4, getTranscodedPath, transcodeLowRes } from './services/transcode'
+import { needsTranscode, transcodeToMp4, getTranscodedPath, transcodeLowRes, detectHardwareEncoders, getEncoders, getPreferredEncoder, setPreferredEncoder, type HardwareEncoder, type EncoderInfo } from './services/transcode'
 import { makeVideoThumb, makeImageThumb, probeVideoDurationSec } from './thumbs'
 
 type OnDirsChanged = (newDirs: string[]) => Promise<void>
@@ -3441,6 +3441,41 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   } catch (e) {
     console.warn('[DLNA] Failed to set up event listeners:', e)
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HARDWARE ENCODER DETECTION & SETTINGS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Detect available hardware encoders
+  ipcMain.handle('encoder:detect', async () => {
+    try {
+      const encoders = await detectHardwareEncoders()
+      return { success: true, encoders }
+    } catch (error: any) {
+      console.error('[Encoder] Detection failed:', error)
+      return { success: false, error: error?.message, encoders: [] }
+    }
+  })
+
+  // Get cached encoder list
+  ipcMain.handle('encoder:getEncoders', async () => {
+    return getEncoders()
+  })
+
+  // Get preferred encoder
+  ipcMain.handle('encoder:getPreferred', async () => {
+    return getPreferredEncoder()
+  })
+
+  // Set preferred encoder
+  ipcMain.handle('encoder:setPreferred', async (_ev, encoder: HardwareEncoder) => {
+    try {
+      setPreferredEncoder(encoder)
+      return { success: true }
+    } catch (error: any) {
+      return { success: false, error: error?.message }
+    }
+  })
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ERROR LOGGING - Persistent log management

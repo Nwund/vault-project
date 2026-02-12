@@ -720,6 +720,35 @@ const api = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // HARDWARE ENCODER - GPU-accelerated video encoding
+  // ═══════════════════════════════════════════════════════════════════════════
+  encoder: {
+    // Detect available hardware encoders (NVENC, QSV, VAAPI, AMF)
+    detect: () => invoke<{
+      success: boolean
+      error?: string
+      encoders: Array<{
+        id: string
+        name: string
+        available: boolean
+        description: string
+      }>
+    }>('encoder:detect'),
+
+    // Get cached list of encoders
+    getEncoders: () => invoke<Array<{
+      id: string
+      name: string
+      available: boolean
+      description: string
+    }>>('encoder:getEncoders'),
+
+    // Get/set preferred encoder
+    getPreferred: () => invoke<string>('encoder:getPreferred'),
+    setPreferred: (encoder: string) => invoke<{ success: boolean; error?: string }>('encoder:setPreferred', encoder),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // SHELL
   // ═══════════════════════════════════════════════════════════════════════════
   shell: {
