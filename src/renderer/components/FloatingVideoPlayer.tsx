@@ -1134,7 +1134,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         top: position.y,
         width: size.width,
         height: size.height,
-        zIndex: 100,
+        zIndex: 9000, // High z-index to stay above other UI elements
         cursor: isDragging ? 'grabbing' : 'default'
       }
 

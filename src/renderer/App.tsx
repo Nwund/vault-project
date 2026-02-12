@@ -1586,7 +1586,7 @@ export default function App() {
             </ErrorBoundary>
           ) : page === 'library' ? (
             <ErrorBoundary pageName="Library">
-              <LibraryPage settings={settings} selected={selected} setSelected={setSelected} tagBarOpen={tagBarOpen} setTagBarOpen={setTagBarOpen} confetti={confetti} anime={anime} />
+              <LibraryPage settings={settings} selected={selected} setSelected={setSelected} tagBarOpen={tagBarOpen} setTagBarOpen={setTagBarOpen} confetti={confetti} anime={anime} onNavigateToFeed={() => setPage('feed')} />
             </ErrorBoundary>
           ) : page === 'goonwall' ? (
             <ErrorBoundary pageName="Goon Wall">
@@ -2054,14 +2054,14 @@ export default function App() {
                       const items = Array.isArray(result) ? result : (result as any)?.items ?? []
                       if (items.length > 0) {
                         const randomItem = items[Math.floor(Math.random() * items.length)]
-                        addFloatingPlayer(randomItem.id)
+                        window.dispatchEvent(new CustomEvent('vault-open-video', { detail: randomItem }))
                         setShowCommandPalette(false)
                       } else {
                         globalShowToast('info', 'No videos found')
                       }
                     } catch { globalShowToast('error', 'Failed to find videos') }
                   }},
-                  { id: 'watchLater', icon: Clock, label: 'Open Watch Later', shortcut: 'L', action: () => { setShowWatchLaterPanel(true); setShowCommandPalette(false) } },
+                  { id: 'watchLater', icon: Clock, label: 'Open Watch Later', shortcut: 'L', action: () => { window.dispatchEvent(new CustomEvent('vault-open-watch-later')); setShowCommandPalette(false) } },
                   { id: 'fullscreen', icon: Maximize2, label: 'Toggle Fullscreen', shortcut: 'F11', action: () => { window.api.window?.toggleFullscreen?.(); setShowCommandPalette(false) } },
                   { id: 'divider3', divider: true },
                   { id: 'addFolder', icon: FolderPlus, label: 'Add Media Folder', action: async () => { await window.api.settings.chooseMediaDir?.(); setShowCommandPalette(false) } },
@@ -2465,7 +2465,7 @@ function getPersistedFilters() {
   return null
 }
 
-function LibraryPage(props: { settings: VaultSettings | null; selected: string[]; setSelected: (ids: string[]) => void; tagBarOpen: boolean; setTagBarOpen: (open: boolean | ((prev: boolean) => boolean)) => void; confetti?: ReturnType<typeof useConfetti>; anime?: ReturnType<typeof useAnime> }) {
+function LibraryPage(props: { settings: VaultSettings | null; selected: string[]; setSelected: (ids: string[]) => void; tagBarOpen: boolean; setTagBarOpen: (open: boolean | ((prev: boolean) => boolean)) => void; confetti?: ReturnType<typeof useConfetti>; anime?: ReturnType<typeof useAnime>; onNavigateToFeed?: () => void }) {
   const { confetti, anime } = props
   const { tagBarOpen, setTagBarOpen } = props
   const { showToast } = useToast()
@@ -2623,6 +2623,25 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       setTimeout(() => {
         addFloatingPlayer(pendingMedia)
       }, 500)
+    }
+  }, [addFloatingPlayer])
+
+  // Listen for custom events from other parts of the app (e.g., Command Palette)
+  useEffect(() => {
+    const handleOpenVideo = (e: CustomEvent) => {
+      const mediaItem = e.detail
+      if (mediaItem?.id) {
+        addFloatingPlayer(mediaItem.id)
+      }
+    }
+    const handleOpenWatchLater = () => {
+      setShowWatchLaterPanel(true)
+    }
+    window.addEventListener('vault-open-video', handleOpenVideo as EventListener)
+    window.addEventListener('vault-open-watch-later', handleOpenWatchLater)
+    return () => {
+      window.removeEventListener('vault-open-video', handleOpenVideo as EventListener)
+      window.removeEventListener('vault-open-watch-later', handleOpenWatchLater)
     }
   }, [addFloatingPlayer])
 
@@ -3175,21 +3194,24 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   }
 
   // Get grid/mosaic style based on layout mode
+  // All layouts now use CSS Grid for consistent left-to-right, top-to-bottom ordering
   const getGridStyle = (): React.CSSProperties => {
     if (layout === 'wall') {
-      // Wall mode: masonry-like layout with zero gaps for tight tiled appearance
+      // Wall mode: grid layout with minimal gaps for tight tiled appearance
       return {
-        columnCount: mosaicCols,
-        columnGap: '2px',
+        display: 'grid',
+        gridTemplateColumns: `repeat(${mosaicCols}, 1fr)`,
+        gap: '2px',
         width: '100%',
       }
     }
     if (layout === 'mosaic') {
       const gap = mosaicCols >= 7 ? 4 : mosaicCols >= 5 ? 6 : 8
-      // CSS Columns for true masonry layout with natural aspect ratios
+      // Grid layout with specified column count for mosaic appearance
       return {
-        columnCount: mosaicCols,
-        columnGap: `${gap}px`,
+        display: 'grid',
+        gridTemplateColumns: `repeat(${mosaicCols}, 1fr)`,
+        gap: `${gap}px`,
         width: '100%',
       }
     }
@@ -3644,7 +3666,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
 
           {/* Play Shuffled - opens Feed with random videos */}
           <button
-            onClick={() => setPage('feed')}
+            onClick={() => props.onNavigateToFeed?.()}
             className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium rounded-lg bg-gradient-to-r from-pink-500/20 to-orange-500/20 hover:from-pink-500/30 hover:to-orange-500/30 border border-pink-500/30 transition-all hover:scale-105"
             title="Play videos in Feed (shuffled)"
           >
@@ -4067,15 +4089,14 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
                           else next.add(m.id)
                           return next
                         })
-                      } else {
-                        // Single-click: focus the tile
-                        setFocusedIndex(index)
+                      } else if (canOpen) {
+                        // Single-click: open in floating player directly (more intuitive)
+                        addFloatingPlayer(m.id)
                       }
                     }}
                     onDoubleClick={() => {
-                      // Double-click: open in floating player
+                      // Double-click: also opens (for users who expect this behavior)
                       if (!selectionMode && canOpen) {
-                        console.log('[Library] Tile double-clicked:', m.id)
                         addFloatingPlayer(m.id)
                       }
                     }}
@@ -4212,8 +4233,9 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
                 onMediaChange={(newId) => changeFloatingPlayerMedia(id, newId)}
                 instanceIndex={index}
                 initialPosition={{
-                  x: 20 + index * 60,
-                  y: window.innerHeight - 350 - index * 50
+                  // Center the popup with slight offset for multiple players
+                  x: Math.round((window.innerWidth - 480) / 2) + index * 40,
+                  y: Math.round((window.innerHeight - 270) / 2) + index * 30
                 }}
                 otherPlayerBounds={otherBounds}
                 onBoundsChange={(bounds) => updatePlayerBounds(id, bounds)}
@@ -10146,7 +10168,7 @@ function FeedPage() {
   }
 
   return (
-    <div className="h-full w-full bg-black relative" onMouseMove={resetHudTimeout}>
+    <div ref={containerRef} className="h-full w-full bg-black relative overflow-hidden" onMouseMove={resetHudTimeout}>
       {/* HUD Controls - compact top-right floating bar */}
       <div
         className={`absolute top-2 sm:top-4 right-2 sm:right-4 z-50 flex items-center gap-1 sm:gap-2 transition-opacity duration-300 ${(edgeRevealMode ? edgeActive : showHud) && !hideUI ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
@@ -10521,7 +10543,7 @@ function FeedPage() {
       )}
 
       {/* Video container - render current + adjacent for preloading */}
-      <div ref={containerRef} className="h-full w-full relative">
+      <div className="h-full w-full relative">
         {videos.map((video, index) => {
           // Only render current and +/- 1 for preloading
           const offset = index - currentIndex

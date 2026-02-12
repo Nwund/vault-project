@@ -1185,7 +1185,7 @@ export const DreamyHazeOverlay: React.FC<{
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 21. CRT CURVED SCREEN OVERLAY - Enhanced retro CRT look with all classic effects
+// 21. CRT CURVED SCREEN OVERLAY - Premium retro CRT with real barrel distortion
 // ═══════════════════════════════════════════════════════════════════════════
 export const CRTCurveOverlay: React.FC<{
   enabled?: boolean
@@ -1196,6 +1196,8 @@ export const CRTCurveOverlay: React.FC<{
   chromaticAberration?: boolean // Color separation at edges
   screenFlicker?: boolean // Random brightness flicker
   flickerIntensity?: number // 0-1
+  showTVBorder?: boolean // Dark TV bezel in corners
+  tvBorderImage?: string // Optional custom TV border image URL
 }> = ({
   enabled = true,
   intensity = 5,
@@ -1204,10 +1206,13 @@ export const CRTCurveOverlay: React.FC<{
   rgbSubpixels = true,
   chromaticAberration = true,
   screenFlicker = true,
-  flickerIntensity = 0.3
+  flickerIntensity = 0.3,
+  showTVBorder = true,
+  tvBorderImage
 }) => {
   const [flickerOpacity, setFlickerOpacity] = useState(0)
   const flickerRef = useRef<number>()
+  const canvasRef = useRef<HTMLCanvasElement>(null)
 
   // Screen flicker effect - random subtle brightness variations
   useEffect(() => {
@@ -1216,17 +1221,13 @@ export const CRTCurveOverlay: React.FC<{
     let lastFlicker = Date.now()
     const animate = () => {
       const now = Date.now()
-      // Flicker occasionally (every 50-200ms on average)
       if (now - lastFlicker > 50 + Math.random() * 150) {
-        // Random flicker intensity, occasionally stronger
         const isStrongFlicker = Math.random() < 0.1
         const flicker = isStrongFlicker
           ? (Math.random() * 0.15 + 0.05) * flickerIntensity
           : (Math.random() * 0.04) * flickerIntensity
         setFlickerOpacity(flicker)
         lastFlicker = now
-
-        // Quick decay
         setTimeout(() => setFlickerOpacity(0), 30 + Math.random() * 50)
       }
       flickerRef.current = requestAnimationFrame(animate)
@@ -1238,33 +1239,178 @@ export const CRTCurveOverlay: React.FC<{
     }
   }, [enabled, screenFlicker, flickerIntensity])
 
+  // Draw barrel distortion canvas
+  useEffect(() => {
+    if (!enabled || !canvasRef.current) return
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+      drawBarrelDistortion(ctx, canvas.width, canvas.height, intensity)
+    }
+
+    resize()
+    window.addEventListener('resize', resize)
+    return () => window.removeEventListener('resize', resize)
+  }, [enabled, intensity])
+
   if (!enabled) return null
 
-  // Calculate barrel distortion based on intensity (0-10 maps to subtle-strong curve)
-  const borderRadius = `${intensity * 2}% / ${intensity * 1.5}%`
-  const chromaticOffset = intensity * 0.15 // px offset for chromatic aberration
+  // Calculate effects based on intensity
+  const chromaticOffset = intensity * 0.2
+  const curvatureAmount = intensity * 0.012 // For barrel distortion feel
+  const cornerDarkness = 0.3 + intensity * 0.07
 
   return (
     <>
+      {/* SVG Filter for barrel distortion - warps the content */}
+      <svg style={{ position: 'absolute', width: 0, height: 0 }}>
+        <defs>
+          <filter id="crt-barrel-distortion">
+            <feDisplacementMap
+              in="SourceGraphic"
+              scale={intensity * 3}
+              xChannelSelector="R"
+              yChannelSelector="G"
+            />
+          </filter>
+        </defs>
+      </svg>
+
+      {/* Barrel distortion dark corners - creates the concave CRT look */}
+      <canvas
+        ref={canvasRef}
+        className="fixed inset-0 pointer-events-none z-[99980]"
+        style={{ mixBlendMode: 'multiply' }}
+      />
+
+      {/* TV Border - dark bezel in corners simulating TV frame */}
+      {showTVBorder && (
+        <>
+          {tvBorderImage ? (
+            /* Custom TV border overlay image */
+            <div
+              className="fixed inset-0 pointer-events-none z-[99981]"
+              style={{
+                backgroundImage: `url(${tvBorderImage})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              }}
+            />
+          ) : (
+            /* Generated TV bezel corners */
+            <>
+              {/* Top-left corner */}
+              <div
+                className="fixed pointer-events-none z-[99981]"
+                style={{
+                  top: 0,
+                  left: 0,
+                  width: `${15 + intensity * 3}%`,
+                  height: `${15 + intensity * 3}%`,
+                  background: `radial-gradient(ellipse at 0% 0%, rgba(0,0,0,${cornerDarkness}) 0%, transparent 70%)`,
+                }}
+              />
+              {/* Top-right corner */}
+              <div
+                className="fixed pointer-events-none z-[99981]"
+                style={{
+                  top: 0,
+                  right: 0,
+                  width: `${15 + intensity * 3}%`,
+                  height: `${15 + intensity * 3}%`,
+                  background: `radial-gradient(ellipse at 100% 0%, rgba(0,0,0,${cornerDarkness}) 0%, transparent 70%)`,
+                }}
+              />
+              {/* Bottom-left corner */}
+              <div
+                className="fixed pointer-events-none z-[99981]"
+                style={{
+                  bottom: 0,
+                  left: 0,
+                  width: `${15 + intensity * 3}%`,
+                  height: `${15 + intensity * 3}%`,
+                  background: `radial-gradient(ellipse at 0% 100%, rgba(0,0,0,${cornerDarkness}) 0%, transparent 70%)`,
+                }}
+              />
+              {/* Bottom-right corner */}
+              <div
+                className="fixed pointer-events-none z-[99981]"
+                style={{
+                  bottom: 0,
+                  right: 0,
+                  width: `${15 + intensity * 3}%`,
+                  height: `${15 + intensity * 3}%`,
+                  background: `radial-gradient(ellipse at 100% 100%, rgba(0,0,0,${cornerDarkness}) 0%, transparent 70%)`,
+                }}
+              />
+              {/* Top edge darkening */}
+              <div
+                className="fixed pointer-events-none z-[99981]"
+                style={{
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: `${5 + intensity}%`,
+                  background: `linear-gradient(to bottom, rgba(0,0,0,${cornerDarkness * 0.6}) 0%, transparent 100%)`,
+                }}
+              />
+              {/* Bottom edge darkening */}
+              <div
+                className="fixed pointer-events-none z-[99981]"
+                style={{
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: `${5 + intensity}%`,
+                  background: `linear-gradient(to top, rgba(0,0,0,${cornerDarkness * 0.6}) 0%, transparent 100%)`,
+                }}
+              />
+              {/* Left edge darkening */}
+              <div
+                className="fixed pointer-events-none z-[99981]"
+                style={{
+                  top: 0,
+                  bottom: 0,
+                  left: 0,
+                  width: `${3 + intensity * 0.5}%`,
+                  background: `linear-gradient(to right, rgba(0,0,0,${cornerDarkness * 0.4}) 0%, transparent 100%)`,
+                }}
+              />
+              {/* Right edge darkening */}
+              <div
+                className="fixed pointer-events-none z-[99981]"
+                style={{
+                  top: 0,
+                  bottom: 0,
+                  right: 0,
+                  width: `${3 + intensity * 0.5}%`,
+                  background: `linear-gradient(to left, rgba(0,0,0,${cornerDarkness * 0.4}) 0%, transparent 100%)`,
+                }}
+              />
+            </>
+          )}
+        </>
+      )}
+
       {/* Chromatic Aberration - RGB color separation at edges */}
       {chromaticAberration && (
         <>
-          {/* Red channel offset */}
           <div
             className="fixed inset-0 pointer-events-none z-[99983] mix-blend-screen"
             style={{
-              background: `radial-gradient(ellipse at center, transparent 60%, rgba(255,0,0,${0.02 + intensity * 0.008}) 100%)`,
-              transform: `translate(${chromaticOffset}px, 0)`,
-              borderRadius,
+              background: `radial-gradient(ellipse at center, transparent 55%, rgba(255,30,30,${0.04 + intensity * 0.012}) 100%)`,
+              transform: `translate(${chromaticOffset}px, ${chromaticOffset * 0.5}px)`,
             }}
           />
-          {/* Cyan channel offset (opposite of red) */}
           <div
             className="fixed inset-0 pointer-events-none z-[99983] mix-blend-screen"
             style={{
-              background: `radial-gradient(ellipse at center, transparent 60%, rgba(0,255,255,${0.02 + intensity * 0.008}) 100%)`,
-              transform: `translate(${-chromaticOffset}px, 0)`,
-              borderRadius,
+              background: `radial-gradient(ellipse at center, transparent 55%, rgba(30,255,255,${0.04 + intensity * 0.012}) 100%)`,
+              transform: `translate(${-chromaticOffset}px, ${-chromaticOffset * 0.5}px)`,
             }}
           />
         </>
@@ -1277,70 +1423,50 @@ export const CRTCurveOverlay: React.FC<{
           style={{
             backgroundImage: `repeating-linear-gradient(
               90deg,
-              rgba(255,0,0,${0.02 + intensity * 0.003}) 0px,
-              rgba(255,0,0,${0.02 + intensity * 0.003}) 1px,
-              rgba(0,255,0,${0.02 + intensity * 0.003}) 1px,
-              rgba(0,255,0,${0.02 + intensity * 0.003}) 2px,
-              rgba(0,0,255,${0.02 + intensity * 0.003}) 2px,
-              rgba(0,0,255,${0.02 + intensity * 0.003}) 3px
+              rgba(255,0,0,${0.025 + intensity * 0.004}) 0px,
+              rgba(255,0,0,${0.025 + intensity * 0.004}) 1px,
+              rgba(0,255,0,${0.025 + intensity * 0.004}) 1px,
+              rgba(0,255,0,${0.025 + intensity * 0.004}) 2px,
+              rgba(0,0,255,${0.025 + intensity * 0.004}) 2px,
+              rgba(0,0,255,${0.025 + intensity * 0.004}) 3px
             )`,
-            opacity: 0.4 + intensity * 0.06,
+            opacity: 0.5 + intensity * 0.05,
             mixBlendMode: 'overlay',
-            borderRadius,
           }}
         />
       )}
 
-      {/* Main CRT curvature overlay - vignette effect */}
+      {/* Main vignette with stronger corner darkness */}
       <div
         className="fixed inset-0 pointer-events-none z-[99985]"
         style={{
           background: `
             radial-gradient(
-              ellipse at center,
+              ellipse 120% 120% at center,
               transparent 0%,
-              transparent ${60 - intensity * 3}%,
-              rgba(0,0,0,${vignetteStrength * 0.3}) ${75 - intensity * 2}%,
-              rgba(0,0,0,${vignetteStrength * 0.6}) ${90 - intensity}%,
+              transparent ${45 - intensity * 3}%,
+              rgba(0,0,0,${vignetteStrength * 0.2}) ${55 - intensity * 2}%,
+              rgba(0,0,0,${vignetteStrength * 0.5}) ${70 - intensity}%,
+              rgba(0,0,0,${vignetteStrength * 0.85}) ${85 - intensity * 0.5}%,
               rgba(0,0,0,${vignetteStrength}) 100%
             )
           `,
-          boxShadow: `
-            inset 0 0 ${80 + intensity * 10}px rgba(0,0,0,${vignetteStrength * 0.5}),
-            inset 0 0 ${150 + intensity * 15}px rgba(0,0,0,${vignetteStrength * 0.3})
-          `,
         }}
       />
 
-      {/* Edge curvature simulation with subtle borders (barrel distortion feel) */}
+      {/* Inner glow - slight reflection on curved glass */}
       <div
         className="fixed inset-0 pointer-events-none z-[99986]"
         style={{
-          borderRadius,
-          boxShadow: `
-            inset 0 0 ${40 + intensity * 8}px rgba(0,0,0,${0.2 + intensity * 0.03}),
-            inset 0 ${-intensity * 2}px ${intensity * 8}px rgba(0,0,0,0.1),
-            inset 0 ${intensity * 2}px ${intensity * 8}px rgba(0,0,0,0.1),
-            inset ${-intensity * 2}px 0 ${intensity * 8}px rgba(0,0,0,0.1),
-            inset ${intensity * 2}px 0 ${intensity * 8}px rgba(0,0,0,0.1)
-          `,
-        }}
-      />
-
-      {/* Screen edge highlight (subtle reflection on curved glass) */}
-      <div
-        className="fixed inset-0 pointer-events-none z-[99987]"
-        style={{
           background: `
             linear-gradient(
-              135deg,
-              rgba(255,255,255,${0.02 + intensity * 0.005}) 0%,
-              transparent 30%,
-              transparent 70%,
-              rgba(0,0,0,${0.05 + intensity * 0.01}) 100%
+              165deg,
+              rgba(255,255,255,${0.02 + intensity * 0.008}) 0%,
+              transparent 25%,
+              transparent 80%,
+              rgba(0,0,0,${0.03 + intensity * 0.01}) 100%
             )
           `,
-          borderRadius,
         }}
       />
 
@@ -1353,13 +1479,22 @@ export const CRTCurveOverlay: React.FC<{
               0deg,
               transparent 0px,
               transparent 2px,
-              rgba(0,0,0,${0.03 + intensity * 0.005}) 2px,
-              rgba(0,0,0,${0.03 + intensity * 0.005}) 4px
+              rgba(0,0,0,${0.04 + intensity * 0.006}) 2px,
+              rgba(0,0,0,${0.04 + intensity * 0.006}) 4px
             )`,
-            borderRadius,
           }}
         />
       )}
+
+      {/* Horizontal scan line that moves slowly - subtle CRT refresh feel */}
+      <div
+        className="fixed inset-x-0 pointer-events-none z-[99988]"
+        style={{
+          height: '2px',
+          background: `linear-gradient(to right, transparent, rgba(255,255,255,${0.03 + intensity * 0.005}), transparent)`,
+          animation: 'crtScanMove 8s linear infinite',
+        }}
+      />
 
       {/* Screen flicker overlay */}
       {screenFlicker && flickerOpacity > 0 && (
@@ -1368,12 +1503,72 @@ export const CRTCurveOverlay: React.FC<{
           style={{
             backgroundColor: `rgba(255,255,255,${flickerOpacity})`,
             mixBlendMode: 'overlay',
-            transition: 'opacity 30ms linear',
           }}
         />
       )}
+
+      {/* CRT animations */}
+      <style>{`
+        @keyframes crtScanMove {
+          0% { top: -2px; }
+          100% { top: 100%; }
+        }
+      `}</style>
     </>
   )
+}
+
+// Helper function to draw barrel distortion effect on canvas
+function drawBarrelDistortion(ctx: CanvasRenderingContext2D, width: number, height: number, intensity: number) {
+  ctx.clearRect(0, 0, width, height)
+
+  const centerX = width / 2
+  const centerY = height / 2
+  const maxRadius = Math.sqrt(centerX * centerX + centerY * centerY)
+
+  // Create radial gradient for barrel distortion darkness
+  const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRadius)
+
+  // More aggressive falloff for visible curvature effect
+  const distortionStrength = intensity * 0.08
+  gradient.addColorStop(0, 'rgba(255,255,255,0)')
+  gradient.addColorStop(0.4, 'rgba(255,255,255,0)')
+  gradient.addColorStop(0.6, `rgba(240,240,240,${distortionStrength * 0.3})`)
+  gradient.addColorStop(0.75, `rgba(200,200,200,${distortionStrength * 0.5})`)
+  gradient.addColorStop(0.85, `rgba(150,150,150,${distortionStrength * 0.7})`)
+  gradient.addColorStop(0.92, `rgba(80,80,80,${distortionStrength * 0.85})`)
+  gradient.addColorStop(1, `rgba(20,20,20,${distortionStrength})`)
+
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, width, height)
+
+  // Draw additional corner darkening with bezier curves for more realistic curvature
+  ctx.globalCompositeOperation = 'multiply'
+  const cornerSize = (30 + intensity * 8) * Math.max(width, height) / 100
+
+  // Corners with curved edges
+  const corners = [
+    { x: 0, y: 0, startAngle: 0, endAngle: Math.PI / 2 },
+    { x: width, y: 0, startAngle: Math.PI / 2, endAngle: Math.PI },
+    { x: width, y: height, startAngle: Math.PI, endAngle: Math.PI * 1.5 },
+    { x: 0, y: height, startAngle: Math.PI * 1.5, endAngle: Math.PI * 2 },
+  ]
+
+  corners.forEach(corner => {
+    const cornerGradient = ctx.createRadialGradient(corner.x, corner.y, 0, corner.x, corner.y, cornerSize)
+    cornerGradient.addColorStop(0, `rgba(0,0,0,${0.4 + intensity * 0.06})`)
+    cornerGradient.addColorStop(0.5, `rgba(0,0,0,${0.2 + intensity * 0.03})`)
+    cornerGradient.addColorStop(1, 'rgba(0,0,0,0)')
+
+    ctx.fillStyle = cornerGradient
+    ctx.beginPath()
+    ctx.arc(corner.x, corner.y, cornerSize, corner.startAngle, corner.endAngle)
+    ctx.lineTo(corner.x, corner.y)
+    ctx.closePath()
+    ctx.fill()
+  })
+
+  ctx.globalCompositeOperation = 'source-over'
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
