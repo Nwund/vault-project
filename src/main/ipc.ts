@@ -19,6 +19,10 @@ import { getBatchOperationsService } from './services/batch-operations'
 import { getGlobalSearchService, type SearchOptions } from './services/global-search'
 import { getWatchHistoryService } from './services/watch-history'
 import { getAutoOrganizeService, ORGANIZE_PRESETS, type OrganizeRule } from './services/auto-organize'
+import { getPerformerService, type Performer } from './services/performers'
+import { getCollectionService } from './services/collections'
+import { getSlideshowService, SLIDESHOW_PRESETS, type SlideshowConfig } from './services/slideshow'
+import { getBackupRestoreService, type BackupOptions, type RestoreOptions } from './services/backup-restore'
 
 import {
   getSettings,
@@ -3784,6 +3788,449 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('organize:get-presets', async () => {
     return ORGANIZE_PRESETS
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PERFORMERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('performer:create', async (_ev, data: Partial<Performer>) => {
+    try {
+      const service = getPerformerService(db)
+      return service.create(data)
+    } catch (e: any) {
+      console.error('[Performer] Create error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('performer:update', async (_ev, id: string, data: Partial<Performer>) => {
+    try {
+      const service = getPerformerService(db)
+      return service.update(id, data)
+    } catch (e: any) {
+      console.error('[Performer] Update error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('performer:delete', async (_ev, id: string) => {
+    try {
+      const service = getPerformerService(db)
+      return service.delete(id)
+    } catch (e: any) {
+      console.error('[Performer] Delete error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('performer:get', async (_ev, id: string) => {
+    try {
+      const service = getPerformerService(db)
+      return service.getById(id)
+    } catch (e: any) {
+      return null
+    }
+  })
+
+  ipcMain.handle('performer:search', async (_ev, query: string, limit?: number) => {
+    try {
+      const service = getPerformerService(db)
+      return service.search(query, limit)
+    } catch (e: any) {
+      return []
+    }
+  })
+
+  ipcMain.handle('performer:get-all', async (_ev, options?: any) => {
+    try {
+      const service = getPerformerService(db)
+      return service.getAll(options)
+    } catch (e: any) {
+      return []
+    }
+  })
+
+  ipcMain.handle('performer:get-favorites', async () => {
+    try {
+      const service = getPerformerService(db)
+      return service.getFavorites()
+    } catch (e: any) {
+      return []
+    }
+  })
+
+  ipcMain.handle('performer:link-media', async (_ev, performerId: string, mediaId: string, role?: string) => {
+    try {
+      const service = getPerformerService(db)
+      service.linkToMedia(performerId, mediaId, role)
+      return { success: true }
+    } catch (e: any) {
+      return { success: false }
+    }
+  })
+
+  ipcMain.handle('performer:unlink-media', async (_ev, performerId: string, mediaId: string) => {
+    try {
+      const service = getPerformerService(db)
+      service.unlinkFromMedia(performerId, mediaId)
+      return { success: true }
+    } catch (e: any) {
+      return { success: false }
+    }
+  })
+
+  ipcMain.handle('performer:get-for-media', async (_ev, mediaId: string) => {
+    try {
+      const service = getPerformerService(db)
+      return service.getForMedia(mediaId)
+    } catch (e: any) {
+      return []
+    }
+  })
+
+  ipcMain.handle('performer:get-media', async (_ev, performerId: string) => {
+    try {
+      const service = getPerformerService(db)
+      return service.getMediaIds(performerId)
+    } catch (e: any) {
+      return []
+    }
+  })
+
+  ipcMain.handle('performer:get-stats', async (_ev, performerId: string) => {
+    try {
+      const service = getPerformerService(db)
+      return service.getStats(performerId)
+    } catch (e: any) {
+      return null
+    }
+  })
+
+  ipcMain.handle('performer:detect-from-filename', async (_ev, filename: string) => {
+    try {
+      const service = getPerformerService(db)
+      return service.detectFromFilename(filename)
+    } catch (e: any) {
+      return []
+    }
+  })
+
+  ipcMain.handle('performer:merge', async (_ev, keepId: string, mergeId: string) => {
+    try {
+      const service = getPerformerService(db)
+      return service.merge(keepId, mergeId)
+    } catch (e: any) {
+      return false
+    }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // COLLECTIONS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('collection:create', async (_ev, data: any) => {
+    try {
+      const service = getCollectionService(db)
+      return service.create(data)
+    } catch (e: any) {
+      console.error('[Collection] Create error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('collection:update', async (_ev, id: string, data: any) => {
+    try {
+      const service = getCollectionService(db)
+      return service.update(id, data)
+    } catch (e: any) {
+      throw e
+    }
+  })
+
+  ipcMain.handle('collection:delete', async (_ev, id: string) => {
+    try {
+      const service = getCollectionService(db)
+      return service.delete(id)
+    } catch (e: any) {
+      return false
+    }
+  })
+
+  ipcMain.handle('collection:get', async (_ev, id: string) => {
+    try {
+      const service = getCollectionService(db)
+      return service.getById(id)
+    } catch (e: any) {
+      return null
+    }
+  })
+
+  ipcMain.handle('collection:get-all', async (_ev, includePrivate?: boolean) => {
+    try {
+      const service = getCollectionService(db)
+      return service.getAll(includePrivate ?? true)
+    } catch (e: any) {
+      return []
+    }
+  })
+
+  ipcMain.handle('collection:add-media', async (_ev, collectionId: string, mediaIds: string[]) => {
+    try {
+      const service = getCollectionService(db)
+      return service.addMedia(collectionId, mediaIds)
+    } catch (e: any) {
+      return 0
+    }
+  })
+
+  ipcMain.handle('collection:remove-media', async (_ev, collectionId: string, mediaIds: string[]) => {
+    try {
+      const service = getCollectionService(db)
+      return service.removeMedia(collectionId, mediaIds)
+    } catch (e: any) {
+      return 0
+    }
+  })
+
+  ipcMain.handle('collection:get-media', async (_ev, collectionId: string) => {
+    try {
+      const service = getCollectionService(db)
+      return service.getMediaIds(collectionId)
+    } catch (e: any) {
+      return []
+    }
+  })
+
+  ipcMain.handle('collection:get-for-media', async (_ev, mediaId: string) => {
+    try {
+      const service = getCollectionService(db)
+      return service.getCollectionsForMedia(mediaId)
+    } catch (e: any) {
+      return []
+    }
+  })
+
+  ipcMain.handle('collection:reorder-items', async (_ev, collectionId: string, mediaIds: string[]) => {
+    try {
+      const service = getCollectionService(db)
+      service.reorderItems(collectionId, mediaIds)
+      return { success: true }
+    } catch (e: any) {
+      return { success: false }
+    }
+  })
+
+  ipcMain.handle('collection:duplicate', async (_ev, id: string, newName?: string) => {
+    try {
+      const service = getCollectionService(db)
+      return service.duplicate(id, newName)
+    } catch (e: any) {
+      return null
+    }
+  })
+
+  ipcMain.handle('collection:merge', async (_ev, targetId: string, sourceId: string, deleteSource?: boolean) => {
+    try {
+      const service = getCollectionService(db)
+      return service.merge(targetId, sourceId, deleteSource)
+    } catch (e: any) {
+      return false
+    }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SLIDESHOW
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('slideshow:configure', async (_ev, config: Partial<SlideshowConfig>) => {
+    try {
+      const service = getSlideshowService(db)
+      return service.configure(config)
+    } catch (e: any) {
+      throw e
+    }
+  })
+
+  ipcMain.handle('slideshow:get-config', async () => {
+    try {
+      const service = getSlideshowService(db)
+      return service.getConfig()
+    } catch (e: any) {
+      return null
+    }
+  })
+
+  ipcMain.handle('slideshow:build-playlist', async (_ev, options?: any) => {
+    try {
+      const service = getSlideshowService(db)
+      return service.buildPlaylist(options)
+    } catch (e: any) {
+      return []
+    }
+  })
+
+  ipcMain.handle('slideshow:get-state', async () => {
+    try {
+      const service = getSlideshowService(db)
+      return service.getState()
+    } catch (e: any) {
+      return null
+    }
+  })
+
+  ipcMain.handle('slideshow:start', async () => {
+    try {
+      const service = getSlideshowService(db)
+      return service.start()
+    } catch (e: any) {
+      return null
+    }
+  })
+
+  ipcMain.handle('slideshow:pause', async () => {
+    try {
+      const service = getSlideshowService(db)
+      return service.pause()
+    } catch (e: any) {
+      return null
+    }
+  })
+
+  ipcMain.handle('slideshow:resume', async () => {
+    try {
+      const service = getSlideshowService(db)
+      return service.resume()
+    } catch (e: any) {
+      return null
+    }
+  })
+
+  ipcMain.handle('slideshow:stop', async () => {
+    try {
+      const service = getSlideshowService(db)
+      return service.stop()
+    } catch (e: any) {
+      return null
+    }
+  })
+
+  ipcMain.handle('slideshow:next', async () => {
+    try {
+      const service = getSlideshowService(db)
+      return service.next()
+    } catch (e: any) {
+      return null
+    }
+  })
+
+  ipcMain.handle('slideshow:previous', async () => {
+    try {
+      const service = getSlideshowService(db)
+      return service.previous()
+    } catch (e: any) {
+      return null
+    }
+  })
+
+  ipcMain.handle('slideshow:go-to', async (_ev, index: number) => {
+    try {
+      const service = getSlideshowService(db)
+      return service.goTo(index)
+    } catch (e: any) {
+      return null
+    }
+  })
+
+  ipcMain.handle('slideshow:get-timing', async () => {
+    try {
+      const service = getSlideshowService(db)
+      return service.getTimingForCurrent()
+    } catch (e: any) {
+      return null
+    }
+  })
+
+  ipcMain.handle('slideshow:get-presets', async () => {
+    return SLIDESHOW_PRESETS
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BACKUP & RESTORE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('backup:create', async (_ev, options?: Partial<BackupOptions>) => {
+    try {
+      const service = getBackupRestoreService(db)
+      return service.createBackup(options)
+    } catch (e: any) {
+      console.error('[Backup] Create error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('backup:list', async () => {
+    try {
+      const service = getBackupRestoreService(db)
+      return service.listBackups()
+    } catch (e: any) {
+      return []
+    }
+  })
+
+  ipcMain.handle('backup:restore', async (_ev, backupPath: string, options?: Partial<RestoreOptions>) => {
+    try {
+      const service = getBackupRestoreService(db)
+      return service.restoreBackup(backupPath, options)
+    } catch (e: any) {
+      console.error('[Backup] Restore error:', e)
+      return { success: false, restored: { media: 0, tags: 0, playlists: 0 }, errors: [e.message] }
+    }
+  })
+
+  ipcMain.handle('backup:delete', async (_ev, backupPath: string) => {
+    try {
+      const service = getBackupRestoreService(db)
+      return service.deleteBackup(backupPath)
+    } catch (e: any) {
+      return false
+    }
+  })
+
+  ipcMain.handle('backup:export', async (_ev, exportPath: string, options?: Partial<BackupOptions>) => {
+    try {
+      const service = getBackupRestoreService(db)
+      return service.exportTo(exportPath, options)
+    } catch (e: any) {
+      throw e
+    }
+  })
+
+  ipcMain.handle('backup:import', async (_ev, importPath: string, options?: Partial<RestoreOptions>) => {
+    try {
+      const service = getBackupRestoreService(db)
+      return service.importFrom(importPath, options)
+    } catch (e: any) {
+      return { success: false, restored: { media: 0, tags: 0, playlists: 0 }, errors: [e.message] }
+    }
+  })
+
+  ipcMain.handle('backup:get-dir', async () => {
+    try {
+      const service = getBackupRestoreService(db)
+      return service.getBackupDir()
+    } catch (e: any) {
+      return null
+    }
+  })
+
+  ipcMain.handle('backup:cleanup', async (_ev, keepCount?: number) => {
+    try {
+      const service = getBackupRestoreService(db)
+      return service.cleanupOldBackups(keepCount)
+    } catch (e: any) {
+      return 0
+    }
   })
 
   // ═══════════════════════════════════════════════════════════════════════════
