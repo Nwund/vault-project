@@ -473,6 +473,85 @@ type CaptionPreset = {
   position: 'top' | 'bottom' | 'both'
 }
 
+// Goon word pack types
+type GoonWordPackId = 'praise' | 'humiliation' | 'insult' | 'kink' | 'goon' | 'mommy' | 'brat' | 'pervert'
+
+interface GoonWordsSettings {
+  enabled: boolean
+  enabledPacks: GoonWordPackId[]
+  customWords: string[]
+  fontSize: number
+  fontFamily: string
+  fontColor: string
+  glowColor: string
+  frequency: number
+  duration: number
+  randomRotation: boolean
+  intensity: number
+}
+
+interface VisualEffectsSettings {
+  enabled: boolean
+  sparkles: boolean
+  bokeh: boolean
+  starfield: boolean
+  filmGrain: boolean
+  dreamyHaze: boolean
+  crtCurve: boolean
+  crtIntensity: number
+  crtRgbSubpixels: boolean
+  crtChromaticAberration: boolean
+  crtScreenFlicker: boolean
+  heatLevel: number
+  goonWords: GoonWordsSettings
+}
+
+interface GoonStats {
+  totalSessions: number
+  totalTimeGooning: number
+  longestSession: number
+  averageSessionLength: number
+  totalEdges: number
+  edgesThisSession: number
+  longestEdge: number
+  averageEdgeTime: number
+  totalOrgasms: number
+  orgasmsThisWeek: number
+  orgasmsThisMonth: number
+  ruinedOrgasms: number
+  totalVideosWatched: number
+  uniqueVideosWatched: number
+  favoriteCategory: string
+  mostWatchedVideoId: string | null
+  totalWatchTime: number
+  currentStreak: number
+  longestStreak: number
+  lastSessionDate: number | null
+  playlistsCreated: number
+  tagsAssigned: number
+  ratingsGiven: number
+  nightOwlSessions: number
+  earlyBirdSessions: number
+  weekendSessionsThisWeekend: number
+  goonWallSessions: number
+  goonWallMaxTiles: number
+  goonWallTimeMinutes: number
+  goonWallShuffles: number
+  watchedVideoIds: string[]
+  achievements: string[]
+  activityHeatmap: Record<string, number>
+}
+
+interface SoundSettings {
+  enabled: boolean
+  volume: number
+  uiSoundsEnabled: boolean
+  voiceSoundsEnabled: boolean
+  ambienceEnabled: boolean
+  ambienceTrack: 'none' | 'soft_moans' | 'breathing' | 'heartbeat' | 'rain' | 'custom'
+  ambienceVolume: number
+}
+
 type VaultSettings = {
   mediaDirs: string[]
   cacheDir: string
@@ -502,6 +581,13 @@ type VaultSettings = {
     showHud?: boolean
     randomClimax?: boolean
     countdownDuration?: number
+    visualEffects?: {
+      vignetteIntensity?: number
+      bloomIntensity?: number
+      saturationBoost?: number
+      contrastBoost?: number
+      heatOverlay?: boolean
+    }
   }
   captions?: {
     enabled: boolean
@@ -518,7 +604,12 @@ type VaultSettings = {
   }
   ai?: {
     veniceApiKey?: string
+    tier2Enabled?: boolean
+    protectedTags?: string[]
   }
+  visualEffects?: VisualEffectsSettings
+  goonStats?: GoonStats
+  sound?: SoundSettings
 }
 
 declare global {
@@ -900,13 +991,13 @@ export default function App() {
   // Apply theme using our theme system
   useEffect(() => {
     // Try new settings structure first, fall back to legacy
-    const themeId = (settings as any)?.appearance?.themeId ?? settings?.ui?.themeId ?? 'obsidian'
+    const themeId = settings?.appearance?.themeId ?? settings?.ui?.themeId ?? 'obsidian'
     applyThemeCSS(themeId as ThemeId)
-  }, [(settings as any)?.appearance?.themeId, settings?.ui?.themeId])
+  }, [settings?.appearance?.themeId, settings?.ui?.themeId])
 
   // Sync visual effects from settings
   useEffect(() => {
-    const ve = (settings as any)?.visualEffects
+    const ve = settings?.visualEffects
     if (ve) {
       if (ve.enabled !== undefined) setVisualEffectsEnabled(ve.enabled)
       if (ve.sparkles !== undefined) setSparklesEnabled(ve.sparkles)
@@ -922,19 +1013,19 @@ export default function App() {
       if (ve.heatLevel !== undefined) setAmbientHeatLevel(ve.heatLevel)
       if (ve.goonWords?.enabled !== undefined) setGoonModeEnabled(ve.goonWords.enabled)
     }
-  }, [(settings as any)?.visualEffects])
+  }, [settings?.visualEffects])
 
   // Sync goonwall settings (randomClimax, countdownDuration)
   useEffect(() => {
-    const gw = (settings as any)?.goonwall
+    const gw = settings?.goonwall
     if (gw) {
       if (gw.randomClimax !== undefined) setRandomClimaxEnabled(gw.randomClimax)
     }
-  }, [(settings as any)?.goonwall])
+  }, [settings?.goonwall])
 
   // Show welcome tutorial for first-time users
   useEffect(() => {
-    if (settings && !(settings as any).hasSeenWelcome) {
+    if (settings && !settings.hasSeenWelcome) {
       setShowWelcomeTutorial(true)
       setWelcomeStep(0)
     }
@@ -1005,23 +1096,24 @@ export default function App() {
 
   // Apply appearance/display settings to CSS custom properties
   useEffect(() => {
-    const appearance = (settings as any)?.appearance
+    const appearance = settings?.appearance
     if (!appearance) return
     const root = document.documentElement
 
     // Font size - apply as CSS variable and class
     const fontSizeMap = { small: '13px', medium: '14px', large: '16px' }
-    const baseFontSize = fontSizeMap[appearance.fontSize as keyof typeof fontSizeMap] ?? '14px'
+    const baseFontSize = appearance.fontSize ? fontSizeMap[appearance.fontSize] ?? '14px' : '14px'
     root.style.setProperty('--base-font-size', baseFontSize)
     root.style.fontSize = baseFontSize
 
     // Thumbnail size - apply as CSS variable for grid sizing
     const thumbSizeMap = { small: '160px', medium: '220px', large: '300px' }
-    const thumbMinSize = thumbSizeMap[appearance.thumbnailSize as keyof typeof thumbSizeMap] ?? '220px'
+    const thumbMinSize = appearance.thumbnailSize ? thumbSizeMap[appearance.thumbnailSize] ?? '220px' : '220px'
     root.style.setProperty('--thumb-min-size', thumbMinSize)
 
     // Compact mode - reduce gaps/padding
-    if (appearance.compactMode) {
+    const appWithCompact = appearance as typeof appearance & { compactMode?: boolean; accentColor?: string }
+    if (appWithCompact.compactMode) {
       root.classList.add('compact-mode')
       root.style.setProperty('--gap-scale', '0.6')
       root.style.setProperty('--padding-scale', '0.7')
@@ -1033,7 +1125,7 @@ export default function App() {
 
     // Animation speed - control transition duration
     const animSpeedMap = { none: '0ms', reduced: '100ms', full: '200ms' }
-    const animDuration = animSpeedMap[appearance.animationSpeed as keyof typeof animSpeedMap] ?? '200ms'
+    const animDuration = appearance.animationSpeed ? animSpeedMap[appearance.animationSpeed] ?? '200ms' : '200ms'
     root.style.setProperty('--animation-duration', animDuration)
     if (appearance.animationSpeed === 'none') {
       root.classList.add('reduce-motion')
@@ -1042,9 +1134,9 @@ export default function App() {
     }
 
     // Accent color - set CSS variable (also set --primary for theme integration)
-    if (appearance.accentColor) {
-      root.style.setProperty('--accent-color', appearance.accentColor)
-      root.style.setProperty('--primary', appearance.accentColor)
+    if (appWithCompact.accentColor) {
+      root.style.setProperty('--accent-color', appWithCompact.accentColor)
+      root.style.setProperty('--primary', appWithCompact.accentColor)
     }
 
     // Color blind mode - apply accessibility filter class
@@ -1053,7 +1145,7 @@ export default function App() {
     if (appearance.colorBlindMode && appearance.colorBlindMode !== 'none') {
       root.classList.add(`color-blind-${appearance.colorBlindMode}`)
     }
-  }, [(settings as any)?.appearance])
+  }, [settings?.appearance])
 
   const patchSettings = async (patch: Partial<VaultSettings>) => {
     const next = await window.api.settings.patch(patch)
@@ -1172,7 +1264,7 @@ export default function App() {
           crtChromaticAberration={crtChromaticAberration}
           crtScreenFlicker={crtScreenFlicker}
           goonMode={goonModeEnabled}
-          goonWordsSettings={(settings as any)?.visualEffects?.goonWords}
+          goonWordsSettings={settings?.visualEffects?.goonWords}
           climaxTrigger={climaxTrigger}
           climaxType={climaxType}
           onClimaxComplete={() => setClimaxTrigger(0)}
@@ -1315,7 +1407,7 @@ export default function App() {
                 goonMode={goonModeEnabled}
                 onGoonModeChange={(enabled) => {
                   setGoonModeEnabled(enabled)
-                  const current = (settings as any)?.visualEffects?.goonWords ?? {}
+                  const current = settings?.visualEffects?.goonWords ?? {}
                   window.api.settings.visualEffects?.update?.({ goonWords: { ...current, enabled } })
                 }}
                 randomClimax={randomClimaxEnabled}
@@ -9230,8 +9322,8 @@ function FeedPage() {
 
       // Apply blacklist filtering
       try {
-        const settings = await window.api.settings.get()
-        const blacklistSettings = (settings as any)?.blacklist
+        const settings = await window.api.settings.get() as VaultSettings | null
+        const blacklistSettings = settings?.blacklist
         if (blacklistSettings?.enabled) {
           const blacklistedIds = new Set(blacklistSettings.mediaIds || [])
           vids = vids.filter(v => !blacklistedIds.has(v.id))
@@ -11566,42 +11658,7 @@ function PlaylistGridThumb(props: { item: any }) {
 //
 // GOON STATS PAGE - Track your pleasure journey
 //
-
-type GoonStats = {
-  totalSessions: number
-  totalTimeGooning: number
-  longestSession: number
-  averageSessionLength: number
-  totalEdges: number
-  edgesThisSession: number
-  longestEdge: number
-  averageEdgeTime: number
-  totalOrgasms: number
-  orgasmsThisWeek: number
-  orgasmsThisMonth: number
-  ruinedOrgasms: number
-  totalVideosWatched: number
-  uniqueVideosWatched: number
-  favoriteCategory: string
-  mostWatchedVideoId: string | null
-  totalWatchTime: number
-  currentStreak: number
-  longestStreak: number
-  lastSessionDate: number | null
-  playlistsCreated: number
-  tagsAssigned: number
-  ratingsGiven: number
-  nightOwlSessions: number
-  earlyBirdSessions: number
-  weekendSessionsThisWeekend: number
-  goonWallSessions: number
-  goonWallMaxTiles: number
-  goonWallTimeMinutes: number
-  goonWallShuffles: number
-  watchedVideoIds: string[]
-  achievements: string[]
-  activityHeatmap: Record<string, number>
-}
+// Note: GoonStats type is defined at the top of the file
 
 type Achievement = {
   id: string
