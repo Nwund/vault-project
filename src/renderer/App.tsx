@@ -91,7 +91,10 @@ import {
   Save,
   Edit2,
   HelpCircle,
-  FolderPlus
+  FolderPlus,
+  Github,
+  MessageCircle,
+  Code
 } from 'lucide-react'
 import { playGreeting, playSoundFromCategory, playClimaxForType, hasSounds } from './utils/soundPlayer'
 import vaultLogo from './assets/vault-logo.png'
@@ -15341,111 +15344,146 @@ function ToggleSwitch({ checked, onChange, disabled }: { checked: boolean; onCha
 function AboutPage() {
   const [tier, setTier] = useState<string>('free')
   const [vaultStats, setVaultStats] = useState<any>(null)
+  const [appVersion, setAppVersion] = useState('2.1.5')
 
   useEffect(() => {
     window.api.license?.getTier?.().then((t: any) => setTier(t || 'free'))
     window.api.vault?.getStats?.().then((s: any) => setVaultStats(s))
+    window.api.app?.getVersion?.().then((v: any) => v && setAppVersion(v))
   }, [])
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex-1 overflow-auto p-6 space-y-6 max-w-3xl">
-        {/* App Info */}
-        <div className="rounded-3xl border border-[var(--border)] bg-gradient-to-br from-[var(--primary-muted)] to-transparent p-6 text-center">
-          <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] flex items-center justify-center">
-            <Sparkles size={40} className="text-white" />
-          </div>
-          <h1 className="text-2xl font-bold">Vault</h1>
-          <p className="text-[var(--muted)] mt-1">Version 2.1.5</p>
-          <div className="mt-4 flex items-center justify-center gap-2">
-            <span
-              className={cn(
-                'px-3 py-1 rounded-full text-xs font-medium',
-                tier === 'owner' ? 'bg-yellow-500/20 text-yellow-400' :
-                tier === 'premium' ? 'bg-[var(--primary)]/20 text-[var(--primary)]' :
-                'bg-white/10 text-[var(--muted)]'
-              )}
-            >
-              {tier === 'owner' ? (
-                <span className="flex items-center gap-1"><Crown size={12} /> Owner</span>
-              ) : tier === 'premium' ? (
-                <span className="flex items-center gap-1"><Zap size={12} /> Premium</span>
-              ) : (
-                'Free'
-              )}
-            </span>
-          </div>
-        </div>
+    <div className="h-full flex flex-col overflow-hidden">
+      <div className="flex-1 overflow-y-auto p-8">
+        <div className="max-w-2xl mx-auto space-y-6">
+          {/* Hero Section */}
+          <div className="relative rounded-3xl border border-[var(--border)] bg-gradient-to-br from-[var(--primary)]/20 via-purple-500/10 to-pink-500/10 p-8 text-center overflow-hidden">
+            {/* Decorative background elements */}
+            <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-[var(--primary)]/30 to-transparent rounded-full blur-3xl" />
+            <div className="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-tr from-purple-500/20 to-transparent rounded-full blur-2xl" />
 
-        {/* Vault Stats */}
-        {vaultStats && (
-          <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5">
-            <div className="text-sm font-semibold mb-4">Your Vault</div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-[var(--primary)]">{vaultStats.totalMedia}</div>
-                <div className="text-xs text-[var(--muted)]">Total Files</div>
+            <div className="relative">
+              <div className="w-24 h-24 mx-auto mb-5 rounded-3xl bg-gradient-to-br from-[var(--primary)] to-pink-600 flex items-center justify-center shadow-2xl shadow-[var(--primary)]/40 transform hover:scale-105 transition-transform">
+                <Sparkles size={44} className="text-white" />
               </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-[var(--primary)]">{vaultStats.videoCount}</div>
-                <div className="text-xs text-[var(--muted)]">Videos</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-[var(--primary)]">{vaultStats.imageCount}</div>
-                <div className="text-xs text-[var(--muted)]">Images</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-[var(--primary)]">{vaultStats.tagCount}</div>
-                <div className="text-xs text-[var(--muted)]">Tags</div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-white to-zinc-300 bg-clip-text text-transparent">Vault</h1>
+              <p className="text-zinc-400 mt-2 text-lg">Personal Media Experience</p>
+              <div className="mt-5 flex items-center justify-center gap-3">
+                <span className="px-4 py-1.5 rounded-full text-sm font-medium bg-zinc-800/80 text-zinc-300 border border-zinc-700">
+                  v{appVersion}
+                </span>
+                <span
+                  className={cn(
+                    'px-4 py-1.5 rounded-full text-sm font-medium flex items-center gap-1.5',
+                    tier === 'owner' ? 'bg-gradient-to-r from-yellow-500/30 to-amber-500/30 text-yellow-400 border border-yellow-500/30' :
+                    tier === 'premium' ? 'bg-gradient-to-r from-[var(--primary)]/30 to-pink-500/30 text-[var(--primary)] border border-[var(--primary)]/30' :
+                    'bg-zinc-800/80 text-zinc-400 border border-zinc-700'
+                  )}
+                >
+                  {tier === 'owner' ? (
+                    <><Crown size={14} /> Owner</>
+                  ) : tier === 'premium' ? (
+                    <><Zap size={14} /> Premium</>
+                  ) : (
+                    'Free'
+                  )}
+                </span>
               </div>
             </div>
           </div>
-        )}
 
-        {/* Credits */}
-        <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5">
-          <div className="text-sm font-semibold mb-4">Credits</div>
-          <div className="space-y-2 text-sm text-[var(--muted)]">
-            <p>Built with Electron and React</p>
-            <p>Icons by Lucide</p>
-            <p>Made with passion for passionate people</p>
+          {/* Quick Stats */}
+          {vaultStats && (
+            <div className="rounded-2xl border border-[var(--border)] bg-zinc-900/50 p-6">
+              <div className="text-sm font-semibold mb-4 flex items-center gap-2">
+                <BarChart3 size={16} className="text-[var(--primary)]" />
+                Your Collection
+              </div>
+              <div className="grid grid-cols-4 gap-4">
+                <div className="text-center p-3 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 transition-colors">
+                  <div className="text-3xl font-bold text-white">{vaultStats.totalMedia?.toLocaleString() || 0}</div>
+                  <div className="text-xs text-zinc-500 mt-1">Total</div>
+                </div>
+                <div className="text-center p-3 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 transition-colors">
+                  <div className="text-3xl font-bold text-green-400">{vaultStats.videoCount?.toLocaleString() || 0}</div>
+                  <div className="text-xs text-zinc-500 mt-1">Videos</div>
+                </div>
+                <div className="text-center p-3 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 transition-colors">
+                  <div className="text-3xl font-bold text-purple-400">{vaultStats.imageCount?.toLocaleString() || 0}</div>
+                  <div className="text-xs text-zinc-500 mt-1">Images</div>
+                </div>
+                <div className="text-center p-3 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 transition-colors">
+                  <div className="text-3xl font-bold text-blue-400">{vaultStats.tagCount?.toLocaleString() || 0}</div>
+                  <div className="text-xs text-zinc-500 mt-1">Tags</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Links - Primary Actions */}
+          <div className="grid grid-cols-3 gap-4">
+            <button
+              onClick={() => window.api?.shell?.openExternal?.('https://github.com/vault-app/vault')}
+              className="flex flex-col items-center gap-2 p-5 rounded-2xl border border-[var(--border)] bg-zinc-900/50 hover:bg-zinc-800 transition-all hover:scale-[1.02] group"
+            >
+              <Github size={28} className="text-zinc-400 group-hover:text-white transition-colors" />
+              <span className="text-sm font-medium">GitHub</span>
+              <span className="text-xs text-zinc-500">Source Code</span>
+            </button>
+            <button
+              onClick={() => window.api?.shell?.openExternal?.('https://github.com/vault-app/vault/issues')}
+              className="flex flex-col items-center gap-2 p-5 rounded-2xl border border-[var(--border)] bg-zinc-900/50 hover:bg-zinc-800 transition-all hover:scale-[1.02] group"
+            >
+              <MessageCircle size={28} className="text-zinc-400 group-hover:text-white transition-colors" />
+              <span className="text-sm font-medium">Support</span>
+              <span className="text-xs text-zinc-500">Report Issues</span>
+            </button>
+            <button
+              onClick={() => window.api?.shell?.openExternal?.('https://github.com/vault-app/vault/releases')}
+              className="flex flex-col items-center gap-2 p-5 rounded-2xl border border-[var(--border)] bg-zinc-900/50 hover:bg-zinc-800 transition-all hover:scale-[1.02] group"
+            >
+              <Download size={28} className="text-zinc-400 group-hover:text-white transition-colors" />
+              <span className="text-sm font-medium">Updates</span>
+              <span className="text-xs text-zinc-500">Download Latest</span>
+            </button>
           </div>
-        </div>
 
-        {/* Legal */}
-        <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5">
-          <div className="text-sm font-semibold mb-4">Legal</div>
-          <div className="space-y-3 text-xs text-[var(--muted)]">
-            <p>
-              Vault is designed for personal use with your own media collection.
-              Users are responsible for ensuring they have the rights to any content in their vault.
-            </p>
-            <p>
-              By using this software, you agree that you are of legal adult age in your jurisdiction.
-            </p>
+          {/* Built With */}
+          <div className="rounded-2xl border border-[var(--border)] bg-zinc-900/50 p-6">
+            <div className="text-sm font-semibold mb-4 flex items-center gap-2">
+              <Code size={16} className="text-[var(--primary)]" />
+              Built With
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {['Electron', 'React', 'TypeScript', 'Vite', 'Tailwind CSS', 'SQLite', 'FFmpeg', 'Lucide Icons'].map(tech => (
+                <span key={tech} className="px-3 py-1.5 rounded-lg bg-zinc-800 text-xs text-zinc-300 border border-zinc-700">
+                  {tech}
+                </span>
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* Links */}
-        <div className="flex gap-4 justify-center text-sm">
-          <button
-            onClick={() => window.api?.shell?.openExternal?.('https://vault.app')}
-            className="text-[var(--primary)] hover:underline"
-          >
-            Website
-          </button>
-          <button
-            onClick={() => window.api?.shell?.openExternal?.('https://vault.app/support')}
-            className="text-[var(--primary)] hover:underline"
-          >
-            Support
-          </button>
-          <button
-            onClick={() => window.api?.shell?.openExternal?.('https://vault.app/privacy')}
-            className="text-[var(--primary)] hover:underline"
-          >
-            Privacy
-          </button>
+          {/* Legal */}
+          <div className="rounded-2xl border border-[var(--border)] bg-zinc-900/50 p-6">
+            <div className="text-sm font-semibold mb-3 flex items-center gap-2">
+              <Shield size={16} className="text-[var(--primary)]" />
+              Legal
+            </div>
+            <div className="space-y-3 text-sm text-zinc-400 leading-relaxed">
+              <p>
+                Vault is designed for personal use with your own media collection.
+                Users are responsible for ensuring they have the rights to any content in their vault.
+              </p>
+              <p>
+                By using this software, you agree that you are of legal adult age in your jurisdiction.
+              </p>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="text-center py-4 text-xs text-zinc-600">
+            Made with passion for passionate people
+          </div>
         </div>
       </div>
     </div>
