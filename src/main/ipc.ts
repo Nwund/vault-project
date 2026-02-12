@@ -38,6 +38,17 @@ import { getSceneDetectionService, type SceneDetectionOptions } from './services
 import { getImportService, type ImportOptions } from './services/import-service'
 import { getNotificationsService, type NotificationConfig, type NotificationSettings } from './services/notifications'
 import { getAnalyticsService } from './services/analytics'
+import { getVideoBookmarksService, type VideoBookmark } from './services/video-bookmarks'
+import { getTagCategoriesService, type TagCategory } from './services/tag-categories'
+import { getMediaRelationshipsService, type RelationshipType } from './services/media-relationships'
+import { getMediaNotesService, type MediaNote } from './services/media-notes'
+import { getWatchLaterService, type WatchLaterItem } from './services/watch-later'
+import { getTagAliasesService } from './services/tag-aliases'
+import { getRatingHistoryService } from './services/rating-history'
+import { getCustomFiltersService, type FilterCondition } from './services/custom-filters'
+import { getSessionHistoryService, type SessionAction } from './services/session-history'
+import { getFavoriteFoldersService } from './services/favorite-folders'
+import { getDuplicatesFinderService, type DuplicateResolution } from './services/duplicates-finder'
 
 import {
   getSettings,
@@ -5212,6 +5223,847 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('analytics:exportData', async () => {
     const service = getAnalyticsService(db)
     return service.exportData()
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VIDEO BOOKMARKS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('bookmarks:add', async (_ev, mediaId: string, timestamp: number, title: string, options?: { description?: string; thumbnailPath?: string; color?: string }) => {
+    const service = getVideoBookmarksService(db)
+    return service.addBookmark(mediaId, timestamp, title, options)
+  })
+
+  ipcMain.handle('bookmarks:quickAdd', async (_ev, mediaId: string, timestamp: number) => {
+    const service = getVideoBookmarksService(db)
+    return service.quickBookmark(mediaId, timestamp)
+  })
+
+  ipcMain.handle('bookmarks:getForMedia', async (_ev, mediaId: string) => {
+    const service = getVideoBookmarksService(db)
+    return service.getBookmarksForMedia(mediaId)
+  })
+
+  ipcMain.handle('bookmarks:get', async (_ev, bookmarkId: string) => {
+    const service = getVideoBookmarksService(db)
+    return service.getBookmark(bookmarkId)
+  })
+
+  ipcMain.handle('bookmarks:update', async (_ev, bookmarkId: string, updates: Partial<Pick<VideoBookmark, 'title' | 'description' | 'color' | 'timestamp'>>) => {
+    const service = getVideoBookmarksService(db)
+    return service.updateBookmark(bookmarkId, updates)
+  })
+
+  ipcMain.handle('bookmarks:delete', async (_ev, bookmarkId: string) => {
+    const service = getVideoBookmarksService(db)
+    return service.deleteBookmark(bookmarkId)
+  })
+
+  ipcMain.handle('bookmarks:deleteAllForMedia', async (_ev, mediaId: string) => {
+    const service = getVideoBookmarksService(db)
+    return service.deleteAllForMedia(mediaId)
+  })
+
+  ipcMain.handle('bookmarks:getBookmarkedVideos', async () => {
+    const service = getVideoBookmarksService(db)
+    return service.getBookmarkedVideos()
+  })
+
+  ipcMain.handle('bookmarks:getRecent', async (_ev, limit?: number) => {
+    const service = getVideoBookmarksService(db)
+    return service.getRecentBookmarks(limit)
+  })
+
+  ipcMain.handle('bookmarks:findNearest', async (_ev, mediaId: string, timestamp: number) => {
+    const service = getVideoBookmarksService(db)
+    return service.findNearestBookmark(mediaId, timestamp)
+  })
+
+  ipcMain.handle('bookmarks:getNext', async (_ev, mediaId: string, timestamp: number) => {
+    const service = getVideoBookmarksService(db)
+    return service.getNextBookmark(mediaId, timestamp)
+  })
+
+  ipcMain.handle('bookmarks:getPrevious', async (_ev, mediaId: string, timestamp: number) => {
+    const service = getVideoBookmarksService(db)
+    return service.getPreviousBookmark(mediaId, timestamp)
+  })
+
+  ipcMain.handle('bookmarks:getStats', async () => {
+    const service = getVideoBookmarksService(db)
+    return service.getStats()
+  })
+
+  ipcMain.handle('bookmarks:export', async (_ev, mediaId: string, format?: 'json' | 'chapters') => {
+    const service = getVideoBookmarksService(db)
+    return service.exportBookmarks(mediaId, format)
+  })
+
+  ipcMain.handle('bookmarks:import', async (_ev, mediaId: string, json: string) => {
+    const service = getVideoBookmarksService(db)
+    return service.importBookmarks(mediaId, json)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TAG CATEGORIES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('tagCategories:getAll', async () => {
+    const service = getTagCategoriesService(db)
+    return service.getCategories()
+  })
+
+  ipcMain.handle('tagCategories:getTree', async () => {
+    const service = getTagCategoriesService(db)
+    return service.getCategoryTree()
+  })
+
+  ipcMain.handle('tagCategories:get', async (_ev, categoryId: string) => {
+    const service = getTagCategoriesService(db)
+    return service.getCategory(categoryId)
+  })
+
+  ipcMain.handle('tagCategories:create', async (_ev, name: string, options?: { description?: string; color?: string; icon?: string; parentId?: string }) => {
+    const service = getTagCategoriesService(db)
+    return service.createCategory(name, options)
+  })
+
+  ipcMain.handle('tagCategories:update', async (_ev, categoryId: string, updates: Partial<Pick<TagCategory, 'name' | 'description' | 'color' | 'icon' | 'parentId' | 'sortOrder'>>) => {
+    const service = getTagCategoriesService(db)
+    return service.updateCategory(categoryId, updates)
+  })
+
+  ipcMain.handle('tagCategories:delete', async (_ev, categoryId: string) => {
+    const service = getTagCategoriesService(db)
+    return service.deleteCategory(categoryId)
+  })
+
+  ipcMain.handle('tagCategories:assignTag', async (_ev, tagId: string, categoryId: string | null) => {
+    const service = getTagCategoriesService(db)
+    return service.assignTagToCategory(tagId, categoryId)
+  })
+
+  ipcMain.handle('tagCategories:bulkAssignTags', async (_ev, tagIds: string[], categoryId: string | null) => {
+    const service = getTagCategoriesService(db)
+    return service.bulkAssignTags(tagIds, categoryId)
+  })
+
+  ipcMain.handle('tagCategories:getTagsInCategory', async (_ev, categoryId: string | null) => {
+    const service = getTagCategoriesService(db)
+    return service.getTagsInCategory(categoryId)
+  })
+
+  ipcMain.handle('tagCategories:getUncategorized', async () => {
+    const service = getTagCategoriesService(db)
+    return service.getUncategorizedTags()
+  })
+
+  ipcMain.handle('tagCategories:autoCategorize', async () => {
+    const service = getTagCategoriesService(db)
+    return service.autoCategorize()
+  })
+
+  ipcMain.handle('tagCategories:getStats', async () => {
+    const service = getTagCategoriesService(db)
+    return service.getStats()
+  })
+
+  ipcMain.handle('tagCategories:reorder', async (_ev, orderedIds: string[]) => {
+    const service = getTagCategoriesService(db)
+    service.reorderCategories(orderedIds)
+    return { success: true }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MEDIA RELATIONSHIPS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('relationships:create', async (_ev, sourceId: string, targetId: string, type: RelationshipType, options?: { bidirectional?: boolean; note?: string }) => {
+    const service = getMediaRelationshipsService(db)
+    return service.createRelationship(sourceId, targetId, type, options)
+  })
+
+  ipcMain.handle('relationships:linkAsSequel', async (_ev, earlierId: string, laterId: string, note?: string) => {
+    const service = getMediaRelationshipsService(db)
+    return service.linkAsSequel(earlierId, laterId, note)
+  })
+
+  ipcMain.handle('relationships:linkAsRelated', async (_ev, id1: string, id2: string, note?: string) => {
+    const service = getMediaRelationshipsService(db)
+    return service.linkAsRelated(id1, id2, note)
+  })
+
+  ipcMain.handle('relationships:linkAsAlternate', async (_ev, id1: string, id2: string, note?: string) => {
+    const service = getMediaRelationshipsService(db)
+    return service.linkAsAlternate(id1, id2, note)
+  })
+
+  ipcMain.handle('relationships:linkAsSeries', async (_ev, mediaIds: string[], seriesNote?: string) => {
+    const service = getMediaRelationshipsService(db)
+    return service.linkAsSeries(mediaIds, seriesNote)
+  })
+
+  ipcMain.handle('relationships:markAsDuplicates', async (_ev, id1: string, id2: string, note?: string) => {
+    const service = getMediaRelationshipsService(db)
+    return service.markAsDuplicates(id1, id2, note)
+  })
+
+  ipcMain.handle('relationships:get', async (_ev, relationshipId: string) => {
+    const service = getMediaRelationshipsService(db)
+    return service.getRelationship(relationshipId)
+  })
+
+  ipcMain.handle('relationships:getForMedia', async (_ev, mediaId: string) => {
+    const service = getMediaRelationshipsService(db)
+    return service.getRelationships(mediaId)
+  })
+
+  ipcMain.handle('relationships:getByType', async (_ev, mediaId: string, type: RelationshipType) => {
+    const service = getMediaRelationshipsService(db)
+    return service.getRelatedByType(mediaId, type)
+  })
+
+  ipcMain.handle('relationships:getSequels', async (_ev, mediaId: string) => {
+    const service = getMediaRelationshipsService(db)
+    return service.getSequels(mediaId)
+  })
+
+  ipcMain.handle('relationships:getPrequels', async (_ev, mediaId: string) => {
+    const service = getMediaRelationshipsService(db)
+    return service.getPrequels(mediaId)
+  })
+
+  ipcMain.handle('relationships:getDuplicates', async (_ev, mediaId: string) => {
+    const service = getMediaRelationshipsService(db)
+    return service.getDuplicates(mediaId)
+  })
+
+  ipcMain.handle('relationships:update', async (_ev, relationshipId: string, updates: Partial<{ type: RelationshipType; note: string; bidirectional: boolean }>) => {
+    const service = getMediaRelationshipsService(db)
+    return service.updateRelationship(relationshipId, updates)
+  })
+
+  ipcMain.handle('relationships:delete', async (_ev, relationshipId: string) => {
+    const service = getMediaRelationshipsService(db)
+    return service.deleteRelationship(relationshipId)
+  })
+
+  ipcMain.handle('relationships:deleteAllForMedia', async (_ev, mediaId: string) => {
+    const service = getMediaRelationshipsService(db)
+    return service.deleteAllForMedia(mediaId)
+  })
+
+  ipcMain.handle('relationships:areRelated', async (_ev, id1: string, id2: string) => {
+    const service = getMediaRelationshipsService(db)
+    return service.areRelated(id1, id2)
+  })
+
+  ipcMain.handle('relationships:getBetween', async (_ev, id1: string, id2: string) => {
+    const service = getMediaRelationshipsService(db)
+    return service.getRelationshipBetween(id1, id2)
+  })
+
+  ipcMain.handle('relationships:findSeries', async (_ev, mediaId: string) => {
+    const service = getMediaRelationshipsService(db)
+    return service.findSeries(mediaId)
+  })
+
+  ipcMain.handle('relationships:getMediaWithRelationships', async () => {
+    const service = getMediaRelationshipsService(db)
+    return service.getMediaWithRelationships()
+  })
+
+  ipcMain.handle('relationships:getStats', async () => {
+    const service = getMediaRelationshipsService(db)
+    return service.getStats()
+  })
+
+  ipcMain.handle('relationships:suggestRelationships', async (_ev, mediaId: string, limit?: number) => {
+    const service = getMediaRelationshipsService(db)
+    return service.suggestRelationships(mediaId, limit)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MEDIA NOTES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('notes:add', async (_ev, mediaId: string, content: string, options?: { isPinned?: boolean; color?: string }) => {
+    const service = getMediaNotesService(db)
+    return service.addNote(mediaId, content, options)
+  })
+
+  ipcMain.handle('notes:getForMedia', async (_ev, mediaId: string) => {
+    const service = getMediaNotesService(db)
+    return service.getNotesForMedia(mediaId)
+  })
+
+  ipcMain.handle('notes:get', async (_ev, noteId: string) => {
+    const service = getMediaNotesService(db)
+    return service.getNote(noteId)
+  })
+
+  ipcMain.handle('notes:update', async (_ev, noteId: string, updates: Partial<Pick<MediaNote, 'content' | 'isPinned' | 'color'>>) => {
+    const service = getMediaNotesService(db)
+    return service.updateNote(noteId, updates)
+  })
+
+  ipcMain.handle('notes:delete', async (_ev, noteId: string) => {
+    const service = getMediaNotesService(db)
+    return service.deleteNote(noteId)
+  })
+
+  ipcMain.handle('notes:deleteAllForMedia', async (_ev, mediaId: string) => {
+    const service = getMediaNotesService(db)
+    return service.deleteAllForMedia(mediaId)
+  })
+
+  ipcMain.handle('notes:togglePin', async (_ev, noteId: string) => {
+    const service = getMediaNotesService(db)
+    return service.togglePin(noteId)
+  })
+
+  ipcMain.handle('notes:search', async (_ev, query: string, limit?: number) => {
+    const service = getMediaNotesService(db)
+    return service.searchNotes(query, limit)
+  })
+
+  ipcMain.handle('notes:getMediaWithNotes', async () => {
+    const service = getMediaNotesService(db)
+    return service.getMediaWithNotes()
+  })
+
+  ipcMain.handle('notes:getRecent', async (_ev, limit?: number) => {
+    const service = getMediaNotesService(db)
+    return service.getRecentNotes(limit)
+  })
+
+  ipcMain.handle('notes:getPinned', async () => {
+    const service = getMediaNotesService(db)
+    return service.getPinnedNotes()
+  })
+
+  ipcMain.handle('notes:getStats', async () => {
+    const service = getMediaNotesService(db)
+    return service.getStats()
+  })
+
+  ipcMain.handle('notes:export', async (_ev, mediaId: string) => {
+    const service = getMediaNotesService(db)
+    return service.exportNotes(mediaId)
+  })
+
+  ipcMain.handle('notes:import', async (_ev, mediaId: string, json: string) => {
+    const service = getMediaNotesService(db)
+    return service.importNotes(mediaId, json)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WATCH LATER QUEUE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('watchLater:add', async (_ev, mediaId: string, options?: { priority?: number; note?: string; reminderAt?: number }) => {
+    const service = getWatchLaterService(db)
+    return service.add(mediaId, options)
+  })
+
+  ipcMain.handle('watchLater:remove', async (_ev, mediaId: string) => {
+    const service = getWatchLaterService(db)
+    return service.remove(mediaId)
+  })
+
+  ipcMain.handle('watchLater:isInQueue', async (_ev, mediaId: string) => {
+    const service = getWatchLaterService(db)
+    return service.isInQueue(mediaId)
+  })
+
+  ipcMain.handle('watchLater:getQueue', async (_ev, options?: { limit?: number; offset?: number; sortBy?: 'priority' | 'addedAt' | 'reminderAt' }) => {
+    const service = getWatchLaterService(db)
+    return service.getQueue(options)
+  })
+
+  ipcMain.handle('watchLater:getCount', async () => {
+    const service = getWatchLaterService(db)
+    return service.getCount()
+  })
+
+  ipcMain.handle('watchLater:update', async (_ev, id: string, updates: Partial<Pick<WatchLaterItem, 'priority' | 'note' | 'reminderAt'>>) => {
+    const service = getWatchLaterService(db)
+    return service.update(id, updates)
+  })
+
+  ipcMain.handle('watchLater:setPriority', async (_ev, mediaId: string, priority: number) => {
+    const service = getWatchLaterService(db)
+    return service.setPriority(mediaId, priority)
+  })
+
+  ipcMain.handle('watchLater:bumpPriority', async (_ev, mediaId: string) => {
+    const service = getWatchLaterService(db)
+    return service.bumpPriority(mediaId)
+  })
+
+  ipcMain.handle('watchLater:getNext', async () => {
+    const service = getWatchLaterService(db)
+    return service.getNext()
+  })
+
+  ipcMain.handle('watchLater:popNext', async () => {
+    const service = getWatchLaterService(db)
+    return service.popNext()
+  })
+
+  ipcMain.handle('watchLater:getDueReminders', async () => {
+    const service = getWatchLaterService(db)
+    return service.getDueReminders()
+  })
+
+  ipcMain.handle('watchLater:clearQueue', async () => {
+    const service = getWatchLaterService(db)
+    return service.clearQueue()
+  })
+
+  ipcMain.handle('watchLater:reorder', async (_ev, orderedMediaIds: string[]) => {
+    const service = getWatchLaterService(db)
+    service.reorder(orderedMediaIds)
+    return { success: true }
+  })
+
+  ipcMain.handle('watchLater:shuffle', async () => {
+    const service = getWatchLaterService(db)
+    service.shuffle()
+    return { success: true }
+  })
+
+  ipcMain.handle('watchLater:addMultiple', async (_ev, mediaIds: string[], priority?: number) => {
+    const service = getWatchLaterService(db)
+    return service.addMultiple(mediaIds, priority)
+  })
+
+  ipcMain.handle('watchLater:getStats', async () => {
+    const service = getWatchLaterService(db)
+    return service.getStats()
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TAG ALIASES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('tagAliases:add', async (_ev, tagId: string, alias: string) => {
+    const service = getTagAliasesService(db)
+    return service.addAlias(tagId, alias)
+  })
+
+  ipcMain.handle('tagAliases:remove', async (_ev, aliasId: string) => {
+    const service = getTagAliasesService(db)
+    return service.removeAlias(aliasId)
+  })
+
+  ipcMain.handle('tagAliases:getForTag', async (_ev, tagId: string) => {
+    const service = getTagAliasesService(db)
+    return service.getAliasesForTag(tagId)
+  })
+
+  ipcMain.handle('tagAliases:resolve', async (_ev, alias: string) => {
+    const service = getTagAliasesService(db)
+    return service.resolveAlias(alias)
+  })
+
+  ipcMain.handle('tagAliases:resolveMultiple', async (_ev, aliases: string[]) => {
+    const service = getTagAliasesService(db)
+    return service.resolveAliases(aliases)
+  })
+
+  ipcMain.handle('tagAliases:getAllWithAliases', async () => {
+    const service = getTagAliasesService(db)
+    return service.getAllTagsWithAliases()
+  })
+
+  ipcMain.handle('tagAliases:search', async (_ev, query: string, limit?: number) => {
+    const service = getTagAliasesService(db)
+    return service.search(query, limit)
+  })
+
+  ipcMain.handle('tagAliases:suggest', async (_ev, tagName: string) => {
+    const service = getTagAliasesService(db)
+    return service.suggestAliases(tagName)
+  })
+
+  ipcMain.handle('tagAliases:getStats', async () => {
+    const service = getTagAliasesService(db)
+    return service.getStats()
+  })
+
+  ipcMain.handle('tagAliases:export', async () => {
+    const service = getTagAliasesService(db)
+    return service.exportAliases()
+  })
+
+  ipcMain.handle('tagAliases:import', async (_ev, data: Record<string, string[]>) => {
+    const service = getTagAliasesService(db)
+    return service.importAliases(data)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RATING HISTORY
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('ratingHistory:record', async (_ev, mediaId: string, oldRating: number | null, newRating: number, sessionId?: string) => {
+    const service = getRatingHistoryService(db)
+    return service.recordChange(mediaId, oldRating, newRating, sessionId)
+  })
+
+  ipcMain.handle('ratingHistory:getHistory', async (_ev, mediaId: string, limit?: number) => {
+    const service = getRatingHistoryService(db)
+    return service.getHistory(mediaId, limit)
+  })
+
+  ipcMain.handle('ratingHistory:getInitialRating', async (_ev, mediaId: string) => {
+    const service = getRatingHistoryService(db)
+    return service.getInitialRating(mediaId)
+  })
+
+  ipcMain.handle('ratingHistory:getChangesInRange', async (_ev, startTime: number, endTime: number) => {
+    const service = getRatingHistoryService(db)
+    return service.getChangesInRange(startTime, endTime)
+  })
+
+  ipcMain.handle('ratingHistory:getTrends', async (_ev, minChanges?: number) => {
+    const service = getRatingHistoryService(db)
+    return service.getTrends(minChanges)
+  })
+
+  ipcMain.handle('ratingHistory:getRisingStars', async (_ev, limit?: number) => {
+    const service = getRatingHistoryService(db)
+    return service.getRisingStars(limit)
+  })
+
+  ipcMain.handle('ratingHistory:getFallingStars', async (_ev, limit?: number) => {
+    const service = getRatingHistoryService(db)
+    return service.getFallingStars(limit)
+  })
+
+  ipcMain.handle('ratingHistory:getMostVolatile', async (_ev, limit?: number) => {
+    const service = getRatingHistoryService(db)
+    return service.getMostVolatile(limit)
+  })
+
+  ipcMain.handle('ratingHistory:getRecentlyRated', async (_ev, limit?: number) => {
+    const service = getRatingHistoryService(db)
+    return service.getRecentlyRated(limit)
+  })
+
+  ipcMain.handle('ratingHistory:undoLastChange', async (_ev, mediaId: string) => {
+    const service = getRatingHistoryService(db)
+    return service.undoLastChange(mediaId)
+  })
+
+  ipcMain.handle('ratingHistory:getStats', async () => {
+    const service = getRatingHistoryService(db)
+    return service.getStats()
+  })
+
+  ipcMain.handle('ratingHistory:cleanup', async (_ev, keepPerMedia?: number) => {
+    const service = getRatingHistoryService(db)
+    return service.cleanup(keepPerMedia)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CUSTOM FILTERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('customFilters:getAll', async (_ev, includePresets?: boolean) => {
+    const service = getCustomFiltersService(db)
+    return service.getFilters(includePresets)
+  })
+
+  ipcMain.handle('customFilters:getQuickAccess', async () => {
+    const service = getCustomFiltersService(db)
+    return service.getQuickAccessFilters()
+  })
+
+  ipcMain.handle('customFilters:get', async (_ev, filterId: string) => {
+    const service = getCustomFiltersService(db)
+    return service.getFilter(filterId)
+  })
+
+  ipcMain.handle('customFilters:create', async (_ev, name: string, conditions: FilterCondition[], options?: any) => {
+    const service = getCustomFiltersService(db)
+    return service.createFilter(name, conditions, options)
+  })
+
+  ipcMain.handle('customFilters:update', async (_ev, filterId: string, updates: any) => {
+    const service = getCustomFiltersService(db)
+    return service.updateFilter(filterId, updates)
+  })
+
+  ipcMain.handle('customFilters:delete', async (_ev, filterId: string) => {
+    const service = getCustomFiltersService(db)
+    return service.deleteFilter(filterId)
+  })
+
+  ipcMain.handle('customFilters:execute', async (_ev, filterId: string) => {
+    const service = getCustomFiltersService(db)
+    return service.executeFilter(filterId)
+  })
+
+  ipcMain.handle('customFilters:executeConditions', async (_ev, conditions: FilterCondition[], combineMode: 'and' | 'or', sortBy?: string, sortOrder?: 'asc' | 'desc') => {
+    const service = getCustomFiltersService(db)
+    return service.executeConditions(conditions, combineMode, sortBy, sortOrder)
+  })
+
+  ipcMain.handle('customFilters:preview', async (_ev, conditions: FilterCondition[], combineMode: 'and' | 'or') => {
+    const service = getCustomFiltersService(db)
+    return service.previewFilter(conditions, combineMode)
+  })
+
+  ipcMain.handle('customFilters:duplicate', async (_ev, filterId: string, newName?: string) => {
+    const service = getCustomFiltersService(db)
+    return service.duplicateFilter(filterId, newName)
+  })
+
+  ipcMain.handle('customFilters:toggleQuickAccess', async (_ev, filterId: string) => {
+    const service = getCustomFiltersService(db)
+    return service.toggleQuickAccess(filterId)
+  })
+
+  ipcMain.handle('customFilters:getStats', async () => {
+    const service = getCustomFiltersService(db)
+    return service.getStats()
+  })
+
+  ipcMain.handle('customFilters:export', async () => {
+    const service = getCustomFiltersService(db)
+    return service.exportFilters()
+  })
+
+  ipcMain.handle('customFilters:import', async (_ev, json: string) => {
+    const service = getCustomFiltersService(db)
+    return service.importFilters(json)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SESSION HISTORY
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('sessionHistory:start', async (_ev, mood?: string) => {
+    const service = getSessionHistoryService(db)
+    return service.startSession(mood)
+  })
+
+  ipcMain.handle('sessionHistory:end', async (_ev, notes?: string) => {
+    const service = getSessionHistoryService(db)
+    return service.endSession(notes)
+  })
+
+  ipcMain.handle('sessionHistory:getCurrent', async () => {
+    const service = getSessionHistoryService(db)
+    return service.getCurrentSession()
+  })
+
+  ipcMain.handle('sessionHistory:recordMediaView', async (_ev, mediaId: string) => {
+    const service = getSessionHistoryService(db)
+    service.recordMediaView(mediaId)
+    return { success: true }
+  })
+
+  ipcMain.handle('sessionHistory:recordAction', async (_ev, type: SessionAction['type'], mediaId?: string, data?: any) => {
+    const service = getSessionHistoryService(db)
+    service.recordAction(type, mediaId, data)
+    return { success: true }
+  })
+
+  ipcMain.handle('sessionHistory:get', async (_ev, sessionId: string) => {
+    const service = getSessionHistoryService(db)
+    return service.getSession(sessionId)
+  })
+
+  ipcMain.handle('sessionHistory:getRecent', async (_ev, limit?: number) => {
+    const service = getSessionHistoryService(db)
+    return service.getRecentSessions(limit)
+  })
+
+  ipcMain.handle('sessionHistory:getToday', async () => {
+    const service = getSessionHistoryService(db)
+    return service.getTodaySessions()
+  })
+
+  ipcMain.handle('sessionHistory:getWeek', async () => {
+    const service = getSessionHistoryService(db)
+    return service.getWeekSessions()
+  })
+
+  ipcMain.handle('sessionHistory:getAnalytics', async (_ev, days?: number) => {
+    const service = getSessionHistoryService(db)
+    return service.getAnalytics(days)
+  })
+
+  ipcMain.handle('sessionHistory:getFrequentlyViewedTogether', async (_ev, mediaId: string, limit?: number) => {
+    const service = getSessionHistoryService(db)
+    return service.getFrequentlyViewedTogether(mediaId, limit)
+  })
+
+  ipcMain.handle('sessionHistory:getTagTrends', async (_ev, days?: number) => {
+    const service = getSessionHistoryService(db)
+    return service.getTagTrends(days)
+  })
+
+  ipcMain.handle('sessionHistory:delete', async (_ev, sessionId: string) => {
+    const service = getSessionHistoryService(db)
+    return service.deleteSession(sessionId)
+  })
+
+  ipcMain.handle('sessionHistory:deleteOld', async (_ev, keepDays?: number) => {
+    const service = getSessionHistoryService(db)
+    return service.deleteOldSessions(keepDays)
+  })
+
+  ipcMain.handle('sessionHistory:export', async (_ev, days?: number) => {
+    const service = getSessionHistoryService(db)
+    return service.exportSessions(days)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FAVORITE FOLDERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('favoriteFolders:add', async (_ev, folderPath: string, name?: string, options?: { icon?: string; color?: string }) => {
+    const service = getFavoriteFoldersService(db)
+    return service.addFolder(folderPath, name, options)
+  })
+
+  ipcMain.handle('favoriteFolders:remove', async (_ev, folderId: string) => {
+    const service = getFavoriteFoldersService(db)
+    return service.removeFolder(folderId)
+  })
+
+  ipcMain.handle('favoriteFolders:isFavorite', async (_ev, folderPath: string) => {
+    const service = getFavoriteFoldersService(db)
+    return service.isFavorite(folderPath)
+  })
+
+  ipcMain.handle('favoriteFolders:get', async (_ev, folderId: string) => {
+    const service = getFavoriteFoldersService(db)
+    return service.getFolder(folderId)
+  })
+
+  ipcMain.handle('favoriteFolders:getAll', async () => {
+    const service = getFavoriteFoldersService(db)
+    return service.getFolders()
+  })
+
+  ipcMain.handle('favoriteFolders:getRecent', async (_ev, limit?: number) => {
+    const service = getFavoriteFoldersService(db)
+    return service.getRecentFolders(limit)
+  })
+
+  ipcMain.handle('favoriteFolders:update', async (_ev, folderId: string, updates: any) => {
+    const service = getFavoriteFoldersService(db)
+    return service.updateFolder(folderId, updates)
+  })
+
+  ipcMain.handle('favoriteFolders:recordAccess', async (_ev, folderId: string) => {
+    const service = getFavoriteFoldersService(db)
+    service.recordAccess(folderId)
+    return { success: true }
+  })
+
+  ipcMain.handle('favoriteFolders:reorder', async (_ev, orderedIds: string[]) => {
+    const service = getFavoriteFoldersService(db)
+    service.reorderFolders(orderedIds)
+    return { success: true }
+  })
+
+  ipcMain.handle('favoriteFolders:getStats', async (_ev, folderId: string) => {
+    const service = getFavoriteFoldersService(db)
+    return service.getFolderStats(folderId)
+  })
+
+  ipcMain.handle('favoriteFolders:getMedia', async (_ev, folderId: string, limit?: number) => {
+    const service = getFavoriteFoldersService(db)
+    return service.getMediaInFolder(folderId, limit)
+  })
+
+  ipcMain.handle('favoriteFolders:getSubfolders', async (_ev, folderPath: string) => {
+    const service = getFavoriteFoldersService(db)
+    return service.getSubfolders(folderPath)
+  })
+
+  ipcMain.handle('favoriteFolders:toggle', async (_ev, folderPath: string, name?: string) => {
+    const service = getFavoriteFoldersService(db)
+    return service.toggleFavorite(folderPath, name)
+  })
+
+  ipcMain.handle('favoriteFolders:validate', async () => {
+    const service = getFavoriteFoldersService(db)
+    return service.validateFolders()
+  })
+
+  ipcMain.handle('favoriteFolders:removeInvalid', async () => {
+    const service = getFavoriteFoldersService(db)
+    return service.removeInvalidFolders()
+  })
+
+  ipcMain.handle('favoriteFolders:getMostAccessed', async (_ev, limit?: number) => {
+    const service = getFavoriteFoldersService(db)
+    return service.getMostAccessed(limit)
+  })
+
+  ipcMain.handle('favoriteFolders:search', async (_ev, query: string) => {
+    const service = getFavoriteFoldersService(db)
+    return service.searchFolders(query)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DUPLICATES FINDER
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('duplicates:findExact', async () => {
+    const service = getDuplicatesFinderService(db)
+    return service.findExactDuplicates()
+  })
+
+  ipcMain.handle('duplicates:findBySize', async () => {
+    const service = getDuplicatesFinderService(db)
+    return service.findSizeDuplicates()
+  })
+
+  ipcMain.handle('duplicates:findByName', async () => {
+    const service = getDuplicatesFinderService(db)
+    return service.findNameDuplicates()
+  })
+
+  ipcMain.handle('duplicates:getGroupDetails', async (_ev, mediaIds: string[]) => {
+    const service = getDuplicatesFinderService(db)
+    return service.getDuplicateGroupDetails(mediaIds)
+  })
+
+  ipcMain.handle('duplicates:resolve', async (_ev, resolution: DuplicateResolution) => {
+    const service = getDuplicatesFinderService(db)
+    return service.resolveDuplicates(resolution)
+  })
+
+  ipcMain.handle('duplicates:suggestKeep', async (_ev, mediaIds: string[]) => {
+    const service = getDuplicatesFinderService(db)
+    return service.suggestKeep(mediaIds)
+  })
+
+  ipcMain.handle('duplicates:getStats', async () => {
+    const service = getDuplicatesFinderService(db)
+    return service.getStats()
+  })
+
+  ipcMain.handle('duplicates:computeHash', async (_ev, mediaId: string) => {
+    const service = getDuplicatesFinderService(db)
+    return service.computeFileHash(mediaId)
+  })
+
+  ipcMain.handle('duplicates:clearHashes', async () => {
+    const service = getDuplicatesFinderService(db)
+    return service.clearHashes()
+  })
+
+  ipcMain.handle('duplicates:findSimilarTo', async (_ev, mediaId: string) => {
+    const service = getDuplicatesFinderService(db)
+    return service.findSimilarTo(mediaId)
   })
 
   // Auto-organize NSFW Soundpack on startup
