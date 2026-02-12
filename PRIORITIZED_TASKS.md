@@ -221,6 +221,16 @@ Verify ALL sliders, toggles, dropdowns, and buttons function and persist correct
 
 **Build Stats:** 69 modules transformed, main.js 846.95 kB
 
+### Frontend UI Components (Feb 12, 2026 Session - Continued):
+- [x] **WatchLaterPanel** (`WatchLaterPanel.tsx`) - Full queue management UI with drag-to-reorder, play next, shuffle, bulk add
+- [x] **BookmarksPanel** (`BookmarksPanel.tsx`) - Video timestamp bookmarks with quick add, custom add, color coding, timeline preview, export
+- [x] **MediaNotesPanel** (`MediaNotesPanel.tsx`) - Personal notes panel with colors, pinning, editing, timestamps
+- [x] **DuplicatesModal** (`DuplicatesModal.tsx`) - Advanced duplicate finder UI with scan by size/name/hash, selective delete
+- [x] **RelatedMediaPanel** (`RelatedMediaPanel.tsx`) - Show related media with AI suggestions, relationship types, navigation
+- [x] **App Integration** - Watch Later toolbar button, context menu option, keyboard shortcuts (W to add, L to open panel)
+- [x] **FloatingVideoPlayer Enhancement** - B key creates quick bookmark at current timestamp
+- [x] **Keyboard Shortcuts Help** - Added W/L/B shortcuts to help modal
+
 ---
 
 ## QUICK WINS (Can do in <30 min each)
