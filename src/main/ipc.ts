@@ -14,6 +14,7 @@ import { getHybridTagger } from './services/tagging/hybrid-tagger'
 import { analyzeVideo, isAnalyzerAvailable } from './services/ai/video-analyzer'
 import { aiCleanupTags, aiGenerateTags, aiSuggestFilename, aiBatchRename, isOllamaAvailable } from './services/ai/ai-library-tools'
 import { getDLNAService } from './services/dlna-service'
+import { getSmartPlaylistService, SMART_PLAYLIST_PRESETS } from './services/smart-playlists'
 
 import {
   getSettings,
@@ -3377,6 +3378,103 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       return { cleared: cache.clearNamespace(namespace), namespace }
     }
     return { cleared: cache.clearAll(), namespace: 'all' }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SMART PLAYLISTS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('smart-playlist:create', async (_ev, name: string, rules: any) => {
+    try {
+      const service = getSmartPlaylistService(db)
+      const playlist = service.createSmartPlaylist(name, rules)
+      const result = service.refreshPlaylist(playlist.id)
+      return { ...playlist, itemCount: result.count }
+    } catch (e: any) {
+      console.error('[SmartPlaylist] Create error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('smart-playlist:update-rules', async (_ev, playlistId: string, rules: any) => {
+    try {
+      const service = getSmartPlaylistService(db)
+      service.updateRules(playlistId, rules)
+      return service.refreshPlaylist(playlistId)
+    } catch (e: any) {
+      console.error('[SmartPlaylist] Update rules error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('smart-playlist:refresh', async (_ev, playlistId: string) => {
+    try {
+      const service = getSmartPlaylistService(db)
+      return service.refreshPlaylist(playlistId)
+    } catch (e: any) {
+      console.error('[SmartPlaylist] Refresh error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('smart-playlist:get-all', async () => {
+    try {
+      const service = getSmartPlaylistService(db)
+      return service.getSmartPlaylists()
+    } catch (e: any) {
+      console.error('[SmartPlaylist] Get all error:', e)
+      return []
+    }
+  })
+
+  ipcMain.handle('smart-playlist:convert-to-smart', async (_ev, playlistId: string, rules: any) => {
+    try {
+      const service = getSmartPlaylistService(db)
+      service.convertToSmart(playlistId, rules)
+      return service.refreshPlaylist(playlistId)
+    } catch (e: any) {
+      console.error('[SmartPlaylist] Convert to smart error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('smart-playlist:convert-to-regular', async (_ev, playlistId: string) => {
+    try {
+      const service = getSmartPlaylistService(db)
+      service.convertToRegular(playlistId)
+      return { success: true }
+    } catch (e: any) {
+      console.error('[SmartPlaylist] Convert to regular error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('smart-playlist:get-presets', async () => {
+    return SMART_PLAYLIST_PRESETS
+  })
+
+  ipcMain.handle('smart-playlist:create-from-preset', async (_ev, presetKey: string) => {
+    try {
+      const preset = SMART_PLAYLIST_PRESETS[presetKey as keyof typeof SMART_PLAYLIST_PRESETS]
+      if (!preset) throw new Error(`Unknown preset: ${presetKey}`)
+      const service = getSmartPlaylistService(db)
+      const playlist = service.createSmartPlaylist(preset.name, preset.rules)
+      const result = service.refreshPlaylist(playlist.id)
+      return { ...playlist, itemCount: result.count }
+    } catch (e: any) {
+      console.error('[SmartPlaylist] Create from preset error:', e)
+      throw e
+    }
+  })
+
+  ipcMain.handle('smart-playlist:refresh-stale', async () => {
+    try {
+      const service = getSmartPlaylistService(db)
+      return service.refreshStale()
+    } catch (e: any) {
+      console.error('[SmartPlaylist] Refresh stale error:', e)
+      return { refreshed: 0, total: 0 }
+    }
   })
 
   // ═══════════════════════════════════════════════════════════════════════════

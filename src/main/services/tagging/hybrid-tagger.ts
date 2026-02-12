@@ -6,6 +6,10 @@
 import { getSmartTagger, type TagSuggestion } from './smart-tagger'
 import { aiTagVideo, getAiConfig, type AiTagResult } from '../../ai/aiTagger'
 import type { MediaRow } from '../../types'
+import https from 'https'
+import fs from 'fs'
+import path from 'path'
+import { getSettings } from '../../settings'
 
 export interface HybridTagResult {
   mediaId: string
@@ -152,6 +156,162 @@ export class HybridTagger {
     return { tags: [] }
   }
 
+  // Tier 3: Analyze with Venice Cloud API
+  private async analyzeWithCloudApi(media: MediaRow): Promise<{ tags: Array<{ name: string; confidence: number }> } | null> {
+    // Get Venice API key from settings
+    const settings = getSettings() as any
+    const apiKey = settings?.ai?.veniceApiKey
+    if (!apiKey) {
+      console.log('[HybridTagger] No Venice API key configured')
+      return null
+    }
+
+    console.log(`[HybridTagger] Starting Cloud API (Venice) analysis for: ${media.filename}`)
+
+    try {
+      let imageB64: string
+
+      // Get image data
+      if (media.type === 'video') {
+        // Use thumbnail for videos
+        if (!media.thumbPath || !fs.existsSync(media.thumbPath)) {
+          console.log('[HybridTagger] No thumbnail available for video')
+          return null
+        }
+        imageB64 = fs.readFileSync(media.thumbPath).toString('base64')
+      } else {
+        // Direct image
+        if (!fs.existsSync(media.path)) {
+          console.log('[HybridTagger] Image file not found')
+          return null
+        }
+        imageB64 = fs.readFileSync(media.path).toString('base64')
+      }
+
+      const aiConfig = getAiConfig()
+      const allowedTagList = aiConfig.allowedTags.length > 0
+        ? `Use ONLY these tags if applicable: ${aiConfig.allowedTags.slice(0, 50).join(', ')}`
+        : 'Use standard, commonly used tags for adult content (body types, hair color, acts, positions, settings).'
+
+      // Build Venice API request
+      const systemPrompt = `You are a precise media tagger for a private adult content library.
+Your task: analyze the image and return relevant tags.
+
+RULES:
+- Be explicit and accurate. This is adult content.
+- Return 5-15 relevant tags
+- Use lowercase, spaces between words (not underscores)
+- Focus on: acts, positions, body types, hair colors, clothing, settings
+- Respond ONLY with JSON, no markdown fences
+
+${allowedTagList}
+
+OUTPUT FORMAT:
+{"tags":[{"name":"tag name","confidence":0.85}]}`
+
+      const requestBody = {
+        model: 'qwen3-vl-235b-a22b',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'user',
+            content: [
+              { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageB64}` } },
+              { type: 'text', text: 'Tag this image. Return JSON only.' }
+            ]
+          }
+        ],
+        max_tokens: 512,
+        temperature: 0.3,
+        venice_parameters: {
+          include_venice_system_prompt: false
+        }
+      }
+
+      // Make API call with timeout
+      const response = await this.callVeniceApi(apiKey, requestBody)
+      if (!response) return null
+
+      // Parse response
+      const jsonMatch = response.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) {
+        console.log('[HybridTagger] No JSON in cloud response')
+        return null
+      }
+
+      const parsed = JSON.parse(jsonMatch[0])
+      if (!Array.isArray(parsed.tags)) {
+        console.log('[HybridTagger] Invalid cloud response format')
+        return null
+      }
+
+      // Filter and normalize tags
+      const tags = parsed.tags
+        .filter((t: any) => t.name && typeof t.confidence === 'number')
+        .map((t: any) => ({
+          name: String(t.name).toLowerCase().trim(),
+          confidence: Math.min(1, Math.max(0, t.confidence))
+        }))
+        .filter((t: { name: string }) => t.name.length >= 2)
+
+      console.log(`[HybridTagger] Cloud API returned ${tags.length} tags`)
+      return { tags }
+
+    } catch (e: any) {
+      console.error('[HybridTagger] Cloud API error:', e.message)
+      return null
+    }
+  }
+
+  private callVeniceApi(apiKey: string, body: any): Promise<string | null> {
+    return new Promise((resolve) => {
+      const postData = JSON.stringify(body)
+      const timeout = setTimeout(() => {
+        console.log('[HybridTagger] Cloud API timeout')
+        resolve(null)
+      }, 45000) // 45 second timeout
+
+      const options = {
+        hostname: 'api.venice.ai',
+        path: '/api/v1/chat/completions',
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      }
+
+      const req = https.request(options, (res) => {
+        let data = ''
+        res.on('data', chunk => data += chunk)
+        res.on('end', () => {
+          clearTimeout(timeout)
+          if (res.statusCode !== 200) {
+            console.error(`[HybridTagger] Cloud API error: ${res.statusCode}`)
+            resolve(null)
+            return
+          }
+          try {
+            const parsed = JSON.parse(data)
+            resolve(parsed.choices?.[0]?.message?.content || null)
+          } catch {
+            resolve(null)
+          }
+        })
+      })
+
+      req.on('error', (err) => {
+        clearTimeout(timeout)
+        console.error('[HybridTagger] Cloud API request error:', err.message)
+        resolve(null)
+      })
+
+      req.write(postData)
+      req.end()
+    })
+  }
+
   // Use AI to suggest a clean, descriptive filename based on content
   async suggestFilename(media: MediaRow): Promise<string | null> {
     const visionAvailable = await this.isVisionAvailable()
@@ -288,10 +448,29 @@ export class HybridTagger {
       }
     }
 
-    // Tier 3: Cloud API (only if really needed and enabled)
-    // TODO: Implement cloud API integration (OpenAI Vision, Claude, etc.)
-    // For now this is a placeholder
+    // Tier 3: Cloud API (Venice AI) - only if enabled and we need more tags
     let cloudTags: AiTagResult['tags'] | undefined
+    const combinedHighConfidence = Array.from(tagMap.values()).filter(t => t.confidence >= this.config.minConfidence)
+
+    if (this.config.useCloud && combinedHighConfidence.length < this.config.cloudMinTags) {
+      const cloudResult = await this.analyzeWithCloudApi(media)
+      if (cloudResult && cloudResult.tags.length > 0) {
+        cloudTags = cloudResult.tags
+        methodsUsed.push('cloud')
+
+        for (const tag of cloudTags) {
+          const weighted = tag.confidence * this.config.cloudWeight
+          if (tagMap.has(tag.name)) {
+            const existing = tagMap.get(tag.name)!
+            // Strong boost when cloud agrees with other sources
+            existing.confidence = Math.min(1.0, existing.confidence + weighted * 0.6)
+            existing.sources.add('cloud')
+          } else {
+            tagMap.set(tag.name, { confidence: weighted, sources: new Set(['cloud']) })
+          }
+        }
+      }
+    }
 
     // Build final results
     const tags = Array.from(tagMap.entries())
