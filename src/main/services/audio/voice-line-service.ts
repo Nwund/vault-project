@@ -1,6 +1,6 @@
 // ===============================
 // File: src/main/services/audio/voice-line-service.ts
-// Manages and serves Diabella voice lines
+// Manages and serves voice lines for features like cum countdown
 // ===============================
 
 import * as fs from 'fs'

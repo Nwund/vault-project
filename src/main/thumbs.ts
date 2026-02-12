@@ -4,10 +4,21 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import ffmpeg from 'fluent-ffmpeg'
 import { ffmpegBin, ffprobeBin } from './ffpaths'
-import { getCacheDir } from './settings'
+import { getCacheDir, getSettings } from './settings'
 
 if (ffmpegBin) ffmpeg.setFfmpegPath(ffmpegBin)
 if (ffprobeBin) ffmpeg.setFfprobePath(ffprobeBin)
+
+// Get thumbnail size based on quality setting
+function getThumbSize(): number {
+  const quality = getSettings().library?.thumbnailQuality ?? 'medium'
+  switch (quality) {
+    case 'low': return 320
+    case 'high': return 720
+    case 'medium':
+    default: return 480
+  }
+}
 
 function ensureDir(p: string): void {
   fs.mkdirSync(p, { recursive: true })
@@ -66,6 +77,7 @@ function captureScreenshot(
   outDir: string,
   atSeconds: number
 ): Promise<string> {
+  const size = getThumbSize()
   return new Promise((resolve, reject) => {
     ffmpeg(filePath)
       .on('error', (e) => reject(e))
@@ -74,7 +86,7 @@ function captureScreenshot(
         timestamps: [atSeconds],
         filename: path.basename(outFile),
         folder: outDir,
-        size: '480x?'
+        size: `${size}x?`
       })
   })
 }
@@ -122,6 +134,7 @@ export async function makeImageThumb(params: {
   if (fs.existsSync(outFile)) return outFile
 
   // Use ffmpeg as a universal image scaler/encoder.
+  const size = getThumbSize()
   return await new Promise<string>((resolve, reject) => {
     ffmpeg(params.filePath)
       .on('error', (e) => reject(e))
@@ -129,7 +142,7 @@ export async function makeImageThumb(params: {
       .outputOptions([
         '-frames:v 1',
         '-q:v 3',
-        '-vf scale=480:-2:force_original_aspect_ratio=decrease'
+        `-vf scale=${size}:-2:force_original_aspect_ratio=decrease`
       ])
       .save(outFile)
   }).catch((err) => {

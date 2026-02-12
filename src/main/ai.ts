@@ -151,8 +151,8 @@ async function ollamaChat(messages: Array<{ role: 'user' | 'assistant'; content:
   const base = normalizeUrl(cfg.ollamaUrl)
 
   const system = [
-    'You are Diabella (Vault).',
-    'Tone: flirty/sultry but strictly SFW, non-judgmental, concise.',
+    'You are Vault AI Assistant.',
+    'Tone: helpful, concise.',
     'You help with: search, playlists, daylists, goonwall presets, tags.',
     'Never mention illegal content. Keep it neutral and safe.',
     'Prefer short actionable suggestions.'
@@ -182,7 +182,7 @@ async function ollamaChat(messages: Array<{ role: 'user' | 'assistant'; content:
   }
 }
 
-export async function diabellaChat(
+export async function vaultAiChat(
   db: DB,
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   limit: number

@@ -16,7 +16,7 @@ export interface TierLimits {
   playlists: number | 'unlimited'
   goonWallTiles: number
   themes: 'basic' | 'all'
-  diabella: boolean
+  voiceFeatures: boolean
   stats: 'basic' | 'full'
   achievements: boolean
   watchAlong: boolean
@@ -29,7 +29,7 @@ export const TIER_LIMITS: Record<UserTier, TierLimits> = {
     playlists: 3,
     goonWallTiles: 4,
     themes: 'basic',
-    diabella: false,
+    voiceFeatures: false,
     stats: 'basic',
     achievements: false,
     watchAlong: false,
@@ -40,7 +40,7 @@ export const TIER_LIMITS: Record<UserTier, TierLimits> = {
     playlists: 'unlimited',
     goonWallTiles: 16,
     themes: 'all',
-    diabella: true,
+    voiceFeatures: true,
     stats: 'full',
     achievements: true,
     watchAlong: true,
@@ -51,7 +51,7 @@ export const TIER_LIMITS: Record<UserTier, TierLimits> = {
     playlists: 'unlimited',
     goonWallTiles: 25,
     themes: 'all',
-    diabella: true,
+    voiceFeatures: true,
     stats: 'full',
     achievements: true,
     watchAlong: true,
