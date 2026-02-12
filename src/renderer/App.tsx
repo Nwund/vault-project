@@ -27,6 +27,8 @@ import { useConfetti } from './hooks/useConfetti'
 import { useUiSounds } from './hooks/useUiSounds'
 import { FloatingVideoPlayer } from './components/FloatingVideoPlayer'
 import { WatchLaterPanel } from './components/WatchLaterPanel'
+import { MediaNotesPanel } from './components/MediaNotesPanel'
+import { RelatedMediaPanel } from './components/RelatedMediaPanel'
 import {
   Library,
   Repeat,
@@ -5447,6 +5449,11 @@ function MediaInfoModal({ media, onClose }: { media: MediaRow; onClose: () => vo
               </div>
             </div>
           )}
+
+          {/* Notes Panel */}
+          <div className="pt-3 border-t border-[var(--border)]">
+            <MediaNotesPanel mediaId={media.id} />
+          </div>
         </div>
       </div>
     </div>
