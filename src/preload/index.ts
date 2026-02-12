@@ -62,6 +62,8 @@ const api = {
       update: (patch: any) => invoke('settings:captions:update', patch),
       addPreset: (preset: any) => invoke('settings:captions:addPreset', preset),
       removePreset: (presetId: string) => invoke('settings:captions:removePreset', presetId),
+      exportPresets: () => invoke<{ success: boolean; cancelled?: boolean; path?: string; count?: number }>('settings:captions:exportPresets'),
+      importPresets: (mode?: 'merge' | 'replace') => invoke<{ success: boolean; cancelled?: boolean; imported?: number; total?: number; error?: string }>('settings:captions:importPresets', mode),
     },
     data: {
       update: (patch: any) => invoke('settings:data:update', patch),

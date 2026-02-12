@@ -1009,6 +1009,49 @@ export function removeCaptionPreset(presetId: string): VaultSettings {
   return updateSettings({ captions: { ...current, presets: current.presets.filter(p => p.id !== presetId) } })
 }
 
+// Export caption presets as JSON
+export function exportCaptionPresets(): { version: number; presets: CaptionPreset[]; exportedAt: string } {
+  const settings = getSettings()
+  return {
+    version: 1,
+    presets: settings.captions.presets,
+    exportedAt: new Date().toISOString()
+  }
+}
+
+// Import caption presets from JSON
+export function importCaptionPresets(
+  data: { version?: number; presets: CaptionPreset[] },
+  mode: 'merge' | 'replace' = 'merge'
+): { imported: number; total: number } {
+  if (!data.presets || !Array.isArray(data.presets)) {
+    throw new Error('Invalid preset data: missing presets array')
+  }
+
+  const current = getSettings().captions
+  let newPresets: CaptionPreset[]
+
+  if (mode === 'replace') {
+    // Keep default preset, replace all others
+    const defaultPreset = current.presets.find(p => p.id === 'default')
+    newPresets = defaultPreset ? [defaultPreset, ...data.presets.filter(p => p.id !== 'default')] : data.presets
+  } else {
+    // Merge: add new presets, update existing ones (by ID)
+    const presetMap = new Map(current.presets.map(p => [p.id, p]))
+    for (const preset of data.presets) {
+      presetMap.set(preset.id, preset)
+    }
+    newPresets = Array.from(presetMap.values())
+  }
+
+  updateSettings({ captions: { ...current, presets: newPresets } })
+
+  return {
+    imported: data.presets.length,
+    total: newPresets.length
+  }
+}
+
 export function updateDataSettings(patch: Partial<DataSettings>): VaultSettings {
   return updateSettings({ data: { ...getSettings().data, ...patch } })
 }

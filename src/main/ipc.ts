@@ -33,6 +33,8 @@ import {
   updateCaptionSettings,
   addCaptionPreset,
   removeCaptionPreset,
+  exportCaptionPresets,
+  importCaptionPresets,
   updateDataSettings,
   updateVisualEffectsSettings,
   addMediaDir,
@@ -428,6 +430,43 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     const next = removeCaptionPreset(presetId)
     broadcast('settings:changed', next)
     return next
+  })
+
+  // Export caption presets as JSON file
+  ipcMain.handle('settings:captions:exportPresets', async () => {
+    const data = exportCaptionPresets()
+    const result = await dialog.showSaveDialog({
+      title: 'Export Caption Presets',
+      defaultPath: `vault-caption-presets-${new Date().toISOString().split('T')[0]}.json`,
+      filters: [{ name: 'JSON Files', extensions: ['json'] }]
+    })
+
+    if (result.canceled || !result.filePath) return { success: false, cancelled: true }
+
+    fs.writeFileSync(result.filePath, JSON.stringify(data, null, 2), 'utf8')
+    return { success: true, path: result.filePath, count: data.presets.length }
+  })
+
+  // Import caption presets from JSON file
+  ipcMain.handle('settings:captions:importPresets', async (_ev, mode: 'merge' | 'replace' = 'merge') => {
+    const result = await dialog.showOpenDialog({
+      title: 'Import Caption Presets',
+      filters: [{ name: 'JSON Files', extensions: ['json'] }],
+      properties: ['openFile']
+    })
+
+    if (result.canceled || !result.filePaths[0]) return { success: false, cancelled: true }
+
+    try {
+      const content = fs.readFileSync(result.filePaths[0], 'utf8')
+      const data = JSON.parse(content)
+      const stats = importCaptionPresets(data, mode)
+      const settings = getSettings()
+      broadcast('settings:changed', settings)
+      return { success: true, ...stats }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
   })
 
   // Caption database operations
