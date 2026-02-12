@@ -9498,6 +9498,53 @@ function FeedPage() {
     return () => el.removeEventListener('wheel', handleWheel)
   }, [videos.length])
 
+  // Touch swipe navigation for mobile/tablet
+  const touchStartRef = useRef<{ y: number; time: number } | null>(null)
+  const touchCooldownRef = useRef(false)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        touchStartRef.current = { y: e.touches[0].clientY, time: Date.now() }
+      }
+    }
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (!touchStartRef.current || touchCooldownRef.current) return
+      if (e.changedTouches.length !== 1) return
+
+      const endY = e.changedTouches[0].clientY
+      const deltaY = touchStartRef.current.y - endY
+      const deltaTime = Date.now() - touchStartRef.current.time
+      touchStartRef.current = null
+
+      // Require minimum swipe distance (80px) and velocity
+      const minSwipeDistance = 80
+      const maxSwipeTime = 500 // ms
+
+      if (Math.abs(deltaY) > minSwipeDistance && deltaTime < maxSwipeTime) {
+        touchCooldownRef.current = true
+        if (deltaY > 0) {
+          // Swipe up = next video
+          setCurrentIndex(prev => Math.min(prev + 1, videos.length - 1))
+        } else {
+          // Swipe down = previous video
+          setCurrentIndex(prev => Math.max(prev - 1, 0))
+        }
+        setTimeout(() => { touchCooldownRef.current = false }, 300)
+      }
+    }
+
+    el.addEventListener('touchstart', handleTouchStart, { passive: true })
+    el.addEventListener('touchend', handleTouchEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', handleTouchStart)
+      el.removeEventListener('touchend', handleTouchEnd)
+    }
+  }, [videos.length])
+
   // Auto-hide HUD after inactivity
   const resetHudTimeout = useCallback(() => {
     setShowHud(true)
@@ -10142,6 +10189,33 @@ const FeedItem = React.memo(function FeedItem(props: {
   const [url, setUrl] = useState(preloadedUrl || '')
   const [loading, setLoading] = useState(true)
   const [transcodeRetried, setTranscodeRetried] = useState(false)
+  // Double-tap to like
+  const [showHeartAnimation, setShowHeartAnimation] = useState(false)
+  const lastTapRef = useRef<number>(0)
+  const doubleTapTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  const handleDoubleTap = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    // Ignore if clicking on buttons or other interactive elements
+    if ((e.target as HTMLElement).closest('button')) return
+
+    const now = Date.now()
+    const timeSinceLastTap = now - lastTapRef.current
+    lastTapRef.current = now
+
+    // Double tap detection (within 300ms)
+    if (timeSinceLastTap < 300 && timeSinceLastTap > 0) {
+      if (doubleTapTimeoutRef.current) clearTimeout(doubleTapTimeoutRef.current)
+
+      // Show heart animation
+      setShowHeartAnimation(true)
+      setTimeout(() => setShowHeartAnimation(false), 800)
+
+      // Like if not already liked
+      if (!isLiked) {
+        onToggleLike()
+      }
+    }
+  }, [isLiked, onToggleLike])
 
   useEffect(() => {
     if (preloadedUrl && resolution === 'original') { setUrl(preloadedUrl); return }
@@ -10170,7 +10244,24 @@ const FeedItem = React.memo(function FeedItem(props: {
   const filename = video.filename || video.path.split(/[/\\]/).pop() || 'Unknown'
 
   return (
-    <div className="h-full w-full flex items-center justify-center bg-black relative">
+    <div
+      className="h-full w-full flex items-center justify-center bg-black relative"
+      onClick={handleDoubleTap}
+      onTouchEnd={handleDoubleTap}
+    >
+      {/* Double-tap heart animation */}
+      {showHeartAnimation && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-50">
+          <Heart
+            className="w-24 h-24 sm:w-32 sm:h-32 text-red-500 animate-heart-pop"
+            fill="currentColor"
+            style={{
+              animation: 'heartPop 0.8s ease-out forwards',
+            }}
+          />
+        </div>
+      )}
+
       {/* Video - fill height, maintain aspect ratio */}
       {url && (
         <video
