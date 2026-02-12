@@ -4112,6 +4112,30 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
             <span>New Playlist</span>
           </Btn>
 
+          {/* Add to Watch Later */}
+          <Btn
+            tone="ghost"
+            title="Add selected items to Watch Later queue"
+            aria-label="Add selected items to Watch Later queue"
+            disabled={!!bulkActionLoading}
+            onClick={async () => {
+              try {
+                setBulkActionLoading('watchLater')
+                await window.api.invoke('watchLater:addMultiple', [...selectedIds])
+                showToast('success', `Added ${selectedIds.size} items to Watch Later`)
+              } catch (err) {
+                console.error('[Library] Failed to add to Watch Later:', err)
+                showToast('error', 'Failed to add items to Watch Later')
+              } finally {
+                setBulkActionLoading(null)
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+          >
+            {bulkActionLoading === 'watchLater' ? <RefreshCw size={12} className="animate-spin" /> : <Clock size={12} />}
+            <span>Watch Later</span>
+          </Btn>
+
           {/* AI Analyze selected items */}
           <Btn
             tone="ghost"
