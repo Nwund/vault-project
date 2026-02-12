@@ -32,6 +32,9 @@ import { getAdvancedStatsService } from './services/advanced-stats'
 import { getQuickActionsService, type ActionContext } from './services/quick-actions'
 import { getViewPresetsService, type ViewFilters, type ViewConfig } from './services/view-presets'
 import { getMediaCompareService, type CompareOptions } from './services/media-compare'
+import { getExportService, type ExportOptions, type PlaylistExportOptions } from './services/export-service'
+import { getMetadataExtractorService } from './services/metadata-extractor'
+import { getSceneDetectionService, type SceneDetectionOptions } from './services/scene-detection'
 
 import {
   getSettings,
@@ -4896,6 +4899,132 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('mediaCompare:findDuplicates', async (_ev, mediaId: string, limit?: number) => {
     const service = getMediaCompareService(db)
     return service.findDuplicateCandidates(mediaId, limit)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EXPORT SERVICE - Export media and playlists
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('export:media', async (_ev, mediaIds: string[], options: ExportOptions) => {
+    const service = getExportService(db)
+    return service.exportMedia(mediaIds, options)
+  })
+
+  ipcMain.handle('export:playlist', async (_ev, playlistId: string, options: PlaylistExportOptions, destination: string) => {
+    const service = getExportService(db)
+    return service.exportPlaylist(playlistId, options, destination)
+  })
+
+  ipcMain.handle('export:libraryData', async (_ev, destination: string, options?: any) => {
+    const service = getExportService(db)
+    return service.exportLibraryData(destination, options)
+  })
+
+  ipcMain.handle('export:cancel', async () => {
+    const service = getExportService(db)
+    service.cancel()
+    return { success: true }
+  })
+
+  ipcMain.handle('export:isInProgress', async () => {
+    const service = getExportService(db)
+    return service.isInProgress()
+  })
+
+  ipcMain.handle('export:getProgress', async () => {
+    const service = getExportService(db)
+    return service.getProgress()
+  })
+
+  // Set up export event forwarding
+  const exportService = getExportService(db)
+  exportService.on('progress', (progress: any) => {
+    broadcast('export:progress', progress)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // METADATA EXTRACTOR - Extract and analyze file metadata
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('metadata:extractVideo', async (_ev, filePath: string) => {
+    const service = getMetadataExtractorService(db)
+    return service.extractVideoMetadata(filePath)
+  })
+
+  ipcMain.handle('metadata:extractImage', async (_ev, filePath: string) => {
+    const service = getMetadataExtractorService(db)
+    return service.extractImageMetadata(filePath)
+  })
+
+  ipcMain.handle('metadata:extract', async (_ev, filePath: string) => {
+    const service = getMetadataExtractorService(db)
+    return service.extractMetadata(filePath)
+  })
+
+  ipcMain.handle('metadata:getById', async (_ev, mediaId: string) => {
+    const service = getMetadataExtractorService(db)
+    return service.getMetadataById(mediaId)
+  })
+
+  ipcMain.handle('metadata:syncToDb', async (_ev, mediaId: string) => {
+    const service = getMetadataExtractorService(db)
+    return service.syncToDatabase(mediaId)
+  })
+
+  ipcMain.handle('metadata:batchSync', async (_ev, mediaIds: string[]) => {
+    const service = getMetadataExtractorService(db)
+    return service.batchSync(mediaIds)
+  })
+
+  ipcMain.handle('metadata:getMissing', async () => {
+    const service = getMetadataExtractorService(db)
+    return service.getMissingMetadata()
+  })
+
+  ipcMain.handle('metadata:getCodecInfo', async (_ev, codec: string) => {
+    const service = getMetadataExtractorService(db)
+    return service.getCodecInfo(codec)
+  })
+
+  ipcMain.handle('metadata:calculateQuality', async (_ev, mediaId: string) => {
+    const service = getMetadataExtractorService(db)
+    const metadata = await service.extractVideoMetadata(
+      (db.raw.prepare('SELECT path FROM media WHERE id = ?').get(mediaId) as any)?.path
+    )
+    if (!metadata) return null
+    return service.calculateQualityScore(metadata)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SCENE DETECTION - Detect scene changes and generate chapters
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('scenes:detect', async (_ev, filePath: string, options?: SceneDetectionOptions) => {
+    const service = getSceneDetectionService(db)
+    return service.detectScenes(filePath, options)
+  })
+
+  ipcMain.handle('scenes:detectById', async (_ev, mediaId: string, options?: SceneDetectionOptions) => {
+    const service = getSceneDetectionService(db)
+    return service.detectScenesById(mediaId, options)
+  })
+
+  ipcMain.handle('scenes:estimate', async (_ev, filePath: string, sampleDuration?: number) => {
+    const service = getSceneDetectionService(db)
+    return service.estimateSceneCount(filePath, sampleDuration)
+  })
+
+  ipcMain.handle('scenes:isDetecting', async (_ev, mediaId: string) => {
+    const service = getSceneDetectionService(db)
+    return service.isDetecting(mediaId)
+  })
+
+  ipcMain.handle('scenes:generateChapterFile', async (_ev, chapters: any[], outputPath: string, format?: 'ffmpeg' | 'ogm') => {
+    const service = getSceneDetectionService(db)
+    service.generateChapterFile(chapters, outputPath, format)
+    return { success: true, path: outputPath }
+  })
+
+  ipcMain.handle('scenes:getTimeline', async (_ev, scenes: any[], width?: number) => {
+    const service = getSceneDetectionService(db)
+    return service.getTimelineData(scenes, width)
   })
 
   // Auto-organize NSFW Soundpack on startup
