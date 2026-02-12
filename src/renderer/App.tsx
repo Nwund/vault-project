@@ -3642,6 +3642,16 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
             )}
           </div>
 
+          {/* Play Shuffled - opens Feed with random videos */}
+          <button
+            onClick={() => setPage('feed')}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium rounded-lg bg-gradient-to-r from-pink-500/20 to-orange-500/20 hover:from-pink-500/30 hover:to-orange-500/30 border border-pink-500/30 transition-all hover:scale-105"
+            title="Play videos in Feed (shuffled)"
+          >
+            <Play size={12} className="text-pink-400" />
+            <span className="text-pink-300">Play Shuffled</span>
+          </button>
+
           {/* Items per page */}
           <Dropdown
             value={pageSize}
