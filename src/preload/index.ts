@@ -26,6 +26,11 @@ function on<T = unknown>(channel: string, cb: (payload: T) => void) {
 
 const api = {
   // ═══════════════════════════════════════════════════════════════════════════
+  // GENERIC INVOKE - For new IPC handlers not yet added to typed API
+  // ═══════════════════════════════════════════════════════════════════════════
+  invoke: <T = unknown>(channel: string, ...args: any[]): Promise<T> => invoke<T>(channel, ...args),
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // SETTINGS - General
   // ═══════════════════════════════════════════════════════════════════════════
   settings: {
