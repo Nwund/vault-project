@@ -1763,6 +1763,14 @@ export default function App() {
                     <kbd className="px-2 py-1 bg-black/30 rounded text-xs">Esc</kbd>
                     <span className="text-white/70">Deselect</span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">W</kbd>
+                    <span className="text-white/70">Add to Watch Later</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">L</kbd>
+                    <span className="text-white/70">Open Watch Later</span>
+                  </div>
                 </div>
               </div>
 
@@ -2753,12 +2761,31 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
         case 'Escape':
           setFocusedIndex(-1)
           break
+        case 'w':
+        case 'W':
+          // Add focused media to Watch Later
+          if (focusedIndex >= 0 && focusedIndex <= maxIndex) {
+            e.preventDefault()
+            const m = sortedMedia[startIndex + focusedIndex]
+            if (m) {
+              window.api.invoke('watchLater:add', m.id)
+                .then(() => showToast('success', 'Added to Watch Later'))
+                .catch(() => showToast('error', 'Failed to add to Watch Later'))
+            }
+          }
+          break
+        case 'l':
+        case 'L':
+          // Open Watch Later panel
+          e.preventDefault()
+          setShowWatchLaterPanel(true)
+          break
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [focusedIndex, sortedMedia, effectivePageSize, currentPage, getColumnsCount, openIds, addFloatingPlayer])
+  }, [focusedIndex, sortedMedia, effectivePageSize, currentPage, getColumnsCount, openIds, addFloatingPlayer, showToast])
 
   // Reset focus when media changes
   useEffect(() => {
