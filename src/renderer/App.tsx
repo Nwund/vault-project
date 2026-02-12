@@ -424,6 +424,7 @@ type MediaRow = {
   filename?: string
   ext?: string
   size?: number          // File size in bytes
+  sizeBytes?: number     // Alias for size (used by some components)
   mtimeMs?: number       // File modification time
   addedAt?: number       // When added to vault
   durationSec?: number | null
@@ -443,7 +444,7 @@ type MarkerRow = {
   title: string
 }
 
-type PlaylistRow = { id: string; name: string; createdAt?: number }
+type PlaylistRow = { id: string; name: string; createdAt?: number; isSmart?: number }
 type PlaylistItemRow = { id: string; playlistId: string; mediaId: string; pos: number; addedAt?: number }
 
 type MediaStatsRow = {
@@ -474,7 +475,7 @@ type CaptionPreset = {
 }
 
 // Goon word pack types
-type GoonWordPackId = 'praise' | 'humiliation' | 'insult' | 'kink' | 'goon' | 'mommy' | 'brat' | 'pervert'
+type GoonWordPackId = 'praise' | 'humiliation' | 'insult' | 'kink' | 'goon' | 'mommy' | 'brat' | 'pervert' | 'encouragement' | 'dirty' | 'denial' | 'worship' | 'seduction'
 
 interface GoonWordsSettings {
   enabled: boolean
@@ -559,7 +560,11 @@ type VaultSettings = {
   hasSeenWelcome?: boolean
   library?: {
     mediaDirs?: string[]
+    cacheDir?: string
     thumbnailQuality?: 'low' | 'medium' | 'high'
+    scanOnStartup?: boolean
+    watchForNewFiles?: boolean
+    cacheSizeLimitMB?: number
   }
   appearance?: {
     themeId?: string
@@ -567,6 +572,30 @@ type VaultSettings = {
     colorBlindMode?: 'none' | 'protanopia' | 'deuteranopia' | 'tritanopia' | 'highContrast'
     fontSize?: 'small' | 'medium' | 'large'
     animationSpeed?: 'none' | 'reduced' | 'full'
+    accentColor?: string
+    compactMode?: boolean
+  }
+  playback?: {
+    defaultVolume?: number
+    autoplayNext?: boolean
+    loopSingle?: boolean
+    skipIntroSeconds?: number
+    defaultPlaybackSpeed?: number
+    hardwareAcceleration?: boolean
+    muteByDefault?: boolean
+    lowQualityMode?: boolean
+    defaultResolution?: string
+    lowQualityIntensity?: number
+  }
+  privacy?: {
+    passwordEnabled?: boolean
+    passwordHash?: string | null
+    autoLockMinutes?: number
+    hideFromTaskbar?: boolean
+    panicKey?: string
+    panicKeyEnabled?: boolean
+    incognitoMode?: boolean
+    clearOnExit?: boolean
   }
   ui: {
     themeId: string
@@ -606,6 +635,11 @@ type VaultSettings = {
     veniceApiKey?: string
     tier2Enabled?: boolean
     protectedTags?: string[]
+  }
+  data?: {
+    lastBackupDate?: number | null
+    autoBackupEnabled?: boolean
+    autoBackupIntervalDays?: number
   }
   visualEffects?: VisualEffectsSettings
   goonStats?: GoonStats
@@ -2075,9 +2109,9 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   const [layout, setLayout] = useState<LayoutOption>(persisted?.layout ?? 'mosaic')
   // Grid mode: tile width in px - initialize from settings if available
   const initialTileSize = useMemo(() => {
-    const thumbSize = (props.settings as any)?.appearance?.thumbnailSize
+    const thumbSize = props.settings?.appearance?.thumbnailSize
     const sizeMap = { small: 160, medium: 220, large: 300 }
-    return sizeMap[thumbSize as keyof typeof sizeMap] ?? 200
+    return thumbSize ? sizeMap[thumbSize] ?? 200 : 200
   }, [])
   const [tileSize, setTileSize] = useState(initialTileSize)
   const [mosaicCols, setMosaicCols] = useState(4) // Mosaic mode: number of columns
@@ -2130,12 +2164,12 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
 
   // Sync tileSize with settings when thumbnailSize changes
   useEffect(() => {
-    const thumbSize = (props.settings as any)?.appearance?.thumbnailSize
+    const thumbSize = props.settings?.appearance?.thumbnailSize
     if (!thumbSize) return
     const sizeMap = { small: 160, medium: 220, large: 300 }
-    const newSize = sizeMap[thumbSize as keyof typeof sizeMap]
+    const newSize = sizeMap[thumbSize]
     if (newSize) setTileSize(newSize)
-  }, [(props.settings as any)?.appearance?.thumbnailSize])
+  }, [props.settings?.appearance?.thumbnailSize])
 
   // Persist filter state to sessionStorage when filters change
   useEffect(() => {
@@ -4804,7 +4838,7 @@ function MediaViewer(props: {
             <div className="text-xs text-[var(--muted)] mt-1 flex items-center gap-3">
               <span>{media.type.toUpperCase()}</span>
               {media.durationSec ? <span>{formatDuration(media.durationSec)}</span> : null}
-              {typeof (media as any).sizeBytes === 'number' ? <span>{formatBytes((media as any).sizeBytes)}</span> : null}
+              {typeof media.sizeBytes === 'number' ? <span>{formatBytes(media.sizeBytes)}</span> : null}
               {props.mediaList && (
                 <span className="text-white/40">
                   {currentIndex + 1} / {props.mediaList.length}
@@ -10868,7 +10902,7 @@ function PlaylistsPage() {
                   ) : (
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 flex-1 min-w-0">
-                        {(p as any).isSmart === 1 && (
+                        {p.isSmart === 1 && (
                           <span title="Smart Playlist"><Zap size={12} className="text-cyan-400 shrink-0" /></span>
                         )}
                         <span className="text-sm font-medium truncate">{p.name}</span>
@@ -10878,7 +10912,7 @@ function PlaylistsPage() {
                           <Plus size={12} /> Add
                         </span>
                       )}
-                      {(p as any).isSmart === 1 && (
+                      {p.isSmart === 1 && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -12252,7 +12286,7 @@ function SettingsPage(props: {
     setHeatLevel: (v: number) => void
   }
 }) {
-  const s = props.settings as any
+  const s = props.settings
   const { showToast } = useToast()
   const [activeTab, setActiveTab] = useState<'library' | 'appearance' | 'effects' | 'playback' | 'sound' | 'data' | 'services'>('library')
   const [isPremium, setIsPremium] = useState(false)
