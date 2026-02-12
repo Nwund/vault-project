@@ -4,7 +4,7 @@
 
 import { ipcMain, BrowserWindow } from 'electron'
 import type { DB } from '../../db'
-import { getSettings, updateSettings } from '../../settings'
+import { getSettings, updateSettings, type VaultSettings } from '../../settings'
 
 import { FrameExtractor } from './frame-extractor'
 import { ModelDownloader } from './model-downloader'
@@ -40,8 +40,8 @@ export function initializeAiIntelligence(
   )
 
   // Load saved Venice API key from settings
-  const savedSettings = getSettings()
-  const savedApiKey = (savedSettings as any)?.ai?.veniceApiKey
+  const savedSettings = getSettings() as VaultSettings
+  const savedApiKey = savedSettings?.ai?.veniceApiKey
   if (savedApiKey && tier2Vision) {
     tier2Vision.configure({ apiKey: savedApiKey })
     console.log('[AI] Restored Venice API key from settings')
@@ -72,14 +72,14 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
 
     // Persist API key to settings
     if (config.apiKey) {
-      const current = getSettings() as any
+      const current = getSettings() as VaultSettings
       updateSettings({
         ai: {
-          ...(current.ai || {}),
+          ...current.ai,
           veniceApiKey: config.apiKey,
           tier2Enabled: true,
         }
-      } as any)
+      } as Partial<VaultSettings>)
       console.log('[AI] Venice API key saved to settings')
     }
     return true
@@ -87,7 +87,7 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
 
   // Get Tier 2 configuration status
   ipcMain.handle('ai:get-tier2-config', async () => {
-    const savedSettings = getSettings() as any
+    const savedSettings = getSettings() as VaultSettings
     return {
       apiKey: savedSettings?.ai?.veniceApiKey || '',
       configured: tier2Vision?.isEnabled() || false,
@@ -203,7 +203,7 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
   // Cleanup invalid/nonsensical tags
   ipcMain.handle('ai:cleanup-tags', async () => {
     const rawDb = db.raw
-    const savedSettings = getSettings() as any
+    const savedSettings = getSettings() as VaultSettings
     const protectedTags = new Set((savedSettings?.ai?.protectedTags || []).map((t: string) => t.toLowerCase()))
 
     // Tags that should be removed - nonsensical, too short, or AI artifacts
@@ -273,48 +273,48 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
 
   // Get protected tags
   ipcMain.handle('ai:get-protected-tags', async () => {
-    const savedSettings = getSettings() as any
+    const savedSettings = getSettings() as VaultSettings
     return savedSettings?.ai?.protectedTags || []
   })
 
   // Set protected tags
   ipcMain.handle('ai:set-protected-tags', async (_ev, tags: string[]) => {
-    const current = getSettings() as any
+    const current = getSettings() as VaultSettings
     updateSettings({
       ai: {
-        ...(current.ai || {}),
+        ...current.ai,
         protectedTags: tags,
       }
-    } as any)
+    } as Partial<VaultSettings>)
     console.log(`[AI] Updated protected tags: ${tags.length} tags`)
     return { success: true }
   })
 
   // Add a protected tag
   ipcMain.handle('ai:add-protected-tag', async (_ev, tag: string) => {
-    const current = getSettings() as any
+    const current = getSettings() as VaultSettings
     const existing = current?.ai?.protectedTags || []
     if (!existing.includes(tag)) {
       updateSettings({
         ai: {
-          ...(current.ai || {}),
+          ...current.ai,
           protectedTags: [...existing, tag],
         }
-      } as any)
+      } as Partial<VaultSettings>)
     }
     return { success: true }
   })
 
   // Remove a protected tag
   ipcMain.handle('ai:remove-protected-tag', async (_ev, tag: string) => {
-    const current = getSettings() as any
+    const current = getSettings() as VaultSettings
     const existing = current?.ai?.protectedTags || []
     updateSettings({
       ai: {
-        ...(current.ai || {}),
+        ...current.ai,
         protectedTags: existing.filter((t: string) => t !== tag),
       }
-    } as any)
+    } as Partial<VaultSettings>)
     return { success: true }
   })
 
