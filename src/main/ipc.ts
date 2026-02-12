@@ -35,6 +35,9 @@ import { getMediaCompareService, type CompareOptions } from './services/media-co
 import { getExportService, type ExportOptions, type PlaylistExportOptions } from './services/export-service'
 import { getMetadataExtractorService } from './services/metadata-extractor'
 import { getSceneDetectionService, type SceneDetectionOptions } from './services/scene-detection'
+import { getImportService, type ImportOptions } from './services/import-service'
+import { getNotificationsService, type NotificationConfig, type NotificationSettings } from './services/notifications'
+import { getAnalyticsService } from './services/analytics'
 
 import {
   getSettings,
@@ -5025,6 +5028,190 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('scenes:getTimeline', async (_ev, scenes: any[], width?: number) => {
     const service = getSceneDetectionService(db)
     return service.getTimelineData(scenes, width)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // IMPORT SERVICE - Import media from external sources
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('import:folder', async (_ev, folderPath: string, options?: ImportOptions) => {
+    const service = getImportService(db)
+    return service.importFolder(folderPath, options)
+  })
+
+  ipcMain.handle('import:playlist', async (_ev, playlistPath: string, options?: ImportOptions) => {
+    const service = getImportService(db)
+    return service.importPlaylist(playlistPath, options)
+  })
+
+  ipcMain.handle('import:libraryData', async (_ev, jsonPath: string, options?: any) => {
+    const service = getImportService(db)
+    return service.importLibraryData(jsonPath, options)
+  })
+
+  ipcMain.handle('import:cancel', async () => {
+    const service = getImportService(db)
+    service.cancel()
+    return { success: true }
+  })
+
+  ipcMain.handle('import:isInProgress', async () => {
+    const service = getImportService(db)
+    return service.isInProgress()
+  })
+
+  ipcMain.handle('import:getProgress', async () => {
+    const service = getImportService(db)
+    return service.getProgress()
+  })
+
+  // Set up import event forwarding
+  const importService = getImportService(db)
+  importService.on('progress', (progress: any) => {
+    broadcast('import:progress', progress)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NOTIFICATIONS - System notifications
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('notifications:show', async (_ev, config: NotificationConfig) => {
+    const service = getNotificationsService()
+    return service.show(config)
+  })
+
+  ipcMain.handle('notifications:info', async (_ev, title: string, body: string) => {
+    const service = getNotificationsService()
+    return service.info(title, body)
+  })
+
+  ipcMain.handle('notifications:success', async (_ev, title: string, body: string) => {
+    const service = getNotificationsService()
+    return service.success(title, body)
+  })
+
+  ipcMain.handle('notifications:error', async (_ev, title: string, body: string) => {
+    const service = getNotificationsService()
+    return service.error(title, body)
+  })
+
+  ipcMain.handle('notifications:achievement', async (_ev, name: string, description: string) => {
+    const service = getNotificationsService()
+    return service.achievement(name, description)
+  })
+
+  ipcMain.handle('notifications:getHistory', async (_ev, limit?: number) => {
+    const service = getNotificationsService()
+    return service.getHistory(limit)
+  })
+
+  ipcMain.handle('notifications:getUnreadCount', async () => {
+    const service = getNotificationsService()
+    return service.getUnreadCount()
+  })
+
+  ipcMain.handle('notifications:markAsRead', async (_ev, id: string) => {
+    const service = getNotificationsService()
+    service.markAsRead(id)
+    return { success: true }
+  })
+
+  ipcMain.handle('notifications:markAllAsRead', async () => {
+    const service = getNotificationsService()
+    service.markAllAsRead()
+    return { success: true }
+  })
+
+  ipcMain.handle('notifications:clearHistory', async () => {
+    const service = getNotificationsService()
+    service.clearHistory()
+    return { success: true }
+  })
+
+  ipcMain.handle('notifications:getSettings', async () => {
+    const service = getNotificationsService()
+    return service.getSettings()
+  })
+
+  ipcMain.handle('notifications:updateSettings', async (_ev, updates: Partial<NotificationSettings>) => {
+    const service = getNotificationsService()
+    return service.updateSettings(updates)
+  })
+
+  ipcMain.handle('notifications:isSupported', async () => {
+    const service = getNotificationsService()
+    return service.isSupported()
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ANALYTICS - Internal usage tracking
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('analytics:startSession', async () => {
+    const service = getAnalyticsService(db)
+    return service.startSession()
+  })
+
+  ipcMain.handle('analytics:endSession', async () => {
+    const service = getAnalyticsService(db)
+    return service.endSession()
+  })
+
+  ipcMain.handle('analytics:trackPageView', async (_ev, page: string) => {
+    const service = getAnalyticsService(db)
+    service.trackPageView(page)
+    return { success: true }
+  })
+
+  ipcMain.handle('analytics:trackAction', async (_ev, action: string, target?: string) => {
+    const service = getAnalyticsService(db)
+    service.trackAction(action, target)
+    return { success: true }
+  })
+
+  ipcMain.handle('analytics:trackMediaView', async (_ev, mediaId: string, duration: number) => {
+    const service = getAnalyticsService(db)
+    service.trackMediaView(mediaId, duration)
+    return { success: true }
+  })
+
+  ipcMain.handle('analytics:trackFeature', async (_ev, feature: string) => {
+    const service = getAnalyticsService(db)
+    service.trackFeature(feature)
+    return { success: true }
+  })
+
+  ipcMain.handle('analytics:getUsageStats', async () => {
+    const service = getAnalyticsService(db)
+    return service.getUsageStats()
+  })
+
+  ipcMain.handle('analytics:getFeatureUsage', async () => {
+    const service = getAnalyticsService(db)
+    return service.getFeatureUsage()
+  })
+
+  ipcMain.handle('analytics:getRecentEvents', async (_ev, limit?: number) => {
+    const service = getAnalyticsService(db)
+    return service.getRecentEvents(limit)
+  })
+
+  ipcMain.handle('analytics:getPeakHours', async () => {
+    const service = getAnalyticsService(db)
+    return service.getPeakHours()
+  })
+
+  ipcMain.handle('analytics:getUsageHeatmap', async (_ev, days?: number) => {
+    const service = getAnalyticsService(db)
+    return service.getUsageHeatmap(days)
+  })
+
+  ipcMain.handle('analytics:clearData', async () => {
+    const service = getAnalyticsService(db)
+    service.clearData()
+    return { success: true }
+  })
+
+  ipcMain.handle('analytics:exportData', async () => {
+    const service = getAnalyticsService(db)
+    return service.exportData()
   })
 
   // Auto-organize NSFW Soundpack on startup
