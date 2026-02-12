@@ -1966,6 +1966,10 @@ export default function App() {
                     <kbd className="px-2 py-1 bg-black/30 rounded text-xs">[ / ]</kbd>
                     <span className="text-white/70">Speed Down/Up</span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">T</kbd>
+                    <span className="text-white/70">Theater Mode</span>
+                  </div>
                 </div>
               </div>
 

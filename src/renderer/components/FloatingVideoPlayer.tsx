@@ -3,7 +3,7 @@
 
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2 } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2, RectangleHorizontal } from 'lucide-react'
 import { RelatedMediaPanel } from './RelatedMediaPanel'
 import { MediaNotesPanel } from './MediaNotesPanel'
 import { BookmarksPanel } from './BookmarksPanel'
@@ -48,6 +48,7 @@ function formatDuration(sec: number | null | undefined): string {
 export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, instanceIndex = 0, initialPosition, otherPlayerBounds = [], onBoundsChange }: FloatingVideoPlayerProps) {
   const [url, setUrl] = useState('')
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isTheaterMode, setIsTheaterMode] = useState(false) // Expanded view within window
   // Position - only set from initialPosition on first mount, then preserve
   const [position, setPosition] = useState(() => ({
     x: initialPosition?.x ?? 20 + instanceIndex * 60,
@@ -717,6 +718,12 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
           setTimeout(() => setBookmarkFeedback(null), 1000)
           return newSpeed
         })
+      } else if (e.key === 't' || e.key === 'T') {
+        // Toggle Theater Mode
+        e.preventDefault()
+        if (!isFullscreen) {
+          setIsTheaterMode(prev => !prev)
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -1111,6 +1118,16 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   // Container styles
   const containerStyle: React.CSSProperties = isFullscreen
     ? { position: 'fixed', inset: 0, zIndex: 9999 }
+    : isTheaterMode
+    ? {
+        position: 'fixed',
+        left: '5%',
+        top: '5%',
+        width: '90%',
+        height: '90%',
+        zIndex: 9998,
+        cursor: 'default'
+      }
     : {
         position: 'fixed',
         left: position.x,
@@ -1124,12 +1141,12 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   return (
     <div
       ref={containerRef}
-      className={`bg-black overflow-hidden ${isFullscreen ? '' : 'rounded-xl border border-white/20 shadow-2xl'}`}
+      className={`bg-black overflow-hidden ${isFullscreen ? '' : isTheaterMode ? 'rounded-2xl border border-white/30 shadow-2xl' : 'rounded-xl border border-white/20 shadow-2xl'}`}
       style={containerStyle}
       onMouseMove={resetHideControlsTimer}
     >
-      {/* Resize handles (not in fullscreen) */}
-      {!isFullscreen && (
+      {/* Resize handles (not in fullscreen or theater mode) */}
+      {!isFullscreen && !isTheaterMode && (
         <>
           {/* Edge handles */}
           <div
@@ -1204,12 +1221,12 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         </div>
       )}
 
-      {/* Draggable header (not in fullscreen) */}
+      {/* Draggable header (not in fullscreen or theater mode) */}
       {!isFullscreen && (
         <div
           className={`absolute top-0 left-0 right-0 h-9 bg-gradient-to-b from-black/90 to-transparent z-10 flex items-center justify-between px-3 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}
-          onMouseDown={handleMouseDown}
-          style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+          onMouseDown={isTheaterMode ? undefined : handleMouseDown}
+          style={{ cursor: isTheaterMode ? 'default' : isDragging ? 'grabbing' : 'grab' }}
         >
           <div className="text-[11px] text-white/80 truncate max-w-[70%]" title={filename}>
             {filename}
@@ -1224,6 +1241,13 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                 <PictureInPicture2 size={14} />
               </button>
             )}
+            <button
+              onClick={() => setIsTheaterMode(prev => !prev)}
+              className={`p-1 hover:bg-white/20 rounded transition ${isTheaterMode ? 'text-purple-400 bg-white/10' : ''}`}
+              title={isTheaterMode ? 'Exit Theater Mode (T)' : 'Theater Mode (T)'}
+            >
+              <RectangleHorizontal size={14} />
+            </button>
             <button
               onClick={toggleFullscreen}
               className="p-1 hover:bg-white/20 rounded transition"
