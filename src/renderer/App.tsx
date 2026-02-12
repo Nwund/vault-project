@@ -1754,16 +1754,36 @@ export default function App() {
                 <h3 className="text-xs text-[var(--muted)] uppercase tracking-wider mb-2">Feed</h3>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="flex items-center gap-2">
-                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">J / Down</kbd>
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">J / ↓ / Space</kbd>
                     <span className="text-white/70">Next video</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">K / Up</kbd>
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">K / ↑</kbd>
                     <span className="text-white/70">Previous video</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">L / →</kbd>
+                    <span className="text-white/70">Skip +5 seconds</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">H / ←</kbd>
+                    <span className="text-white/70">Skip -5 seconds</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <kbd className="px-2 py-1 bg-black/30 rounded text-xs">M</kbd>
                     <span className="text-white/70">Toggle mute</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">Shift+H</kbd>
+                    <span className="text-white/70">Hide UI</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">Swipe ↑↓</kbd>
+                    <span className="text-white/70">Navigate (touch)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">Double-tap</kbd>
+                    <span className="text-white/70">Like (touch)</span>
                   </div>
                 </div>
               </div>
