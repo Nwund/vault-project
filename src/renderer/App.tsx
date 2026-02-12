@@ -12288,7 +12288,8 @@ function SettingsPage(props: {
 }) {
   const s = props.settings
   const { showToast } = useToast()
-  const [activeTab, setActiveTab] = useState<'library' | 'appearance' | 'effects' | 'playback' | 'sound' | 'data' | 'services'>('library')
+  type SettingsTab = 'library' | 'appearance' | 'effects' | 'playback' | 'sound' | 'data' | 'services'
+  const [activeTab, setActiveTab] = useState<SettingsTab>('library')
   const [isPremium, setIsPremium] = useState(false)
   const [allTags, setAllTags] = useState<string[]>([])
   const [settingsSearch, setSettingsSearch] = useState('')
@@ -12339,7 +12340,7 @@ function SettingsPage(props: {
   // Auto-switch to matching tab if there's only one match
   useEffect(() => {
     if (matchingTabs && matchingTabs.length === 1) {
-      setActiveTab(matchingTabs[0] as any)
+      setActiveTab(matchingTabs[0] as SettingsTab)
     }
   }, [matchingTabs])
 
@@ -12387,7 +12388,7 @@ function SettingsPage(props: {
           {matchingTabs.map(tab => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab as any)}
+              onClick={() => setActiveTab(tab as SettingsTab)}
               className={cn(
                 'px-2 py-0.5 rounded text-xs transition',
                 activeTab === tab ? 'bg-[var(--primary)] text-white' : 'bg-white/10 hover:bg-white/20'
