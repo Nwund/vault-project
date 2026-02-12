@@ -187,10 +187,11 @@ export class MediaRelationshipsService {
 
     return rows.map(row => {
       let relType = row.type as RelationshipType
+      const rowType = row.type as RelationshipType
 
       // Invert type if viewing from target side
-      if (row.sourceId !== mediaId && INVERSE_TYPES[row.type]) {
-        relType = INVERSE_TYPES[row.type] as RelationshipType
+      if (row.sourceId !== mediaId && INVERSE_TYPES[rowType]) {
+        relType = INVERSE_TYPES[rowType] as RelationshipType
       }
 
       return {

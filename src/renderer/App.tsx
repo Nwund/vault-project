@@ -26,6 +26,7 @@ import { useAnime } from './hooks/useAnime'
 import { useConfetti } from './hooks/useConfetti'
 import { useUiSounds } from './hooks/useUiSounds'
 import { FloatingVideoPlayer } from './components/FloatingVideoPlayer'
+import { WatchLaterPanel } from './components/WatchLaterPanel'
 import {
   Library,
   Repeat,
@@ -307,6 +308,21 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
       action: () => {
         if (contextMenu.mediaId && onAddToPlaylist) {
           onAddToPlaylist(contextMenu.mediaId)
+        }
+        hideContextMenu()
+      }
+    },
+    {
+      label: 'Add to Watch Later',
+      icon: <Clock size={14} />,
+      action: async () => {
+        if (contextMenu.mediaId) {
+          try {
+            await window.api.invoke('watchLater:add', contextMenu.mediaId)
+            showToast('success', 'Added to Watch Later')
+          } catch (e) {
+            showToast('error', 'Failed to add to Watch Later')
+          }
         }
         hideContextMenu()
       }
@@ -2371,6 +2387,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   const [newPlaylistName, setNewPlaylistName] = useState('') // New playlist name input
   const [bulkActionLoading, setBulkActionLoading] = useState<string | null>(null) // Track which bulk action is loading
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false) // Duplicate detection modal
+  const [showWatchLaterPanel, setShowWatchLaterPanel] = useState(false) // Watch Later queue panel
   const [duplicates, setDuplicates] = useState<Array<{ hash: string; count: number; ids: string[]; paths: string[] }>>([])
   const [duplicatesLoading, setDuplicatesLoading] = useState(false)
   const [wallAutoScroll, setWallAutoScroll] = useState(false) // Wall mode autoscroll
@@ -3181,6 +3198,17 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
 
             <Btn onClick={() => void refresh()} title="Refresh library" className="flex items-center gap-2">
               <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+            </Btn>
+
+            {/* Watch Later */}
+            <Btn
+              tone="ghost"
+              onClick={() => setShowWatchLaterPanel(true)}
+              className="flex items-center gap-1.5"
+              title="Watch Later queue"
+            >
+              <Clock size={14} />
+              <span className="text-xs hidden sm:inline">Watch Later</span>
             </Btn>
 
             {/* Find Duplicates */}
@@ -4485,6 +4513,17 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
           </div>
         </div>
       )}
+
+      {/* Watch Later Panel */}
+      <WatchLaterPanel
+        isOpen={showWatchLaterPanel}
+        onClose={() => setShowWatchLaterPanel(false)}
+        onPlayMedia={(mediaId) => {
+          addFloatingPlayer(mediaId)
+          setShowWatchLaterPanel(false)
+        }}
+        selectedMediaIds={selectionMode ? Array.from(selectedIds) : []}
+      />
     </div>
   )
 }

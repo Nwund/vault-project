@@ -229,11 +229,14 @@ export class AdvancedStatsService {
       else buckets.overHour++
     }
 
+    const shortest = durations[0]
+    const longest = durations[durations.length - 1]
+
     return {
       avgDuration: avg,
       medianDuration: median,
-      shortestVideo: durations[0],
-      longestVideo: durations[durations.length - 1],
+      shortestVideo: { id: shortest.id, filename: shortest.filename, duration: shortest.durationSec },
+      longestVideo: { id: longest.id, filename: longest.filename, duration: longest.durationSec },
       totalPlaytime: total,
       durationBuckets: buckets
     }

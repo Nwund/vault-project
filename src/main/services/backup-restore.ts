@@ -101,12 +101,14 @@ export class BackupRestoreService {
 
     if (opts.includeDatabase) {
       // Export media
-      exportData.data.media = this.db.raw.prepare('SELECT * FROM media').all()
-      exportData.mediaCount = exportData.data.media.length
+      const media = this.db.raw.prepare('SELECT * FROM media').all()
+      exportData.data.media = media
+      exportData.mediaCount = media.length
 
       // Export tags
-      exportData.data.tags = this.db.raw.prepare('SELECT * FROM tags').all()
-      exportData.tagCount = exportData.data.tags.length
+      const tags = this.db.raw.prepare('SELECT * FROM tags').all()
+      exportData.data.tags = tags
+      exportData.tagCount = tags.length
 
       // Export media-tag relationships
       exportData.data.mediaTags = this.db.raw.prepare('SELECT * FROM media_tags').all()
@@ -115,8 +117,9 @@ export class BackupRestoreService {
       exportData.data.mediaStats = this.db.raw.prepare('SELECT * FROM media_stats').all()
 
       // Export playlists
-      exportData.data.playlists = this.db.raw.prepare('SELECT * FROM playlists').all()
-      exportData.playlistCount = exportData.data.playlists.length
+      const playlists = this.db.raw.prepare('SELECT * FROM playlists').all()
+      exportData.data.playlists = playlists
+      exportData.playlistCount = playlists.length
 
       // Export playlist items
       exportData.data.playlistItems = this.db.raw.prepare('SELECT * FROM playlist_items').all()
