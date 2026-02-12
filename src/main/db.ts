@@ -267,7 +267,31 @@ export function createDb() {
       WHERE m.type='video' AND t.name=?
       ORDER BY m.addedAt DESC
       LIMIT 400;
-    `)
+    `),
+
+    // Captions
+    getCaptionByMediaId: db.prepare(`SELECT * FROM media_captions WHERE mediaId=? LIMIT 1;`),
+    upsertCaption: db.prepare(`
+      INSERT INTO media_captions(id, mediaId, topText, bottomText, presetId, customStyle, createdAt, updatedAt)
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(mediaId) DO UPDATE SET
+        topText=excluded.topText,
+        bottomText=excluded.bottomText,
+        presetId=excluded.presetId,
+        customStyle=excluded.customStyle,
+        updatedAt=excluded.updatedAt
+      RETURNING *;
+    `),
+    deleteCaption: db.prepare(`DELETE FROM media_captions WHERE mediaId=?;`),
+    listCaptionedMedia: db.prepare(`
+      SELECT mc.*, m.path, m.filename, m.type, m.thumbPath
+      FROM media_captions mc
+      JOIN media m ON m.id = mc.mediaId
+      ORDER BY mc.updatedAt DESC;
+    `),
+    listCaptionTemplates: db.prepare(`SELECT * FROM caption_templates ORDER BY category, createdAt DESC;`),
+    insertCaptionTemplate: db.prepare(`INSERT INTO caption_templates(id, topText, bottomText, category, createdAt) VALUES(?, ?, ?, ?, ?);`),
+    deleteCaptionTemplate: db.prepare(`DELETE FROM caption_templates WHERE id=?;`)
   }
 
   function upsertMedia(input: Omit<MediaRow, 'id' | 'addedAt'> & Partial<Pick<MediaRow, 'id' | 'addedAt'>>): MediaRow {
@@ -300,13 +324,87 @@ export function createDb() {
     }
   }
 
-  function listMedia(args: { q?: string; type?: MediaType | ''; tag?: string; limit?: number; offset?: number }) {
+  function listMedia(args: {
+    q?: string
+    type?: MediaType | ''
+    tag?: string
+    limit?: number
+    offset?: number
+    sortBy?: 'newest' | 'oldest' | 'name' | 'name_desc' | 'views' | 'views_asc' | 'rating' | 'random' | 'size' | 'size_asc' | 'duration' | 'duration_asc'
+  }) {
     const q = args.q ?? ''
     const type = args.type ?? ''
     const tag = args.tag ?? ''
     const limit = args.limit ?? 50000 // Allow large libraries
     const offset = args.offset ?? 0
-    const items = stmts.listMedia.all({ q, type, tag, limit, offset }) as MediaRow[]
+    const sortBy = args.sortBy ?? 'newest'
+
+    // Build ORDER BY clause based on sortBy
+    let orderClause: string
+    let needsStatsJoin = false
+
+    switch (sortBy) {
+      case 'oldest':
+        orderClause = 'ORDER BY m.addedAt ASC'
+        break
+      case 'name':
+        orderClause = 'ORDER BY m.filename ASC'
+        break
+      case 'name_desc':
+        orderClause = 'ORDER BY m.filename DESC'
+        break
+      case 'views':
+        orderClause = 'ORDER BY COALESCE(ms.views, 0) DESC, m.addedAt DESC'
+        needsStatsJoin = true
+        break
+      case 'views_asc':
+        orderClause = 'ORDER BY COALESCE(ms.views, 0) ASC, m.addedAt ASC'
+        needsStatsJoin = true
+        break
+      case 'rating':
+        orderClause = 'ORDER BY COALESCE(ms.rating, 0) DESC, m.addedAt DESC'
+        needsStatsJoin = true
+        break
+      case 'random':
+        orderClause = 'ORDER BY RANDOM()'
+        break
+      case 'size':
+        orderClause = 'ORDER BY m.size DESC'
+        break
+      case 'size_asc':
+        orderClause = 'ORDER BY m.size ASC'
+        break
+      case 'duration':
+        orderClause = 'ORDER BY COALESCE(m.durationSec, 0) DESC'
+        break
+      case 'duration_asc':
+        orderClause = 'ORDER BY COALESCE(m.durationSec, 0) ASC'
+        break
+      case 'newest':
+      default:
+        orderClause = 'ORDER BY m.addedAt DESC'
+        break
+    }
+
+    // Build dynamic query with optional stats join
+    const statsJoin = needsStatsJoin ? 'LEFT JOIN media_stats ms ON ms.mediaId = m.id' : ''
+
+    const query = `
+      SELECT DISTINCT m.*
+      FROM media m
+      LEFT JOIN media_tags mt ON mt.mediaId = m.id
+      LEFT JOIN tags t ON t.id = mt.tagId
+      ${statsJoin}
+      WHERE
+        (@q = '' OR m.filename LIKE '%' || @q || '%')
+        AND (@type = '' OR m.type = @type)
+        AND (@tag = '' OR t.name = @tag)
+        AND m.analyzeError = 0
+      ${orderClause}
+      LIMIT @limit OFFSET @offset;
+    `
+
+    const items = db.prepare(query).all({ q, type, tag, limit, offset }) as MediaRow[]
     const total = (stmts.countMedia.get({ q, type, tag }) as { n: number }).n
     return { items, total }
   }
@@ -352,6 +450,38 @@ export function createDb() {
   function statsIncO(mediaId: string): MediaStatsRow {
     const now = Date.now()
     return stmts.incO.get(mediaId, now) as MediaStatsRow
+  }
+
+  // Batch fetch stats for multiple media items at once - major performance optimization
+  function statsGetBatch(mediaIds: string[]): Map<string, { rating: number; viewCount: number; oCount: number }> {
+    const result = new Map<string, { rating: number; viewCount: number; oCount: number }>()
+    if (mediaIds.length === 0) return result
+
+    // SQLite has a limit on placeholders, process in chunks of 500
+    const chunkSize = 500
+    for (let i = 0; i < mediaIds.length; i += chunkSize) {
+      const chunk = mediaIds.slice(i, i + chunkSize)
+      const placeholders = chunk.map(() => '?').join(',')
+      const query = `SELECT mediaId, views, rating, oCount FROM media_stats WHERE mediaId IN (${placeholders})`
+      const rows = db.prepare(query).all(...chunk) as Array<{ mediaId: string; views: number; rating: number; oCount: number }>
+
+      for (const row of rows) {
+        result.set(row.mediaId, {
+          rating: row.rating ?? 0,
+          viewCount: row.views ?? 0,
+          oCount: row.oCount ?? 0
+        })
+      }
+    }
+
+    // Fill in defaults for items without stats
+    for (const id of mediaIds) {
+      if (!result.has(id)) {
+        result.set(id, { rating: 0, viewCount: 0, oCount: 0 })
+      }
+    }
+
+    return result
   }
 
   function playlistList(): PlaylistRow[] {
@@ -422,6 +552,168 @@ export function createDb() {
       }
       stmts.touchPlaylist.run(Date.now(), playlistId)
     })()
+  }
+
+  // ============================
+  // SMART PLAYLISTS
+  // ============================
+
+  type SmartPlaylistRules = {
+    includeTags?: string[]
+    excludeTags?: string[]
+    type?: 'video' | 'image' | 'gif' | ''
+    minRating?: number
+    limit?: number
+    sortBy?: 'addedAt' | 'rating' | 'views' | 'random'
+    sortDir?: 'asc' | 'desc'
+  }
+
+  function smartPlaylistCreate(name: string, rules: SmartPlaylistRules): PlaylistRow {
+    const now = Date.now()
+    const id = nanoid()
+    db.prepare(`
+      INSERT INTO playlists (id, name, createdAt, updatedAt, isSmart, rulesJson, lastRefreshed)
+      VALUES (?, ?, ?, ?, 1, ?, ?)
+    `).run(id, name.trim() || 'Smart Playlist', now, now, JSON.stringify(rules), now)
+
+    // Refresh the smart playlist immediately
+    smartPlaylistRefresh(id)
+
+    return {
+      id,
+      name: name.trim() || 'Smart Playlist',
+      createdAt: now,
+      updatedAt: now,
+      isSmart: 1,
+      rulesJson: JSON.stringify(rules),
+      lastRefreshed: now
+    }
+  }
+
+  function smartPlaylistUpdateRules(playlistId: string, rules: SmartPlaylistRules): void {
+    const now = Date.now()
+    db.prepare(`
+      UPDATE playlists SET rulesJson = ?, updatedAt = ? WHERE id = ?
+    `).run(JSON.stringify(rules), now, playlistId)
+
+    // Refresh with new rules
+    smartPlaylistRefresh(playlistId)
+  }
+
+  function smartPlaylistGetRules(playlistId: string): SmartPlaylistRules | null {
+    const row = db.prepare(`SELECT rulesJson FROM playlists WHERE id = ? AND isSmart = 1`).get(playlistId) as { rulesJson: string } | undefined
+    if (!row?.rulesJson) return null
+    try {
+      return JSON.parse(row.rulesJson)
+    } catch {
+      return null
+    }
+  }
+
+  function smartPlaylistRefresh(playlistId: string): { updated: number } {
+    const playlist = db.prepare(`SELECT * FROM playlists WHERE id = ?`).get(playlistId) as any
+    if (!playlist || !playlist.isSmart) {
+      return { updated: 0 }
+    }
+
+    let rules: SmartPlaylistRules = {}
+    try {
+      rules = JSON.parse(playlist.rulesJson || '{}')
+    } catch {
+      return { updated: 0 }
+    }
+
+    // Build the query dynamically based on rules
+    let sql = `
+      SELECT DISTINCT m.id
+      FROM media m
+      LEFT JOIN media_stats ms ON ms.mediaId = m.id
+    `
+    const params: any[] = []
+
+    // Handle tag inclusion (requires JOIN)
+    if (rules.includeTags && rules.includeTags.length > 0) {
+      sql += `
+        INNER JOIN media_tags mt ON mt.mediaId = m.id
+        INNER JOIN tags t ON t.id = mt.tagId AND t.name IN (${rules.includeTags.map(() => '?').join(',')})
+      `
+      params.push(...rules.includeTags)
+    }
+
+    sql += ` WHERE m.analyzeError = 0`
+
+    // Handle tag exclusion
+    if (rules.excludeTags && rules.excludeTags.length > 0) {
+      sql += ` AND m.id NOT IN (
+        SELECT mt2.mediaId FROM media_tags mt2
+        INNER JOIN tags t2 ON t2.id = mt2.tagId AND t2.name IN (${rules.excludeTags.map(() => '?').join(',')})
+      )`
+      params.push(...rules.excludeTags)
+    }
+
+    // Type filter
+    if (rules.type) {
+      sql += ` AND m.type = ?`
+      params.push(rules.type)
+    }
+
+    // Minimum rating
+    if (rules.minRating && rules.minRating > 0) {
+      sql += ` AND COALESCE(ms.rating, 0) >= ?`
+      params.push(rules.minRating)
+    }
+
+    // Sorting
+    const sortBy = rules.sortBy || 'addedAt'
+    const sortDir = rules.sortDir || 'desc'
+    if (sortBy === 'random') {
+      sql += ` ORDER BY RANDOM()`
+    } else if (sortBy === 'rating') {
+      sql += ` ORDER BY COALESCE(ms.rating, 0) ${sortDir.toUpperCase()}`
+    } else if (sortBy === 'views') {
+      sql += ` ORDER BY COALESCE(ms.views, 0) ${sortDir.toUpperCase()}`
+    } else {
+      sql += ` ORDER BY m.addedAt ${sortDir.toUpperCase()}`
+    }
+
+    // Limit
+    const limit = rules.limit || 500
+    sql += ` LIMIT ?`
+    params.push(limit)
+
+    // Execute query
+    const mediaIds = (db.prepare(sql).all(...params) as { id: string }[]).map(r => r.id)
+
+    // Update playlist items
+    const now = Date.now()
+    db.transaction(() => {
+      // Clear existing items
+      stmts.deletePlaylistItems.run(playlistId)
+
+      // Add new items
+      for (let i = 0; i < mediaIds.length; i++) {
+        stmts.addPlaylistItem.run(nanoid(), playlistId, mediaIds[i], i, now)
+      }
+
+      // Update refresh time
+      db.prepare(`UPDATE playlists SET lastRefreshed = ?, updatedAt = ? WHERE id = ?`).run(now, now, playlistId)
+    })()
+
+    return { updated: mediaIds.length }
+  }
+
+  function smartPlaylistList(): PlaylistRow[] {
+    return db.prepare(`SELECT * FROM playlists WHERE isSmart = 1 ORDER BY updatedAt DESC`).all() as PlaylistRow[]
+  }
+
+  function smartPlaylistRefreshAll(): { refreshed: number; totalItems: number } {
+    const smartPlaylists = smartPlaylistList()
+    let totalItems = 0
+    for (const pl of smartPlaylists) {
+      const result = smartPlaylistRefresh(pl.id)
+      totalItems += result.updated
+    }
+    return { refreshed: smartPlaylists.length, totalItems }
   }
 
   function searchRecord(query: string): void {
@@ -639,6 +931,60 @@ export function createDb() {
     stmts.clearAnalyzeError.run(mediaId)
   }
 
+  // Caption functions
+  interface CaptionRow {
+    id: string
+    mediaId: string
+    topText: string | null
+    bottomText: string | null
+    presetId: string
+    customStyle: string | null
+    createdAt: number
+    updatedAt: number
+  }
+
+  interface CaptionTemplateRow {
+    id: string
+    topText: string | null
+    bottomText: string | null
+    category: string
+    createdAt: number
+  }
+
+  function captionGet(mediaId: string): CaptionRow | null {
+    return (stmts.getCaptionByMediaId.get(mediaId) as CaptionRow | undefined) ?? null
+  }
+
+  function captionUpsert(mediaId: string, topText: string | null, bottomText: string | null, presetId: string = 'default', customStyle: string | null = null): CaptionRow {
+    const now = Date.now()
+    const existing = captionGet(mediaId)
+    const id = existing?.id ?? nanoid()
+    return stmts.upsertCaption.get(id, mediaId, topText, bottomText, presetId, customStyle, existing?.createdAt ?? now, now) as CaptionRow
+  }
+
+  function captionDelete(mediaId: string): void {
+    stmts.deleteCaption.run(mediaId)
+  }
+
+  function captionListCaptioned(): Array<CaptionRow & { path: string; filename: string; type: string; thumbPath: string | null }> {
+    return stmts.listCaptionedMedia.all() as any[]
+  }
+
+  function captionTemplateList(): CaptionTemplateRow[] {
+    return stmts.listCaptionTemplates.all() as CaptionTemplateRow[]
+  }
+
+  function captionTemplateAdd(topText: string | null, bottomText: string | null, category: string = 'custom'): CaptionTemplateRow {
+    const id = nanoid()
+    const now = Date.now()
+    stmts.insertCaptionTemplate.run(id, topText, bottomText, category, now)
+    return { id, topText, bottomText, category, createdAt: now }
+  }
+
+  function captionTemplateDelete(id: string): void {
+    stmts.deleteCaptionTemplate.run(id)
+  }
+
   function enqueueJob(type: string, payload: unknown, priority = 0): string {
     const id = nanoid()
     stmts.enqueueJob.run(id, type, priority, JSON.stringify(payload), Date.now())
@@ -664,6 +1010,7 @@ export function createDb() {
     getMedia: (id: string) => (stmts.getMedia.get(id) as MediaRow | undefined) ?? null,
 
     listTags: () => stmts.listTags.all() as TagRow[],
+    ensureTag,
     addTagToMedia,
     removeTagFromMedia: (mediaId: string, tagName: string) => stmts.unlinkTag.run(mediaId, tagName.trim()),
     listMediaTags: (mediaId: string) => stmts.listMediaTags.all(mediaId) as TagRow[],
@@ -703,6 +1050,7 @@ export function createDb() {
 
     // new
     statsGet,
+    statsGetBatch,
     statsRecordView,
     statsSetRating,
     statsIncO,
@@ -717,6 +1065,14 @@ export function createDb() {
     playlistMoveItem,
     playlistReorder,
 
+    // Smart Playlists
+    smartPlaylistCreate,
+    smartPlaylistUpdateRules,
+    smartPlaylistGetRules,
+    smartPlaylistRefresh,
+    smartPlaylistList,
+    smartPlaylistRefreshAll,
+
     searchRecord,
     searchSuggest,
 
@@ -724,6 +1080,15 @@ export function createDb() {
     daylistList,
     daylistItems,
 
-    recommendForMedia
+    recommendForMedia,
+
+    // Captions
+    captionGet,
+    captionUpsert,
+    captionDelete,
+    captionListCaptioned,
+    captionTemplateList,
+    captionTemplateAdd,
+    captionTemplateDelete
   }
 }

@@ -61,6 +61,27 @@ export type PlaylistRow = {
   name: string
   createdAt: number
   updatedAt: number
+  isSmart?: number
+  rulesJson?: string | null
+  lastRefreshed?: number | null
+}
+
+// Smart playlist rules
+export type SmartPlaylistRules = {
+  // Tags to include (OR logic - media must have ANY of these)
+  includeTags?: string[]
+  // Tags to exclude (media must NOT have any of these)
+  excludeTags?: string[]
+  // Media type filter
+  type?: 'video' | 'image' | 'gif' | ''
+  // Minimum rating (1-5)
+  minRating?: number
+  // Maximum results
+  limit?: number
+  // Sort by
+  sortBy?: 'addedAt' | 'rating' | 'views' | 'random'
+  // Sort direction
+  sortDir?: 'asc' | 'desc'
 }
 
 export type PlaylistItemRow = {

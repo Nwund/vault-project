@@ -33,6 +33,7 @@ const api = {
     patch: (patch: any) => invoke('settings:patch', patch),
     update: (patch: any) => invoke('settings:update', patch),
     reset: () => invoke('settings:reset'),
+    resetSection: (section: string) => invoke('settings:resetSection', section),
 
     // Category-specific updates
     library: {
@@ -44,42 +45,86 @@ const api = {
     goonwall: {
       update: (patch: any) => invoke('settings:goonwall:update', patch),
     },
-    daylist: {
-      update: (patch: any) => invoke('settings:daylist:update', patch),
-    },
-    quickcuts: {
-      update: (patch: any) => invoke('settings:quickcuts:update', patch),
-    },
     appearance: {
       update: (patch: any) => invoke('settings:appearance:update', patch),
     },
     privacy: {
       update: (patch: any) => invoke('settings:privacy:update', patch),
     },
+    blacklist: {
+      update: (patch: any) => invoke('settings:blacklist:update', patch),
+      addTag: (tag: string) => invoke('settings:blacklist:addTag', tag),
+      removeTag: (tag: string) => invoke('settings:blacklist:removeTag', tag),
+      addMedia: (mediaId: string) => invoke('settings:blacklist:addMedia', mediaId),
+      removeMedia: (mediaId: string) => invoke('settings:blacklist:removeMedia', mediaId),
+    },
+    captions: {
+      update: (patch: any) => invoke('settings:captions:update', patch),
+      addPreset: (preset: any) => invoke('settings:captions:addPreset', preset),
+      removePreset: (presetId: string) => invoke('settings:captions:removePreset', presetId),
+    },
     data: {
       update: (patch: any) => invoke('settings:data:update', patch),
+    },
+    visualEffects: {
+      update: (patch: any) => invoke('settings:visualEffects:update', patch),
     },
 
     // Theme
     setTheme: (themeId: string) => invoke('settings:setTheme', themeId),
 
-    // Personality packs
-    personality: {
-      add: (pack: any) => invoke('settings:personality:add', pack),
-      remove: (packId: string) => invoke('settings:personality:remove', packId),
-      setActive: (packId: string) => invoke('settings:personality:setActive', packId),
-      getActive: () => invoke('settings:personality:getActive'),
-    },
-
-    // Motifs dictionary
-    motifs: {
-      get: () => invoke('settings:motifs:get'),
-    },
 
     // Folder pickers for settings page
     chooseMediaDir: () => invoke('settings:chooseMediaDir'),
     removeMediaDir: (dir: string) => invoke('settings:removeMediaDir', dir),
     chooseCacheDir: () => invoke('settings:chooseCacheDir'),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SETTINGS PROFILES
+  // ═══════════════════════════════════════════════════════════════════════════
+  profiles: {
+    list: () => invoke<Array<{ id: string; name: string; description?: string; createdAt: number; updatedAt: number }>>('profiles:list'),
+    get: (profileId: string) => invoke<any>('profiles:get', profileId),
+    getActive: () => invoke<string | null>('profiles:getActive'),
+    create: (name: string, description?: string) => invoke<any>('profiles:create', name, description),
+    save: (profileId: string) => invoke<any>('profiles:save', profileId),
+    load: (profileId: string) => invoke<any>('profiles:load', profileId),
+    rename: (profileId: string, name: string, description?: string) => invoke<any>('profiles:rename', profileId, name, description),
+    delete: (profileId: string) => invoke<boolean>('profiles:delete', profileId),
+    clearActive: () => invoke<boolean>('profiles:clearActive'),
+    // Event subscriptions
+    onUpdated: (cb: (profile: any) => void) => on('profiles:updated', cb),
+    onLoaded: (cb: (profileId: string) => void) => on('profiles:loaded', cb),
+    onDeleted: (cb: (profileId: string) => void) => on('profiles:deleted', cb),
+    onCleared: (cb: () => void) => on('profiles:cleared', cb),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DAILY CHALLENGES
+  // ═══════════════════════════════════════════════════════════════════════════
+  challenges: {
+    get: () => invoke<{
+      date: string
+      challenges: Array<{
+        id: string
+        type: string
+        title: string
+        description: string
+        icon: string
+        target: number
+        progress: number
+        completed: boolean
+        rewardXp: number
+      }>
+      completedCount: number
+      totalXp: number
+      streak: number
+    }>('challenges:get'),
+    updateProgress: (type: string, increment?: number) => invoke<any>('challenges:updateProgress', type, increment),
+    reset: () => invoke<any>('challenges:reset'),
+    // Event subscriptions
+    onCompleted: (cb: (challenges: any[]) => void) => on('challenges:completed', cb),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -91,15 +136,19 @@ const api = {
     getById: (id: string) => invoke('media:getById', id),
     randomByTags: (tags: string[], opts?: any) => invoke('media:randomByTags', tags, opts),
     rescan: () => invoke('media:rescan'),
+    importFiles: (filePaths: string[]) => invoke<{ success: boolean; imported?: number; failed?: number; error?: string }>('media:importFiles', filePaths),
     count: (opts?: any) => invoke('media:count', opts),
     // Stats
     getStats: (mediaId: string) => invoke('media:getStats', mediaId),
+    getStatsBatch: (mediaIds: string[]) => invoke<Record<string, { rating: number; viewCount: number; oCount: number }>>('media:getStatsBatch', mediaIds),
     recordView: (mediaId: string) => invoke('media:recordView', mediaId),
     setRating: (mediaId: string, rating: number) => invoke('media:setRating', mediaId, rating),
+    bulkSetRating: (mediaIds: string[], rating: number) => invoke<{ updated: number; total: number }>('media:bulkSetRating', mediaIds, rating),
     incO: (mediaId: string) => invoke('media:incO', mediaId),
     // Name optimization
     optimizeName: (mediaId: string) => invoke('media:optimizeName', mediaId),
     optimizeAllNames: () => invoke('media:optimizeAllNames'),
+    optimizeNames: (mediaIds: string[]) => invoke<{ success: boolean; optimized: number; skipped: number; failed: number; total: number; errors?: string[] }>('media:optimizeNames', mediaIds),
     // Move broken/corrupted files
     moveBroken: (mediaId: string, reason?: string) => invoke('media:moveBroken', mediaId, reason),
     // Transcode & playback
@@ -111,6 +160,10 @@ const api = {
     // Duplicate detection
     findDuplicates: () => invoke<Array<{ hash: string; count: number; ids: string[]; paths: string[] }>>('media:findDuplicates'),
     deleteDuplicates: (options?: { dryRun?: boolean }) => invoke<{ deletedCount: number; freedBytes: number; deleted: string[]; dryRun: boolean }>('media:deleteDuplicates', options),
+    // Delete from library (soft delete - removes from DB, file stays on disk)
+    delete: (mediaId: string) => invoke<{ success: boolean; deletedMedia?: any; error?: string }>('media:delete', mediaId),
+    // Undo last delete (restores media to library if file still exists)
+    undoDelete: () => invoke<{ success: boolean; restoredId?: string; error?: string }>('media:undoDelete'),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -132,6 +185,31 @@ const api = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // CAPTIONS
+  // ═══════════════════════════════════════════════════════════════════════════
+  captions: {
+    get: (mediaId: string) => invoke('captions:get', mediaId),
+    upsert: (mediaId: string, topText: string | null, bottomText: string | null, presetId?: string, customStyle?: string | null) =>
+      invoke('captions:upsert', mediaId, topText, bottomText, presetId, customStyle),
+    delete: (mediaId: string) => invoke('captions:delete', mediaId),
+    listCaptioned: () => invoke('captions:listCaptioned'),
+    templates: {
+      list: () => invoke('captions:templates:list'),
+      add: (topText: string | null, bottomText: string | null, category?: string) =>
+        invoke('captions:templates:add', topText, bottomText, category),
+      delete: (id: string) => invoke('captions:templates:delete', id),
+    },
+    // Export captioned image as new file
+    export: (mediaId: string, options: {
+      topText: string | null;
+      bottomText: string | null;
+      presetId: string;
+      filters: Record<string, number>;
+      captionBar: { color: 'black' | 'white'; size: number; position: 'top' | 'bottom' | 'both' } | null;
+    }) => invoke('captions:export', mediaId, options),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // PLAYLISTS (Enhanced)
   // ═══════════════════════════════════════════════════════════════════════════
   playlists: {
@@ -146,6 +224,44 @@ const api = {
     reorder: (id: string, itemIds: string[]) => invoke('playlists:reorder', id, itemIds),
     duplicate: (id: string) => invoke('playlists:duplicate', id),
     exportM3U: (id: string) => invoke('playlists:exportM3U', id),
+    exportJSON: (id: string) => invoke<{ success: boolean; path?: string; error?: string }>('playlists:exportJSON', id),
+    importJSON: () => invoke<{ success: boolean; playlist?: any; matched?: number; total?: number; error?: string }>('playlists:importJSON'),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SMART PLAYLISTS - Auto-updating playlists based on rules
+  // ═══════════════════════════════════════════════════════════════════════════
+  smartPlaylists: {
+    create: (name: string, rules: {
+      includeTags?: string[]
+      excludeTags?: string[]
+      type?: 'video' | 'image' | 'gif' | ''
+      minRating?: number
+      limit?: number
+      sortBy?: 'addedAt' | 'rating' | 'views' | 'random'
+      sortDir?: 'asc' | 'desc'
+    }) => invoke('smartPlaylists:create', name, rules),
+    updateRules: (playlistId: string, rules: {
+      includeTags?: string[]
+      excludeTags?: string[]
+      type?: 'video' | 'image' | 'gif' | ''
+      minRating?: number
+      limit?: number
+      sortBy?: 'addedAt' | 'rating' | 'views' | 'random'
+      sortDir?: 'asc' | 'desc'
+    }) => invoke('smartPlaylists:updateRules', playlistId, rules),
+    getRules: (playlistId: string) => invoke<{
+      includeTags?: string[]
+      excludeTags?: string[]
+      type?: 'video' | 'image' | 'gif' | ''
+      minRating?: number
+      limit?: number
+      sortBy?: 'addedAt' | 'rating' | 'views' | 'random'
+      sortDir?: 'asc' | 'desc'
+    } | null>('smartPlaylists:getRules', playlistId),
+    refresh: (playlistId: string) => invoke<{ updated: number }>('smartPlaylists:refresh', playlistId),
+    refreshAll: () => invoke<{ refreshed: number; totalItems: number }>('smartPlaylists:refreshAll'),
+    list: () => invoke('smartPlaylists:list'),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -159,14 +275,6 @@ const api = {
     clearForMedia: (mediaId: string) => invoke('markers:clearForMedia', mediaId),
   },
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DAYLIST
-  // ═══════════════════════════════════════════════════════════════════════════
-  daylist: {
-    getToday: (opts?: any) => invoke('daylist:getToday', opts),
-    generateToday: (opts?: any) => invoke('daylist:generateToday', opts),
-    regenerate: (opts?: any) => invoke('daylist:regenerate', opts),
-  },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // THUMBNAILS / FILE URLS
@@ -311,12 +419,6 @@ const api = {
     renameAll: (options?: { maxItems?: number }) => invoke('aiTools:renameAll', options),
   },
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // RECOMMENDATIONS
-  // ═══════════════════════════════════════════════════════════════════════════
-  recommend: {
-    forMedia: (mediaId: string, limit?: number) => invoke('recommend:forMedia', mediaId, limit),
-  },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SEARCH
@@ -419,6 +521,10 @@ const api = {
     onSessionStarted: (cb: (stats: any) => void) => on('goon:sessionStarted', cb),
     onSessionEnded: (cb: (stats: any) => void) => on('goon:sessionEnded', cb),
     onSessionModeChanged: (cb: (mode: any) => void) => on('session:modeChanged', cb),
+    // AI Intelligence events
+    onAiStatus: (cb: (data: { status: string }) => void) => on('ai:status', cb),
+    onAiProgress: (cb: (data: { mediaId: string; stage: string; percent: number; processingTime?: number; error?: string }) => void) => on('ai:progress', cb),
+    onAiModelDownload: (cb: (data: { model: string; percent: number; bytesDownloaded: number; bytesTotal: number }) => void) => on('ai:model-download', cb),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -442,6 +548,94 @@ const api = {
   aiCache: {
     getStats: () => invoke('aiCache:getStats'),
     clear: (namespace?: string) => invoke('aiCache:clear', namespace),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CACHE MANAGEMENT - Thumbnails and other caches
+  // ═══════════════════════════════════════════════════════════════════════════
+  cache: {
+    clearThumbnails: () => invoke<{ success: boolean; count?: number; freedBytes?: number; error?: string }>('cache:clearThumbnails'),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ERROR LOGGING - Persistent log management for debugging
+  // ═══════════════════════════════════════════════════════════════════════════
+  logs: {
+    getRecent: (limit?: number) => invoke<Array<{
+      timestamp: string
+      level: 'info' | 'warn' | 'error'
+      source: string
+      message: string
+      stack?: string
+      meta?: Record<string, unknown>
+    }>>('logs:getRecent', limit),
+    getErrors: (limit?: number) => invoke<Array<{
+      timestamp: string
+      level: 'error'
+      source: string
+      message: string
+      stack?: string
+      meta?: Record<string, unknown>
+    }>>('logs:getErrors', limit),
+    getLogFilePath: () => invoke<string>('logs:getLogFilePath'),
+    getContent: () => invoke<string>('logs:getContent'),
+    clear: () => invoke<{ success: boolean; error?: string }>('logs:clear'),
+    log: (level: 'info' | 'warn' | 'error', source: string, message: string, meta?: Record<string, unknown>) =>
+      invoke<{ success: boolean }>('logs:log', level, source, message, meta),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AI INTELLIGENCE SYSTEM - Multi-tier AI analysis
+  // ═══════════════════════════════════════════════════════════════════════════
+  ai: {
+    // Model management
+    checkModels: () => invoke('ai:check-models'),
+    downloadModels: () => invoke('ai:download-models'),
+    configureTier2: (config: { apiKey?: string }) => invoke('ai:configure-tier2', config),
+    getTier2Config: () => invoke<{ apiKey: string; configured: boolean }>('ai:get-tier2-config'),
+
+    // Queue management
+    queueUntagged: () => invoke('ai:queue-untagged'),
+    queueSpecific: (mediaIds: string[]) => invoke('ai:queue-specific', mediaIds),
+    queueAll: () => invoke('ai:queue-all'),
+    getQueueStatus: () => invoke('ai:queue-status'),
+
+    // Processing control
+    start: (options?: { enableTier2?: boolean; concurrency?: number }) => invoke('ai:start', options),
+    pause: () => invoke('ai:pause'),
+    resume: () => invoke('ai:resume'),
+    stop: () => invoke('ai:stop'),
+
+    // Review queue
+    getReviewList: (options?: { limit?: number; offset?: number }) => invoke('ai:review-list', options),
+    approve: (mediaId: string) => invoke('ai:approve', mediaId),
+    approveEdited: (mediaId: string, edits: {
+      selectedTagIds?: number[]
+      editedTitle?: string
+      newTags?: string[]
+    }) => invoke('ai:approve-edited', mediaId, edits),
+    reject: (mediaId: string) => invoke('ai:reject', mediaId),
+    bulkApprove: () => invoke('ai:bulk-approve'),
+    bulkReject: () => invoke<{ rejected: number }>('ai:bulk-reject'),
+
+    // Stats
+    getStats: () => invoke('ai:get-stats'),
+
+    // Failed items management
+    clearFailed: () => invoke<{ cleared: number }>('ai:clear-failed'),
+    retryFailed: () => invoke<{ retried: number }>('ai:retry-failed'),
+
+    // Tag cleanup
+    cleanupTags: () => invoke<{ removed: number }>('ai:cleanup-tags'),
+
+    // Protected tags management
+    getProtectedTags: () => invoke<string[]>('ai:get-protected-tags'),
+    setProtectedTags: (tags: string[]) => invoke<{ success: boolean }>('ai:set-protected-tags', tags),
+    addProtectedTag: (tag: string) => invoke<{ success: boolean }>('ai:add-protected-tag', tag),
+    removeProtectedTag: (tag: string) => invoke<{ success: boolean }>('ai:remove-protected-tag', tag),
+
+    // Caption generation - analyze image and suggest captions
+    analyzeForCaption: (mediaId: string) => invoke<{ topText: string | null; bottomText: string | null; category: string } | null>('ai:analyze-for-caption', mediaId),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

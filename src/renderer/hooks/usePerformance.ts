@@ -48,10 +48,10 @@ export function useThrottle<T extends (...args: any[]) => any>(
 }
 
 /**
- * Lazy load with IntersectionObserver
+ * Lazy load with IntersectionObserver - larger margin for earlier preloading
  */
 export function useLazyLoad(
-  rootMargin = '100px'
+  rootMargin = '600px' // Increased for earlier preload
 ): [React.RefObject<HTMLDivElement>, boolean] {
   const ref = useRef<HTMLDivElement>(null)
   const [isVisible, setIsVisible] = useState(false)
@@ -67,7 +67,7 @@ export function useLazyLoad(
           observer.disconnect()
         }
       },
-      { rootMargin }
+      { rootMargin, threshold: 0 }
     )
 
     observer.observe(element)
@@ -117,19 +117,98 @@ export function useVideoDecoder(id: string): boolean {
 }
 
 /**
- * Memoized file URL cache
+ * LRU file URL cache with size limit
  */
+const MAX_CACHE_SIZE = 500
 const fileUrlCache = new Map<string, string>()
 
 export async function toFileUrlCached(path: string): Promise<string> {
   const cached = fileUrlCache.get(path)
-  if (cached) return cached
+  if (cached) {
+    // Move to end (most recently used)
+    fileUrlCache.delete(path)
+    fileUrlCache.set(path, cached)
+    return cached
+  }
 
   const url = await window.api.fs.toFileUrl(path)
+
+  // Evict oldest entries if cache is full
+  if (fileUrlCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = fileUrlCache.keys().next().value
+    if (firstKey) fileUrlCache.delete(firstKey)
+  }
+
   fileUrlCache.set(path, url)
   return url
 }
 
 export function clearFileUrlCache() {
   fileUrlCache.clear()
+}
+
+/**
+ * Batch preload multiple file URLs
+ */
+export async function preloadFileUrls(paths: string[]): Promise<void> {
+  const uncached = paths.filter(p => !fileUrlCache.has(p))
+  await Promise.all(uncached.slice(0, 10).map(p => toFileUrlCached(p)))
+}
+
+/**
+ * Video element pool for reuse
+ */
+const videoPool: HTMLVideoElement[] = []
+const MAX_POOL_SIZE = 8
+
+export function getPooledVideo(): HTMLVideoElement {
+  const video = videoPool.pop()
+  if (video) {
+    video.src = ''
+    video.load()
+    return video
+  }
+  return document.createElement('video')
+}
+
+export function returnVideoToPool(video: HTMLVideoElement): void {
+  if (videoPool.length < MAX_POOL_SIZE) {
+    video.pause()
+    video.src = ''
+    video.load()
+    video.removeAttribute('src')
+    videoPool.push(video)
+  }
+}
+
+/**
+ * Preload video by creating a hidden video element
+ */
+export function preloadVideo(url: string): () => void {
+  const video = getPooledVideo()
+  video.preload = 'metadata'
+  video.src = url
+  video.load()
+
+  return () => {
+    returnVideoToPool(video)
+  }
+}
+
+/**
+ * Request idle callback with fallback
+ */
+export function requestIdleCallback(callback: () => void, timeout = 100): number {
+  if (typeof (globalThis as any).requestIdleCallback === 'function') {
+    return (globalThis as any).requestIdleCallback(callback, { timeout })
+  }
+  return setTimeout(callback, 1) as unknown as number
+}
+
+export function cancelIdleCallback(id: number): void {
+  if (typeof (globalThis as any).cancelIdleCallback === 'function') {
+    (globalThis as any).cancelIdleCallback(id)
+  } else {
+    clearTimeout(id)
+  }
 }

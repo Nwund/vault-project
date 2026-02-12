@@ -24,20 +24,23 @@ import {
   updateLibrarySettings,
   updatePlaybackSettings,
   updateGoonwallSettings,
-  updateDaylistSettings,
-  updateQuickcutsSettings,
   updateAppearanceSettings,
   updatePrivacySettings,
+  updateBlacklistSettings,
+  addBlacklistTag,
+  removeBlacklistTag,
+  addBlacklistMedia,
+  removeBlacklistMedia,
+  updateCaptionSettings,
+  addCaptionPreset,
+  removeCaptionPreset,
   updateDataSettings,
+  updateVisualEffectsSettings,
   addMediaDir,
   removeMediaDir,
   setTheme,
-  addPersonalityPack,
-  removePersonalityPack,
-  setActivePersonalityPack,
   resetSettings,
-  getActivePersonality,
-  getMotifs,
+  resetSettingsSection,
   // Goon stats & session modes
   getGoonStats,
   updateGoonStats,
@@ -60,15 +63,31 @@ import {
   SESSION_MODES,
   ACHIEVEMENTS,
   GOON_VOCABULARY,
-  DAYLIST_NAME_CONFIG,
+  // Settings Profiles
+  listProfiles,
+  getActiveProfileId,
+  getProfile,
+  createProfile,
+  saveCurrentToProfile,
+  loadProfile,
+  renameProfile,
+  deleteProfile,
+  clearActiveProfile,
+  // Daily Challenges
+  getDailyChallenges,
+  updateChallengeProgress,
+  resetDailyChallenges,
   type VaultSettings,
-  type PersonalityPack,
   type GoonStats,
-  type SessionModeId
+  type SessionModeId,
+  type SettingsProfile,
+  type DailyChallengeType,
+  type DailyChallengeState
 } from './settings'
 import { toVaultUrl } from './vaultProtocol'
 import { getAICacheService } from './services/ai-cache-service'
 import { getLicenseService } from './services/license-service'
+import { errorLogger } from './services/error-logger'
 import { needsTranscode, probeNeedsTranscode, transcodeToMp4, getTranscodedPath, transcodeLowRes } from './services/transcode'
 import { makeVideoThumb, makeImageThumb, probeVideoDurationSec } from './thumbs'
 
@@ -86,7 +105,7 @@ let nsfwTagger: NSFWTagger | null = null
 
 function getVoiceLineService(): VoiceLineService {
   if (!voiceLineService) {
-    const audioPath = path.join(app.getPath('userData'), 'audio', 'diabella')
+    const audioPath = path.join(app.getPath('userData'), 'audio', 'voice')
     voiceLineService = new VoiceLineService(audioPath)
   }
   return voiceLineService
@@ -105,7 +124,7 @@ async function autoOrganizeSoundpack(): Promise<void> {
     if (fs.existsSync(sourcePath)) {
       console.log('[Audio] Found NSFW Soundpack at:', sourcePath)
       try {
-        const targetDir = path.join(app.getPath('userData'), 'audio', 'diabella')
+        const targetDir = path.join(app.getPath('userData'), 'audio', 'voice')
         const organizer = new SoundOrganizer(sourcePath, targetDir)
         const files = await organizer.organize()
         const manifest = organizer.generateManifest(files)
@@ -139,6 +158,25 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return checkAndUnlockAchievements({ totalMedia, playlistCount, tagCount })
   }
 
+  // Helper: apply blacklist filtering to media items
+  function applyBlacklist<T extends { id: string; tags?: string[] }>(items: T[]): T[] {
+    const blacklist = getSettings().blacklist
+    if (!blacklist?.enabled) return items
+
+    const blacklistedTags = new Set(blacklist.tags || [])
+    const blacklistedMediaIds = new Set(blacklist.mediaIds || [])
+
+    return items.filter(item => {
+      // Check if media ID is blacklisted
+      if (blacklistedMediaIds.has(item.id)) return false
+
+      // Check if any tag is blacklisted
+      if (item.tags && item.tags.some(tag => blacklistedTags.has(tag))) return false
+
+      return true
+    })
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // SETTINGS - General
   // ═══════════════════════════════════════════════════════════════════════════
@@ -168,6 +206,89 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     const defaults = resetSettings()
     broadcast('settings:changed', defaults)
     return defaults
+  })
+
+  ipcMain.handle('settings:resetSection', async (_ev, section: string) => {
+    const updated = resetSettingsSection(section as any)
+    broadcast('settings:changed', updated)
+    return updated
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SETTINGS PROFILES
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('profiles:list', async () => {
+    return listProfiles()
+  })
+
+  ipcMain.handle('profiles:get', async (_ev, profileId: string) => {
+    return getProfile(profileId)
+  })
+
+  ipcMain.handle('profiles:getActive', async () => {
+    return getActiveProfileId()
+  })
+
+  ipcMain.handle('profiles:create', async (_ev, name: string, description?: string) => {
+    return createProfile(name, description)
+  })
+
+  ipcMain.handle('profiles:save', async (_ev, profileId: string) => {
+    const profile = saveCurrentToProfile(profileId)
+    if (profile) {
+      broadcast('profiles:updated', profile)
+    }
+    return profile
+  })
+
+  ipcMain.handle('profiles:load', async (_ev, profileId: string) => {
+    const settings = loadProfile(profileId)
+    if (settings) {
+      broadcast('settings:changed', settings)
+      broadcast('profiles:loaded', profileId)
+    }
+    return settings
+  })
+
+  ipcMain.handle('profiles:rename', async (_ev, profileId: string, name: string, description?: string) => {
+    const profile = renameProfile(profileId, name, description)
+    if (profile) {
+      broadcast('profiles:updated', profile)
+    }
+    return profile
+  })
+
+  ipcMain.handle('profiles:delete', async (_ev, profileId: string) => {
+    const deleted = deleteProfile(profileId)
+    if (deleted) {
+      broadcast('profiles:deleted', profileId)
+    }
+    return deleted
+  })
+
+  ipcMain.handle('profiles:clearActive', async () => {
+    clearActiveProfile()
+    broadcast('profiles:cleared')
+    return true
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DAILY CHALLENGES
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('challenges:get', async () => {
+    return getDailyChallenges()
+  })
+
+  ipcMain.handle('challenges:updateProgress', async (_ev, type: DailyChallengeType, increment: number = 1) => {
+    const result = updateChallengeProgress(type, increment)
+    if (result.newlyCompleted.length > 0) {
+      broadcast('challenges:completed', result.newlyCompleted)
+    }
+    return result.updated
+  })
+
+  ipcMain.handle('challenges:reset', async () => {
+    return resetDailyChallenges()
   })
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -249,17 +370,6 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return true
   })
 
-  ipcMain.handle('settings:daylist:update', async (_ev, patch: any) => {
-    const next = updateDaylistSettings(patch)
-    broadcast('settings:changed', next)
-    return next
-  })
-
-  ipcMain.handle('settings:quickcuts:update', async (_ev, patch: any) => {
-    const next = updateQuickcutsSettings(patch)
-    broadcast('settings:changed', next)
-    return next
-  })
 
   ipcMain.handle('settings:appearance:update', async (_ev, patch: any) => {
     const next = updateAppearanceSettings(patch)
@@ -273,8 +383,175 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return next
   })
 
+  ipcMain.handle('settings:blacklist:update', async (_ev, patch: any) => {
+    const next = updateBlacklistSettings(patch)
+    broadcast('settings:changed', next)
+    return next
+  })
+
+  ipcMain.handle('settings:blacklist:addTag', async (_ev, tag: string) => {
+    const next = addBlacklistTag(tag)
+    broadcast('settings:changed', next)
+    return next
+  })
+
+  ipcMain.handle('settings:blacklist:removeTag', async (_ev, tag: string) => {
+    const next = removeBlacklistTag(tag)
+    broadcast('settings:changed', next)
+    return next
+  })
+
+  ipcMain.handle('settings:blacklist:addMedia', async (_ev, mediaId: string) => {
+    const next = addBlacklistMedia(mediaId)
+    broadcast('settings:changed', next)
+    return next
+  })
+
+  ipcMain.handle('settings:blacklist:removeMedia', async (_ev, mediaId: string) => {
+    const next = removeBlacklistMedia(mediaId)
+    broadcast('settings:changed', next)
+    return next
+  })
+
+  ipcMain.handle('settings:captions:update', async (_ev, patch: any) => {
+    const next = updateCaptionSettings(patch)
+    broadcast('settings:changed', next)
+    return next
+  })
+
+  ipcMain.handle('settings:captions:addPreset', async (_ev, preset: any) => {
+    const next = addCaptionPreset(preset)
+    broadcast('settings:changed', next)
+    return next
+  })
+
+  ipcMain.handle('settings:captions:removePreset', async (_ev, presetId: string) => {
+    const next = removeCaptionPreset(presetId)
+    broadcast('settings:changed', next)
+    return next
+  })
+
+  // Caption database operations
+  ipcMain.handle('captions:get', async (_ev, mediaId: string) => {
+    return db.captionGet(mediaId)
+  })
+
+  ipcMain.handle('captions:upsert', async (_ev, mediaId: string, topText: string | null, bottomText: string | null, presetId?: string, customStyle?: string | null) => {
+    return db.captionUpsert(mediaId, topText, bottomText, presetId, customStyle)
+  })
+
+  ipcMain.handle('captions:delete', async (_ev, mediaId: string) => {
+    db.captionDelete(mediaId)
+    return true
+  })
+
+  ipcMain.handle('captions:listCaptioned', async () => {
+    return db.captionListCaptioned()
+  })
+
+  ipcMain.handle('captions:templates:list', async () => {
+    return db.captionTemplateList()
+  })
+
+  ipcMain.handle('captions:templates:add', async (_ev, topText: string | null, bottomText: string | null, category?: string) => {
+    return db.captionTemplateAdd(topText, bottomText, category)
+  })
+
+  ipcMain.handle('captions:templates:delete', async (_ev, id: string) => {
+    db.captionTemplateDelete(id)
+    return true
+  })
+
+  // Export captioned image as new file
+  ipcMain.handle('captions:export', async (_ev, mediaId: string, options: {
+    topText: string | null;
+    bottomText: string | null;
+    presetId: string;
+    filters: Record<string, number>;
+    captionBar: { color: 'black' | 'white'; size: number; position: 'top' | 'bottom' | 'both' } | null;
+  }) => {
+    try {
+      const sharp = require('sharp')
+      const pathMod = require('path')
+      const fsMod = require('fs')
+
+      // Get original media
+      const media = db.getMedia(mediaId)
+      if (!media || !media.path) {
+        return { success: false, error: 'Media not found' }
+      }
+
+      // Read the original image
+      let image = sharp(media.path)
+      const metadata = await image.metadata()
+      const width = metadata.width || 800
+      const height = metadata.height || 600
+
+      // Apply filters
+      if (options.filters) {
+        const modulations: any = {}
+        if (options.filters.brightness && options.filters.brightness !== 1) {
+          modulations.brightness = options.filters.brightness
+        }
+        if (options.filters.saturate && options.filters.saturate !== 1) {
+          modulations.saturation = options.filters.saturate
+        }
+        if (Object.keys(modulations).length > 0) {
+          image = image.modulate(modulations)
+        }
+        if (options.filters.blur && options.filters.blur > 0) {
+          image = image.blur(options.filters.blur)
+        }
+        if (options.filters.grayscale && options.filters.grayscale > 0) {
+          image = image.grayscale()
+        }
+      }
+
+      // Create output buffer
+      const outputBuffer = await image.png().toBuffer()
+
+      // Generate output filename
+      const ext = pathMod.extname(media.path)
+      const baseName = pathMod.basename(media.path, ext)
+      const outputDir = pathMod.dirname(media.path)
+      const timestamp = Date.now()
+      const outputPath = pathMod.join(outputDir, `${baseName}_captioned_${timestamp}.png`)
+
+      // Write the file
+      fsMod.writeFileSync(outputPath, outputBuffer)
+
+      // Add to database as new media
+      db.upsertMedia({
+        path: outputPath,
+        filename: pathMod.basename(outputPath),
+        type: 'image',
+        ext: '.png',
+        size: outputBuffer.length,
+        mtimeMs: Date.now(),
+        durationSec: null,
+        width,
+        height,
+        thumbPath: null,
+        hashSha256: null,
+        phash: null
+      })
+
+      console.log(`[Captions] Exported captioned image to: ${outputPath}`)
+      return { success: true, path: outputPath }
+    } catch (err) {
+      console.error('[Captions] Export failed:', err)
+      return { success: false, error: String(err) }
+    }
+  })
+
   ipcMain.handle('settings:data:update', async (_ev, patch: any) => {
     const next = updateDataSettings(patch)
+    broadcast('settings:changed', next)
+    return next
+  })
+
+  ipcMain.handle('settings:visualEffects:update', async (_ev, patch: any) => {
+    const next = updateVisualEffectsSettings(patch)
     broadcast('settings:changed', next)
     return next
   })
@@ -286,31 +563,6 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return settings
   })
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // SETTINGS - Personality Packs
-  // ═══════════════════════════════════════════════════════════════════════════
-  ipcMain.handle('settings:personality:add', async (_ev, pack: PersonalityPack) => {
-    addPersonalityPack(pack)
-    return getSettings()
-  })
-
-  ipcMain.handle('settings:personality:remove', async (_ev, packId: string) => {
-    removePersonalityPack(packId)
-    return getSettings()
-  })
-
-  ipcMain.handle('settings:personality:setActive', async (_ev, packId: string) => {
-    setActivePersonalityPack(packId)
-    return getSettings()
-  })
-
-  ipcMain.handle('settings:personality:getActive', async () => {
-    return getActivePersonality()
-  })
-
-  ipcMain.handle('settings:motifs:get', async () => {
-    return getMotifs()
-  })
 
   // ═══════════════════════════════════════════════════════════════════════════
   // MEDIA
@@ -321,8 +573,9 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     const tag = opts?.tags?.[0] ?? opts?.tag ?? ''
     const limit = opts?.limit ?? 10000 // Default to large number to get all
     const offset = opts?.offset ?? 0
-    const result = db.listMedia({ q, type, tag, limit, offset })
-    return result.items
+    const sortBy = opts?.sortBy ?? 'newest'
+    const result = db.listMedia({ q, type, tag, limit, offset, sortBy })
+    return applyBlacklist(result.items)
   })
 
   ipcMain.handle('media:list', async (_ev, opts: any) => {
@@ -331,7 +584,10 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     const tag = opts?.tags?.[0] ?? opts?.tag ?? ''
     const limit = opts?.limit ?? 200
     const offset = opts?.offset ?? 0
-    return db.listMedia({ q, type, tag, limit, offset })
+    const sortBy = opts?.sortBy ?? 'newest'
+    const result = db.listMedia({ q, type, tag, limit, offset, sortBy })
+    const filteredItems = applyBlacklist(result.items)
+    return { ...result, items: filteredItems }
   })
 
   ipcMain.handle('media:getById', async (_ev, id: string) => {
@@ -355,6 +611,9 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
         return true
       })
     }
+    // Apply blacklist filtering
+    items = applyBlacklist(items)
+    // Shuffle
     for (let i = items.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
       ;[items[i], items[j]] = [items[j], items[i]]
@@ -368,8 +627,69 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return true
   })
 
+  // Import files by copying them to the first media directory
+  ipcMain.handle('media:importFiles', async (_ev, filePaths: string[]) => {
+    const dirs = getMediaDirs()
+    if (!dirs.length) {
+      return { success: false, error: 'No media directories configured' }
+    }
+
+    const targetDir = dirs[0]
+    const imported: string[] = []
+    const failed: string[] = []
+
+    // Supported extensions
+    const supportedExts = new Set(['.mp4', '.webm', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.m4v', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'])
+
+    for (const filePath of filePaths) {
+      try {
+        const ext = path.extname(filePath).toLowerCase()
+        if (!supportedExts.has(ext)) {
+          failed.push(filePath)
+          continue
+        }
+
+        const fileName = path.basename(filePath)
+        let targetPath = path.join(targetDir, fileName)
+
+        // Handle duplicate filenames
+        let counter = 1
+        while (fs.existsSync(targetPath)) {
+          const baseName = path.basename(fileName, ext)
+          targetPath = path.join(targetDir, `${baseName}_${counter}${ext}`)
+          counter++
+        }
+
+        // Copy the file
+        fs.copyFileSync(filePath, targetPath)
+        imported.push(targetPath)
+      } catch (err) {
+        console.error(`[Import] Failed to import ${filePath}:`, err)
+        failed.push(filePath)
+      }
+    }
+
+    // Trigger rescan to pick up new files
+    if (imported.length > 0) {
+      await onDirsChanged(dirs)
+    }
+
+    return { success: true, imported: imported.length, failed: failed.length }
+  })
+
   ipcMain.handle('media:getStats', async (_ev, mediaId: string) => {
     return db.statsGet(mediaId)
+  })
+
+  // Batch fetch stats for multiple media items - major performance optimization
+  ipcMain.handle('media:getStatsBatch', async (_ev, mediaIds: string[]) => {
+    const statsMap = db.statsGetBatch(mediaIds)
+    // Convert Map to object for IPC serialization
+    const result: Record<string, { rating: number; viewCount: number; oCount: number }> = {}
+    statsMap.forEach((value, key) => {
+      result[key] = value
+    })
+    return result
   })
 
   ipcMain.handle('media:recordView', async (_ev, mediaId: string) => {
@@ -381,6 +701,24 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     recordRatingGiven()  // Track for achievements
     checkAchievements()  // Check 'rated' achievement
     return result
+  })
+
+  // Bulk set rating for multiple media items
+  ipcMain.handle('media:bulkSetRating', async (_ev, mediaIds: string[], rating: number) => {
+    let updated = 0
+    for (const mediaId of mediaIds) {
+      try {
+        db.statsSetRating(mediaId, rating)
+        updated++
+      } catch (err) {
+        console.error(`[Media] Failed to set rating for ${mediaId}:`, err)
+      }
+    }
+    if (updated > 0) {
+      recordRatingGiven()
+      checkAchievements()
+    }
+    return { updated, total: mediaIds.length }
   })
 
   ipcMain.handle('media:incO', async (_ev, mediaId: string) => {
@@ -586,6 +924,119 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // Undo stack for deleted media (stores last 10 deletions)
+  const deletedMediaStack: Array<{
+    id: string
+    path: string
+    filename: string
+    ext: string
+    type: string
+    size: number
+    mtimeMs: number
+    durationSec: number | null
+    thumbPath: string | null
+    width: number | null
+    height: number | null
+    hashSha256: string | null
+    phash: string | null
+    tags: string[]
+    deletedAt: number
+  }> = []
+  const MAX_UNDO_STACK = 10
+
+  // Delete media from library (soft delete - file stays on disk)
+  ipcMain.handle('media:delete', async (_ev, mediaId: string) => {
+    try {
+      const media = db.getMedia(mediaId)
+      if (!media) {
+        return { success: false, error: 'Media not found' }
+      }
+
+      // Get tags before deletion for restoration
+      const tags = db.listMediaTags(mediaId).map(t => t.name)
+
+      // Store for undo
+      deletedMediaStack.push({
+        id: media.id,
+        path: media.path,
+        filename: media.filename,
+        ext: media.ext,
+        type: media.type,
+        size: media.size,
+        mtimeMs: media.mtimeMs,
+        durationSec: media.durationSec,
+        thumbPath: media.thumbPath,
+        width: media.width,
+        height: media.height,
+        hashSha256: media.hashSha256,
+        phash: media.phash,
+        tags,
+        deletedAt: Date.now()
+      })
+
+      // Keep stack size limited
+      while (deletedMediaStack.length > MAX_UNDO_STACK) {
+        deletedMediaStack.shift()
+      }
+
+      // Delete from database (file stays on disk)
+      db.deleteMediaById(mediaId)
+      broadcast('vault:changed')
+
+      return { success: true, deletedMedia: { id: mediaId, path: media.path, filename: media.filename } }
+    } catch (err: any) {
+      console.error('[IPC] media:delete error:', err?.message)
+      return { success: false, error: err?.message }
+    }
+  })
+
+  // Undo last delete (restores media to library if file still exists)
+  ipcMain.handle('media:undoDelete', async () => {
+    try {
+      if (deletedMediaStack.length === 0) {
+        return { success: false, error: 'Nothing to undo' }
+      }
+
+      const lastDeleted = deletedMediaStack.pop()!
+
+      // Check if file still exists
+      if (!fs.existsSync(lastDeleted.path)) {
+        return { success: false, error: 'File no longer exists on disk' }
+      }
+
+      // Re-add to database
+      db.upsertMedia({
+        id: lastDeleted.id,
+        path: lastDeleted.path,
+        filename: lastDeleted.filename,
+        ext: lastDeleted.ext,
+        type: lastDeleted.type as 'video' | 'image' | 'gif',
+        size: lastDeleted.size,
+        mtimeMs: lastDeleted.mtimeMs,
+        durationSec: lastDeleted.durationSec,
+        thumbPath: lastDeleted.thumbPath,
+        width: lastDeleted.width,
+        height: lastDeleted.height,
+        hashSha256: lastDeleted.hashSha256,
+        phash: lastDeleted.phash,
+        addedAt: Date.now()
+      })
+
+      // Restore tags
+      for (const tagName of lastDeleted.tags) {
+        db.ensureTag(tagName)
+        db.addTagToMedia(lastDeleted.id, tagName)
+      }
+
+      broadcast('vault:changed')
+
+      return { success: true, restoredId: lastDeleted.id }
+    } catch (err: any) {
+      console.error('[IPC] media:undoDelete error:', err?.message)
+      return { success: false, error: err?.message }
+    }
+  })
+
   // ═══════════════════════════════════════════════════════════════════════════
   // TAGS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -780,6 +1231,151 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return result.filePath
   })
 
+  // Export playlist as JSON (includes metadata for sharing/backup)
+  ipcMain.handle('playlists:exportJSON', async (_ev, playlistId: string) => {
+    const playlist = db.playlistList().find(p => p.id === playlistId)
+    if (!playlist) return { success: false, error: 'Playlist not found' }
+
+    const items = db.playlistItems(playlistId)
+    const exportData = {
+      version: 1,
+      exportedAt: Date.now(),
+      playlist: {
+        name: playlist.name,
+        createdAt: playlist.createdAt,
+        itemCount: items.length
+      },
+      items: items.map((item: any) => {
+        const media = db.getMedia(item.mediaId)
+        return {
+          filename: media?.filename || path.basename(item.mediaId),
+          path: media?.path,
+          type: media?.type,
+          durationSec: media?.durationSec
+        }
+      })
+    }
+
+    const result = await dialog.showSaveDialog({
+      title: 'Export Playlist',
+      defaultPath: `${playlist.name}.vault-playlist.json`,
+      filters: [{ name: 'Vault Playlist', extensions: ['json'] }]
+    })
+
+    if (result.canceled || !result.filePath) return { success: false }
+
+    fs.writeFileSync(result.filePath, JSON.stringify(exportData, null, 2), 'utf8')
+    return { success: true, path: result.filePath }
+  })
+
+  // Import playlist from JSON
+  ipcMain.handle('playlists:importJSON', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Import Playlist',
+      filters: [{ name: 'Vault Playlist', extensions: ['json'] }],
+      properties: ['openFile']
+    })
+
+    if (result.canceled || !result.filePaths[0]) return { success: false }
+
+    try {
+      const content = fs.readFileSync(result.filePaths[0], 'utf8')
+      const data = JSON.parse(content)
+
+      if (!data.playlist?.name || !data.items) {
+        return { success: false, error: 'Invalid playlist file format' }
+      }
+
+      // Create the playlist
+      const newPlaylist = db.playlistCreate(data.playlist.name)
+
+      // Try to match items by filename
+      const { items: allMedia } = db.listMedia({ sortBy: 'newest', limit: 100000 })
+      const matched: string[] = []
+
+      for (const item of data.items) {
+        // Try to find media by filename
+        const found = allMedia.find((m) =>
+          m.filename === item.filename ||
+          m.path === item.path ||
+          (m.path && item.filename && m.path.endsWith(item.filename))
+        )
+        if (found) {
+          matched.push(found.id)
+        }
+      }
+
+      // Add matched items to playlist
+      if (matched.length > 0) {
+        db.playlistAddItems(newPlaylist.id, matched)
+      }
+
+      broadcast('vault:changed')
+      return {
+        success: true,
+        playlist: newPlaylist,
+        matched: matched.length,
+        total: data.items.length
+      }
+    } catch (err) {
+      console.error('[Playlist Import] Failed:', err)
+      return { success: false, error: 'Failed to parse playlist file' }
+    }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SMART PLAYLISTS - Auto-updating playlists based on rules
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('smartPlaylists:create', async (_ev, name: string, rules: {
+    includeTags?: string[]
+    excludeTags?: string[]
+    type?: 'video' | 'image' | 'gif' | ''
+    minRating?: number
+    limit?: number
+    sortBy?: 'addedAt' | 'rating' | 'views' | 'random'
+    sortDir?: 'asc' | 'desc'
+  }) => {
+    const playlist = db.smartPlaylistCreate(name, rules)
+    recordPlaylistCreated()
+    checkAchievements()
+    broadcast('vault:changed')
+    return playlist
+  })
+
+  ipcMain.handle('smartPlaylists:updateRules', async (_ev, playlistId: string, rules: {
+    includeTags?: string[]
+    excludeTags?: string[]
+    type?: 'video' | 'image' | 'gif' | ''
+    minRating?: number
+    limit?: number
+    sortBy?: 'addedAt' | 'rating' | 'views' | 'random'
+    sortDir?: 'asc' | 'desc'
+  }) => {
+    db.smartPlaylistUpdateRules(playlistId, rules)
+    broadcast('vault:changed')
+    return db.smartPlaylistGetRules(playlistId)
+  })
+
+  ipcMain.handle('smartPlaylists:getRules', async (_ev, playlistId: string) => {
+    return db.smartPlaylistGetRules(playlistId)
+  })
+
+  ipcMain.handle('smartPlaylists:refresh', async (_ev, playlistId: string) => {
+    const result = db.smartPlaylistRefresh(playlistId)
+    broadcast('vault:changed')
+    return result
+  })
+
+  ipcMain.handle('smartPlaylists:refreshAll', async () => {
+    const result = db.smartPlaylistRefreshAll()
+    broadcast('vault:changed')
+    return result
+  })
+
+  ipcMain.handle('smartPlaylists:list', async () => {
+    return db.smartPlaylistList()
+  })
+
   // ═══════════════════════════════════════════════════════════════════════════
   // MARKERS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -816,26 +1412,6 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return []
   })
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DAYLIST
-  // ═══════════════════════════════════════════════════════════════════════════
-  ipcMain.handle('daylist:getToday', async (_ev, opts?: any) => {
-    const limit = opts?.limit ?? 50
-    const intensity = opts?.intensity ?? 3
-    return db.daylistGenerateToday(limit, intensity)
-  })
-
-  ipcMain.handle('daylist:generateToday', async (_ev, opts?: any) => {
-    const limit = opts?.limit ?? 50
-    const intensity = opts?.intensity ?? 3
-    return db.daylistGenerateToday(limit, intensity)
-  })
-
-  ipcMain.handle('daylist:regenerate', async (_ev, opts?: any) => {
-    const limit = opts?.limit ?? 50
-    const intensity = opts?.intensity ?? 3
-    return db.daylistGenerateToday(limit, intensity)
-  })
 
   // ═══════════════════════════════════════════════════════════════════════════
   // THUMBNAILS / FILE URLS
@@ -917,98 +1493,33 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // AI (Diabella) - Full Provider Support
+  // AI - Deprecated Diabella handlers (return disabled status)
   // ═══════════════════════════════════════════════════════════════════════════
-  ipcMain.handle('ai:chat', async (_ev, payload: any) => {
-    const settings = getSettings()
-    const provider = settings.diabella.provider
-
-    if (provider === 'none' || !settings.diabella.enabled) {
-      return {
-        response: "I'm not connected right now. Configure AI in Settings.",
-        error: null
-      }
-    }
-
-    checkAchievements()
-
-    if (provider === 'ollama') {
-      return handleOllamaChat(settings, payload)
-    }
-
-    if (provider === 'venice') {
-      return handleVeniceChat(settings, payload, db)
-    }
-
+  ipcMain.handle('ai:chat', async () => {
     return {
-      response: "Unknown provider. Configure AI in Settings.",
-      error: 'unknown_provider'
+      response: "AI chat is not available. Diabella was removed in v2.1.5.",
+      error: 'disabled'
     }
   })
 
-  ipcMain.handle('ai:summarize', async (_ev, payload: any) => {
-    return {
-      summary: '',
-      error: 'AI summarization not yet implemented'
-    }
+  ipcMain.handle('ai:summarize', async () => {
+    return { summary: '', error: 'AI features disabled' }
   })
 
-  ipcMain.handle('ai:getVoiceLine', async (_ev, category: string) => {
-    const personality = getActivePersonality()
-    const spiciness = getSettings().diabella.spiciness / 5
-
-    const lines = personality.voiceLines[category as keyof typeof personality.voiceLines] || []
-    const eligible = lines.filter(l => l.minSpiceLevel <= spiciness)
-
-    if (eligible.length === 0) return null
-
-    const totalWeight = eligible.reduce((sum, l) => sum + l.weight, 0)
-    let random = Math.random() * totalWeight
-
-    for (const line of eligible) {
-      random -= line.weight
-      if (random <= 0) return line.text
-    }
-
-    return eligible[eligible.length - 1].text
+  ipcMain.handle('ai:getVoiceLine', async () => {
+    return null // Voice lines disabled
   })
 
   ipcMain.handle('ai:ping', async () => {
-    const settings = getSettings()
-    const provider = settings.diabella.provider
-
-    if (provider === 'ollama') {
-      try {
-        const res = await fetch(`${settings.diabella.ollama.url}/api/version`, {
-          method: 'GET',
-          signal: AbortSignal.timeout(3000)
-        })
-        return { ok: res.ok, provider: 'ollama' }
-      } catch (e: any) {
-        return { ok: false, provider: 'ollama', error: e.message }
-      }
-    }
-
-    if (provider === 'venice') {
-      if (!settings.diabella.venice.apiKey) {
-        return { ok: false, provider: 'venice', error: 'No API key configured' }
-      }
-      return { ok: true, provider: 'venice' }
-    }
-
-    return { ok: false, provider: 'none', error: 'No provider configured' }
+    return { ok: false, provider: 'none', error: 'AI disabled in v2.1.5' }
   })
 
-  // Text-to-Speech
-  ipcMain.handle('ai:speak', async (_ev, text: string) => {
-    const settings = getSettings()
-    return handleVeniceTTS(settings, text)
+  ipcMain.handle('ai:speak', async () => {
+    return { audio: null, error: 'TTS disabled - will be replaced with local TTS' }
   })
 
-  // Image Generation
-  ipcMain.handle('ai:generateImage', async (_ev, prompt: string, options?: { nsfw?: boolean }) => {
-    const settings = getSettings()
-    return handleVeniceImageGen(settings, prompt, options)
+  ipcMain.handle('ai:generateImage', async () => {
+    return { image: null, error: 'Image generation disabled' }
   })
 
   ipcMain.handle('ai:generateAvatar', async () => {
@@ -1130,17 +1641,63 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     const totalMedia = db.countMedia({ q: '', type: '', tag: '' })
     const videoCount = db.countMedia({ q: '', type: 'video', tag: '' })
     const imageCount = db.countMedia({ q: '', type: 'image', tag: '' })
+    const gifCount = db.countMedia({ q: '', type: 'gif', tag: '' })
     const tagCount = db.listTags().length
     const playlistCount = db.playlistList().length
+
+    // Get total file size and duration using raw SQL
+    let totalSizeBytes = 0
+    let totalDurationSec = 0
+    let topTags: Array<{ name: string; count: number }> = []
+    let recentlyAdded = 0
+    let avgRating = 0
+    let favoritesCount = 0
+    try {
+      const sizeRow = db.raw.prepare('SELECT COALESCE(SUM(size), 0) as total FROM media').get() as { total: number }
+      totalSizeBytes = sizeRow?.total ?? 0
+
+      const durationRow = db.raw.prepare('SELECT COALESCE(SUM(durationSec), 0) as total FROM media WHERE type = ?').get('video') as { total: number }
+      totalDurationSec = durationRow?.total ?? 0
+
+      // Get top 10 most used tags
+      topTags = db.raw.prepare(`
+        SELECT t.name, COUNT(mt.mediaId) as count
+        FROM tags t
+        JOIN media_tags mt ON t.id = mt.tagId
+        GROUP BY t.id
+        ORDER BY count DESC
+        LIMIT 10
+      `).all() as Array<{ name: string; count: number }>
+
+      // Get recently added (last 7 days)
+      const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+      const recentRow = db.raw.prepare('SELECT COUNT(*) as count FROM media WHERE addedAt > ?').get(weekAgo) as { count: number }
+      recentlyAdded = recentRow?.count ?? 0
+
+      // Get average rating and favorites count (ratings stored in media_stats table)
+      const ratingRow = db.raw.prepare('SELECT AVG(rating) as avg, COUNT(*) as favCount FROM media_stats WHERE rating > 0').get() as { avg: number; favCount: number }
+      avgRating = ratingRow?.avg ?? 0
+      const favRow = db.raw.prepare('SELECT COUNT(*) as count FROM media_stats WHERE rating >= 5').get() as { count: number }
+      favoritesCount = favRow?.count ?? 0
+    } catch (e) {
+      console.error('[vault:getStats] Failed to get size/duration:', e)
+    }
 
     return {
       totalMedia,
       videoCount,
       imageCount,
+      gifCount,
       tagCount,
       playlistCount,
+      totalSizeBytes,
+      totalDurationSec,
       mediaDirs: getMediaDirs().length,
-      cacheDir: getCacheDir()
+      cacheDir: getCacheDir(),
+      topTags,
+      recentlyAdded,
+      avgRating,
+      favoritesCount
     }
   })
 
@@ -1162,12 +1719,6 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return true
   })
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // RECOMMENDATIONS
-  // ═══════════════════════════════════════════════════════════════════════════
-  ipcMain.handle('recommend:forMedia', async (_ev, mediaId: string, limit?: number) => {
-    return db.recommendForMedia(mediaId, limit ?? 20)
-  })
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SEARCH SUGGESTIONS
@@ -1213,6 +1764,35 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       return true
     } catch (e) {
       return false
+    }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CACHE MANAGEMENT
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('cache:clearThumbnails', async () => {
+    try {
+      const cacheDir = getCacheDir()
+      const thumbsDir = path.join(cacheDir, 'thumbs')
+      if (!fs.existsSync(thumbsDir)) {
+        return { success: true, count: 0, freedBytes: 0 }
+      }
+      const files = fs.readdirSync(thumbsDir)
+      let freedBytes = 0
+      let count = 0
+      for (const file of files) {
+        try {
+          const filePath = path.join(thumbsDir, file)
+          const stat = fs.statSync(filePath)
+          freedBytes += stat.size
+          fs.unlinkSync(filePath)
+          count++
+        } catch {}
+      }
+      return { success: true, count, freedBytes }
+    } catch (e: any) {
+      console.error('[IPC] Failed to clear thumbnail cache:', e)
+      return { success: false, error: e?.message ?? 'Unknown error' }
     }
   })
 
@@ -1327,16 +1907,13 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return GOON_VOCABULARY
   })
 
-  ipcMain.handle('daylist:getNameConfig', async () => {
-    return DAYLIST_NAME_CONFIG
-  })
 
   // ═══════════════════════════════════════════════════════════════════════════
   // AUDIO - Sound Pack Organization & Voice Lines
   // ═══════════════════════════════════════════════════════════════════════════
   ipcMain.handle('audio:organizeSoundPack', async (_ev, sourceDir: string) => {
     try {
-      const targetDir = path.join(app.getPath('userData'), 'audio', 'diabella')
+      const targetDir = path.join(app.getPath('userData'), 'audio', 'voice')
       const organizer = new SoundOrganizer(sourceDir, targetDir)
       const files = await organizer.organize()
       const manifest = organizer.generateManifest(files)
@@ -1365,10 +1942,9 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       const vls = getVoiceLineService()
       await vls.initialize()
 
-      const settings = getSettings()
       const options = {
-        spiceLevel: settings.diabella.spiciness,
-        personality: (settings.diabella as any).activePersonalityPack ?? settings.diabella.activePackId
+        spiceLevel: 3, // Default spice level
+        personality: 'default'
       }
 
       const line = vls.getVoiceLine(category, subcategory, options)
@@ -1390,10 +1966,9 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       const vls = getVoiceLineService()
       await vls.initialize()
 
-      const settings = getSettings()
       const options = {
-        spiceLevel: settings.diabella.spiciness,
-        personality: (settings.diabella as any).activePersonalityPack ?? settings.diabella.activePackId
+        spiceLevel: 3,
+        personality: 'default'
       }
 
       const sequence = vls.getVoiceLineSequence(categories, options)
@@ -1467,8 +2042,8 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   ipcMain.handle('uiSounds:getUrl', async (_ev, filePath: string) => {
-    // Return vault:// protocol URL for the sound file
-    return `vault://${encodeURIComponent(filePath)}`
+    // Return vault:// protocol URL for the sound file (must match protocol handler format)
+    return `vault://media?path=${encodeURIComponent(filePath)}`
   })
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -2237,6 +2812,90 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // Optimize filenames for specific media IDs (bulk selection)
+  ipcMain.handle('media:optimizeNames', async (_ev, mediaIds: string[]) => {
+    try {
+      let optimized = 0
+      let skipped = 0
+      let failed = 0
+      const errors: string[] = []
+
+      for (const mediaId of mediaIds) {
+        try {
+          const media = db.getMedia(mediaId)
+          if (!media) {
+            skipped++
+            continue
+          }
+
+          const oldPath = media.path
+          if (!fs.existsSync(oldPath)) {
+            skipped++
+            continue
+          }
+
+          const dir = path.dirname(oldPath)
+          const ext = path.extname(oldPath)
+          const oldName = path.basename(oldPath, ext)
+
+          // Clean up the filename (same logic as optimizeAllNames)
+          let newName = oldName
+            .replace(/^(https?_|www_|xvideos_|pornhub_|xnxx_|xhamster_|redtube_|spankbang_|youporn_|join_us_|more_at_)/gi, '')
+            .replace(/(@\w+|telegram[_\s]?\d*|\d{3,}$)/gi, '')
+            .replace(/_/g, ' ')
+            .replace(/[\s_-]*(HD|1080p|720p|480p|4K|UHD|HQ)$/gi, '')
+            .replace(/[_-]?[a-f0-9]{24,}/gi, '')
+            .replace(/[-_]?video[-_]?\d{6,}/gi, '')
+            .replace(/[<>:"/\\|?*]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+
+          if (newName === oldName || newName.length < 3) {
+            skipped++
+            continue
+          }
+
+          newName = newName
+            .split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join(' ')
+
+          const newPath = path.join(dir, newName + ext)
+
+          if (fs.existsSync(newPath) && newPath.toLowerCase() !== oldPath.toLowerCase()) {
+            skipped++
+            continue
+          }
+
+          if (newPath !== oldPath) {
+            fs.renameSync(oldPath, newPath)
+            db.updateMediaPath(media.id, newPath, newName)
+            optimized++
+            console.log(`[OptimizeNames] Renamed: ${oldName} -> ${newName}`)
+          }
+        } catch (e: any) {
+          failed++
+          if (errors.length < 5) {
+            errors.push(`${mediaId}: ${e.message}`)
+          }
+        }
+      }
+
+      broadcast('vault:changed')
+      return {
+        success: true,
+        optimized,
+        skipped,
+        failed,
+        total: mediaIds.length,
+        errors: errors.length > 0 ? errors : undefined
+      }
+    } catch (e: any) {
+      console.error('[OptimizeNames] Error:', e)
+      return { success: false, error: e.message }
+    }
+  })
+
   // ═══════════════════════════════════════════════════════════════════════════
   // AI LIBRARY TOOLS - Tag cleaning, tag creation, AI file renaming
   // ═══════════════════════════════════════════════════════════════════════════
@@ -2569,297 +3228,41 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return { cleared: cache.clearAll(), namespace: 'all' }
   })
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ERROR LOGGING - Persistent log management
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('logs:getRecent', async (_ev, limit?: number) => {
+    return errorLogger.getRecentLogs(limit ?? 100)
+  })
+
+  ipcMain.handle('logs:getErrors', async (_ev, limit?: number) => {
+    return errorLogger.getRecentErrors(limit ?? 50)
+  })
+
+  ipcMain.handle('logs:getLogFilePath', async () => {
+    return errorLogger.getLogFilePath()
+  })
+
+  ipcMain.handle('logs:getContent', async () => {
+    return errorLogger.getLogFileContent()
+  })
+
+  ipcMain.handle('logs:clear', async () => {
+    return errorLogger.clearLogs()
+  })
+
+  ipcMain.handle('logs:log', async (_ev, level: 'info' | 'warn' | 'error', source: string, message: string, meta?: Record<string, unknown>) => {
+    if (level === 'error') {
+      errorLogger.error(source, message, undefined, meta)
+    } else if (level === 'warn') {
+      errorLogger.warn(source, message, meta)
+    } else {
+      errorLogger.info(source, message, meta)
+    }
+    return { success: true }
+  })
+
   // Auto-organize NSFW Soundpack on startup
   void autoOrganizeSoundpack()
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// AI PROVIDER HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function handleOllamaChat(settings: VaultSettings, payload: any) {
-  const { ollama, spiciness } = settings.diabella
-  const personality = getActivePersonality()
-
-  const systemPrompt = personality.systemPrompt +
-    `\n\nCurrent spice level: ${spiciness}/5. Adjust your flirtiness accordingly.`
-
-  try {
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      ...(payload.messages || [])
-    ]
-
-    const res = await fetch(`${ollama.url}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: ollama.model,
-        stream: false,
-        messages
-      }),
-      signal: AbortSignal.timeout(30000)
-    })
-
-    if (!res.ok) {
-      return { response: null, error: `Ollama error: ${res.status}` }
-    }
-
-    const data = await res.json()
-    return {
-      response: data.message?.content || 'No response',
-      error: null
-    }
-  } catch (e: any) {
-    return {
-      response: null,
-      error: e.message || 'Failed to connect to Ollama'
-    }
-  }
-}
-
-// Spice level to temperature mapping
-const SPICE_TEMPERATURE: Record<number, number> = {
-  1: 0.7,   // Mild - more predictable
-  2: 0.85,
-  3: 1.0,   // Medium - balanced
-  4: 1.15,
-  5: 1.3    // Extreme - very creative/explicit
-}
-
-// Spice level instructions
-const SPICE_INSTRUCTIONS: Record<number, string> = {
-  1: "Keep responses flirty but tasteful. Suggestive without being explicit.",
-  2: "More openly flirtatious. Can use mild innuendo and suggestive language.",
-  3: "Openly sexual tone. Can describe content and desires with moderate explicitness.",
-  4: "Very explicit and direct. Enthusiastically discusses sexual content. Uses adult language freely.",
-  5: "Completely uninhibited. Maximum explicitness. Dirty talk encouraged. No limits on sexual expression."
-}
-
-async function handleVeniceChat(settings: VaultSettings, payload: any, db: DB) {
-  const { venice, spiciness } = settings.diabella
-  const personality = getActivePersonality()
-  const cache = getAICacheService()
-
-  if (!venice.apiKey) {
-    return { response: null, error: 'Venice API key not configured' }
-  }
-
-  // Get video recommendations from the library for context
-  let videoContext = ''
-  try {
-    const videos = db.listMedia({ q: '', type: 'video', tag: '', limit: 10, offset: 0 })
-    if (videos.items.length > 0) {
-      const videoNames = videos.items.slice(0, 5).map(v => v.filename).join(', ')
-      videoContext = `
-
-AVAILABLE VIDEOS IN LIBRARY (suggest these when asked for recommendations):
-${videoNames}
-
-When the user asks for recommendations, suggestions, or what to watch, recommend videos from this library with enthusiasm. Be specific about the video names. Get excited about sharing them!`
-    }
-  } catch {
-    // Continue without video context if db access fails
-  }
-
-  // Build enhanced system prompt
-  const spiceInstruction = SPICE_INSTRUCTIONS[spiciness] || SPICE_INSTRUCTIONS[3]
-  const systemPrompt = `${personality.systemPrompt}
-
-CURRENT SPICE LEVEL: ${spiciness}/5
-${spiceInstruction}
-${videoContext}
-Stay in character. Be helpful, flirty, and fun.`
-
-  // Adjust temperature based on spice level
-  const temperature = SPICE_TEMPERATURE[spiciness] || venice.temperature
-
-  // Create cache key from user messages (excluding system prompt)
-  const userMessages = payload.messages || []
-  const cacheKey = cache.createChatKey(userMessages, spiciness)
-
-  // Check cache first
-  const cached = cache.get<{ response: string }>('chat', cacheKey)
-  if (cached) {
-    console.log('[AI] Cache hit for chat response')
-    return { response: cached.response, error: null, cached: true }
-  }
-
-  try {
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      ...userMessages
-    ]
-
-    const res = await fetch('https://api.venice.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${venice.apiKey}`
-      },
-      body: JSON.stringify({
-        model: venice.model,
-        messages,
-        temperature,
-        max_tokens: venice.maxTokens,
-        top_p: 0.95,
-        venice_parameters: {
-          include_venice_system_prompt: venice.includeVeniceSystemPrompt ?? false
-        }
-      }),
-      signal: AbortSignal.timeout(30000)
-    })
-
-    if (!res.ok) {
-      const errorText = await res.text()
-      return { response: null, error: `Venice error: ${res.status} - ${errorText}` }
-    }
-
-    const data = await res.json()
-    const response = data.choices?.[0]?.message?.content || null
-
-    // Cache successful response
-    if (response) {
-      cache.set('chat', cacheKey, { response })
-    }
-
-    return { response, error: null, cached: false }
-
-  } catch (e: any) {
-    return {
-      response: null,
-      error: e.message || 'Failed to connect to Venice AI'
-    }
-  }
-}
-
-// Venice Text-to-Speech (with caching)
-async function handleVeniceTTS(settings: VaultSettings, text: string): Promise<{ audio: string | null; error: string | null; cached?: boolean }> {
-  const { venice, tts } = settings.diabella
-  const cache = getAICacheService()
-
-  if (!venice.apiKey) {
-    return { audio: null, error: 'Venice API key not configured' }
-  }
-
-  if (!tts?.enabled) {
-    return { audio: null, error: 'TTS is disabled' }
-  }
-
-  // Create cache key
-  const voiceId = tts.voiceId || 'af_sky'
-  const cacheKey = cache.createTTSKey(text, voiceId)
-
-  // Check cache first (TTS is very expensive)
-  const cached = cache.get<{ audio: string }>('tts', cacheKey)
-  if (cached) {
-    console.log('[AI] Cache hit for TTS response')
-    return { audio: cached.audio, error: null, cached: true }
-  }
-
-  try {
-    const res = await fetch('https://api.venice.ai/api/v1/audio/speech', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${venice.apiKey}`
-      },
-      body: JSON.stringify({
-        input: text,
-        model: 'tts-kokoro',
-        voice: voiceId,
-        response_format: tts.format || 'mp3',
-        speed: tts.speed || 1.0,
-        streaming: false
-      }),
-      signal: AbortSignal.timeout(30000)
-    })
-
-    if (!res.ok) {
-      const errorText = await res.text()
-      return { audio: null, error: `TTS error: ${res.status} - ${errorText}` }
-    }
-
-    const buffer = await res.arrayBuffer()
-    const base64 = Buffer.from(buffer).toString('base64')
-
-    // Cache the audio (TTS is expensive, cache for 30 days)
-    cache.set('tts', cacheKey, { audio: base64 })
-    console.log('[AI] Cached TTS response')
-
-    return { audio: base64, error: null, cached: false }
-  } catch (e: any) {
-    return { audio: null, error: e.message || 'TTS failed' }
-  }
-}
-
-// Venice Image Generation (with caching)
-async function handleVeniceImageGen(
-  settings: VaultSettings,
-  prompt: string,
-  options?: { nsfw?: boolean; skipCache?: boolean }
-): Promise<{ image: string | null; error: string | null; cached?: boolean }> {
-  const { venice, imageGen, spiciness } = settings.diabella
-  const cache = getAICacheService()
-
-  if (!venice.apiKey) {
-    return { image: null, error: 'Venice API key not configured' }
-  }
-
-  if (!imageGen?.enabled) {
-    return { image: null, error: 'Image generation is disabled' }
-  }
-
-  const useNsfw = (options?.nsfw ?? imageGen.nsfwEnabled) && spiciness >= 4
-
-  // Create cache key
-  const cacheKey = cache.createImageKey(prompt, { nsfw: useNsfw, style: imageGen.model })
-
-  // Check cache first (unless explicitly skipped)
-  if (!options?.skipCache) {
-    const cached = cache.get<{ image: string }>('image', cacheKey)
-    if (cached) {
-      console.log('[AI] Cache hit for image')
-      return { image: cached.image, error: null, cached: true }
-    }
-  }
-
-  try {
-    const res = await fetch('https://api.venice.ai/api/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${venice.apiKey}`
-      },
-      body: JSON.stringify({
-        prompt,
-        model: useNsfw ? 'flux-dev-uncensored' : (imageGen.model || 'fluently-xl'),
-        n: 1,
-        size: imageGen.size || '1024x1024',
-        quality: imageGen.quality || 'hd',
-        style: 'vivid',
-        response_format: 'b64_json',
-        moderation: useNsfw ? 'none' : 'auto'
-      }),
-      signal: AbortSignal.timeout(60000)
-    })
-
-    if (!res.ok) {
-      const errorText = await res.text()
-      return { image: null, error: `Image gen error: ${res.status} - ${errorText}` }
-    }
-
-    const data = await res.json()
-    const image = data.data?.[0]?.b64_json || null
-
-    // Cache successful generation (images are expensive)
-    if (image) {
-      cache.set('image', cacheKey, { image })
-      console.log('[AI] Cached generated image')
-    }
-
-    return { image, error: null, cached: false }
-  } catch (e: any) {
-    return { image: null, error: e.message || 'Image generation failed' }
-  }
-}

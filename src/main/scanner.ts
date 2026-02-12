@@ -7,6 +7,9 @@ import { classifyMedia } from './media-utils'
 import type { DB } from './db'
 import { thumbExists } from './thumbs'
 
+// Prevent overlapping scans for the same directory
+const scanningDirs = new Set<string>()
+
 type AnalyzePayload = {
   mediaId: string
   path: string
@@ -35,46 +38,61 @@ function enqueueAnalyze(db: DB, payload: AnalyzePayload) {
 }
 
 export async function scanAndUpsertAll(db: DB, mediaDir: string): Promise<void> {
+  // Normalize path for consistent comparison
+  const normalizedDir = path.resolve(mediaDir).toLowerCase()
+
+  // Skip if already scanning this directory
+  if (scanningDirs.has(normalizedDir)) {
+    console.log(`[Scanner] Skipping duplicate scan of: ${mediaDir}`)
+    return
+  }
+
+  scanningDirs.add(normalizedDir)
   console.log(`[Scanner] Starting scan of: ${mediaDir}`)
 
   try {
     await fs.mkdir(mediaDir, { recursive: true })
   } catch (e) {
     console.error(`[Scanner] Failed to access directory: ${mediaDir}`, e)
+    scanningDirs.delete(normalizedDir)
     return
   }
 
-  const entries = await fg(['**/*.*', '**/*'], {
-    cwd: mediaDir,
-    dot: false,
-    onlyFiles: true,
-    absolute: true,
-    suppressErrors: true,
-    followSymbolicLinks: true,
-    deep: Infinity, // Scan all subdirectories
-    caseSensitiveMatch: false
-  })
+  try {
+    const entries = await fg(['**/*.*', '**/*'], {
+      cwd: mediaDir,
+      dot: false,
+      onlyFiles: true,
+      absolute: true,
+      suppressErrors: true,
+      followSymbolicLinks: true,
+      deep: Infinity, // Scan all subdirectories
+      caseSensitiveMatch: false
+    })
 
-  console.log(`[Scanner] Found ${entries.length} files in ${mediaDir}`)
+    console.log(`[Scanner] Found ${entries.length} files in ${mediaDir}`)
 
-  let processed = 0
-  let skipped = 0
+    let processed = 0
+    let skipped = 0
 
-  for (const p of entries) {
-    try {
-      const { type } = classifyMedia(p)
-      if (type) {
-        await upsertOne(db, p)
-        processed++
-      } else {
-        skipped++
+    for (const p of entries) {
+      try {
+        const { type } = classifyMedia(p)
+        if (type) {
+          await upsertOne(db, p)
+          processed++
+        } else {
+          skipped++
+        }
+      } catch (e) {
+        console.warn(`[Scanner] Error processing file: ${p}`, e)
       }
-    } catch (e) {
-      console.warn(`[Scanner] Error processing file: ${p}`, e)
     }
-  }
 
-  console.log(`[Scanner] Completed: ${processed} media files added, ${skipped} non-media files skipped`)
+    console.log(`[Scanner] Completed: ${processed} media files added, ${skipped} non-media files skipped`)
+  } finally {
+    scanningDirs.delete(normalizedDir)
+  }
 }
 
 export async function upsertOne(db: DB, filePath: string): Promise<void> {

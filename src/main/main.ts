@@ -16,6 +16,9 @@ import { registerVaultProtocol } from './vaultProtocol'
 import { makeImageThumb, makeVideoThumb, probeVideoDurationSec, probeMediaDimensions } from './thumbs'
 
 import { analyzeLoudness } from './services/loudness'
+import { initializeAiIntelligence } from './services/ai-intelligence'
+import { ffmpegBin } from './ffpaths'
+import { errorLogger, setupGlobalErrorHandlers } from './services/error-logger'
 
 const DEFAULT_DEV_SERVER_URL = 'http://localhost:5173/'
 
@@ -268,7 +271,23 @@ async function main() {
     logMain('info', 'Toggled diagnostics overlay (hotkey)')
   })
 
-  await createMainWindow()
+  const mainWindow = await createMainWindow()
+
+  // Initialize AI Intelligence system with graceful degradation
+  if (ffmpegBin) {
+    try {
+      initializeAiIntelligence(db, ffmpegBin, mainWindow)
+      logMain('info', 'AI Intelligence system initialized')
+      errorLogger.info('Main', 'AI Intelligence system initialized successfully')
+    } catch (err) {
+      // Graceful degradation - app continues without AI if initialization fails
+      logMain('error', 'AI Intelligence initialization failed - continuing without AI', { error: String(err) })
+      errorLogger.error('Main', 'AI Intelligence initialization failed - app will continue without AI features', err)
+    }
+  } else {
+    logMain('warn', 'FFmpeg not found, AI Intelligence system disabled')
+    errorLogger.warn('Main', 'FFmpeg not found - AI features disabled')
+  }
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) await createMainWindow()
@@ -279,6 +298,25 @@ async function main() {
     closeAllWatchers(watchers)
   })
 }
+
+// Initialize error logging and global error handlers
+errorLogger.initialize()
+setupGlobalErrorHandlers()
+
+// Fix GPU cache access denied errors by setting a custom cache directory
+// This must be done before app.whenReady()
+try {
+  const customCachePath = path.join(app.getPath('userData'), 'GPUCache')
+  if (!fs.existsSync(customCachePath)) {
+    fs.mkdirSync(customCachePath, { recursive: true })
+  }
+  app.setPath('cache', customCachePath)
+} catch (err) {
+  errorLogger.warn('Main', 'Failed to set custom cache path', { error: String(err) })
+}
+
+// Disable autofill feature to suppress "Autofill.enable" DevTools errors
+app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication')
 
 app.whenReady().then(() => void main())
 

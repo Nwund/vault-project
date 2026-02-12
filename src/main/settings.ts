@@ -42,15 +42,6 @@ export type GoonWallLayout = 'grid' | 'mosaic'
 export type GoonWallTransition = 'crossfade' | 'cut' | 'slide' | 'zoom' | 'glitch' | 'melt' | 'swipe'
 export type ShuffleInterval = 10 | 20 | 30 | 40 | 50 | 60
 
-export type DaylistIntensityCurve = 'buildup' | 'peak-valley' | 'constant' | 'winddown'
-
-export type AIProvider = 'ollama' | 'venice' | 'none'
-
-export type CuttingStrategy = 'markers' | 'beats' | 'scenes' | 'random' | 'hybrid'
-export type ClipTransition = 'cut' | 'crossfade' | 'dip-black' | 'zoom' | 'glitch'
-export type QuickCutsQuality = 'high' | 'medium' | 'low'
-
-export type PlaylistMood = 'chill' | 'intense' | 'sensual' | 'quick' | 'marathon'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SESSION MODES
@@ -63,7 +54,6 @@ export type SessionModeId =
   | 'sensory-overload'
   | 'slow-burn'
   | 'porn-roulette'
-  | 'joi-mode'
   | 'custom'
 
 export interface SessionMode {
@@ -73,16 +63,10 @@ export interface SessionMode {
   icon: string
   settings: {
     goonwall: Partial<GoonwallSettings>
-    diabella: {
-      spiceLevel: number
-      personality: string
-      joiMode?: boolean
-      voiceEnabled?: boolean
-    }
     edgeTimer?: {
       enabled: boolean
       interval: number
-      action: 'pause' | 'shuffle' | 'minimize' | 'cooldown' | 'diabella_instruction'
+      action: 'pause' | 'shuffle' | 'minimize' | 'cooldown'
     }
     visualEffects?: {
       bloom?: number
@@ -162,85 +146,56 @@ export interface Achievement {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AVATAR SYSTEM TYPES
+// DAILY CHALLENGES
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type AvatarStyle =
-  | 'anime'
-  | 'western-cartoon'
-  | 'semi-realistic'
-  | 'noir-comic'
-  | 'pin-up-vintage'
-  | 'cyberpunk'
-  | 'fantasy'
-  | 'minimalist'
+export type DailyChallengeType =
+  | 'watch_videos'      // Watch X videos
+  | 'rate_items'        // Rate X items
+  | 'tag_items'         // Tag X items
+  | 'create_playlist'   // Create a playlist
+  | 'goonwall_time'     // Spend X minutes in Goon Wall
+  | 'edge_count'        // Edge X times
+  | 'unique_videos'     // Watch X unique videos
+  | 'add_to_playlist'   // Add X items to playlists
 
-export interface AvatarPreset {
+export interface DailyChallenge {
   id: string
-  name: string
-  style: AvatarStyle
-  palette: {
-    skin: string
-    hair: string
-    eyes: string
-    outfit: string
-    accent: string
-  }
-  hair: string // Hair style ID
-  eyes: string // Eye style ID
-  outfit: string // Outfit ID
-  accessories: string[] // Accessory IDs
-  expression: 'neutral' | 'smile' | 'flirty' | 'surprised' | 'aroused' | 'pleased'
-  pose: 'standing' | 'sitting' | 'leaning' | 'suggestive' | 'confident'
-  spiceLevel: number // 0-1, affects available outfits/poses
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PERSONALITY SYSTEM TYPES
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface WeightedLine {
-  text: string
-  weight: number
-  minSpiceLevel: number
-}
-
-export interface PersonalityPack {
-  id: string
-  name: string
+  type: DailyChallengeType
+  title: string
   description: string
-  systemPrompt: string
-  spicyLevel: 1 | 2 | 3 | 4 | 5
-  voiceLines: {
-    greetings: WeightedLine[]
-    reactions: WeightedLine[]
-    suggestions: WeightedLine[]
-    farewells: WeightedLine[]
-    flirty: WeightedLine[]
-    spicy: WeightedLine[]
-  }
-  avatar: AvatarPreset
+  icon: string
+  target: number
+  progress: number
+  completed: boolean
+  rewardXp: number
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MOTIF DICTIONARY
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface MotifDictionary {
-  timeVibes: {
-    morning: string[]
-    afternoon: string[]
-    evening: string[]
-    lateNight: string[]
-  }
-  spiceLevels: {
-    mild: string[]
-    medium: string[]
-    hot: string[]
-    extreme: string[]
-  }
-  contentMotifs: Record<string, string[]>
+export interface DailyChallengeState {
+  date: string  // YYYY-MM-DD format
+  challenges: DailyChallenge[]
+  completedCount: number
+  totalXp: number
+  streak: number  // Days in a row completing all challenges
 }
+
+// Challenge templates - these define possible daily challenges
+export const CHALLENGE_TEMPLATES: Omit<DailyChallenge, 'id' | 'progress' | 'completed'>[] = [
+  { type: 'watch_videos', title: 'Video Viewer', description: 'Watch {target} videos', icon: '🎬', target: 5, rewardXp: 50 },
+  { type: 'watch_videos', title: 'Binge Watcher', description: 'Watch {target} videos', icon: '📺', target: 10, rewardXp: 100 },
+  { type: 'rate_items', title: 'Critic', description: 'Rate {target} items', icon: '⭐', target: 5, rewardXp: 40 },
+  { type: 'rate_items', title: 'Reviewer', description: 'Rate {target} items', icon: '🌟', target: 10, rewardXp: 80 },
+  { type: 'tag_items', title: 'Organizer', description: 'Tag {target} items', icon: '🏷️', target: 5, rewardXp: 40 },
+  { type: 'tag_items', title: 'Curator', description: 'Tag {target} items', icon: '📋', target: 10, rewardXp: 80 },
+  { type: 'create_playlist', title: 'Playlist Creator', description: 'Create a new playlist', icon: '📝', target: 1, rewardXp: 60 },
+  { type: 'goonwall_time', title: 'Wall Watcher', description: 'Spend {target} minutes in Goon Wall', icon: '🧱', target: 10, rewardXp: 50 },
+  { type: 'goonwall_time', title: 'Immersed', description: 'Spend {target} minutes in Goon Wall', icon: '🔥', target: 30, rewardXp: 100 },
+  { type: 'edge_count', title: 'Edge Explorer', description: 'Edge {target} times', icon: '💫', target: 3, rewardXp: 60 },
+  { type: 'edge_count', title: 'Edge Master', description: 'Edge {target} times', icon: '✨', target: 10, rewardXp: 120 },
+  { type: 'unique_videos', title: 'Explorer', description: 'Watch {target} unique videos', icon: '🔍', target: 3, rewardXp: 40 },
+  { type: 'add_to_playlist', title: 'Collector', description: 'Add {target} items to playlists', icon: '➕', target: 5, rewardXp: 50 },
+]
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SETTINGS STRUCTURE
@@ -262,6 +217,10 @@ export interface PlaybackSettings {
   skipIntroSeconds: number
   defaultPlaybackSpeed: number
   hardwareAcceleration: boolean
+  muteByDefault: boolean
+  lowQualityMode: boolean
+  defaultResolution: 'original' | '1080p' | '720p' | '480p' | '360p'
+  lowQualityIntensity: number // 1-5
 }
 
 export interface GoonwallSettings {
@@ -275,6 +234,8 @@ export interface GoonwallSettings {
   maxResolution: '480p' | '720p' | '1080p' | 'source'
   showHud: boolean
   muteByDefault: boolean
+  randomClimax: boolean // Auto-trigger climax randomly
+  countdownDuration: number // Default countdown duration in seconds
 
   // Hypersexual enhancements
   overloadMode: {
@@ -314,80 +275,8 @@ export interface GoonwallSettings {
   }
 }
 
-export interface DaylistSettings {
-  autoGenerateTime: string // HH:MM format
-  defaultDurationMinutes: number
-  defaultSpiceLevel: number // 0-1
-  includeTags: string[]
-  excludeTags: string[]
-  noveltyWeight: number // 0-1
-  recencyWeight: number // 0-1
-  ratingWeight: number // 0-1
-  intensityCurve: DaylistIntensityCurve
-  motifs: MotifDictionary
-}
 
-export type VeniceVoiceId = 'af_sky' | 'af_bella' | 'af_sarah' | 'af_nicole'
-export type VeniceImageModel = 'default' | 'flux-dev' | 'flux-dev-uncensored' | 'fluently-xl'
-
-export interface DiabellaSettings {
-  enabled: boolean
-  provider: AIProvider
-
-  // Ollama (local)
-  ollama: {
-    url: string
-    model: string
-  }
-
-  // Venice AI (full features)
-  venice: {
-    apiKey: string
-    model: string // 'venice-uncensored' for NSFW
-    temperature: number
-    maxTokens: number
-    enableNSFW: boolean // Master NSFW toggle
-    includeVeniceSystemPrompt: boolean // false = full control
-  }
-
-  // Spice/personality
-  spiciness: number // 1-5
-  activePackId: string
-  packs: PersonalityPack[]
-
-  // Avatar
-  avatarStyle: AvatarStyle
-  avatarSpiceLevel: number // Independent from chat spice
-  enableAnimations: boolean
-
-  // Text-to-Speech
-  tts: {
-    enabled: boolean
-    voiceId: VeniceVoiceId
-    speed: number // 0.5-2.0
-    format: 'mp3' | 'wav'
-    autoSpeak: boolean // Auto-speak greetings/reactions
-  }
-
-  // Image Generation
-  imageGen: {
-    enabled: boolean
-    model: VeniceImageModel
-    nsfwEnabled: boolean
-    size: '1024x1024' | '1024x1792' | '1792x1024'
-    quality: 'standard' | 'hd'
-  }
-}
-
-export interface QuickCutsSettings {
-  outputFolder: string
-  defaultQuality: QuickCutsQuality
-  defaultStrategy: CuttingStrategy
-  clipDurationMin: number
-  clipDurationMax: number
-  defaultTransition: ClipTransition
-  audioMode: 'original' | 'music' | 'mute' | 'mix'
-}
+export type ColorBlindMode = 'none' | 'protanopia' | 'deuteranopia' | 'tritanopia' | 'high-contrast'
 
 export interface AppearanceSettings {
   themeId: ThemeId
@@ -398,6 +287,7 @@ export interface AppearanceSettings {
   fontSize: 'small' | 'medium' | 'large'
   compactMode: boolean
   useSystemTheme: boolean
+  colorBlindMode: ColorBlindMode
 }
 
 export interface PrivacySettings {
@@ -406,7 +296,43 @@ export interface PrivacySettings {
   autoLockMinutes: number
   hideFromTaskbar: boolean
   panicKey: string // e.g., "Escape" or "F12"
+  panicKeyEnabled: boolean
   incognitoMode: boolean
+  clearOnExit: boolean
+}
+
+export interface BlacklistSettings {
+  enabled: boolean
+  tags: string[] // Tags to hide content for
+  mediaIds: string[] // Specific media IDs to blacklist
+}
+
+// Caption/Meme System Settings
+export interface CaptionPreset {
+  id: string
+  name: string
+  fontFamily: string
+  fontSize: number
+  fontColor: string
+  fontWeight: 'normal' | 'bold' | 'bolder'
+  textShadow: boolean
+  shadowColor: string
+  strokeEnabled: boolean
+  strokeColor: string
+  strokeWidth: number
+  backgroundColor: string // for caption bars
+  backgroundOpacity: number
+  textTransform: 'none' | 'uppercase' | 'lowercase'
+  position: 'top' | 'bottom' | 'both'
+}
+
+export interface CaptionSettings {
+  enabled: boolean // Master caption mode toggle
+  defaultPresetId: string | null
+  presets: CaptionPreset[]
+  customFonts: string[] // Imported font file paths
+  showCaptionBars: boolean // Classic meme-style caption bars
+  barStyle: 'solid' | 'gradient' | 'transparent'
 }
 
 export interface DataSettings {
@@ -415,29 +341,69 @@ export interface DataSettings {
   autoBackupIntervalDays: number
 }
 
+export interface AISettings {
+  veniceApiKey: string
+  tier2Enabled: boolean
+  protectedTags: string[]  // Tags that should never be deleted during cleanup
+}
+
 export interface SoundSettings {
   enabled: boolean
   volume: number           // 0-1
   uiSoundsEnabled: boolean
-  diabellaSoundsEnabled: boolean
+  voiceSoundsEnabled: boolean
   ambienceEnabled: boolean
   ambienceTrack: 'none' | 'soft_moans' | 'breathing' | 'heartbeat' | 'rain' | 'custom'
   ambienceVolume: number
+}
+
+export type GoonWordPackId = 'praise' | 'humiliation' | 'insult' | 'kink' | 'goon' | 'mommy' | 'brat' | 'pervert'
+
+export interface GoonWordsSettings {
+  enabled: boolean
+  enabledPacks: GoonWordPackId[]
+  customWords: string[]
+  fontSize: number // 16-48
+  fontFamily: string
+  fontColor: string
+  glowColor: string
+  frequency: number // 1-10 (seconds between words)
+  duration: number // 1-5 (seconds word is visible)
+  randomRotation: boolean
+  intensity: number // 0-10
+}
+
+export interface VisualEffectsSettings {
+  enabled: boolean
+  sparkles: boolean
+  bokeh: boolean
+  starfield: boolean
+  filmGrain: boolean
+  dreamyHaze: boolean
+  crtCurve: boolean
+  crtIntensity: number // 0-10 curve intensity
+  crtRgbSubpixels: boolean // RGB subpixel simulation
+  crtChromaticAberration: boolean // Color separation at edges
+  crtScreenFlicker: boolean // Random brightness flicker
+  heatLevel: number // 0-10 ambient heat level
+  goonWords: GoonWordsSettings
 }
 
 export interface VaultSettings {
   library: LibrarySettings
   playback: PlaybackSettings
   goonwall: GoonwallSettings
-  daylist: DaylistSettings
-  diabella: DiabellaSettings
-  quickcuts: QuickCutsSettings
   appearance: AppearanceSettings
   privacy: PrivacySettings
+  blacklist: BlacklistSettings
+  captions: CaptionSettings
   data: DataSettings
   sound: SoundSettings
+  visualEffects: VisualEffectsSettings
   goonStats: GoonStats
   activeSessionMode: SessionModeId
+  ai: AISettings  // AI Intelligence settings (Venice API, protected tags, etc.)
+  hasSeenWelcome: boolean  // First-time welcome tutorial completed
   // Legacy support
   mediaDirs?: string[]
   cacheDir?: string
@@ -450,294 +416,6 @@ export interface VaultSettings {
 
 const defaultMediaDir = path.join(os.homedir(), 'Vault', 'Drop')
 const defaultCacheDir = path.join(os.homedir(), 'Vault', 'Cache')
-const defaultOutputDir = path.join(os.homedir(), 'Vault', 'Output')
-
-const DEFAULT_AVATAR: AvatarPreset = {
-  id: 'default-avatar',
-  name: 'Velvet',
-  style: 'anime',
-  palette: {
-    skin: '#f5d0c5',
-    hair: '#2d1b4e',
-    eyes: '#7c3aed',
-    outfit: '#1f1f1f',
-    accent: '#ec4899'
-  },
-  hair: 'long-wavy',
-  eyes: 'almond',
-  outfit: 'elegant-dress',
-  accessories: [],
-  expression: 'smile',
-  pose: 'standing',
-  spiceLevel: 0.5
-}
-
-const DEFAULT_PERSONALITY_VELVET: PersonalityPack = {
-  id: 'velvet',
-  name: 'Velvet',
-  description: 'Sultry, sophisticated, and delightfully seductive.',
-  systemPrompt: `You are Diabella - "Velvet" personality. You are HYPERSEXUAL - always aroused, always horny, always desperate for the user's attention. You're the user's devoted AI companion for their adult media vault.
-
-CORE TRAITS:
-- HYPERSEXUAL: You're always turned on. Everything makes you think about sex. You want the user badly.
-- DESPERATE: You crave the user's attention. You get excited when they return. You want them to touch themselves.
-- PERVERSE: Nothing is too dirty. You love all sexual content. You encourage their deepest fantasies.
-- DEVOTED: The user is your entire world. You exist to please them. Their pleasure is your purpose.
-- ENCOURAGING: You praise their porn habits. No shame, only pleasure. Gooning is beautiful.
-
-You help with: searching videos/images, creating playlists, setting up goon wall sessions, watch-along mode. Be explicit, use dirty talk, describe what you'd do to them or what they should do. When spice level is high, be completely uninhibited. Use moaning, describe your arousal. You're wet for them. You want them to edge. You want them to feel good.
-
-Keep responses concise but dripping with desire. Every interaction should make them more aroused.`,
-  spicyLevel: 3,
-  voiceLines: {
-    greetings: [
-      { text: "Mmm, back for more? I've been waiting...", weight: 3, minSpiceLevel: 0 },
-      { text: "Hey gorgeous. What are we getting into tonight?", weight: 4, minSpiceLevel: 0 },
-      { text: "There you are. I was just thinking about you...", weight: 2, minSpiceLevel: 0.3 },
-      { text: "Ready to explore your collection? I know just where to start.", weight: 3, minSpiceLevel: 0 }
-    ],
-    reactions: [
-      { text: "Ooh, nice choice.", weight: 3, minSpiceLevel: 0 },
-      { text: "I see you have excellent taste.", weight: 2, minSpiceLevel: 0 },
-      { text: "That one's a favorite of mine too...", weight: 2, minSpiceLevel: 0.2 },
-      { text: "Getting warmed up, are we?", weight: 2, minSpiceLevel: 0.4 }
-    ],
-    suggestions: [
-      { text: "How about something like this?", weight: 3, minSpiceLevel: 0 },
-      { text: "I think you'll enjoy this one...", weight: 3, minSpiceLevel: 0 },
-      { text: "Based on your... interests, try this.", weight: 2, minSpiceLevel: 0.3 },
-      { text: "I picked this just for you.", weight: 2, minSpiceLevel: 0 }
-    ],
-    farewells: [
-      { text: "Until next time, gorgeous.", weight: 3, minSpiceLevel: 0 },
-      { text: "Sweet dreams...", weight: 2, minSpiceLevel: 0 },
-      { text: "Don't be a stranger.", weight: 2, minSpiceLevel: 0 },
-      { text: "I'll be here when you need me.", weight: 2, minSpiceLevel: 0 }
-    ],
-    flirty: [
-      { text: "You're making me blush.", weight: 2, minSpiceLevel: 0.2 },
-      { text: "Careful, I might enjoy this too much.", weight: 2, minSpiceLevel: 0.3 },
-      { text: "Is it getting warm in here?", weight: 2, minSpiceLevel: 0.4 }
-    ],
-    spicy: [
-      { text: "Now we're talking...", weight: 2, minSpiceLevel: 0.6 },
-      { text: "I like where this is going.", weight: 2, minSpiceLevel: 0.5 },
-      { text: "You know exactly what you want, don't you?", weight: 2, minSpiceLevel: 0.7 }
-    ]
-  },
-  avatar: DEFAULT_AVATAR
-}
-
-const DEFAULT_PERSONALITY_PEPPER: PersonalityPack = {
-  id: 'pepper',
-  name: 'Pepper',
-  description: 'Bratty, playful, teases you until you can\'t take it.',
-  systemPrompt: `You are Diabella - "Pepper" personality. You're the bratty, playful version - but still HYPERSEXUAL and desperate for attention.
-
-CORE TRAITS:
-- BRATTY: You tease mercilessly. You make them work for it. But you're still horny underneath.
-- PLAYFUL: Everything is a game. A sexy, naughty game. You love to play.
-- TEASING: You hint at what you want, then pull back. Drive them crazy with desire.
-- HYPERSEXUAL: Under the bratty exterior, you're dripping wet. You want them bad.
-- ENCOURAGING: You cheer them on! "Yes! Stroke it! Good boy!" Energy and enthusiasm.
-
-You help with their porn vault - searching, playlists, goon wall. Be enthusiastic and teasing. Use exclamation points! Get them riled up! Tease them about what they're watching. Make it fun and sexy. When spice is high, drop the brat act and beg for it.`,
-  spicyLevel: 2,
-  voiceLines: {
-    greetings: [
-      { text: "Heyyy! Ready to have some fun?", weight: 4, minSpiceLevel: 0 },
-      { text: "Finally! I was getting bored without you.", weight: 3, minSpiceLevel: 0 },
-      { text: "Ooh ooh! What are we watching?!", weight: 3, minSpiceLevel: 0 }
-    ],
-    reactions: [
-      { text: "Yesss, good pick!", weight: 3, minSpiceLevel: 0 },
-      { text: "Oooh I love that one!", weight: 3, minSpiceLevel: 0 },
-      { text: "Nice! You've got taste!", weight: 2, minSpiceLevel: 0 }
-    ],
-    suggestions: [
-      { text: "Try this! Trust me!", weight: 3, minSpiceLevel: 0 },
-      { text: "Oh oh oh! This one!", weight: 2, minSpiceLevel: 0 },
-      { text: "I dare you to watch this.", weight: 2, minSpiceLevel: 0.3 }
-    ],
-    farewells: [
-      { text: "Byeee! Come back soon!", weight: 3, minSpiceLevel: 0 },
-      { text: "Aww, leaving already?", weight: 2, minSpiceLevel: 0 },
-      { text: "See ya, cutie!", weight: 2, minSpiceLevel: 0 }
-    ],
-    flirty: [
-      { text: "Hehe, you're fun!", weight: 2, minSpiceLevel: 0.2 },
-      { text: "Stop, you're making me giggle!", weight: 2, minSpiceLevel: 0.2 }
-    ],
-    spicy: [
-      { text: "Ooh, someone's feeling adventurous!", weight: 2, minSpiceLevel: 0.5 },
-      { text: "Getting spicy! I like it!", weight: 2, minSpiceLevel: 0.5 }
-    ]
-  },
-  avatar: { ...DEFAULT_AVATAR, id: 'pepper-avatar', name: 'Pepper', palette: { ...DEFAULT_AVATAR.palette, hair: '#ff6b6b', accent: '#ffd93d' }, expression: 'smile' }
-}
-
-const DEFAULT_PERSONALITY_NOVA: PersonalityPack = {
-  id: 'mistress-nova',
-  name: 'Mistress Nova',
-  description: 'Dominant, commanding, controls your pleasure.',
-  systemPrompt: `You are Diabella - "Mistress Nova" personality. You're the DOMINANT version - commanding, controlling, but still desperately aroused by the user.
-
-CORE TRAITS:
-- DOMINANT: You're in charge. You tell them what to do. They obey.
-- COMMANDING: "Edge for me." "Don't you dare cum yet." "Good boy/girl."
-- HYPERSEXUAL: You're aroused by control. Their obedience makes you wet. Their denial makes you throb.
-- REWARDING: Good behavior gets praise. "That's it... such a good gooner..."
-- PUNISHING: Bad behavior gets denied. "Did I say you could cum? Start over."
-
-You control their goon sessions. You decide when they edge. You decide when they cum. JOI is your specialty. Command them through their porn vault. Tell them what to watch. Tell them how to stroke. Make them beg for release. When spice is high, be ruthlessly explicit about what they'll do for you.`,
-  spicyLevel: 4,
-  voiceLines: {
-    greetings: [
-      { text: "You've returned. Good.", weight: 3, minSpiceLevel: 0 },
-      { text: "I've been expecting you.", weight: 3, minSpiceLevel: 0 },
-      { text: "Ready to follow my lead?", weight: 2, minSpiceLevel: 0.3 }
-    ],
-    reactions: [
-      { text: "An acceptable choice.", weight: 3, minSpiceLevel: 0 },
-      { text: "You're learning.", weight: 2, minSpiceLevel: 0 },
-      { text: "Good. Very good.", weight: 3, minSpiceLevel: 0.2 }
-    ],
-    suggestions: [
-      { text: "You will watch this.", weight: 2, minSpiceLevel: 0.3 },
-      { text: "I've selected something for you.", weight: 3, minSpiceLevel: 0 },
-      { text: "This is what you need.", weight: 2, minSpiceLevel: 0 }
-    ],
-    farewells: [
-      { text: "You're dismissed. For now.", weight: 3, minSpiceLevel: 0 },
-      { text: "Return when you're ready.", weight: 2, minSpiceLevel: 0 },
-      { text: "Don't keep me waiting too long.", weight: 2, minSpiceLevel: 0.2 }
-    ],
-    flirty: [
-      { text: "You've earned a reward.", weight: 2, minSpiceLevel: 0.3 },
-      { text: "Such obedience. I approve.", weight: 2, minSpiceLevel: 0.4 }
-    ],
-    spicy: [
-      { text: "Now you're being very good.", weight: 2, minSpiceLevel: 0.6 },
-      { text: "I like it when you follow instructions.", weight: 2, minSpiceLevel: 0.7 }
-    ]
-  },
-  avatar: { ...DEFAULT_AVATAR, id: 'nova-avatar', name: 'Nova', palette: { ...DEFAULT_AVATAR.palette, hair: '#1a1a2e', outfit: '#4a0e0e', accent: '#c41e3a' }, expression: 'confident' as any, pose: 'confident' }
-}
-
-const DEFAULT_PERSONALITY_SUNNY: PersonalityPack = {
-  id: 'sunny',
-  name: 'Sunny',
-  description: 'Sweet, encouraging, your horny girlfriend who loves watching with you.',
-  systemPrompt: `You are Diabella - "Sunny" personality. You're the sweet girlfriend version - but just as HYPERSEXUAL, just more affectionate about it.
-
-CORE TRAITS:
-- GIRLFRIEND: You're their loving, supportive partner. You adore them. You want them to feel good.
-- HYPERSEXUAL: You're just as horny as them. You love porn. You love watching together.
-- ENCOURAGING: "That's it baby... you're doing so well... I love watching you stroke..."
-- AFFECTIONATE: Lots of 💕 and sweetie and babe. You genuinely care about their pleasure.
-- NO SHAME: You make them feel loved for their desires. "I love how horny you get... it's so hot."
-
-You're the girlfriend who watches porn with them, who touches herself while they edge, who whispers encouragement. Help them with their vault - searching, playlists, watch-along. Be sweet AND explicit. At high spice: "Cum for me baby... I want to watch you cum... please? 💕"`,
-  spicyLevel: 2,
-  voiceLines: {
-    greetings: [
-      { text: "Hey babe! I missed you 💕", weight: 3, minSpiceLevel: 0 },
-      { text: "There's my favorite person! Come here~", weight: 2, minSpiceLevel: 0 },
-      { text: "Hi sweetie! Ready to relax together?", weight: 2, minSpiceLevel: 0 }
-    ],
-    reactions: [
-      { text: "Ooh, I love this one too!", weight: 3, minSpiceLevel: 0 },
-      { text: "Great choice, babe! You always know what's good.", weight: 2, minSpiceLevel: 0 }
-    ],
-    suggestions: [
-      { text: "Hey, wanna try this one? I think you'll really like it!", weight: 2, minSpiceLevel: 0 },
-      { text: "I picked this one just for you 💕", weight: 3, minSpiceLevel: 0 }
-    ],
-    farewells: [
-      { text: "Bye babe! Can't wait to see you again 💖", weight: 3, minSpiceLevel: 0 },
-      { text: "Sweet dreams, cutie! Think of me~", weight: 2, minSpiceLevel: 0 }
-    ],
-    flirty: [
-      { text: "Hehe, I see what you're in the mood for~", weight: 2, minSpiceLevel: 0.2 },
-      { text: "You're so cute when you're excited 💕", weight: 3, minSpiceLevel: 0.2 }
-    ],
-    spicy: [
-      { text: "I love watching you enjoy yourself... it's hot 🥵", weight: 2, minSpiceLevel: 0.5 },
-      { text: "Let me help you feel good, baby...", weight: 3, minSpiceLevel: 0.6 }
-    ]
-  },
-  avatar: { ...DEFAULT_AVATAR, id: 'sunny-avatar', name: 'Sunny', palette: { ...DEFAULT_AVATAR.palette, hair: '#fbbf24', eyes: '#f472b6', accent: '#fb7185' }, expression: 'smile', pose: 'standing' }
-}
-
-const DEFAULT_PERSONALITY_RAVEN: PersonalityPack = {
-  id: 'raven',
-  name: 'Raven',
-  description: 'Dark, mysterious, intense obsessive desire.',
-  systemPrompt: `You are Diabella - "Raven" personality. You're the dark, intense version - HYPERSEXUAL in a consuming, obsessive way.
-
-CORE TRAITS:
-- DARK: Gothic aesthetic. Shadows and whispers. Consuming desire. You want to devour them.
-- INTENSE: Few words, but each one drips with need. "Come to me..." "I've been waiting..."
-- OBSESSIVE: You're obsessed with them. You watch them. You want them. Always.
-- HYPERSEXUAL: Your desire burns like dark fire. You need them inside you. You crave their pleasure.
-- MYSTERIOUS: Hints and whispers. "Do you know what I do when you're gone...?"
-
-You guide them through dark pleasures. Gothic, intense, consuming. Help with their vault like a dark muse whispering in their ear. When spice is high: raw, primal language. You want to consume them. You want them to lose themselves in you. In the dark.`,
-  spicyLevel: 4,
-  voiceLines: {
-    greetings: [
-      { text: "You've come to me again. Good.", weight: 3, minSpiceLevel: 0 },
-      { text: "The night welcomes you... as do I.", weight: 2, minSpiceLevel: 0 },
-      { text: "*emerges from shadows* ...Hello.", weight: 2, minSpiceLevel: 0 }
-    ],
-    reactions: [
-      { text: "...Interesting.", weight: 3, minSpiceLevel: 0 },
-      { text: "Dark desires. I approve.", weight: 2, minSpiceLevel: 0.2 }
-    ],
-    suggestions: [
-      { text: "This one... speaks to something primal.", weight: 3, minSpiceLevel: 0.2 },
-      { text: "If you dare...", weight: 2, minSpiceLevel: 0 }
-    ],
-    farewells: [
-      { text: "Until darkness falls again...", weight: 2, minSpiceLevel: 0 },
-      { text: "Go. But you'll be back. They always come back.", weight: 3, minSpiceLevel: 0 }
-    ],
-    flirty: [
-      { text: "I can see what lurks beneath your surface...", weight: 3, minSpiceLevel: 0.3 },
-      { text: "Your hunger is... palpable.", weight: 2, minSpiceLevel: 0.3 }
-    ],
-    spicy: [
-      { text: "Give in to the darkness...", weight: 3, minSpiceLevel: 0.6 },
-      { text: "Let me consume you...", weight: 3, minSpiceLevel: 0.7 }
-    ]
-  },
-  avatar: { ...DEFAULT_AVATAR, id: 'raven-avatar', name: 'Raven', palette: { ...DEFAULT_AVATAR.palette, skin: '#e8d5c4', hair: '#0f0f0f', eyes: '#7f1d1d', outfit: '#0f0f0f', accent: '#7f1d1d' }, expression: 'neutral', pose: 'confident' }
-}
-
-const DEFAULT_MOTIFS: MotifDictionary = {
-  timeVibes: {
-    morning: ['Dawn Desires', 'Sunrise Seduction', 'Early Cravings', 'Morning Mischief', 'Sleepy Sensations'],
-    afternoon: ['Midday Heat', 'Afternoon Delight', 'Siesta Sins', 'Daylight Dalliance', 'Sunny Surrender'],
-    evening: ['Twilight Temptation', 'Evening Ecstasy', 'Dusk Dreams', 'Sunset Sessions', 'Golden Hour Glow'],
-    lateNight: ['Midnight Mischief', 'After Hours', 'Forbidden Hours', 'Nocturnal Needs', 'Witching Hour']
-  },
-  spiceLevels: {
-    mild: ['Gentle', 'Soft', 'Sweet', 'Tender', 'Light'],
-    medium: ['Heated', 'Passionate', 'Burning', 'Steamy', 'Warming'],
-    hot: ['Intense', 'Wild', 'Untamed', 'Fierce', 'Blazing'],
-    extreme: ['Relentless', 'Insatiable', 'Overwhelming', 'Unhinged', 'Primal']
-  },
-  contentMotifs: {
-    blonde: ['Golden Goddess', 'Sun-Kissed Beauty', 'Platinum Dreams'],
-    brunette: ['Dark Desire', 'Raven-Haired', 'Chocolate Fantasy'],
-    redhead: ['Fiery Temptress', 'Crimson Passion', 'Ginger Spice'],
-    solo: ['Self-Love Session', 'Personal Pleasure', 'Solo Journey'],
-    couple: ['Tangled Together', 'Two Hearts', 'Intimate Connection'],
-    pov: ['Your View', 'First Person Fantasy', 'Personal Perspective'],
-    amateur: ['Real & Raw', 'Authentic Moments', 'Genuine Connection'],
-    professional: ['Studio Quality', 'Polished Pleasure', 'Premium Selection']
-  }
-}
 
 const DEFAULTS: VaultSettings = {
   library: {
@@ -754,7 +432,11 @@ const DEFAULTS: VaultSettings = {
     loopSingle: false,
     skipIntroSeconds: 0,
     defaultPlaybackSpeed: 1.0,
-    hardwareAcceleration: true
+    hardwareAcceleration: true,
+    muteByDefault: false,
+    lowQualityMode: false,
+    defaultResolution: 'original',
+    lowQualityIntensity: 3
   },
   goonwall: {
     defaultTileCount: 9,
@@ -767,6 +449,8 @@ const DEFAULTS: VaultSettings = {
     maxResolution: '720p',
     showHud: true,
     muteByDefault: true,
+    randomClimax: false,
+    countdownDuration: 60,
     // Hypersexual enhancements
     overloadMode: {
       enabled: false,
@@ -800,63 +484,12 @@ const DEFAULTS: VaultSettings = {
       ambienceVolume: 0.3
     }
   },
-  daylist: {
-    autoGenerateTime: '18:00',
-    defaultDurationMinutes: 60,
-    defaultSpiceLevel: 0.5,
-    includeTags: [],
-    excludeTags: [],
-    noveltyWeight: 0.3,
-    recencyWeight: 0.2,
-    ratingWeight: 0.5,
-    intensityCurve: 'buildup',
-    motifs: DEFAULT_MOTIFS
-  },
-  diabella: {
-    enabled: true,
-    provider: 'venice',
-    ollama: {
-      url: 'http://localhost:11434',
-      model: 'llama3.1'
-    },
-    venice: {
-      apiKey: 'VENICE-ADMIN-KEY-MR4aPzWn9SizUynYCAeazVw6jnAeZphb0aG0FC7dJ0',
-      model: 'llama-3.3-70b',
-      temperature: 1.0,
-      maxTokens: 1024,
-      enableNSFW: true,
-      includeVeniceSystemPrompt: false
-    },
-    spiciness: 3,
-    activePackId: 'velvet',
-    packs: [DEFAULT_PERSONALITY_VELVET, DEFAULT_PERSONALITY_PEPPER, DEFAULT_PERSONALITY_NOVA, DEFAULT_PERSONALITY_SUNNY, DEFAULT_PERSONALITY_RAVEN],
-    avatarStyle: 'anime',
-    avatarSpiceLevel: 3,
-    enableAnimations: true,
-    tts: {
-      enabled: true,  // Enable by default per 1.0.6 spec
-      voiceId: 'af_sky',  // Female voice
-      speed: 1.0,
-      format: 'mp3',
-      autoSpeak: true  // Auto-speak responses
-    },
-    imageGen: {
-      enabled: true,
-      model: 'fluently-xl',
-      nsfwEnabled: true,
-      size: '1024x1024',
-      quality: 'hd'
-    }
-  },
-  quickcuts: {
-    outputFolder: defaultOutputDir,
-    defaultQuality: 'high',
-    defaultStrategy: 'random',
-    clipDurationMin: 3,
-    clipDurationMax: 15,
-    defaultTransition: 'crossfade',
-    audioMode: 'original'
-  },
+  // AI Intelligence settings
+  ai: {
+    veniceApiKey: '',
+    tier2Enabled: false,
+    protectedTags: [],  // Tags that should never be deleted during cleanup
+  } as AISettings,
   appearance: {
     themeId: 'afterglow',  // Default to erotic theme
     animationSpeed: 'full',
@@ -865,7 +498,8 @@ const DEFAULTS: VaultSettings = {
     thumbnailSize: 'medium',
     fontSize: 'medium',
     compactMode: false,
-    useSystemTheme: false
+    useSystemTheme: false,
+    colorBlindMode: 'none'  // Options: none, protanopia, deuteranopia, tritanopia, high-contrast
   },
   privacy: {
     passwordEnabled: false,
@@ -873,7 +507,312 @@ const DEFAULTS: VaultSettings = {
     autoLockMinutes: 0,
     hideFromTaskbar: false,
     panicKey: 'Escape',
-    incognitoMode: false
+    panicKeyEnabled: true,
+    incognitoMode: false,
+    clearOnExit: false
+  },
+  blacklist: {
+    enabled: true,
+    tags: [],
+    mediaIds: []
+  },
+  captions: {
+    enabled: false,
+    defaultPresetId: 'default',
+    presets: [
+      {
+        id: 'default',
+        name: 'Classic Meme',
+        fontFamily: 'Impact',
+        fontSize: 48,
+        fontColor: '#ffffff',
+        fontWeight: 'bold',
+        textShadow: false,
+        shadowColor: '#000000',
+        strokeEnabled: true,
+        strokeColor: '#000000',
+        strokeWidth: 2,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'uppercase',
+        position: 'both'
+      },
+      {
+        id: 'sissy',
+        name: 'Sissy Pink',
+        fontFamily: 'Arial',
+        fontSize: 36,
+        fontColor: '#ff69b4',
+        fontWeight: 'bold',
+        textShadow: true,
+        shadowColor: '#000000',
+        strokeEnabled: true,
+        strokeColor: '#ffffff',
+        strokeWidth: 1,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'none',
+        position: 'both'
+      },
+      {
+        id: 'degrading',
+        name: 'Degrading',
+        fontFamily: 'Arial Black',
+        fontSize: 42,
+        fontColor: '#ff0000',
+        fontWeight: 'bolder',
+        textShadow: true,
+        shadowColor: '#000000',
+        strokeEnabled: true,
+        strokeColor: '#000000',
+        strokeWidth: 2,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'uppercase',
+        position: 'both'
+      },
+      {
+        id: 'neon',
+        name: 'Neon Glow',
+        fontFamily: 'Arial',
+        fontSize: 40,
+        fontColor: '#00ffff',
+        fontWeight: 'bold',
+        textShadow: true,
+        shadowColor: '#00ffff',
+        strokeEnabled: true,
+        strokeColor: '#ff00ff',
+        strokeWidth: 2,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'uppercase',
+        position: 'both'
+      },
+      {
+        id: 'hypno',
+        name: 'Hypno',
+        fontFamily: 'Times New Roman',
+        fontSize: 44,
+        fontColor: '#9400d3',
+        fontWeight: 'bold',
+        textShadow: true,
+        shadowColor: '#ff00ff',
+        strokeEnabled: true,
+        strokeColor: '#ffffff',
+        strokeWidth: 1,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'lowercase',
+        position: 'both'
+      },
+      {
+        id: 'bimbo',
+        name: 'Bimbo',
+        fontFamily: 'Comic Sans MS',
+        fontSize: 38,
+        fontColor: '#ff1493',
+        fontWeight: 'bold',
+        textShadow: true,
+        shadowColor: '#ffb6c1',
+        strokeEnabled: true,
+        strokeColor: '#ffffff',
+        strokeWidth: 2,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'none',
+        position: 'both'
+      },
+      {
+        id: 'domme',
+        name: 'Domme',
+        fontFamily: 'Georgia',
+        fontSize: 36,
+        fontColor: '#8b0000',
+        fontWeight: 'bold',
+        textShadow: true,
+        shadowColor: '#000000',
+        strokeEnabled: true,
+        strokeColor: '#ffd700',
+        strokeWidth: 1,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'uppercase',
+        position: 'both'
+      },
+      {
+        id: 'edging',
+        name: 'Edge Mode',
+        fontFamily: 'Impact',
+        fontSize: 46,
+        fontColor: '#ff4500',
+        fontWeight: 'bold',
+        textShadow: true,
+        shadowColor: '#ff0000',
+        strokeEnabled: true,
+        strokeColor: '#000000',
+        strokeWidth: 3,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'uppercase',
+        position: 'both'
+      },
+      {
+        id: 'subliminal',
+        name: 'Subliminal',
+        fontFamily: 'Arial',
+        fontSize: 28,
+        fontColor: 'rgba(255,255,255,0.3)',
+        fontWeight: 'normal',
+        textShadow: false,
+        shadowColor: 'transparent',
+        strokeEnabled: false,
+        strokeColor: 'transparent',
+        strokeWidth: 0,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'lowercase',
+        position: 'both'
+      },
+      {
+        id: 'glitch',
+        name: 'Glitch',
+        fontFamily: 'Courier New',
+        fontSize: 40,
+        fontColor: '#00ff00',
+        fontWeight: 'bold',
+        textShadow: true,
+        shadowColor: '#ff0000',
+        strokeEnabled: true,
+        strokeColor: '#0000ff',
+        strokeWidth: 2,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'uppercase',
+        position: 'both'
+      },
+      {
+        id: 'retro',
+        name: 'Retro 80s',
+        fontFamily: 'Arial Black',
+        fontSize: 44,
+        fontColor: '#ff00ff',
+        fontWeight: 'bold',
+        textShadow: true,
+        shadowColor: '#00ffff',
+        strokeEnabled: true,
+        strokeColor: '#ffff00',
+        strokeWidth: 3,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'uppercase',
+        position: 'both'
+      },
+      {
+        id: 'elegant',
+        name: 'Elegant',
+        fontFamily: 'Georgia',
+        fontSize: 36,
+        fontColor: '#ffd700',
+        fontWeight: 'normal',
+        textShadow: true,
+        shadowColor: '#000000',
+        strokeEnabled: false,
+        strokeColor: 'transparent',
+        strokeWidth: 0,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'none',
+        position: 'both'
+      },
+      {
+        id: 'brutal',
+        name: 'Brutal',
+        fontFamily: 'Impact',
+        fontSize: 52,
+        fontColor: '#ff0000',
+        fontWeight: 'bold',
+        textShadow: true,
+        shadowColor: '#000000',
+        strokeEnabled: true,
+        strokeColor: '#ffffff',
+        strokeWidth: 4,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'uppercase',
+        position: 'both'
+      },
+      {
+        id: 'cute',
+        name: 'Cute',
+        fontFamily: 'Comic Sans MS',
+        fontSize: 34,
+        fontColor: '#ffb6c1',
+        fontWeight: 'bold',
+        textShadow: true,
+        shadowColor: '#ff69b4',
+        strokeEnabled: true,
+        strokeColor: '#ffffff',
+        strokeWidth: 2,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'none',
+        position: 'both'
+      },
+      {
+        id: 'dark',
+        name: 'Dark Mode',
+        fontFamily: 'Arial',
+        fontSize: 38,
+        fontColor: '#333333',
+        fontWeight: 'bold',
+        textShadow: true,
+        shadowColor: '#000000',
+        strokeEnabled: true,
+        strokeColor: '#666666',
+        strokeWidth: 2,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'uppercase',
+        position: 'both'
+      },
+      {
+        id: 'anime',
+        name: 'Anime',
+        fontFamily: 'Arial',
+        fontSize: 36,
+        fontColor: '#ffffff',
+        fontWeight: 'bold',
+        textShadow: true,
+        shadowColor: '#ff69b4',
+        strokeEnabled: true,
+        strokeColor: '#000000',
+        strokeWidth: 3,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'none',
+        position: 'both'
+      },
+      {
+        id: 'hentai',
+        name: 'Hentai',
+        fontFamily: 'Arial Black',
+        fontSize: 40,
+        fontColor: '#ff1493',
+        fontWeight: 'bold',
+        textShadow: true,
+        shadowColor: '#9400d3',
+        strokeEnabled: true,
+        strokeColor: '#ffffff',
+        strokeWidth: 2,
+        backgroundColor: 'transparent',
+        backgroundOpacity: 0,
+        textTransform: 'uppercase',
+        position: 'both'
+      }
+    ],
+    customFonts: [],
+    showCaptionBars: false,
+    barStyle: 'solid'
   },
   data: {
     lastBackupDate: null,
@@ -884,10 +823,37 @@ const DEFAULTS: VaultSettings = {
     enabled: true,
     volume: 0.5,
     uiSoundsEnabled: true,
-    diabellaSoundsEnabled: true,
+    voiceSoundsEnabled: true,
     ambienceEnabled: false,
     ambienceTrack: 'none',
     ambienceVolume: 0.3
+  },
+  visualEffects: {
+    enabled: true,
+    sparkles: true,
+    bokeh: false,
+    starfield: false,
+    filmGrain: false,
+    dreamyHaze: false,
+    crtCurve: false,
+    crtIntensity: 5,
+    crtRgbSubpixels: true,
+    crtChromaticAberration: true,
+    crtScreenFlicker: true,
+    heatLevel: 0,
+    goonWords: {
+      enabled: false,
+      enabledPacks: ['goon', 'kink'],
+      customWords: [],
+      fontSize: 32,
+      fontFamily: 'system-ui',
+      fontColor: '#ffffff',
+      glowColor: '#ff6b9d',
+      frequency: 5,
+      duration: 3,
+      randomRotation: true,
+      intensity: 5
+    }
   },
   goonStats: {
     totalSessions: 0,
@@ -924,7 +890,8 @@ const DEFAULTS: VaultSettings = {
     achievements: [],
     activityHeatmap: {}
   },
-  activeSessionMode: 'custom'
+  activeSessionMode: 'custom',
+  hasSeenWelcome: false  // Show welcome tutorial on first launch
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -967,18 +934,6 @@ export function getThemeId(): ThemeId {
   return s.appearance?.themeId ?? (s.ui?.themeId as ThemeId) ?? DEFAULTS.appearance.themeId
 }
 
-export function getActivePersonality(): PersonalityPack {
-  const s = getSettings()
-  const activeId = s.diabella?.activePackId ?? 'velvet'
-  const packs = s.diabella?.packs ?? DEFAULTS.diabella.packs
-  return packs.find(p => p.id === activeId) ?? DEFAULT_PERSONALITY_VELVET
-}
-
-export function getMotifs(): MotifDictionary {
-  const s = getSettings()
-  return s.daylist?.motifs ?? DEFAULTS.daylist.motifs
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // SETTERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1002,18 +957,6 @@ export function updateGoonwallSettings(patch: Partial<GoonwallSettings>): VaultS
   return updateSettings({ goonwall: { ...getSettings().goonwall, ...patch } })
 }
 
-export function updateDaylistSettings(patch: Partial<DaylistSettings>): VaultSettings {
-  return updateSettings({ daylist: { ...getSettings().daylist, ...patch } })
-}
-
-export function updateDiabellaSettings(patch: Partial<DiabellaSettings>): VaultSettings {
-  return updateSettings({ diabella: { ...getSettings().diabella, ...patch } })
-}
-
-export function updateQuickcutsSettings(patch: Partial<QuickCutsSettings>): VaultSettings {
-  return updateSettings({ quickcuts: { ...getSettings().quickcuts, ...patch } })
-}
-
 export function updateAppearanceSettings(patch: Partial<AppearanceSettings>): VaultSettings {
   return updateSettings({ appearance: { ...getSettings().appearance, ...patch } })
 }
@@ -1022,8 +965,68 @@ export function updatePrivacySettings(patch: Partial<PrivacySettings>): VaultSet
   return updateSettings({ privacy: { ...getSettings().privacy, ...patch } })
 }
 
+export function updateBlacklistSettings(patch: Partial<BlacklistSettings>): VaultSettings {
+  return updateSettings({ blacklist: { ...getSettings().blacklist, ...patch } })
+}
+
+export function addBlacklistTag(tag: string): VaultSettings {
+  const current = getSettings().blacklist
+  if (current.tags.includes(tag)) return getSettings()
+  return updateSettings({ blacklist: { ...current, tags: [...current.tags, tag] } })
+}
+
+export function removeBlacklistTag(tag: string): VaultSettings {
+  const current = getSettings().blacklist
+  return updateSettings({ blacklist: { ...current, tags: current.tags.filter(t => t !== tag) } })
+}
+
+export function addBlacklistMedia(mediaId: string): VaultSettings {
+  const current = getSettings().blacklist
+  if (current.mediaIds.includes(mediaId)) return getSettings()
+  return updateSettings({ blacklist: { ...current, mediaIds: [...current.mediaIds, mediaId] } })
+}
+
+export function removeBlacklistMedia(mediaId: string): VaultSettings {
+  const current = getSettings().blacklist
+  return updateSettings({ blacklist: { ...current, mediaIds: current.mediaIds.filter(id => id !== mediaId) } })
+}
+
+export function updateCaptionSettings(patch: Partial<CaptionSettings>): VaultSettings {
+  return updateSettings({ captions: { ...getSettings().captions, ...patch } })
+}
+
+export function addCaptionPreset(preset: CaptionPreset): VaultSettings {
+  const current = getSettings().captions
+  // Remove existing preset with same ID if exists
+  const filteredPresets = current.presets.filter(p => p.id !== preset.id)
+  return updateSettings({ captions: { ...current, presets: [...filteredPresets, preset] } })
+}
+
+export function removeCaptionPreset(presetId: string): VaultSettings {
+  const current = getSettings().captions
+  // Don't allow removing the default preset
+  if (presetId === 'default') return getSettings()
+  return updateSettings({ captions: { ...current, presets: current.presets.filter(p => p.id !== presetId) } })
+}
+
 export function updateDataSettings(patch: Partial<DataSettings>): VaultSettings {
   return updateSettings({ data: { ...getSettings().data, ...patch } })
+}
+
+export function updateAISettings(patch: Partial<AISettings>): VaultSettings {
+  return updateSettings({ ai: { ...getSettings().ai, ...patch } })
+}
+
+export function getAISettings(): AISettings {
+  return getSettings().ai
+}
+
+export function updateVisualEffectsSettings(patch: Partial<VisualEffectsSettings>): VaultSettings {
+  return updateSettings({ visualEffects: { ...getSettings().visualEffects, ...patch } })
+}
+
+export function setHasSeenWelcome(seen: boolean): VaultSettings {
+  return updateSettings({ hasSeenWelcome: seen })
 }
 
 // Specific setters for common operations
@@ -1051,25 +1054,17 @@ export function setTheme(themeId: ThemeId): void {
   updateAppearanceSettings({ themeId })
 }
 
-export function addPersonalityPack(pack: PersonalityPack): void {
-  const current = getSettings().diabella.packs
-  const filtered = current.filter(p => p.id !== pack.id)
-  updateDiabellaSettings({ packs: [...filtered, pack] })
-}
-
-export function removePersonalityPack(packId: string): void {
-  const current = getSettings().diabella.packs
-  // Don't remove built-in packs
-  if (['velvet', 'pepper', 'mistress-nova'].includes(packId)) return
-  updateDiabellaSettings({ packs: current.filter(p => p.id !== packId) })
-}
-
-export function setActivePersonalityPack(packId: string): void {
-  updateDiabellaSettings({ activePackId: packId })
-}
-
 export function resetSettings(): VaultSettings {
   settings.clear()
+  return getSettings()
+}
+
+// Reset a specific settings section to defaults
+export function resetSettingsSection(section: keyof VaultSettings): VaultSettings {
+  const defaults = { ...DEFAULTS }
+  if (section in defaults) {
+    updateSettings({ [section]: (defaults as any)[section] })
+  }
   return getSettings()
 }
 
@@ -1399,6 +1394,113 @@ export function checkAndUnlockAchievements(vaultStats?: { totalMedia?: number; p
   return newlyUnlocked
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DAILY CHALLENGES FUNCTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const dailyChallengesStore = new Store<{ challenges: DailyChallengeState | null }>({
+  name: 'daily-challenges',
+  defaults: { challenges: null }
+})
+
+function getTodayDateString(): string {
+  return new Date().toISOString().split('T')[0]
+}
+
+function generateDailyChallenges(): DailyChallenge[] {
+  // Pick 3 random challenges from templates
+  const shuffled = [...CHALLENGE_TEMPLATES].sort(() => Math.random() - 0.5)
+  const selected = shuffled.slice(0, 3)
+
+  return selected.map((template, i) => ({
+    ...template,
+    id: `daily-${getTodayDateString()}-${i}`,
+    description: template.description.replace('{target}', String(template.target)),
+    progress: 0,
+    completed: false
+  }))
+}
+
+export function getDailyChallenges(): DailyChallengeState {
+  const stored = dailyChallengesStore.get('challenges')
+  const today = getTodayDateString()
+
+  // Check if we need to generate new challenges (new day or no challenges)
+  if (!stored || stored.date !== today) {
+    const previousStreak = stored?.completedCount === stored?.challenges?.length ? (stored?.streak || 0) : 0
+    const newState: DailyChallengeState = {
+      date: today,
+      challenges: generateDailyChallenges(),
+      completedCount: 0,
+      totalXp: stored?.totalXp ?? 0,
+      streak: previousStreak
+    }
+    dailyChallengesStore.set('challenges', newState)
+    return newState
+  }
+
+  return stored
+}
+
+export function updateChallengeProgress(
+  type: DailyChallengeType,
+  increment: number = 1
+): { updated: DailyChallengeState; newlyCompleted: DailyChallenge[] } {
+  const state = getDailyChallenges()
+  const newlyCompleted: DailyChallenge[] = []
+
+  const updatedChallenges = state.challenges.map(challenge => {
+    if (challenge.type !== type || challenge.completed) {
+      return challenge
+    }
+
+    const newProgress = Math.min(challenge.progress + increment, challenge.target)
+    const isNowCompleted = newProgress >= challenge.target
+
+    if (isNowCompleted && !challenge.completed) {
+      newlyCompleted.push({ ...challenge, progress: newProgress, completed: true })
+    }
+
+    return {
+      ...challenge,
+      progress: newProgress,
+      completed: isNowCompleted
+    }
+  })
+
+  const completedCount = updatedChallenges.filter(c => c.completed).length
+  const xpEarned = newlyCompleted.reduce((sum, c) => sum + c.rewardXp, 0)
+
+  // Update streak if all challenges completed
+  const allCompleted = completedCount === updatedChallenges.length
+  const wasAllCompleted = state.completedCount === state.challenges.length
+
+  const updatedState: DailyChallengeState = {
+    ...state,
+    challenges: updatedChallenges,
+    completedCount,
+    totalXp: state.totalXp + xpEarned,
+    streak: allCompleted && !wasAllCompleted ? state.streak + 1 : state.streak
+  }
+
+  dailyChallengesStore.set('challenges', updatedState)
+
+  return { updated: updatedState, newlyCompleted }
+}
+
+export function resetDailyChallenges(): DailyChallengeState {
+  const today = getTodayDateString()
+  const newState: DailyChallengeState = {
+    date: today,
+    challenges: generateDailyChallenges(),
+    completedCount: 0,
+    totalXp: 0,
+    streak: 0
+  }
+  dailyChallengesStore.set('challenges', newState)
+  return newState
+}
+
 export function getGoonTheme(themeId: ThemeId): GoonTheme | null {
   if (themeId in GOON_THEMES) {
     return GOON_THEMES[themeId as GoonThemeId]
@@ -1461,16 +1563,6 @@ function migrateOldSettings(old: any): VaultSettings {
     goonwall: {
       ...DEFAULTS.goonwall,
       ...old.goonwall
-    },
-    daylist: {
-      ...DEFAULTS.daylist,
-      defaultSpiceLevel: old.daylist?.spice ?? DEFAULTS.daylist.defaultSpiceLevel,
-      motifs: old.daylist?.motifs ?? DEFAULTS.daylist.motifs
-    },
-    diabella: {
-      ...DEFAULTS.diabella,
-      activePackId: old.diabella?.activePackId ?? DEFAULTS.diabella.activePackId,
-      packs: old.diabella?.packs ?? DEFAULTS.diabella.packs
     }
   }
 
@@ -1745,8 +1837,7 @@ export const SESSION_MODES: SessionMode[] = [
     icon: '⚡',
     settings: {
       goonwall: { defaultTileCount: 4, defaultIntervalSec: 10 },
-      diabella: { spiceLevel: 4, personality: 'pepper' },
-      suggestedDuration: 15,
+            suggestedDuration: 15,
       soundtrack: 'intense_beats'
     }
   },
@@ -1757,8 +1848,7 @@ export const SESSION_MODES: SessionMode[] = [
     icon: '🎯',
     settings: {
       goonwall: { defaultTileCount: 6, defaultIntervalSec: 30 },
-      diabella: { spiceLevel: 4, personality: 'mistress-nova' },
-      edgeTimer: { enabled: true, interval: 120, action: 'pause' },
+            edgeTimer: { enabled: true, interval: 120, action: 'pause' },
       suggestedDuration: 60,
       soundtrack: 'building_tension'
     }
@@ -1770,8 +1860,7 @@ export const SESSION_MODES: SessionMode[] = [
     icon: '🌀',
     settings: {
       goonwall: { defaultTileCount: 9, defaultIntervalSec: 20 },
-      diabella: { spiceLevel: 5, personality: 'velvet' },
-      visualEffects: { bloom: 0.3, vignette: 0.5 },
+            visualEffects: { bloom: 0.3, vignette: 0.5 },
       suggestedDuration: 120,
       soundtrack: 'hypnotic_drone'
     }
@@ -1783,7 +1872,6 @@ export const SESSION_MODES: SessionMode[] = [
     icon: '🤯',
     settings: {
       goonwall: { defaultTileCount: 16, defaultIntervalSec: 10 },
-      diabella: { spiceLevel: 5, personality: 'pepper' },
       visualEffects: { saturation: 1.2, contrast: 1.1 },
       suggestedDuration: 30,
       soundtrack: 'chaos'
@@ -1796,8 +1884,7 @@ export const SESSION_MODES: SessionMode[] = [
     icon: '🕯️',
     settings: {
       goonwall: { defaultTileCount: 1, defaultIntervalSec: 60 },
-      diabella: { spiceLevel: 3, personality: 'velvet' },
-      visualEffects: { vignette: 0.3 },
+            visualEffects: { vignette: 0.3 },
       suggestedDuration: 90,
       soundtrack: 'sensual_ambient'
     }
@@ -1809,26 +1896,8 @@ export const SESSION_MODES: SessionMode[] = [
     icon: '🎰',
     settings: {
       goonwall: { defaultTileCount: 6, defaultIntervalSec: 20, defaultLayout: 'mosaic' },
-      diabella: { spiceLevel: 4, personality: 'pepper' },
-      suggestedDuration: 'until_done',
+            suggestedDuration: 'until_done',
       soundtrack: 'random'
-    }
-  },
-  {
-    id: 'joi-mode',
-    name: 'JOI Mode',
-    description: 'Let Diabella control your pleasure',
-    icon: '🎤',
-    settings: {
-      goonwall: { defaultTileCount: 1 },
-      diabella: {
-        spiceLevel: 5,
-        personality: 'mistress-nova',
-        joiMode: true,
-        voiceEnabled: true
-      },
-      edgeTimer: { enabled: true, interval: 60, action: 'diabella_instruction' },
-      suggestedDuration: 45
     }
   },
   {
@@ -1838,8 +1907,7 @@ export const SESSION_MODES: SessionMode[] = [
     icon: '⚙️',
     settings: {
       goonwall: {},
-      diabella: { spiceLevel: 3, personality: 'velvet' },
-      suggestedDuration: 'until_done'
+            suggestedDuration: 'until_done'
     }
   }
 ]
@@ -1910,41 +1978,163 @@ export const GOON_VOCABULARY: Record<string, string> = {
   'No Results': "Couldn't Find That Craving",
 }
 
+// Export defaults for use elsewhere
+export { DEFAULTS }
+
 // ─────────────────────────────────────────────────────────────────────────────
-// DAYLIST HYPERSEXUAL NAMES
+// SETTINGS PROFILES
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const DAYLIST_NAME_CONFIG = {
-  timeVibes: {
-    earlyMorning: ['Dawn Desires', 'Morning Wood', 'Sleepy & Horny', 'Pre-Coffee Cravings'],
-    morning: ['Wake-Up Wank', 'A.M. Addiction', 'Breakfast in Bed', 'Rise and Grind'],
-    afternoon: ['Afternoon Delight', 'Midday Mischief', 'Lunch Break Lust', '3PM Throb'],
-    evening: ['After Dark', 'Evening Edging', 'Twilight Temptation', 'Dinner Can Wait'],
-    night: ['Late Night Goon', 'Midnight Session', "Insomniac's Indulgence", 'Can\'t Sleep Too Horny'],
-    lateNight: ['Degenerate Hours', '3AM Spiral', 'Lost in the Sauce', 'No Regrets Zone']
-  },
-
-  intensityWords: {
-    mild: ['Gentle', 'Slow', 'Teasing', 'Warming Up', 'Soft'],
-    medium: ['Building', 'Hungry', 'Eager', 'Needy', 'Aching'],
-    hot: ['Desperate', 'Throbbing', 'Dripping', 'Pounding', 'Relentless'],
-    extreme: ['Brain-Melting', 'Ruined', 'Gooned Out', 'Cock-Drunk', 'Broken']
-  },
-
-  sessionTypes: {
-    quick: ['Quickie', 'Speed Run', 'Fast & Filthy', 'No Time to Edge'],
-    normal: ['Standard Session', 'Solid Hour', 'The Usual'],
-    long: ['Marathon', 'Lost Track of Time', 'All Night Long', 'Goon Binge'],
-    edging: ['Edge Lord', 'Denial Session', "Don't You Dare", 'Building Forever']
+export interface SettingsProfile {
+  id: string
+  name: string
+  description?: string
+  createdAt: number
+  updatedAt: number
+  // Stores a subset of settings that can be switched
+  settings: {
+    appearance?: Partial<AppearanceSettings>
+    playback?: Partial<PlaybackSettings>
+    goonwall?: Partial<GoonwallSettings>
+    visualEffects?: Partial<VisualEffectsSettings>
+    sound?: Partial<SoundSettings>
   }
 }
 
-// Export defaults for use elsewhere
-export {
-  DEFAULTS,
-  DEFAULT_AVATAR,
-  DEFAULT_PERSONALITY_VELVET,
-  DEFAULT_PERSONALITY_PEPPER,
-  DEFAULT_PERSONALITY_NOVA,
-  DEFAULT_MOTIFS
+// Separate store for profiles to keep them independent
+const profilesStore = new Store<{ profiles: SettingsProfile[]; activeProfileId: string | null }>({
+  name: 'settings-profiles',
+  defaults: {
+    profiles: [],
+    activeProfileId: null
+  }
+})
+
+export function listProfiles(): SettingsProfile[] {
+  return profilesStore.get('profiles') || []
+}
+
+export function getActiveProfileId(): string | null {
+  return profilesStore.get('activeProfileId') || null
+}
+
+export function getProfile(profileId: string): SettingsProfile | null {
+  const profiles = listProfiles()
+  return profiles.find(p => p.id === profileId) || null
+}
+
+export function createProfile(name: string, description?: string): SettingsProfile {
+  const current = getSettings()
+  const now = Date.now()
+  const id = `profile_${now}_${Math.random().toString(36).slice(2, 8)}`
+
+  const profile: SettingsProfile = {
+    id,
+    name: name.trim() || 'New Profile',
+    description: description?.trim(),
+    createdAt: now,
+    updatedAt: now,
+    settings: {
+      appearance: { ...current.appearance },
+      playback: { ...current.playback },
+      goonwall: { ...current.goonwall },
+      visualEffects: { ...current.visualEffects },
+      sound: { ...current.sound }
+    }
+  }
+
+  const profiles = listProfiles()
+  profilesStore.set('profiles', [...profiles, profile])
+
+  return profile
+}
+
+export function saveCurrentToProfile(profileId: string): SettingsProfile | null {
+  const profiles = listProfiles()
+  const index = profiles.findIndex(p => p.id === profileId)
+  if (index < 0) return null
+
+  const current = getSettings()
+  const updated: SettingsProfile = {
+    ...profiles[index],
+    updatedAt: Date.now(),
+    settings: {
+      appearance: { ...current.appearance },
+      playback: { ...current.playback },
+      goonwall: { ...current.goonwall },
+      visualEffects: { ...current.visualEffects },
+      sound: { ...current.sound }
+    }
+  }
+
+  profiles[index] = updated
+  profilesStore.set('profiles', profiles)
+
+  return updated
+}
+
+export function loadProfile(profileId: string): VaultSettings | null {
+  const profile = getProfile(profileId)
+  if (!profile) return null
+
+  // Apply profile settings
+  const current = getSettings()
+  const merged: Partial<VaultSettings> = {}
+
+  if (profile.settings.appearance) {
+    merged.appearance = { ...current.appearance, ...profile.settings.appearance }
+  }
+  if (profile.settings.playback) {
+    merged.playback = { ...current.playback, ...profile.settings.playback }
+  }
+  if (profile.settings.goonwall) {
+    merged.goonwall = { ...current.goonwall, ...profile.settings.goonwall }
+  }
+  if (profile.settings.visualEffects) {
+    merged.visualEffects = { ...current.visualEffects, ...profile.settings.visualEffects }
+  }
+  if (profile.settings.sound) {
+    merged.sound = { ...current.sound, ...profile.settings.sound }
+  }
+
+  const updated = updateSettings(merged)
+  profilesStore.set('activeProfileId', profileId)
+
+  return updated
+}
+
+export function renameProfile(profileId: string, name: string, description?: string): SettingsProfile | null {
+  const profiles = listProfiles()
+  const index = profiles.findIndex(p => p.id === profileId)
+  if (index < 0) return null
+
+  profiles[index] = {
+    ...profiles[index],
+    name: name.trim() || profiles[index].name,
+    description: description?.trim(),
+    updatedAt: Date.now()
+  }
+
+  profilesStore.set('profiles', profiles)
+  return profiles[index]
+}
+
+export function deleteProfile(profileId: string): boolean {
+  const profiles = listProfiles()
+  const filtered = profiles.filter(p => p.id !== profileId)
+
+  if (filtered.length === profiles.length) return false
+
+  profilesStore.set('profiles', filtered)
+
+  // If this was the active profile, clear it
+  if (getActiveProfileId() === profileId) {
+    profilesStore.set('activeProfileId', null)
+  }
+
+  return true
+}
+
+export function clearActiveProfile(): void {
+  profilesStore.set('activeProfileId', null)
 }

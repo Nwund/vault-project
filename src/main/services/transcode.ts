@@ -89,6 +89,26 @@ export function getTranscodedPath(mediaId: string): string | null {
 // Track in-flight transcodes to avoid duplicates
 const inFlight = new Map<string, Promise<string>>()
 
+// Limit concurrent transcodes to prevent system overload
+const MAX_CONCURRENT_TRANSCODES = 4
+let activeTranscodes = 0
+const transcodeQueue: Array<() => void> = []
+
+async function withTranscodeLimit<T>(fn: () => Promise<T>): Promise<T> {
+  // Wait if at capacity
+  if (activeTranscodes >= MAX_CONCURRENT_TRANSCODES) {
+    await new Promise<void>(resolve => transcodeQueue.push(resolve))
+  }
+  activeTranscodes++
+  try {
+    return await fn()
+  } finally {
+    activeTranscodes--
+    const next = transcodeQueue.shift()
+    if (next) next()
+  }
+}
+
 export function transcodeToMp4(inputPath: string, mediaId: string): Promise<string> {
   const existing = getTranscodedPath(mediaId)
   if (existing) return Promise.resolve(existing)
@@ -99,7 +119,7 @@ export function transcodeToMp4(inputPath: string, mediaId: string): Promise<stri
   const outPath = path.join(transcodesDir(), `${mediaId}.mp4`)
   const tmpPath = outPath + '.tmp.mp4'
 
-  const promise = new Promise<string>((resolve, reject) => {
+  const promise = withTranscodeLimit(() => new Promise<string>((resolve, reject) => {
     console.log(`[Transcode] Starting: ${inputPath} -> ${outPath}`)
     ffmpeg(inputPath)
       .outputOptions([
@@ -129,7 +149,7 @@ export function transcodeToMp4(inputPath: string, mediaId: string): Promise<stri
         reject(err)
       })
       .run()
-  })
+  }))
 
   inFlight.set(mediaId, promise)
   return promise
@@ -153,7 +173,7 @@ export function transcodeLowRes(inputPath: string, mediaId: string, maxHeight: n
 
   const tmpPath = outPath + '.tmp.mp4'
 
-  const promise = new Promise<string>((resolve, reject) => {
+  const promise = withTranscodeLimit(() => new Promise<string>((resolve, reject) => {
     console.log(`[Transcode-LowRes] Starting ${maxHeight}p: ${inputPath}`)
     ffmpeg(inputPath)
       .outputOptions([
@@ -184,7 +204,7 @@ export function transcodeLowRes(inputPath: string, mediaId: string, maxHeight: n
         reject(err)
       })
       .run()
-  })
+  }))
 
   inFlight.set(flightKey, promise)
   return promise
