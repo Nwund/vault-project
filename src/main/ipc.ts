@@ -1925,6 +1925,106 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // FEATURE USAGE TRACKING (for achievements)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Track DLNA cast
+  ipcMain.handle('goon:trackDlnaCast', async (_ev, deviceId: string) => {
+    const stats = getGoonStats()
+    const devices = new Set(stats.dlnaDevicesUsed ?? [])
+    devices.add(deviceId)
+    const updated = updateGoonStats({
+      dlnaCastsCount: (stats.dlnaCastsCount ?? 0) + 1,
+      dlnaDevicesUsed: Array.from(devices)
+    })
+    const newAchievements = checkAchievements()
+    if (newAchievements.length > 0) broadcast('goon:achievementUnlocked', newAchievements)
+    return updated
+  })
+
+  // Track hardware encoder enabled
+  ipcMain.handle('goon:trackHardwareEncoder', async () => {
+    const updated = updateGoonStats({ hardwareEncoderEnabled: true })
+    const newAchievements = checkAchievements()
+    if (newAchievements.length > 0) broadcast('goon:achievementUnlocked', newAchievements)
+    return updated
+  })
+
+  // Track command palette usage
+  ipcMain.handle('goon:trackCommandPalette', async () => {
+    const stats = getGoonStats()
+    const updated = updateGoonStats({ commandPaletteUsed: (stats.commandPaletteUsed ?? 0) + 1 })
+    const newAchievements = checkAchievements()
+    if (newAchievements.length > 0) broadcast('goon:achievementUnlocked', newAchievements)
+    return updated
+  })
+
+  // Track double-tap like
+  ipcMain.handle('goon:trackDoubleTapLike', async () => {
+    const stats = getGoonStats()
+    const updated = updateGoonStats({ doubleTapLikes: (stats.doubleTapLikes ?? 0) + 1 })
+    const newAchievements = checkAchievements()
+    if (newAchievements.length > 0) broadcast('goon:achievementUnlocked', newAchievements)
+    return updated
+  })
+
+  // Track feed swipe
+  ipcMain.handle('goon:trackFeedSwipe', async () => {
+    const stats = getGoonStats()
+    const updated = updateGoonStats({ feedSwipes: (stats.feedSwipes ?? 0) + 1 })
+    const newAchievements = checkAchievements()
+    if (newAchievements.length > 0) broadcast('goon:achievementUnlocked', newAchievements)
+    return updated
+  })
+
+  // Track overlay enabled
+  ipcMain.handle('goon:trackOverlayEnabled', async (_ev, overlayId: string) => {
+    const stats = getGoonStats()
+    const overlays = new Set(stats.overlaysEnabled ?? [])
+    overlays.add(overlayId)
+    const updated = updateGoonStats({ overlaysEnabled: Array.from(overlays) })
+    const newAchievements = checkAchievements()
+    if (newAchievements.length > 0) broadcast('goon:achievementUnlocked', newAchievements)
+    return updated
+  })
+
+  // Track scene marker created
+  ipcMain.handle('goon:trackSceneMarker', async () => {
+    const stats = getGoonStats()
+    const updated = updateGoonStats({ sceneMarkersCreated: (stats.sceneMarkersCreated ?? 0) + 1 })
+    const newAchievements = checkAchievements()
+    if (newAchievements.length > 0) broadcast('goon:achievementUnlocked', newAchievements)
+    return updated
+  })
+
+  // Track caption created
+  ipcMain.handle('goon:trackCaptionCreated', async () => {
+    const stats = getGoonStats()
+    const updated = updateGoonStats({ captionsCreated: (stats.captionsCreated ?? 0) + 1 })
+    const newAchievements = checkAchievements()
+    if (newAchievements.length > 0) broadcast('goon:achievementUnlocked', newAchievements)
+    return updated
+  })
+
+  // Track playlist export
+  ipcMain.handle('goon:trackPlaylistExport', async () => {
+    const stats = getGoonStats()
+    const updated = updateGoonStats({ playlistsExported: (stats.playlistsExported ?? 0) + 1 })
+    const newAchievements = checkAchievements()
+    if (newAchievements.length > 0) broadcast('goon:achievementUnlocked', newAchievements)
+    return updated
+  })
+
+  // Track playlist import
+  ipcMain.handle('goon:trackPlaylistImport', async () => {
+    const stats = getGoonStats()
+    const updated = updateGoonStats({ playlistsImported: (stats.playlistsImported ?? 0) + 1 })
+    const newAchievements = checkAchievements()
+    if (newAchievements.length > 0) broadcast('goon:achievementUnlocked', newAchievements)
+    return updated
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // SESSION MODES
   // ═══════════════════════════════════════════════════════════════════════════
   ipcMain.handle('session:getModes', async () => {

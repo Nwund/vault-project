@@ -128,6 +128,19 @@ export interface GoonStats {
   // Watched video tracking
   watchedVideoIds: string[]
 
+  // Feature usage tracking
+  dlnaCastsCount: number
+  dlnaDevicesUsed: string[]
+  hardwareEncoderEnabled: boolean
+  commandPaletteUsed: number
+  doubleTapLikes: number
+  feedSwipes: number
+  overlaysEnabled: string[]
+  sceneMarkersCreated: number
+  captionsCreated: number
+  playlistsExported: number
+  playlistsImported: number
+
   // Achievement IDs unlocked
   achievements: string[]
 
@@ -140,7 +153,7 @@ export interface Achievement {
   name: string
   description: string
   icon: string
-  category: 'getting_started' | 'session' | 'edge' | 'edging' | 'content' | 'streak' | 'goonwall' | 'collection'
+  category: 'getting_started' | 'session' | 'edge' | 'edging' | 'content' | 'streak' | 'goonwall' | 'collection' | 'features' | 'social'
   target: number
   secret?: boolean
 }
@@ -901,6 +914,18 @@ const DEFAULTS: VaultSettings = {
     goonWallTimeMinutes: 0,
     goonWallShuffles: 0,
     watchedVideoIds: [],
+    // Feature usage tracking
+    dlnaCastsCount: 0,
+    dlnaDevicesUsed: [],
+    hardwareEncoderEnabled: false,
+    commandPaletteUsed: 0,
+    doubleTapLikes: 0,
+    feedSwipes: 0,
+    overlaysEnabled: [],
+    sceneMarkersCreated: 0,
+    captionsCreated: 0,
+    playlistsExported: 0,
+    playlistsImported: 0,
     achievements: [],
     activityHeatmap: {}
   },
@@ -1596,6 +1621,55 @@ export function checkAndUnlockAchievements(vaultStats?: { totalMedia?: number; p
       case 'explorer':
         unlocked = stats.totalVideosWatched >= 1000
         break
+
+      // Feature Discovery
+      case 'tv_caster':
+        unlocked = stats.dlnaCastsCount >= 1
+        break
+      case 'home_theater':
+        unlocked = stats.dlnaCastsCount >= 10
+        break
+      case 'gpu_master':
+        unlocked = stats.hardwareEncoderEnabled === true
+        break
+      case 'command_ninja':
+        unlocked = stats.commandPaletteUsed >= 1
+        break
+      case 'power_user':
+        unlocked = stats.commandPaletteUsed >= 50
+        break
+      case 'heart_giver':
+        unlocked = stats.doubleTapLikes >= 1
+        break
+      case 'swipe_master':
+        unlocked = stats.feedSwipes >= 100
+        break
+      case 'ambiance_lover':
+        unlocked = (stats.overlaysEnabled?.length ?? 0) >= 3
+        break
+      case 'visual_artist':
+        unlocked = (stats.overlaysEnabled?.length ?? 0) >= 6
+        break
+      case 'matrix_mode':
+        unlocked = stats.overlaysEnabled?.includes?.('matrix') ?? false
+        break
+
+      // Social & Sharing
+      case 'playlist_sharer':
+        unlocked = stats.playlistsExported >= 1
+        break
+      case 'collector':
+        unlocked = stats.playlistsImported >= 1
+        break
+      case 'cast_party':
+        unlocked = (stats.dlnaDevicesUsed?.length ?? 0) >= 3
+        break
+      case 'scene_director':
+        unlocked = stats.sceneMarkersCreated >= 10
+        break
+      case 'caption_creator':
+        unlocked = stats.captionsCreated >= 5
+        break
     }
 
     if (unlocked) {
@@ -2041,6 +2115,29 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'connoisseur', name: 'Connoisseur', description: 'Watch 500 unique videos', icon: '🎬', category: 'collection', target: 500 },
   { id: 'binge_watcher', name: 'Binge Watcher', description: 'Watch 100 videos total', icon: '📺', category: 'collection', target: 100 },
   { id: 'explorer', name: 'Explorer', description: 'Watch 1000 videos total', icon: '🌍', category: 'collection', target: 1000 },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FEATURE DISCOVERY (10)
+  // ═══════════════════════════════════════════════════════════════════════════
+  { id: 'tv_caster', name: 'TV Caster', description: 'Cast media to a TV using DLNA', icon: '📺', category: 'features', target: 1 },
+  { id: 'home_theater', name: 'Home Theater', description: 'Cast 10 videos to your TV', icon: '🎬', category: 'features', target: 10 },
+  { id: 'gpu_master', name: 'GPU Master', description: 'Enable hardware-accelerated encoding', icon: '🖥️', category: 'features', target: 1 },
+  { id: 'command_ninja', name: 'Command Ninja', description: 'Use the Command Palette (Ctrl+K)', icon: '⌨️', category: 'features', target: 1 },
+  { id: 'power_user', name: 'Power User', description: 'Use Command Palette 50 times', icon: '🚀', category: 'features', target: 50 },
+  { id: 'heart_giver', name: 'Heart Giver', description: 'Double-tap to like a video', icon: '💕', category: 'features', target: 1 },
+  { id: 'swipe_master', name: 'Swipe Master', description: 'Swipe through 100 videos in Feed', icon: '👆', category: 'features', target: 100 },
+  { id: 'ambiance_lover', name: 'Ambiance Lover', description: 'Enable 3 different ambient overlays', icon: '✨', category: 'features', target: 3 },
+  { id: 'visual_artist', name: 'Visual Artist', description: 'Try all 6 new ambient effects', icon: '🎨', category: 'features', target: 6 },
+  { id: 'matrix_mode', name: 'Matrix Mode', description: 'Enable the Matrix Rain overlay', icon: '🖥️', category: 'features', target: 1, secret: true },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SOCIAL & SHARING (5)
+  // ═══════════════════════════════════════════════════════════════════════════
+  { id: 'playlist_sharer', name: 'Playlist Sharer', description: 'Export a playlist', icon: '📤', category: 'social', target: 1 },
+  { id: 'collector', name: 'Collector', description: 'Import a playlist', icon: '📥', category: 'social', target: 1 },
+  { id: 'cast_party', name: 'Cast Party', description: 'Cast to 3 different devices', icon: '🎉', category: 'social', target: 3 },
+  { id: 'scene_director', name: 'Scene Director', description: 'Create 10 scene markers', icon: '🎬', category: 'social', target: 10 },
+  { id: 'caption_creator', name: 'Caption Creator', description: 'Create 5 captioned images', icon: '💬', category: 'social', target: 5 },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────

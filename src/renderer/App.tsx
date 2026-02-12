@@ -800,7 +800,10 @@ export default function App() {
       // Ctrl+K opens command palette (works even in inputs)
       if (e.key === 'k' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault()
-        setShowCommandPalette(prev => !prev)
+        setShowCommandPalette(prev => {
+          if (!prev) window.api.goon?.trackCommandPalette?.() // Track for achievements
+          return !prev
+        })
         setCommandSearch('')
         return
       }
@@ -1666,26 +1669,32 @@ export default function App() {
                 setHearts: (v) => {
                   setHeartsEnabled(v)
                   window.api.settings.visualEffects?.update?.({ hearts: v })
+                  if (v) window.api.goon?.trackOverlayEnabled?.('hearts')
                 },
                 setRain: (v) => {
                   setRainEnabled(v)
                   window.api.settings.visualEffects?.update?.({ rain: v })
+                  if (v) window.api.goon?.trackOverlayEnabled?.('rain')
                 },
                 setGlitch: (v) => {
                   setGlitchEnabled(v)
                   window.api.settings.visualEffects?.update?.({ glitch: v })
+                  if (v) window.api.goon?.trackOverlayEnabled?.('glitch')
                 },
                 setBubbles: (v) => {
                   setBubblesEnabled(v)
                   window.api.settings.visualEffects?.update?.({ bubbles: v })
+                  if (v) window.api.goon?.trackOverlayEnabled?.('bubbles')
                 },
                 setMatrix: (v) => {
                   setMatrixEnabled(v)
                   window.api.settings.visualEffects?.update?.({ matrix: v })
+                  if (v) window.api.goon?.trackOverlayEnabled?.('matrix')
                 },
                 setConfetti: (v) => {
                   setConfettiEnabled(v)
                   window.api.settings.visualEffects?.update?.({ confetti: v })
+                  if (v) window.api.goon?.trackOverlayEnabled?.('confetti')
                 },
               }}
             />
@@ -9714,6 +9723,7 @@ function FeedPage() {
 
       if (Math.abs(deltaY) > minSwipeDistance && deltaTime < maxSwipeTime) {
         touchCooldownRef.current = true
+        window.api.goon?.trackFeedSwipe?.() // Track for achievements
         if (deltaY > 0) {
           // Swipe up = next video
           setCurrentIndex(prev => Math.min(prev + 1, videos.length - 1))
@@ -10397,6 +10407,9 @@ const FeedItem = React.memo(function FeedItem(props: {
       // Show heart animation
       setShowHeartAnimation(true)
       setTimeout(() => setShowHeartAnimation(false), 800)
+
+      // Track for achievements
+      window.api.goon?.trackDoubleTapLike?.()
 
       // Like if not already liked
       if (!isLiked) {

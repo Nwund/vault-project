@@ -484,6 +484,17 @@ const api = {
         timeThisWeek: number
       }
     }>('goon:getPersonalRecords'),
+    // Feature tracking for achievements
+    trackDlnaCast: (deviceId: string) => invoke('goon:trackDlnaCast', deviceId),
+    trackHardwareEncoder: () => invoke('goon:trackHardwareEncoder'),
+    trackCommandPalette: () => invoke('goon:trackCommandPalette'),
+    trackDoubleTapLike: () => invoke('goon:trackDoubleTapLike'),
+    trackFeedSwipe: () => invoke('goon:trackFeedSwipe'),
+    trackOverlayEnabled: (overlayId: string) => invoke('goon:trackOverlayEnabled', overlayId),
+    trackSceneMarker: () => invoke('goon:trackSceneMarker'),
+    trackCaptionCreated: () => invoke('goon:trackCaptionCreated'),
+    trackPlaylistExport: () => invoke('goon:trackPlaylistExport'),
+    trackPlaylistImport: () => invoke('goon:trackPlaylistImport'),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
