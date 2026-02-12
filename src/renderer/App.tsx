@@ -81,7 +81,9 @@ import {
   Copy,
   Folder,
   Save,
-  Edit2
+  Edit2,
+  HelpCircle,
+  FolderPlus
 } from 'lucide-react'
 import { playGreeting, playSoundFromCategory, playClimaxForType, hasSounds } from './utils/soundPlayer'
 import vaultLogo from './assets/vault-logo.png'
@@ -743,6 +745,11 @@ export default function App() {
   // Keyboard shortcuts help modal
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
 
+  // Command Palette (Ctrl+K) - quick actions search
+  const [showCommandPalette, setShowCommandPalette] = useState(false)
+  const [commandSearch, setCommandSearch] = useState('')
+  const commandInputRef = useRef<HTMLInputElement>(null)
+
   // Welcome tutorial modal for first-time users
   const [showWelcomeTutorial, setShowWelcomeTutorial] = useState(false)
   const [welcomeStep, setWelcomeStep] = useState(0)
@@ -771,10 +778,18 @@ export default function App() {
   // Toast context for global notifications
   const { showToast: globalShowToast } = useToast()
 
-  // Global keyboard shortcuts (? for help, Z for zen mode, Ctrl+Z for undo)
+  // Global keyboard shortcuts (? for help, Z for zen mode, Ctrl+Z for undo, Ctrl+K for command palette)
   useEffect(() => {
     const handleGlobalKeys = async (e: KeyboardEvent) => {
-      // Don't trigger if typing in an input
+      // Ctrl+K opens command palette (works even in inputs)
+      if (e.key === 'k' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault()
+        setShowCommandPalette(prev => !prev)
+        setCommandSearch('')
+        return
+      }
+
+      // Don't trigger other shortcuts if typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
 
       if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
@@ -782,7 +797,9 @@ export default function App() {
         setShowShortcutsHelp(prev => !prev)
       }
       if (e.key === 'Escape') {
-        if (zenMode) {
+        if (showCommandPalette) {
+          setShowCommandPalette(false)
+        } else if (zenMode) {
           setZenMode(false)
         } else if (showShortcutsHelp) {
           setShowShortcutsHelp(false)
@@ -813,7 +830,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handleGlobalKeys)
     return () => window.removeEventListener('keydown', handleGlobalKeys)
-  }, [showShortcutsHelp, zenMode, globalShowToast])
+  }, [showShortcutsHelp, showCommandPalette, zenMode, globalShowToast])
 
   // Zen mode edge detection - show UI when mouse near edges
   useEffect(() => {
@@ -1729,6 +1746,10 @@ export default function App() {
                 <h3 className="text-xs text-[var(--muted)] uppercase tracking-wider mb-2">Global</h3>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">Ctrl+K</kbd>
+                    <span className="text-white/70">Quick Actions</span>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <kbd className="px-2 py-1 bg-black/30 rounded text-xs">?</kbd>
                     <span className="text-white/70">Show this help</span>
                   </div>
@@ -1746,6 +1767,112 @@ export default function App() {
 
             <div className="mt-6 pt-4 border-t border-[var(--border)] text-center">
               <p className="text-xs text-white/40">Press <kbd className="px-1.5 py-0.5 bg-black/30 rounded">Esc</kbd> or click outside to close</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Command Palette (Ctrl+K) */}
+      {showCommandPalette && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Quick Actions"
+          className="fixed inset-0 z-[210] flex items-start justify-center pt-[15vh] bg-black/70 backdrop-blur-sm"
+          onClick={() => setShowCommandPalette(false)}
+        >
+          <div
+            className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl w-full max-w-lg mx-4 shadow-2xl animate-scaleIn overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Search Input */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)]">
+              <Search size={18} className="text-[var(--muted)]" />
+              <input
+                ref={commandInputRef}
+                type="text"
+                value={commandSearch}
+                onChange={e => setCommandSearch(e.target.value)}
+                placeholder="Type a command or search..."
+                className="flex-1 bg-transparent outline-none text-white placeholder:text-[var(--muted)]"
+                autoFocus
+              />
+              <kbd className="px-2 py-1 bg-black/30 rounded text-xs text-[var(--muted)]">Esc</kbd>
+            </div>
+
+            {/* Commands List */}
+            <div className="max-h-[50vh] overflow-y-auto p-2">
+              {(() => {
+                const commands = [
+                  { id: 'library', icon: Library, label: 'Go to Library', shortcut: '1', action: () => { setPage('library'); setShowCommandPalette(false) } },
+                  { id: 'feed', icon: Play, label: 'Go to Feed', shortcut: '2', action: () => { setPage('feed'); setShowCommandPalette(false) } },
+                  { id: 'goonwall', icon: LayoutGrid, label: 'Go to Goon Wall', shortcut: '3', action: () => { setPage('goonwall'); setShowCommandPalette(false) } },
+                  { id: 'sessions', icon: ListMusic, label: 'Go to Sessions', shortcut: '4', action: () => { setPage('playlists'); setShowCommandPalette(false) } },
+                  { id: 'brainwash', icon: Brain, label: 'Go to Brainwash', shortcut: '5', action: () => { setPage('captions'); setShowCommandPalette(false) } },
+                  { id: 'stats', icon: BarChart3, label: 'Go to Stats', shortcut: '6', action: () => { setPage('stats'); setShowCommandPalette(false) } },
+                  { id: 'settings', icon: Settings, label: 'Go to Settings', shortcut: ',', action: () => { setPage('settings'); setShowCommandPalette(false) } },
+                  { id: 'divider1', divider: true },
+                  { id: 'zen', icon: Eye, label: 'Toggle Zen Mode', shortcut: 'Z', action: () => { setZenMode(prev => !prev); setShowCommandPalette(false) } },
+                  { id: 'shortcuts', icon: HelpCircle, label: 'Show Keyboard Shortcuts', shortcut: '?', action: () => { setShowShortcutsHelp(true); setShowCommandPalette(false) } },
+                  { id: 'refresh', icon: RefreshCw, label: 'Refresh Library', action: async () => { await window.api.scanner?.rescan?.(); setShowCommandPalette(false); globalShowToast('info', 'Library scan started') } },
+                  { id: 'divider2', divider: true },
+                  { id: 'addFolder', icon: FolderPlus, label: 'Add Media Folder', action: async () => { await window.api.settings.chooseMediaDir?.(); setShowCommandPalette(false) } },
+                  { id: 'clearThumbCache', icon: Trash2, label: 'Clear Thumbnail Cache', action: async () => { await window.api.thumbs?.clearCache?.(); globalShowToast('success', 'Thumbnail cache cleared'); setShowCommandPalette(false) } },
+                  { id: 'exportSettings', icon: Download, label: 'Export Settings', action: async () => { await window.api.data?.exportSettings?.(); setShowCommandPalette(false) } },
+                ]
+                const searchLower = commandSearch.toLowerCase()
+                const filtered = commands.filter(cmd =>
+                  'divider' in cmd || cmd.label.toLowerCase().includes(searchLower)
+                )
+                // Remove dividers if they're at the start/end or consecutive
+                const cleanedCommands = filtered.filter((cmd, i, arr) => {
+                  if (!('divider' in cmd)) return true
+                  const prevIsContent = i > 0 && !('divider' in arr[i - 1])
+                  const nextIsContent = i < arr.length - 1 && !('divider' in arr[i + 1])
+                  return prevIsContent && nextIsContent
+                })
+
+                if (cleanedCommands.length === 0) {
+                  return (
+                    <div className="text-center py-8 text-[var(--muted)]">
+                      No commands found
+                    </div>
+                  )
+                }
+
+                return cleanedCommands.map((cmd, i) => {
+                  if ('divider' in cmd) {
+                    return <div key={cmd.id} className="h-px bg-[var(--border)] my-1" />
+                  }
+                  const Icon = cmd.icon
+                  return (
+                    <button
+                      key={cmd.id}
+                      onClick={cmd.action}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/10 transition text-left group"
+                    >
+                      <Icon size={18} className="text-[var(--muted)] group-hover:text-[var(--accent)]" />
+                      <span className="flex-1">{cmd.label}</span>
+                      {cmd.shortcut && (
+                        <kbd className="px-2 py-1 bg-black/30 rounded text-xs text-[var(--muted)]">{cmd.shortcut}</kbd>
+                      )}
+                    </button>
+                  )
+                })
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="px-4 py-2 border-t border-[var(--border)] bg-black/20">
+              <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+                <span>Quick Actions</span>
+                <div className="flex items-center gap-2">
+                  <kbd className="px-1.5 py-0.5 bg-black/30 rounded">↑↓</kbd>
+                  <span>navigate</span>
+                  <kbd className="px-1.5 py-0.5 bg-black/30 rounded">Enter</kbd>
+                  <span>select</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
