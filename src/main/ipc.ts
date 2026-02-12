@@ -23,6 +23,9 @@ import { getPerformerService, type Performer } from './services/performers'
 import { getCollectionService } from './services/collections'
 import { getSlideshowService, SLIDESHOW_PRESETS, type SlideshowConfig } from './services/slideshow'
 import { getBackupRestoreService, type BackupOptions, type RestoreOptions } from './services/backup-restore'
+import { getScheduledTasksService, type ScheduledTask } from './services/scheduled-tasks'
+import { getSimilarContentService } from './services/similar-content'
+import { getMediaInfoService } from './services/media-info'
 
 import {
   getSettings,
@@ -4463,6 +4466,114 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       errorLogger.info(source, message, meta)
     }
     return { success: true }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SCHEDULED TASKS - Auto-scan, auto-backup, cleanup scheduling
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('scheduler:getTasks', async () => {
+    const service = getScheduledTasksService(db)
+    return service.getTasks()
+  })
+
+  ipcMain.handle('scheduler:getTask', async (_ev, taskId: string) => {
+    const service = getScheduledTasksService(db)
+    return service.getTask(taskId)
+  })
+
+  ipcMain.handle('scheduler:updateTask', async (_ev, taskId: string, updates: Partial<ScheduledTask>) => {
+    const service = getScheduledTasksService(db)
+    return service.updateTask(taskId, updates)
+  })
+
+  ipcMain.handle('scheduler:createTask', async (_ev, task: Omit<ScheduledTask, 'id' | 'createdAt'>) => {
+    const service = getScheduledTasksService(db)
+    return service.createTask(task)
+  })
+
+  ipcMain.handle('scheduler:deleteTask', async (_ev, taskId: string) => {
+    const service = getScheduledTasksService(db)
+    return service.deleteTask(taskId)
+  })
+
+  ipcMain.handle('scheduler:runTask', async (_ev, taskId: string) => {
+    const service = getScheduledTasksService(db)
+    return service.runTask(taskId)
+  })
+
+  ipcMain.handle('scheduler:isRunning', async (_ev, taskId: string) => {
+    const service = getScheduledTasksService(db)
+    return service.isRunning(taskId)
+  })
+
+  ipcMain.handle('scheduler:getHistory', async (_ev, limit?: number) => {
+    const service = getScheduledTasksService(db)
+    return service.getHistory(limit)
+  })
+
+  ipcMain.handle('scheduler:start', async () => {
+    const service = getScheduledTasksService(db)
+    service.start()
+    return { success: true }
+  })
+
+  ipcMain.handle('scheduler:stop', async () => {
+    const service = getScheduledTasksService(db)
+    service.stop()
+    return { success: true }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SIMILAR CONTENT - Perceptual hashing & duplicate detection
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('similar:find', async (_ev, mediaId: string, options?: { minSimilarity?: number; limit?: number; sameTypeOnly?: boolean }) => {
+    const service = getSimilarContentService(db)
+    return service.findSimilar(mediaId, options)
+  })
+
+  ipcMain.handle('similar:findAllGroups', async (_ev, options?: { minSimilarity?: number; minGroupSize?: number }) => {
+    const service = getSimilarContentService(db)
+    return service.findAllSimilarGroups(options)
+  })
+
+  ipcMain.handle('similar:findDuplicates', async () => {
+    const service = getSimilarContentService(db)
+    return service.findExactDuplicates()
+  })
+
+  ipcMain.handle('similar:moreLikeThis', async (_ev, mediaId: string, limit?: number) => {
+    const service = getSimilarContentService(db)
+    return service.getMoreLikeThis(mediaId, limit)
+  })
+
+  ipcMain.handle('similar:getStats', async () => {
+    const service = getSimilarContentService(db)
+    return service.getDuplicateStats()
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MEDIA INFO - Detailed ffprobe analysis
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('mediaInfo:get', async (_ev, filePath: string) => {
+    const service = getMediaInfoService(db)
+    return service.getInfo(filePath)
+  })
+
+  ipcMain.handle('mediaInfo:getById', async (_ev, mediaId: string) => {
+    const service = getMediaInfoService(db)
+    return service.getInfoById(mediaId)
+  })
+
+  ipcMain.handle('mediaInfo:batchGet', async (_ev, mediaIds: string[]) => {
+    const service = getMediaInfoService(db)
+    const result = await service.batchGetInfo(mediaIds)
+    // Convert Map to object for IPC
+    return Object.fromEntries(result)
+  })
+
+  ipcMain.handle('mediaInfo:getQualityStats', async () => {
+    const service = getMediaInfoService(db)
+    return service.getQualityStats()
   })
 
   // Auto-organize NSFW Soundpack on startup
