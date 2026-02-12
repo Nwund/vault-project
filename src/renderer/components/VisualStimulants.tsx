@@ -2686,4 +2686,588 @@ export const CumCountdownOverlay: React.FC<{
   )
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// HEARTS OVERLAY - Floating hearts rising upward
+// ═══════════════════════════════════════════════════════════════════════════
+export const HeartsOverlay: React.FC<{
+  intensity?: number // 1-10
+  color?: string
+}> = ({ intensity = 5, color = '#ff6b9d' }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    interface Heart {
+      x: number
+      y: number
+      size: number
+      speed: number
+      wobble: number
+      wobbleSpeed: number
+      opacity: number
+      rotation: number
+      rotationSpeed: number
+    }
+
+    const hearts: Heart[] = []
+    const heartCount = Math.floor(10 + intensity * 3)
+
+    const createHeart = (startAtBottom = true): Heart => ({
+      x: Math.random() * canvas.width,
+      y: startAtBottom ? canvas.height + 50 : Math.random() * canvas.height,
+      size: 15 + Math.random() * 20,
+      speed: 0.5 + Math.random() * 1.5 + intensity * 0.1,
+      wobble: 0,
+      wobbleSpeed: 0.02 + Math.random() * 0.02,
+      opacity: 0.4 + Math.random() * 0.4,
+      rotation: Math.random() * Math.PI * 2,
+      rotationSpeed: (Math.random() - 0.5) * 0.02,
+    })
+
+    for (let i = 0; i < heartCount; i++) {
+      hearts.push(createHeart(false))
+    }
+
+    const drawHeart = (x: number, y: number, size: number, rotation: number, opacity: number) => {
+      ctx.save()
+      ctx.translate(x, y)
+      ctx.rotate(rotation)
+      ctx.globalAlpha = opacity
+      ctx.fillStyle = color
+      ctx.beginPath()
+      ctx.moveTo(0, -size * 0.3)
+      ctx.bezierCurveTo(-size * 0.5, -size * 0.8, -size, -size * 0.2, 0, size * 0.5)
+      ctx.bezierCurveTo(size, -size * 0.2, size * 0.5, -size * 0.8, 0, -size * 0.3)
+      ctx.fill()
+      ctx.restore()
+    }
+
+    let animationId: number
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      hearts.forEach((heart, index) => {
+        heart.y -= heart.speed
+        heart.wobble += heart.wobbleSpeed
+        heart.rotation += heart.rotationSpeed
+        const wobbleX = Math.sin(heart.wobble) * 30
+
+        drawHeart(heart.x + wobbleX, heart.y, heart.size, heart.rotation, heart.opacity)
+
+        if (heart.y < -50) {
+          hearts[index] = createHeart(true)
+        }
+      })
+
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', resize)
+    }
+  }, [intensity, color])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-30"
+      style={{ opacity: 0.8 }}
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RAIN OVERLAY - Raindrops running down the screen
+// ═══════════════════════════════════════════════════════════════════════════
+export const RainOverlay: React.FC<{
+  intensity?: number // 1-10
+  color?: string
+}> = ({ intensity = 5, color = 'rgba(150, 200, 255, 0.4)' }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    interface Raindrop {
+      x: number
+      y: number
+      length: number
+      speed: number
+      opacity: number
+      thickness: number
+    }
+
+    const drops: Raindrop[] = []
+    const dropCount = Math.floor(50 + intensity * 30)
+
+    const createDrop = (startAtTop = true): Raindrop => ({
+      x: Math.random() * canvas.width,
+      y: startAtTop ? -20 : Math.random() * canvas.height,
+      length: 20 + Math.random() * 30,
+      speed: 8 + Math.random() * 8 + intensity * 0.5,
+      opacity: 0.2 + Math.random() * 0.3,
+      thickness: 1 + Math.random() * 2,
+    })
+
+    for (let i = 0; i < dropCount; i++) {
+      drops.push(createDrop(false))
+    }
+
+    let animationId: number
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      drops.forEach((drop, index) => {
+        drop.y += drop.speed
+
+        ctx.beginPath()
+        ctx.strokeStyle = color
+        ctx.globalAlpha = drop.opacity
+        ctx.lineWidth = drop.thickness
+        ctx.lineCap = 'round'
+        ctx.moveTo(drop.x, drop.y)
+        ctx.lineTo(drop.x + 2, drop.y + drop.length)
+        ctx.stroke()
+
+        if (drop.y > canvas.height + 50) {
+          drops[index] = createDrop(true)
+        }
+      })
+
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', resize)
+    }
+  }, [intensity, color])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-30"
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GLITCH OVERLAY - RGB split and screen jitter
+// ═══════════════════════════════════════════════════════════════════════════
+export const GlitchOverlay: React.FC<{
+  intensity?: number // 1-10
+}> = ({ intensity = 5 }) => {
+  const [glitchState, setGlitchState] = useState({
+    rgbSplit: 0,
+    offsetX: 0,
+    offsetY: 0,
+    sliceY: 0,
+    sliceHeight: 0,
+    active: false,
+  })
+
+  useEffect(() => {
+    const glitchInterval = setInterval(() => {
+      // Random glitch activation
+      if (Math.random() < 0.1 + intensity * 0.05) {
+        setGlitchState({
+          rgbSplit: (Math.random() - 0.5) * intensity * 2,
+          offsetX: (Math.random() - 0.5) * intensity * 3,
+          offsetY: (Math.random() - 0.5) * intensity * 1,
+          sliceY: Math.random() * 100,
+          sliceHeight: 5 + Math.random() * 15,
+          active: true,
+        })
+
+        // Reset after short duration
+        setTimeout(() => {
+          setGlitchState(prev => ({ ...prev, active: false, rgbSplit: 0, offsetX: 0, offsetY: 0 }))
+        }, 50 + Math.random() * 100)
+      }
+    }, 100)
+
+    return () => clearInterval(glitchInterval)
+  }, [intensity])
+
+  if (!glitchState.active) return null
+
+  return (
+    <div
+      className="fixed inset-0 pointer-events-none z-40"
+      style={{
+        mixBlendMode: 'screen',
+      }}
+    >
+      {/* RGB split effect */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background: `linear-gradient(90deg,
+            rgba(255, 0, 0, 0.1) 0%,
+            transparent 50%,
+            rgba(0, 255, 255, 0.1) 100%)`,
+          transform: `translateX(${glitchState.rgbSplit}px)`,
+        }}
+      />
+
+      {/* Horizontal slice glitch */}
+      <div
+        className="absolute left-0 right-0 bg-white/10"
+        style={{
+          top: `${glitchState.sliceY}%`,
+          height: `${glitchState.sliceHeight}px`,
+          transform: `translateX(${glitchState.offsetX * 5}px)`,
+        }}
+      />
+
+      {/* Scanline flash */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255, 255, 255, 0.03) 2px, rgba(255, 255, 255, 0.03) 4px)',
+          opacity: 0.5,
+        }}
+      />
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BUBBLES OVERLAY - Floating bubbles
+// ═══════════════════════════════════════════════════════════════════════════
+export const BubblesOverlay: React.FC<{
+  intensity?: number // 1-10
+  color?: string
+}> = ({ intensity = 5, color = 'rgba(255, 255, 255, 0.3)' }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    interface Bubble {
+      x: number
+      y: number
+      radius: number
+      speed: number
+      wobble: number
+      wobbleSpeed: number
+      opacity: number
+    }
+
+    const bubbles: Bubble[] = []
+    const bubbleCount = Math.floor(15 + intensity * 4)
+
+    const createBubble = (startAtBottom = true): Bubble => ({
+      x: Math.random() * canvas.width,
+      y: startAtBottom ? canvas.height + 50 : Math.random() * canvas.height,
+      radius: 10 + Math.random() * 30,
+      speed: 0.5 + Math.random() * 1 + intensity * 0.1,
+      wobble: Math.random() * Math.PI * 2,
+      wobbleSpeed: 0.02 + Math.random() * 0.02,
+      opacity: 0.2 + Math.random() * 0.3,
+    })
+
+    for (let i = 0; i < bubbleCount; i++) {
+      bubbles.push(createBubble(false))
+    }
+
+    let animationId: number
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      bubbles.forEach((bubble, index) => {
+        bubble.y -= bubble.speed
+        bubble.wobble += bubble.wobbleSpeed
+        const wobbleX = Math.sin(bubble.wobble) * 20
+
+        // Draw bubble
+        ctx.beginPath()
+        ctx.arc(bubble.x + wobbleX, bubble.y, bubble.radius, 0, Math.PI * 2)
+        ctx.strokeStyle = color
+        ctx.globalAlpha = bubble.opacity
+        ctx.lineWidth = 2
+        ctx.stroke()
+
+        // Highlight
+        ctx.beginPath()
+        ctx.arc(
+          bubble.x + wobbleX - bubble.radius * 0.3,
+          bubble.y - bubble.radius * 0.3,
+          bubble.radius * 0.2,
+          0,
+          Math.PI * 2
+        )
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
+        ctx.globalAlpha = bubble.opacity * 0.8
+        ctx.fill()
+
+        if (bubble.y < -bubble.radius * 2) {
+          bubbles[index] = createBubble(true)
+        }
+      })
+
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', resize)
+    }
+  }, [intensity, color])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-30"
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MATRIX RAIN OVERLAY - Falling green characters
+// ═══════════════════════════════════════════════════════════════════════════
+export const MatrixRainOverlay: React.FC<{
+  intensity?: number // 1-10
+  color?: string
+}> = ({ intensity = 5, color = '#00ff00' }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    const fontSize = 14
+    const columns = Math.floor(canvas.width / fontSize)
+    const drops: number[] = new Array(columns).fill(1)
+
+    // Matrix characters
+    const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789'
+
+    let animationId: number
+    const animate = () => {
+      // Fade effect
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      ctx.fillStyle = color
+      ctx.font = `${fontSize}px monospace`
+
+      for (let i = 0; i < drops.length; i++) {
+        const char = chars[Math.floor(Math.random() * chars.length)]
+        const x = i * fontSize
+        const y = drops[i] * fontSize
+
+        // Vary opacity based on intensity
+        ctx.globalAlpha = 0.3 + (intensity / 10) * 0.5
+
+        ctx.fillText(char, x, y)
+
+        // Reset drop randomly
+        if (y > canvas.height && Math.random() > 0.975) {
+          drops[i] = 0
+        }
+
+        drops[i] += 0.5 + (intensity / 10) * 0.5
+      }
+
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', resize)
+    }
+  }, [intensity, color])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-30"
+      style={{ opacity: 0.6 }}
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONFETTI OVERLAY - Celebration particles
+// ═══════════════════════════════════════════════════════════════════════════
+export const ConfettiOverlay: React.FC<{
+  intensity?: number // 1-10
+  burst?: boolean
+}> = ({ intensity = 5, burst = false }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const burstTriggered = useRef(false)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    interface Confetti {
+      x: number
+      y: number
+      width: number
+      height: number
+      color: string
+      rotation: number
+      rotationSpeed: number
+      speedX: number
+      speedY: number
+      gravity: number
+      opacity: number
+    }
+
+    const confetti: Confetti[] = []
+    const colors = ['#ff6b9d', '#c9184a', '#ff85a1', '#ffc0cb', '#ff1493', '#da70d6', '#9370db', '#87ceeb']
+
+    const createConfetti = (fromTop = false, fromCenter = false): Confetti => {
+      let x = Math.random() * canvas.width
+      let y = fromTop ? -20 : canvas.height + 20
+      let speedX = (Math.random() - 0.5) * 4
+      let speedY = fromTop ? 2 + Math.random() * 3 : -(8 + Math.random() * 8)
+
+      if (fromCenter) {
+        x = canvas.width / 2 + (Math.random() - 0.5) * 100
+        y = canvas.height / 2
+        const angle = Math.random() * Math.PI * 2
+        const speed = 5 + Math.random() * 10
+        speedX = Math.cos(angle) * speed
+        speedY = Math.sin(angle) * speed - 5
+      }
+
+      return {
+        x,
+        y,
+        width: 8 + Math.random() * 8,
+        height: 4 + Math.random() * 4,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rotation: Math.random() * Math.PI * 2,
+        rotationSpeed: (Math.random() - 0.5) * 0.2,
+        speedX,
+        speedY,
+        gravity: 0.1 + Math.random() * 0.1,
+        opacity: 0.8 + Math.random() * 0.2,
+      }
+    }
+
+    // Initial confetti
+    const confettiCount = Math.floor(20 + intensity * 5)
+    for (let i = 0; i < confettiCount; i++) {
+      confetti.push(createConfetti(true))
+    }
+
+    let animationId: number
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      // Handle burst
+      if (burst && !burstTriggered.current) {
+        burstTriggered.current = true
+        for (let i = 0; i < 50; i++) {
+          confetti.push(createConfetti(false, true))
+        }
+      }
+
+      confetti.forEach((c, index) => {
+        c.x += c.speedX
+        c.y += c.speedY
+        c.speedY += c.gravity
+        c.rotation += c.rotationSpeed
+        c.speedX *= 0.99
+
+        ctx.save()
+        ctx.translate(c.x, c.y)
+        ctx.rotate(c.rotation)
+        ctx.globalAlpha = c.opacity
+        ctx.fillStyle = c.color
+        ctx.fillRect(-c.width / 2, -c.height / 2, c.width, c.height)
+        ctx.restore()
+
+        if (c.y > canvas.height + 50) {
+          confetti[index] = createConfetti(true)
+        }
+      })
+
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationId)
+      window.removeEventListener('resize', resize)
+      burstTriggered.current = false
+    }
+  }, [intensity, burst])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-30"
+    />
+  )
+}
+
 export default ArousalEffects

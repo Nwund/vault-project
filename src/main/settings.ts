@@ -387,6 +387,13 @@ export interface VisualEffectsSettings {
   crtScreenFlicker: boolean // Random brightness flicker
   heatLevel: number // 0-10 ambient heat level
   goonWords: GoonWordsSettings
+  // New ambient overlays
+  hearts: boolean
+  rain: boolean
+  glitch: boolean
+  bubbles: boolean
+  matrix: boolean
+  confetti: boolean
 }
 
 export interface VaultSettings {
@@ -853,7 +860,14 @@ const DEFAULTS: VaultSettings = {
       duration: 3,
       randomRotation: true,
       intensity: 5
-    }
+    },
+    // New ambient overlays
+    hearts: false,
+    rain: false,
+    glitch: false,
+    bubbles: false,
+    matrix: false,
+    confetti: false
   },
   goonStats: {
     totalSessions: 0,

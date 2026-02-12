@@ -18,7 +18,7 @@ import { useVideoPreview } from './hooks/useVideoPreview'
 
 import { TagSelector } from './components/TagSelector'
 import { useHeatLevel } from './components/HeatOverlay'
-import { ArousalEffects, CumCountdownOverlay } from './components/VisualStimulants'
+import { ArousalEffects, CumCountdownOverlay, HeartsOverlay, RainOverlay, GlitchOverlay, BubblesOverlay, MatrixRainOverlay, ConfettiOverlay } from './components/VisualStimulants'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { fisherYatesShuffle, shuffleTake, randomPick } from './utils/shuffle'
 import { cleanupVideo, useVideoPool, videoPool } from './hooks/useVideoCleanup'
@@ -507,6 +507,13 @@ interface VisualEffectsSettings {
   crtScreenFlicker: boolean
   heatLevel: number
   goonWords: GoonWordsSettings
+  // New ambient overlays
+  hearts: boolean
+  rain: boolean
+  glitch: boolean
+  bubbles: boolean
+  matrix: boolean
+  confetti: boolean
 }
 
 interface GoonStats {
@@ -741,6 +748,14 @@ export default function App() {
   const [crtRgbSubpixels, setCrtRgbSubpixels] = useState(true) // RGB subpixel simulation
   const [crtChromaticAberration, setCrtChromaticAberration] = useState(true) // Color separation at edges
   const [crtScreenFlicker, setCrtScreenFlicker] = useState(true) // Random brightness flicker
+
+  // New ambient overlays
+  const [heartsEnabled, setHeartsEnabled] = useState(false) // Floating hearts
+  const [rainEnabled, setRainEnabled] = useState(false) // Rain on glass
+  const [glitchEnabled, setGlitchEnabled] = useState(false) // Glitch/RGB split
+  const [bubblesEnabled, setBubblesEnabled] = useState(false) // Floating bubbles
+  const [matrixEnabled, setMatrixEnabled] = useState(false) // Matrix rain
+  const [confettiEnabled, setConfettiEnabled] = useState(false) // Confetti particles
 
   // Keyboard shortcuts help modal
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
@@ -1063,6 +1078,13 @@ export default function App() {
       if (ve.crtScreenFlicker !== undefined) setCrtScreenFlicker(ve.crtScreenFlicker)
       if (ve.heatLevel !== undefined) setAmbientHeatLevel(ve.heatLevel)
       if (ve.goonWords?.enabled !== undefined) setGoonModeEnabled(ve.goonWords.enabled)
+      // New ambient overlays
+      if (ve.hearts !== undefined) setHeartsEnabled(ve.hearts)
+      if (ve.rain !== undefined) setRainEnabled(ve.rain)
+      if (ve.glitch !== undefined) setGlitchEnabled(ve.glitch)
+      if (ve.bubbles !== undefined) setBubblesEnabled(ve.bubbles)
+      if (ve.matrix !== undefined) setMatrixEnabled(ve.matrix)
+      if (ve.confetti !== undefined) setConfettiEnabled(ve.confetti)
     }
   }, [settings?.visualEffects])
 
@@ -1359,6 +1381,14 @@ export default function App() {
         />
       )}
 
+      {/* New Ambient Overlays */}
+      {visualEffectsEnabled && heartsEnabled && <HeartsOverlay intensity={heatLevel} />}
+      {visualEffectsEnabled && rainEnabled && <RainOverlay intensity={heatLevel} />}
+      {visualEffectsEnabled && glitchEnabled && <GlitchOverlay intensity={heatLevel} />}
+      {visualEffectsEnabled && bubblesEnabled && <BubblesOverlay intensity={heatLevel} />}
+      {visualEffectsEnabled && matrixEnabled && <MatrixRainOverlay intensity={heatLevel} />}
+      {visualEffectsEnabled && confettiEnabled && <ConfettiOverlay intensity={heatLevel} />}
+
       {/* Zen Mode Indicator - shows when near edges */}
       {zenMode && (
         <div className={cn(
@@ -1576,6 +1606,12 @@ export default function App() {
                 crtChromaticAberration: crtChromaticAberration,
                 crtScreenFlicker: crtScreenFlicker,
                 heatLevel: ambientHeatLevel,
+                hearts: heartsEnabled,
+                rain: rainEnabled,
+                glitch: glitchEnabled,
+                bubbles: bubblesEnabled,
+                matrix: matrixEnabled,
+                confetti: confettiEnabled,
               }}
               onVisualEffectsChange={{
                 setEnabled: (v) => {
@@ -1625,6 +1661,30 @@ export default function App() {
                 setHeatLevel: (v) => {
                   setAmbientHeatLevel(v)
                   window.api.settings.visualEffects?.update?.({ heatLevel: v })
+                },
+                setHearts: (v) => {
+                  setHeartsEnabled(v)
+                  window.api.settings.visualEffects?.update?.({ hearts: v })
+                },
+                setRain: (v) => {
+                  setRainEnabled(v)
+                  window.api.settings.visualEffects?.update?.({ rain: v })
+                },
+                setGlitch: (v) => {
+                  setGlitchEnabled(v)
+                  window.api.settings.visualEffects?.update?.({ glitch: v })
+                },
+                setBubbles: (v) => {
+                  setBubblesEnabled(v)
+                  window.api.settings.visualEffects?.update?.({ bubbles: v })
+                },
+                setMatrix: (v) => {
+                  setMatrixEnabled(v)
+                  window.api.settings.visualEffects?.update?.({ matrix: v })
+                },
+                setConfetti: (v) => {
+                  setConfettiEnabled(v)
+                  window.api.settings.visualEffects?.update?.({ confetti: v })
                 },
               }}
             />
@@ -12488,6 +12548,12 @@ function SettingsPage(props: {
     crtChromaticAberration: boolean
     crtScreenFlicker: boolean
     heatLevel: number
+    hearts: boolean
+    rain: boolean
+    glitch: boolean
+    bubbles: boolean
+    matrix: boolean
+    confetti: boolean
   }
   onVisualEffectsChange: {
     setEnabled: (v: boolean) => void
@@ -12502,6 +12568,12 @@ function SettingsPage(props: {
     setCrtChromaticAberration: (v: boolean) => void
     setCrtScreenFlicker: (v: boolean) => void
     setHeatLevel: (v: number) => void
+    setHearts: (v: boolean) => void
+    setRain: (v: boolean) => void
+    setGlitch: (v: boolean) => void
+    setBubbles: (v: boolean) => void
+    setMatrix: (v: boolean) => void
+    setConfetti: (v: boolean) => void
   }
 }) {
   const s = props.settings
@@ -13151,6 +13223,78 @@ function SettingsPage(props: {
                     </div>
                   </>
                 )}
+
+                {/* Hearts */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm">💕 Hearts</div>
+                    <div className="text-xs text-[var(--muted)]">Floating hearts rising upward</div>
+                  </div>
+                  <ToggleSwitch
+                    checked={props.visualEffects.hearts}
+                    onChange={props.onVisualEffectsChange.setHearts}
+                  />
+                </div>
+
+                {/* Rain */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm">🌧️ Rain</div>
+                    <div className="text-xs text-[var(--muted)]">Raindrops on glass effect</div>
+                  </div>
+                  <ToggleSwitch
+                    checked={props.visualEffects.rain}
+                    onChange={props.onVisualEffectsChange.setRain}
+                  />
+                </div>
+
+                {/* Glitch */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm">⚡ Glitch</div>
+                    <div className="text-xs text-[var(--muted)]">RGB split and screen jitter</div>
+                  </div>
+                  <ToggleSwitch
+                    checked={props.visualEffects.glitch}
+                    onChange={props.onVisualEffectsChange.setGlitch}
+                  />
+                </div>
+
+                {/* Bubbles */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm">🫧 Bubbles</div>
+                    <div className="text-xs text-[var(--muted)]">Floating bubbles</div>
+                  </div>
+                  <ToggleSwitch
+                    checked={props.visualEffects.bubbles}
+                    onChange={props.onVisualEffectsChange.setBubbles}
+                  />
+                </div>
+
+                {/* Matrix Rain */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm">🖥️ Matrix Rain</div>
+                    <div className="text-xs text-[var(--muted)]">Falling green characters</div>
+                  </div>
+                  <ToggleSwitch
+                    checked={props.visualEffects.matrix}
+                    onChange={props.onVisualEffectsChange.setMatrix}
+                  />
+                </div>
+
+                {/* Confetti */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm">🎊 Confetti</div>
+                    <div className="text-xs text-[var(--muted)]">Celebration particles</div>
+                  </div>
+                  <ToggleSwitch
+                    checked={props.visualEffects.confetti}
+                    onChange={props.onVisualEffectsChange.setConfetti}
+                  />
+                </div>
               </div>
             </div>
 
