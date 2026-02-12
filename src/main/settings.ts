@@ -1298,6 +1298,121 @@ export function getStreakStatus(): StreakStatus {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PERSONAL RECORDS / LEADERBOARD
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PersonalRecord {
+  name: string
+  value: number
+  unit: string
+  formattedValue: string
+  icon: string
+  achievedAt?: string  // Date string when record was set
+}
+
+export interface PersonalRecords {
+  records: PersonalRecord[]
+  weeklyStats: {
+    sessionsThisWeek: number
+    videosWatchedThisWeek: number
+    edgesThisWeek: number
+    timeThisWeek: number  // minutes
+  }
+}
+
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${Math.round(minutes)} min`
+  const hours = Math.floor(minutes / 60)
+  const mins = Math.round(minutes % 60)
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
+}
+
+export function getPersonalRecords(): PersonalRecords {
+  const stats = getGoonStats()
+
+  const records: PersonalRecord[] = [
+    {
+      name: 'Longest Session',
+      value: stats.longestSession,
+      unit: 'minutes',
+      formattedValue: formatDuration(stats.longestSession),
+      icon: '⏱️'
+    },
+    {
+      name: 'Longest Streak',
+      value: stats.longestStreak,
+      unit: 'days',
+      formattedValue: `${stats.longestStreak} days`,
+      icon: '🔥'
+    },
+    {
+      name: 'Most Edges in Session',
+      value: stats.longestEdge,
+      unit: 'edges',
+      formattedValue: `${stats.longestEdge}`,
+      icon: '✨'
+    },
+    {
+      name: 'Total Watch Time',
+      value: stats.totalWatchTime,
+      unit: 'minutes',
+      formattedValue: formatDuration(stats.totalWatchTime),
+      icon: '📺'
+    },
+    {
+      name: 'Unique Videos Watched',
+      value: stats.uniqueVideosWatched,
+      unit: 'videos',
+      formattedValue: `${stats.uniqueVideosWatched}`,
+      icon: '🎬'
+    },
+    {
+      name: 'Total Sessions',
+      value: stats.totalSessions,
+      unit: 'sessions',
+      formattedValue: `${stats.totalSessions}`,
+      icon: '🎯'
+    },
+    {
+      name: 'Total Edges',
+      value: stats.totalEdges,
+      unit: 'edges',
+      formattedValue: `${stats.totalEdges}`,
+      icon: '💫'
+    },
+    {
+      name: 'GoonWall Max Tiles',
+      value: stats.goonWallMaxTiles,
+      unit: 'tiles',
+      formattedValue: `${stats.goonWallMaxTiles}`,
+      icon: '🧱'
+    }
+  ]
+
+  // Calculate weekly stats (based on activity heatmap)
+  const now = new Date()
+  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  let weeklyActivity = 0
+
+  for (const [dateStr, intensity] of Object.entries(stats.activityHeatmap)) {
+    const date = new Date(dateStr)
+    if (date >= oneWeekAgo && date <= now) {
+      weeklyActivity += intensity
+    }
+  }
+
+  // Weekly stats are approximations based on available data
+  const weeklyStats = {
+    sessionsThisWeek: Math.min(stats.totalSessions, Math.ceil(weeklyActivity * 1.5)),
+    videosWatchedThisWeek: Math.min(stats.totalVideosWatched, Math.ceil(weeklyActivity * 5)),
+    edgesThisWeek: Math.min(stats.totalEdges, Math.ceil(weeklyActivity * 3)),
+    timeThisWeek: Math.min(stats.totalTimeGooning, Math.ceil(weeklyActivity * 30))
+  }
+
+  return { records, weeklyStats }
+}
+
 export function checkAndUnlockAchievements(vaultStats?: { totalMedia?: number; playlistCount?: number; tagCount?: number }): string[] {
   const stats = getGoonStats()
   const newlyUnlocked: string[] = []

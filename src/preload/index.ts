@@ -468,6 +468,22 @@ const api = {
       lastSessionDate: number | null
       hasSessionToday: boolean
     }>('goon:getStreakStatus'),
+    getPersonalRecords: () => invoke<{
+      records: Array<{
+        name: string
+        value: number
+        unit: string
+        formattedValue: string
+        icon: string
+        achievedAt?: string
+      }>
+      weeklyStats: {
+        sessionsThisWeek: number
+        videosWatchedThisWeek: number
+        edgesThisWeek: number
+        timeThisWeek: number
+      }
+    }>('goon:getPersonalRecords'),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
