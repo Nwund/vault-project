@@ -6851,6 +6851,8 @@ interface ReviewItem {
 }
 
 function AiTaggerPage() {
+  const { showToast } = useToast()
+
   // Model state
   const [models, setModels] = useState<ModelInfo[]>([])
   const [modelsReady, setModelsReady] = useState(false)
@@ -6954,8 +6956,10 @@ function AiTaggerPage() {
       setDownloadingModel('Starting...')
       await window.api.ai.downloadModels()
       await checkModels()
-    } catch (err) {
+      showToast('success', 'Models downloaded successfully')
+    } catch (err: any) {
       console.error('[AI] Failed to download models:', err)
+      showToast('error', err?.message ?? 'Failed to download models')
       setDownloadingModel(null)
     }
   }
@@ -6965,8 +6969,10 @@ function AiTaggerPage() {
     try {
       await window.api.ai.configureTier2({ apiKey: veniceApiKey.trim() })
       setTier2Configured(true)
-    } catch (err) {
+      showToast('success', 'Venice API configured')
+    } catch (err: any) {
       console.error('[AI] Failed to configure Venice:', err)
+      showToast('error', err?.message ?? 'Failed to configure Venice API')
     }
   }
 
@@ -6992,56 +6998,66 @@ function AiTaggerPage() {
   async function queueUntagged() {
     try {
       const result = await window.api.ai.queueUntagged() as { queued: number }
-      console.log(`[AI] Queued ${result.queued} untagged items`)
+      showToast('success', `Queued ${result.queued} untagged items`)
       refreshQueueStatus()
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AI] Failed to queue untagged:', err)
+      showToast('error', err?.message ?? 'Failed to queue untagged items')
     }
   }
 
   async function queueAll() {
     try {
       const result = await window.api.ai.queueAll() as { queued: number }
-      console.log(`[AI] Queued ${result.queued} items`)
+      showToast('success', `Queued ${result.queued} items for analysis`)
       refreshQueueStatus()
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AI] Failed to queue all:', err)
+      showToast('error', err?.message ?? 'Failed to queue items')
     }
   }
 
   async function startProcessing() {
     try {
       await window.api.ai.start({ enableTier2: tier2Enabled && tier2Configured })
+      showToast('success', 'AI processing started')
       refreshQueueStatus()
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AI] Failed to start processing:', err)
+      showToast('error', err?.message ?? 'Failed to start processing')
     }
   }
 
   async function pauseProcessing() {
     try {
       await window.api.ai.pause()
+      showToast('info', 'Processing paused')
       refreshQueueStatus()
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AI] Failed to pause:', err)
+      showToast('error', err?.message ?? 'Failed to pause processing')
     }
   }
 
   async function resumeProcessing() {
     try {
       await window.api.ai.resume()
+      showToast('info', 'Processing resumed')
       refreshQueueStatus()
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AI] Failed to resume:', err)
+      showToast('error', err?.message ?? 'Failed to resume processing')
     }
   }
 
   async function stopProcessing() {
     try {
       await window.api.ai.stop()
+      showToast('info', 'Processing stopped')
       refreshQueueStatus()
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AI] Failed to stop:', err)
+      showToast('error', err?.message ?? 'Failed to stop processing')
     }
   }
 
@@ -7052,8 +7068,9 @@ function AiTaggerPage() {
       if (selectedReviewItem?.mediaId === mediaId) {
         setSelectedReviewItem(null)
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AI] Failed to approve:', err)
+      showToast('error', err?.message ?? 'Failed to approve item')
     }
   }
 
@@ -7065,13 +7082,15 @@ function AiTaggerPage() {
         editedTitle: editedTitle || undefined,
         newTags: newTagInput ? newTagInput.split(',').map(t => t.trim()).filter(Boolean) : undefined
       })
+      showToast('success', 'Item approved with edits')
       loadReviewItems()
       setSelectedReviewItem(null)
       setSelectedTags(new Set())
       setEditedTitle('')
       setNewTagInput('')
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AI] Failed to approve edited:', err)
+      showToast('error', err?.message ?? 'Failed to approve edited item')
     }
   }
 
@@ -7082,40 +7101,44 @@ function AiTaggerPage() {
       if (selectedReviewItem?.mediaId === mediaId) {
         setSelectedReviewItem(null)
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AI] Failed to reject:', err)
+      showToast('error', err?.message ?? 'Failed to reject item')
     }
   }
 
   async function bulkApproveAll() {
     try {
       const result = await window.api.ai.bulkApprove() as { approved: number }
-      console.log(`[AI] Bulk approved ${result.approved} items`)
+      showToast('success', `Approved ${result.approved} items`)
       loadReviewItems()
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AI] Failed to bulk approve:', err)
+      showToast('error', err?.message ?? 'Failed to bulk approve')
     }
   }
 
   async function bulkRejectAll() {
     try {
       const result = await window.api.ai.bulkReject() as { rejected: number }
-      console.log(`[AI] Bulk rejected ${result.rejected} items`)
+      showToast('success', `Rejected ${result.rejected} items`)
       loadReviewItems()
       setSelectedReviewItem(null)
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AI] Failed to bulk reject:', err)
+      showToast('error', err?.message ?? 'Failed to bulk reject')
     }
   }
 
   async function clearAllFailed() {
     try {
       const result = await window.api.ai.clearFailed()
-      console.log(`[AI] Cleared ${result.cleared} failed items`)
+      showToast('success', `Cleared ${result.cleared} failed items`)
       refreshQueueStatus()
       loadReviewItems()
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AI] Failed to clear failed:', err)
+      showToast('error', err?.message ?? 'Failed to clear failed items')
     }
   }
 
@@ -10741,34 +10764,64 @@ function PlaylistsPage() {
   }
 
   const deletePlaylist = async (id: string) => {
-    await window.api.playlists.delete(id)
-    if (selectedId === id) setSelectedId(null)
-    await refresh()
+    try {
+      await window.api.playlists.delete(id)
+      if (selectedId === id) setSelectedId(null)
+      await refresh()
+      showToast('success', 'Playlist deleted')
+    } catch (err: any) {
+      console.error('[PlaylistsPage] Failed to delete playlist:', err)
+      showToast('error', err?.message ?? 'Failed to delete playlist')
+    }
   }
 
   const renamePlaylist = async (id: string) => {
     if (!renamingValue.trim()) return
-    await window.api.playlists.rename(id, renamingValue.trim())
-    setRenaming(null)
-    await refresh()
+    try {
+      await window.api.playlists.rename(id, renamingValue.trim())
+      setRenaming(null)
+      await refresh()
+      showToast('success', 'Playlist renamed')
+    } catch (err: any) {
+      console.error('[PlaylistsPage] Failed to rename playlist:', err)
+      showToast('error', err?.message ?? 'Failed to rename playlist')
+    }
   }
 
   const duplicatePlaylist = async (id: string) => {
-    await window.api.playlists.duplicate(id)
-    await refresh()
+    try {
+      await window.api.playlists.duplicate(id)
+      await refresh()
+      showToast('success', 'Playlist duplicated')
+    } catch (err: any) {
+      console.error('[PlaylistsPage] Failed to duplicate playlist:', err)
+      showToast('error', err?.message ?? 'Failed to duplicate playlist')
+    }
   }
 
   const exportM3U = async (id: string) => {
-    const path = await window.api.playlists.exportM3U(id)
-    if (path) {
-      window.api.shell?.showItemInFolder?.(path)
+    try {
+      const path = await window.api.playlists.exportM3U(id)
+      if (path) {
+        window.api.shell?.showItemInFolder?.(path)
+        showToast('success', 'Playlist exported as M3U')
+      }
+    } catch (err: any) {
+      console.error('[PlaylistsPage] Failed to export M3U:', err)
+      showToast('error', err?.message ?? 'Failed to export playlist')
     }
   }
 
   const exportJSON = async (id: string) => {
-    const result = await window.api.playlists.exportJSON?.(id)
-    if (result?.success && result.path) {
-      window.api.shell?.showItemInFolder?.(result.path)
+    try {
+      const result = await window.api.playlists.exportJSON?.(id)
+      if (result?.success && result.path) {
+        window.api.shell?.showItemInFolder?.(result.path)
+        showToast('success', 'Playlist exported as JSON')
+      }
+    } catch (err: any) {
+      console.error('[PlaylistsPage] Failed to export JSON:', err)
+      showToast('error', err?.message ?? 'Failed to export playlist')
     }
   }
 
@@ -13032,10 +13085,15 @@ function SettingsPage(props: {
                 <button
                   onClick={async () => {
                     if (confirm('Reset all Appearance settings to defaults?')) {
-                      const next = await window.api.settings.resetSection?.('appearance')
-                      if (next) {
-                        props.patchSettings(next)
-                        showToast('success', 'Appearance settings reset')
+                      try {
+                        const next = await window.api.settings.resetSection?.('appearance')
+                        if (next) {
+                          props.patchSettings(next)
+                          showToast('success', 'Appearance settings reset')
+                        }
+                      } catch (err: any) {
+                        console.error('Failed to reset appearance settings:', err)
+                        showToast('error', err?.message ?? 'Failed to reset settings')
                       }
                     }
                   }}
@@ -13886,10 +13944,15 @@ function SettingsPage(props: {
                 <button
                   onClick={async () => {
                     if (confirm('Reset all Playback settings to defaults?')) {
-                      const next = await window.api.settings.resetSection?.('playback')
-                      if (next) {
-                        props.patchSettings(next)
-                        showToast('success', 'Playback settings reset')
+                      try {
+                        const next = await window.api.settings.resetSection?.('playback')
+                        if (next) {
+                          props.patchSettings(next)
+                          showToast('success', 'Playback settings reset')
+                        }
+                      } catch (err: any) {
+                        console.error('Failed to reset playback settings:', err)
+                        showToast('error', err?.message ?? 'Failed to reset settings')
                       }
                     }
                   }}
@@ -14032,10 +14095,15 @@ function SettingsPage(props: {
                   <button
                     onClick={async () => {
                       if (confirm('Reset all Sound settings to defaults?')) {
-                        const next = await window.api.settings.resetSection?.('sound')
-                        if (next) {
-                          props.patchSettings(next)
-                          showToast('success', 'Sound settings reset')
+                        try {
+                          const next = await window.api.settings.resetSection?.('sound')
+                          if (next) {
+                            props.patchSettings(next)
+                            showToast('success', 'Sound settings reset')
+                          }
+                        } catch (err: any) {
+                          console.error('Failed to reset sound settings:', err)
+                          showToast('error', err?.message ?? 'Failed to reset settings')
                         }
                       }
                     }}
@@ -14318,17 +14386,25 @@ function SettingsPage(props: {
                               onChange={(e) => setRenameProfileName(e.target.value)}
                               onKeyDown={async (e) => {
                                 if (e.key === 'Enter' && renameProfileName.trim()) {
-                                  await window.api.profiles?.rename?.(profile.id, renameProfileName.trim())
-                                  setRenamingProfileId(null)
-                                  loadProfiles()
+                                  try {
+                                    await window.api.profiles?.rename?.(profile.id, renameProfileName.trim())
+                                    setRenamingProfileId(null)
+                                    loadProfiles()
+                                  } catch (err: any) {
+                                    showToast('error', err?.message ?? 'Failed to rename profile')
+                                  }
                                 } else if (e.key === 'Escape') {
                                   setRenamingProfileId(null)
                                 }
                               }}
                               onBlur={async () => {
                                 if (renameProfileName.trim() && renameProfileName !== profile.name) {
-                                  await window.api.profiles?.rename?.(profile.id, renameProfileName.trim())
-                                  loadProfiles()
+                                  try {
+                                    await window.api.profiles?.rename?.(profile.id, renameProfileName.trim())
+                                    loadProfiles()
+                                  } catch (err: any) {
+                                    showToast('error', err?.message ?? 'Failed to rename profile')
+                                  }
                                 }
                                 setRenamingProfileId(null)
                               }}
@@ -14357,11 +14433,15 @@ function SettingsPage(props: {
                             <Btn
                               className="text-xs px-2 py-1"
                               onClick={async () => {
-                                await window.api.profiles?.load?.(profile.id)
-                                const next = await window.api.settings.get()
-                                props.patchSettings(next)
-                                setActiveProfileId(profile.id)
-                                showToast('success', `Loaded profile "${profile.name}"`)
+                                try {
+                                  await window.api.profiles?.load?.(profile.id)
+                                  const next = await window.api.settings.get()
+                                  props.patchSettings(next)
+                                  setActiveProfileId(profile.id)
+                                  showToast('success', `Loaded profile "${profile.name}"`)
+                                } catch (err: any) {
+                                  showToast('error', err?.message ?? 'Failed to load profile')
+                                }
                               }}
                               title="Load this profile"
                             >
@@ -14372,9 +14452,13 @@ function SettingsPage(props: {
                           <Btn
                             className="text-xs px-2 py-1"
                             onClick={async () => {
-                              await window.api.profiles?.save?.(profile.id)
-                              loadProfiles()
-                              showToast('success', `Saved current settings to "${profile.name}"`)
+                              try {
+                                await window.api.profiles?.save?.(profile.id)
+                                loadProfiles()
+                                showToast('success', `Saved current settings to "${profile.name}"`)
+                              } catch (err: any) {
+                                showToast('error', err?.message ?? 'Failed to save profile')
+                              }
                             }}
                             title="Save current settings to this profile"
                           >
@@ -14395,12 +14479,16 @@ function SettingsPage(props: {
                             tone="danger"
                             onClick={async () => {
                               if (confirm(`Delete profile "${profile.name}"?`)) {
-                                await window.api.profiles?.delete?.(profile.id)
-                                if (activeProfileId === profile.id) {
-                                  setActiveProfileId(null)
+                                try {
+                                  await window.api.profiles?.delete?.(profile.id)
+                                  if (activeProfileId === profile.id) {
+                                    setActiveProfileId(null)
+                                  }
+                                  loadProfiles()
+                                  showToast('success', 'Profile deleted')
+                                } catch (err: any) {
+                                  showToast('error', err?.message ?? 'Failed to delete profile')
                                 }
-                                loadProfiles()
-                                showToast('success', 'Profile deleted')
                               }
                             }}
                             title="Delete profile"
@@ -14479,16 +14567,20 @@ function SettingsPage(props: {
                             showToast('error', 'Please enter a profile name')
                             return
                           }
-                          const profile = await window.api.profiles?.create?.(newProfileName.trim(), newProfileDesc.trim() || undefined)
-                          if (profile) {
-                            await window.api.profiles?.save?.(profile.id)
-                            setActiveProfileId(profile.id)
-                            loadProfiles()
-                            showToast('success', `Created profile "${newProfileName}"`)
+                          try {
+                            const profile = await window.api.profiles?.create?.(newProfileName.trim(), newProfileDesc.trim() || undefined)
+                            if (profile) {
+                              await window.api.profiles?.save?.(profile.id)
+                              setActiveProfileId(profile.id)
+                              loadProfiles()
+                              showToast('success', `Created profile "${newProfileName}"`)
+                            }
+                            setShowCreateProfileModal(false)
+                            setNewProfileName('')
+                            setNewProfileDesc('')
+                          } catch (err: any) {
+                            showToast('error', err?.message ?? 'Failed to create profile')
                           }
-                          setShowCreateProfileModal(false)
-                          setNewProfileName('')
-                          setNewProfileDesc('')
                         }}
                       >
                         Create Profile
