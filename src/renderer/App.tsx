@@ -29,6 +29,8 @@ import { FloatingVideoPlayer } from './components/FloatingVideoPlayer'
 import { WatchLaterPanel } from './components/WatchLaterPanel'
 import { MediaNotesPanel } from './components/MediaNotesPanel'
 import { RelatedMediaPanel } from './components/RelatedMediaPanel'
+import { DuplicatesModal } from './components/DuplicatesModal'
+import { BookmarksPanel } from './components/BookmarksPanel'
 import {
   Library,
   Repeat,
@@ -2398,8 +2400,6 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   const [bulkActionLoading, setBulkActionLoading] = useState<string | null>(null) // Track which bulk action is loading
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false) // Duplicate detection modal
   const [showWatchLaterPanel, setShowWatchLaterPanel] = useState(false) // Watch Later queue panel
-  const [duplicates, setDuplicates] = useState<Array<{ hash: string; count: number; ids: string[]; paths: string[] }>>([])
-  const [duplicatesLoading, setDuplicatesLoading] = useState(false)
   const [wallAutoScroll, setWallAutoScroll] = useState(false) // Wall mode autoscroll
   const [wallScrollSpeed, setWallScrollSpeed] = useState(30) // Autoscroll speed (pixels per second)
   const wallScrollRef = useRef<HTMLDivElement>(null)
@@ -2536,20 +2536,6 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
 
     window.addEventListener('show-add-to-playlist', handleShowPlaylistPicker)
     return () => window.removeEventListener('show-add-to-playlist', handleShowPlaylistPicker)
-  }, [])
-
-  // Load duplicate files
-  const loadDuplicates = useCallback(async () => {
-    setDuplicatesLoading(true)
-    try {
-      const dupes = await window.api.media.findDuplicates()
-      setDuplicates(dupes)
-    } catch (err) {
-      console.error('[Library] Failed to load duplicates:', err)
-      setDuplicates([])
-    } finally {
-      setDuplicatesLoading(false)
-    }
   }, [])
 
   // Debounce search query to prevent excessive API calls
@@ -3243,10 +3229,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
             {/* Find Duplicates */}
             <Btn
               tone="ghost"
-              onClick={() => {
-                setShowDuplicatesModal(true)
-                loadDuplicates()
-              }}
+              onClick={() => setShowDuplicatesModal(true)}
               className="flex items-center gap-1.5"
               title="Find duplicate files"
             >
@@ -4451,97 +4434,12 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
         </div>
       )}
 
-      {/* Duplicates detection modal */}
-      {showDuplicatesModal && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="duplicates-modal-title"
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm"
-          onClick={() => setShowDuplicatesModal(false)}
-        >
-          <div
-            className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col shadow-2xl"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 id="duplicates-modal-title" className="text-lg font-semibold">Duplicate Files</h2>
-              <button
-                onClick={() => setShowDuplicatesModal(false)}
-                aria-label="Close dialog"
-                className="p-1 hover:bg-white/10 rounded"
-              >
-                <X size={18} aria-hidden="true" />
-              </button>
-            </div>
-
-            {duplicatesLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <RefreshCw size={24} className="animate-spin text-[var(--muted)]" />
-              </div>
-            ) : duplicates.length === 0 ? (
-              <div className="text-center py-12 text-[var(--muted)]">
-                <CheckCircle2 size={48} className="mx-auto mb-4 text-green-500" />
-                <p className="text-lg font-medium">No duplicates found!</p>
-                <p className="text-sm mt-2">Your library has no identical files.</p>
-              </div>
-            ) : (
-              <>
-                <div className="mb-4 flex items-center justify-between">
-                  <p className="text-sm text-[var(--muted)]">
-                    Found {duplicates.length} duplicate group{duplicates.length !== 1 ? 's' : ''} ({duplicates.reduce((sum, d) => sum + d.count - 1, 0)} files can be removed)
-                  </p>
-                  <Btn
-                    tone="danger"
-                    onClick={async () => {
-                      const confirmed = window.confirm(`Delete ${duplicates.reduce((sum, d) => sum + d.count - 1, 0)} duplicate files? The first file in each group will be kept.`)
-                      if (!confirmed) return
-                      try {
-                        const result = await window.api.media.deleteDuplicates({ dryRun: false })
-                        alert(`Deleted ${result.deletedCount} duplicate files, freed ${(result.freedBytes / 1024 / 1024).toFixed(1)} MB`)
-                        await loadDuplicates()
-                        await refresh()
-                      } catch (err) {
-                        console.error('[Library] Failed to delete duplicates:', err)
-                        alert('Failed to delete duplicates')
-                      }
-                    }}
-                  >
-                    Delete All Duplicates
-                  </Btn>
-                </div>
-
-                <div className="flex-1 overflow-y-auto space-y-4">
-                  {duplicates.map((group, idx) => (
-                    <div key={group.hash} className="bg-black/30 rounded-xl p-4 border border-[var(--border)]">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">{group.count} identical files</span>
-                        <span className="text-xs text-[var(--muted)] font-mono">{group.hash.slice(0, 12)}...</span>
-                      </div>
-                      <div className="space-y-1">
-                        {group.paths.map((path, pathIdx) => (
-                          <div
-                            key={path}
-                            className={cn(
-                              'text-xs font-mono px-2 py-1 rounded truncate',
-                              pathIdx === 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/10 text-red-400'
-                            )}
-                            title={path}
-                          >
-                            {pathIdx === 0 && <span className="text-green-500 mr-2">[KEEP]</span>}
-                            {pathIdx !== 0 && <span className="text-red-400 mr-2">[DELETE]</span>}
-                            {path}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Advanced Duplicates Modal */}
+      <DuplicatesModal
+        isOpen={showDuplicatesModal}
+        onClose={() => setShowDuplicatesModal(false)}
+        onViewMedia={(mediaId) => addFloatingPlayer(mediaId)}
+      />
 
       {/* Watch Later Panel */}
       <WatchLaterPanel

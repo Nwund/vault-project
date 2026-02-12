@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+
+# builds / output
+out/
+dist/
+release/
+build/
+*.log
+
+# electron/vite caches
+.vite/
+.cache/
+.cache-loader/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Vault local data (DO NOT COMMIT)
+**/userData/
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/cache/
+**/Cache/
+**/thumbs/
+**/Thumbs/
+
+# media (DO NOT COMMIT)
+media/
+Media/
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp

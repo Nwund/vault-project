@@ -3,7 +3,7 @@
 
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark } from 'lucide-react'
 
 interface MediaRow {
   id: string
@@ -96,6 +96,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [imagePan, setImagePan] = useState({ x: 0, y: 0 })
   const [isPanning, setIsPanning] = useState(false)
   const [panStart, setPanStart] = useState({ x: 0, y: 0, panX: 0, panY: 0 })
+  const [bookmarkFeedback, setBookmarkFeedback] = useState<string | null>(null)
   const imageContainerRef = useRef<HTMLDivElement>(null)
   const errorHandled = useRef(false) // Prevent duplicate error handling
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -542,7 +543,15 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         if (media.type === 'video' && videoRef.current) {
           const time = videoRef.current.currentTime
           window.api.invoke('bookmarks:quickAdd', media.id, time)
-            .catch(() => {})
+            .then(() => {
+              // Show brief visual feedback
+              setBookmarkFeedback(`Bookmarked at ${formatDuration(time)}`)
+              setTimeout(() => setBookmarkFeedback(null), 2000)
+            })
+            .catch(() => {
+              setBookmarkFeedback('Failed to add bookmark')
+              setTimeout(() => setBookmarkFeedback(null), 2000)
+            })
         }
       }
     }
@@ -962,6 +971,13 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         </>
       )}
 
+      {/* Bookmark feedback notification */}
+      {bookmarkFeedback && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 px-4 py-2 bg-black/90 text-white text-sm rounded-lg backdrop-blur-sm animate-pulse">
+          {bookmarkFeedback}
+        </div>
+      )}
+
       {/* Draggable header (not in fullscreen) */}
       {!isFullscreen && (
         <div
@@ -1361,6 +1377,29 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
             >
               <Heart size={16} className={isLiked ? 'fill-current' : ''} />
             </button>
+
+            {media.type === 'video' && (
+              <button
+                onClick={() => {
+                  if (videoRef.current) {
+                    const time = videoRef.current.currentTime
+                    window.api.invoke('bookmarks:quickAdd', media.id, time)
+                      .then(() => {
+                        setBookmarkFeedback(`Bookmarked at ${formatDuration(time)}`)
+                        setTimeout(() => setBookmarkFeedback(null), 2000)
+                      })
+                      .catch(() => {
+                        setBookmarkFeedback('Failed to add bookmark')
+                        setTimeout(() => setBookmarkFeedback(null), 2000)
+                      })
+                  }
+                }}
+                className="p-2 rounded-lg bg-white/10 hover:bg-blue-500/60 transition"
+                title="Add Bookmark (B)"
+              >
+                <Bookmark size={16} />
+              </button>
+            )}
 
             <button
               onClick={handleBlacklist}
