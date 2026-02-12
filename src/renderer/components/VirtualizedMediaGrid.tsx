@@ -27,6 +27,8 @@ interface VirtualizedMediaGridProps {
   rowHeight?: number
   gap?: number
   onItemClick: (item: MediaRow) => void
+  onItemDoubleClick?: (item: MediaRow) => void
+  onItemContextMenu?: (item: MediaRow, event: React.MouseEvent) => void
   selectedIds?: string[]
   onToggleSelect?: (id: string) => void
 }
@@ -53,9 +55,9 @@ function formatBytes(n: number) {
   return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
 
-// Lazy loading thumbnail component
+// Lazy loading thumbnail component with progressive blur-to-sharp loading
 const LazyThumbnail: React.FC<{ thumbPath: string | null | undefined }> = ({ thumbPath }) => {
-  const [ref, isVisible] = useLazyLoad('200px')
+  const [ref, isVisible] = useLazyLoad('300px')
   const [url, setUrl] = useState<string>('')
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState(false)
@@ -71,28 +73,36 @@ const LazyThumbnail: React.FC<{ thumbPath: string | null | undefined }> = ({ thu
   }, [isVisible, thumbPath])
 
   return (
-    <div ref={ref} className="w-full h-full bg-black/25 relative">
+    <div ref={ref} className="w-full h-full bg-black/25 relative overflow-hidden contain-strict">
       {!thumbPath ? (
         <div className="w-full h-full flex items-center justify-center text-[var(--muted)] text-2xl">
           🎬
         </div>
       ) : !isVisible ? (
-        <div className="w-full h-full animate-pulse bg-white/5" />
+        <div className="w-full h-full sexy-shimmer bg-white/5" />
       ) : error ? (
         <div className="w-full h-full flex items-center justify-center text-[var(--muted)] text-2xl">
           🖼️
         </div>
       ) : (
         <>
+          {/* Blur placeholder while loading */}
           {!loaded && (
-            <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-white/5 via-white/10 to-white/5" />
+            <div className="absolute inset-0 sexy-shimmer" />
           )}
           {url && (
             <img
               src={url}
               alt=""
-              className="w-full h-full object-cover transition-opacity duration-300"
-              style={{ opacity: loaded ? 1 : 0 }}
+              loading="lazy"
+              decoding="async"
+              className="w-full h-full object-cover gpu-accelerated"
+              style={{
+                opacity: loaded ? 1 : 0,
+                filter: loaded ? 'none' : 'blur(10px)',
+                transform: loaded ? 'scale(1)' : 'scale(1.1)',
+                transition: 'opacity 0.3s ease-out, filter 0.4s ease-out, transform 0.4s ease-out'
+              }}
               onLoad={() => setLoaded(true)}
               onError={() => setError(true)}
             />
@@ -103,19 +113,24 @@ const LazyThumbnail: React.FC<{ thumbPath: string | null | undefined }> = ({ thu
   )
 }
 
-// Individual media tile - memoized
+// Individual media tile - memoized with CSS containment for performance
 const MediaTile = React.memo<{
   media: MediaRow
   selected: boolean
   onClick: () => void
+  onDoubleClick?: () => void
+  onContextMenu?: (e: React.MouseEvent) => void
   onToggleSelect: () => void
-}>(({ media, selected, onClick, onToggleSelect }) => {
+}>(({ media, selected, onClick, onDoubleClick, onContextMenu, onToggleSelect }) => {
   return (
     <div
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
       className={`
         text-left rounded-2xl border bg-black/20 hover:border-white/15
         transition overflow-hidden relative cursor-pointer h-full
+        contain-layout media-tile-glow
         ${selected ? 'border-white/25 ring-2 ring-[var(--primary)]/30' : 'border-[var(--border)]'}
       `}
     >
@@ -167,6 +182,8 @@ export const VirtualizedMediaGrid: React.FC<VirtualizedMediaGridProps> = ({
   rowHeight = 220,
   gap = 16,
   onItemClick,
+  onItemDoubleClick,
+  onItemContextMenu,
   selectedIds = [],
   onToggleSelect
 }) => {
@@ -221,11 +238,13 @@ export const VirtualizedMediaGrid: React.FC<VirtualizedMediaGridProps> = ({
           media={item}
           selected={isSelected}
           onClick={() => onItemClick(item)}
+          onDoubleClick={onItemDoubleClick ? () => onItemDoubleClick(item) : undefined}
+          onContextMenu={onItemContextMenu ? (e) => onItemContextMenu(item, e) : undefined}
           onToggleSelect={() => onToggleSelect?.(item.id)}
         />
       </div>
     )
-  }, [items, columnCount, selectedIds, onItemClick, onToggleSelect, gap])
+  }, [items, columnCount, selectedIds, onItemClick, onItemDoubleClick, onItemContextMenu, onToggleSelect, gap])
 
   if (containerSize.width === 0) {
     return <div ref={containerRef} className="w-full h-full" />
@@ -240,7 +259,7 @@ export const VirtualizedMediaGrid: React.FC<VirtualizedMediaGridProps> = ({
         rowCount={rowCount}
         rowHeight={rowHeight + gap}
         width={containerSize.width}
-        overscanRowCount={2}
+        overscanRowCount={4}
       >
         {Cell as any}
       </FixedSizeGrid>

@@ -580,310 +580,976 @@ export const TemptationAura: React.FC<{
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 16. SPARKLE OVERLAY - Floating glitter/sparkle particles
+// 16. SPARKLE OVERLAY - Cinema-quality floating sparkle particles
 // ═══════════════════════════════════════════════════════════════════════════
 export const SparkleOverlay: React.FC<{
   enabled?: boolean
   density?: number // 1-10
   colors?: string[]
   speed?: number // 1-10
-}> = ({ enabled = true, density = 5, colors = ['#fff', '#ffd700', '#ff69b4', '#87ceeb'], speed = 5 }) => {
-  const [sparkles, setSparkles] = useState<Array<{
-    id: number
+}> = ({ enabled = true, density = 5, colors = ['rgba(255,255,255,0.9)', 'rgba(255,215,0,0.8)', 'rgba(255,182,193,0.7)'], speed = 5 }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const animationRef = useRef<number>(0)
+  const particlesRef = useRef<Array<{
     x: number
     y: number
     size: number
     color: string
-    duration: number
-    delay: number
-    drift: number
+    speedX: number
+    speedY: number
+    opacity: number
+    pulse: number
+    pulseSpeed: number
   }>>([])
 
   useEffect(() => {
     if (!enabled) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
 
-    const count = density * 8
-    const newSparkles = Array.from({ length: count }, (_, i) => ({
-      id: i,
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      size: 2 + Math.random() * 4,
+    // Set canvas size
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    // Initialize particles
+    const count = density * 12
+    particlesRef.current = Array.from({ length: count }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      size: 1 + Math.random() * 2.5,
       color: colors[Math.floor(Math.random() * colors.length)],
-      duration: (15 - speed) + Math.random() * 10,
-      delay: Math.random() * 5,
-      drift: -30 + Math.random() * 60,
+      speedX: (Math.random() - 0.5) * 0.3,
+      speedY: -0.2 - Math.random() * 0.4,
+      opacity: 0.3 + Math.random() * 0.7,
+      pulse: Math.random() * Math.PI * 2,
+      pulseSpeed: 0.02 + Math.random() * 0.03,
     }))
-    setSparkles(newSparkles)
-  }, [enabled, density, speed, colors.join()])
+
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      particlesRef.current.forEach((p) => {
+        // Update position
+        p.x += p.speedX * (speed / 5)
+        p.y += p.speedY * (speed / 5)
+        p.pulse += p.pulseSpeed
+
+        // Wrap around screen
+        if (p.y < -10) {
+          p.y = canvas.height + 10
+          p.x = Math.random() * canvas.width
+        }
+        if (p.x < -10) p.x = canvas.width + 10
+        if (p.x > canvas.width + 10) p.x = -10
+
+        // Calculate pulsing opacity
+        const pulseOpacity = p.opacity * (0.5 + 0.5 * Math.sin(p.pulse))
+
+        // Draw sparkle with soft glow
+        const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 3)
+        gradient.addColorStop(0, p.color.replace(/[\d.]+\)$/, `${pulseOpacity})`))
+        gradient.addColorStop(0.4, p.color.replace(/[\d.]+\)$/, `${pulseOpacity * 0.5})`))
+        gradient.addColorStop(1, 'transparent')
+
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, p.size * 3, 0, Math.PI * 2)
+        ctx.fillStyle = gradient
+        ctx.fill()
+
+        // Draw bright center
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(255,255,255,${pulseOpacity})`
+        ctx.fill()
+      })
+
+      animationRef.current = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationRef.current)
+      window.removeEventListener('resize', resize)
+    }
+  }, [enabled, density, speed, colors.join(',')])
 
   if (!enabled) return null
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-[9935] overflow-hidden">
-      {sparkles.map((s) => (
-        <div
-          key={s.id}
-          className="absolute rounded-full"
-          style={{
-            left: `${s.x}%`,
-            top: `${s.y}%`,
-            width: s.size,
-            height: s.size,
-            background: s.color,
-            boxShadow: `0 0 ${s.size * 2}px ${s.color}, 0 0 ${s.size * 4}px ${s.color}`,
-            animation: `sparkleFloat ${s.duration}s ease-in-out infinite`,
-            animationDelay: `${s.delay}s`,
-            ['--drift' as any]: `${s.drift}px`,
-          }}
-        />
-      ))}
-      <style>{`
-        @keyframes sparkleFloat {
-          0%, 100% {
-            opacity: 0;
-            transform: translateY(0) translateX(0) scale(0.5);
-          }
-          10% {
-            opacity: 1;
-            transform: translateY(-10px) translateX(var(--drift)) scale(1);
-          }
-          50% {
-            opacity: 0.8;
-            transform: translateY(-30px) translateX(calc(var(--drift) * -0.5)) scale(1.2);
-          }
-          90% {
-            opacity: 0.3;
-            transform: translateY(-50px) translateX(var(--drift)) scale(0.8);
-          }
-        }
-      `}</style>
-    </div>
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-[9935]"
+      style={{ mixBlendMode: 'screen' }}
+    />
   )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 17. BOKEH OVERLAY - Soft blurry light circles
+// 17. BOKEH OVERLAY - Cinematic soft blurry light circles
 // ═══════════════════════════════════════════════════════════════════════════
 export const BokehOverlay: React.FC<{
   enabled?: boolean
   count?: number
   colors?: string[]
-}> = ({ enabled = true, count = 12, colors = ['rgba(255,107,157,0.3)', 'rgba(255,182,193,0.3)', 'rgba(255,255,255,0.2)', 'rgba(255,215,0,0.2)'] }) => {
-  const [bokeh, setBokeh] = useState<Array<{
-    id: number
+}> = ({ enabled = true, count = 12, colors = ['rgba(255,107,157,0.15)', 'rgba(255,182,193,0.12)', 'rgba(255,255,255,0.1)', 'rgba(255,200,150,0.1)'] }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const animationRef = useRef<number>(0)
+  const bokehRef = useRef<Array<{
     x: number
     y: number
     size: number
     color: string
-    duration: number
-    delay: number
+    speedX: number
+    speedY: number
+    opacity: number
+    phase: number
   }>>([])
 
   useEffect(() => {
     if (!enabled) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
 
-    const newBokeh = Array.from({ length: count }, (_, i) => ({
-      id: i,
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      size: 30 + Math.random() * 100,
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    // Initialize bokeh circles
+    bokehRef.current = Array.from({ length: count }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      size: 60 + Math.random() * 150,
       color: colors[Math.floor(Math.random() * colors.length)],
-      duration: 8 + Math.random() * 12,
-      delay: Math.random() * 5,
+      speedX: (Math.random() - 0.5) * 0.15,
+      speedY: (Math.random() - 0.5) * 0.15,
+      opacity: 0.1 + Math.random() * 0.15,
+      phase: Math.random() * Math.PI * 2,
     }))
-    setBokeh(newBokeh)
-  }, [enabled, count, colors.join()])
+
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      bokehRef.current.forEach((b) => {
+        // Slow, dreamy movement
+        b.x += b.speedX
+        b.y += b.speedY
+        b.phase += 0.005
+
+        // Wrap around with padding
+        if (b.x < -b.size) b.x = canvas.width + b.size
+        if (b.x > canvas.width + b.size) b.x = -b.size
+        if (b.y < -b.size) b.y = canvas.height + b.size
+        if (b.y > canvas.height + b.size) b.y = -b.size
+
+        // Pulsing opacity
+        const pulseOpacity = b.opacity * (0.7 + 0.3 * Math.sin(b.phase))
+
+        // Draw soft bokeh circle with multiple gradient layers
+        const gradient = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.size)
+        gradient.addColorStop(0, b.color.replace(/[\d.]+\)$/, `${pulseOpacity * 0.8})`))
+        gradient.addColorStop(0.5, b.color.replace(/[\d.]+\)$/, `${pulseOpacity * 0.4})`))
+        gradient.addColorStop(0.8, b.color.replace(/[\d.]+\)$/, `${pulseOpacity * 0.1})`))
+        gradient.addColorStop(1, 'transparent')
+
+        ctx.beginPath()
+        ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2)
+        ctx.fillStyle = gradient
+        ctx.fill()
+      })
+
+      animationRef.current = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationRef.current)
+      window.removeEventListener('resize', resize)
+    }
+  }, [enabled, count, colors.join(',')])
 
   if (!enabled) return null
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-[9930] overflow-hidden">
-      {bokeh.map((b) => (
-        <div
-          key={b.id}
-          className="absolute rounded-full blur-xl"
-          style={{
-            left: `${b.x}%`,
-            top: `${b.y}%`,
-            width: b.size,
-            height: b.size,
-            background: b.color,
-            animation: `bokehPulse ${b.duration}s ease-in-out infinite`,
-            animationDelay: `${b.delay}s`,
-          }}
-        />
-      ))}
-      <style>{`
-        @keyframes bokehPulse {
-          0%, 100% {
-            opacity: 0.3;
-            transform: scale(1) translate(0, 0);
-          }
-          25% {
-            opacity: 0.6;
-            transform: scale(1.1) translate(10px, -10px);
-          }
-          50% {
-            opacity: 0.4;
-            transform: scale(0.9) translate(-5px, 5px);
-          }
-          75% {
-            opacity: 0.7;
-            transform: scale(1.05) translate(5px, 10px);
-          }
-        }
-      `}</style>
-    </div>
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-[9930]"
+      style={{ mixBlendMode: 'screen', filter: 'blur(20px)' }}
+    />
   )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 18. STARFIELD OVERLAY - Twinkling stars
+// 18. STARFIELD OVERLAY - Cinematic twinkling stars
 // ═══════════════════════════════════════════════════════════════════════════
 export const StarfieldOverlay: React.FC<{
   enabled?: boolean
   density?: number
 }> = ({ enabled = true, density = 50 }) => {
-  const [stars, setStars] = useState<Array<{
-    id: number
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const animationRef = useRef<number>(0)
+  const starsRef = useRef<Array<{
     x: number
     y: number
     size: number
-    duration: number
-    delay: number
+    brightness: number
+    twinkleSpeed: number
+    phase: number
   }>>([])
 
   useEffect(() => {
     if (!enabled) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
 
-    const newStars = Array.from({ length: density }, (_, i) => ({
-      id: i,
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      size: 1 + Math.random() * 3,
-      duration: 1 + Math.random() * 3,
-      delay: Math.random() * 3,
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    // Initialize stars with varying properties
+    starsRef.current = Array.from({ length: density }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      size: 0.5 + Math.random() * 2,
+      brightness: 0.3 + Math.random() * 0.7,
+      twinkleSpeed: 0.01 + Math.random() * 0.03,
+      phase: Math.random() * Math.PI * 2,
     }))
-    setStars(newStars)
+
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      starsRef.current.forEach((star) => {
+        star.phase += star.twinkleSpeed
+
+        // Calculate twinkling brightness with smooth sine wave
+        const twinkle = 0.4 + 0.6 * Math.sin(star.phase)
+        const currentBrightness = star.brightness * twinkle
+
+        // Draw star with soft glow
+        const gradient = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, star.size * 4)
+        gradient.addColorStop(0, `rgba(255, 255, 255, ${currentBrightness})`)
+        gradient.addColorStop(0.3, `rgba(255, 255, 255, ${currentBrightness * 0.5})`)
+        gradient.addColorStop(0.6, `rgba(200, 220, 255, ${currentBrightness * 0.2})`)
+        gradient.addColorStop(1, 'transparent')
+
+        ctx.beginPath()
+        ctx.arc(star.x, star.y, star.size * 4, 0, Math.PI * 2)
+        ctx.fillStyle = gradient
+        ctx.fill()
+
+        // Draw bright center point
+        ctx.beginPath()
+        ctx.arc(star.x, star.y, star.size * 0.5, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(255, 255, 255, ${currentBrightness})`
+        ctx.fill()
+      })
+
+      animationRef.current = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationRef.current)
+      window.removeEventListener('resize', resize)
+    }
   }, [enabled, density])
 
   if (!enabled) return null
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-[9925] overflow-hidden">
-      {stars.map((s) => (
-        <div
-          key={s.id}
-          className="absolute rounded-full bg-white"
-          style={{
-            left: `${s.x}%`,
-            top: `${s.y}%`,
-            width: s.size,
-            height: s.size,
-            boxShadow: '0 0 3px #fff, 0 0 6px #fff',
-            animation: `starTwinkle ${s.duration}s ease-in-out infinite`,
-            animationDelay: `${s.delay}s`,
-          }}
-        />
-      ))}
-      <style>{`
-        @keyframes starTwinkle {
-          0%, 100% { opacity: 0.2; transform: scale(0.8); }
-          50% { opacity: 1; transform: scale(1.2); }
-        }
-      `}</style>
-    </div>
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-[9925]"
+      style={{ mixBlendMode: 'screen' }}
+    />
   )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 19. FILM GRAIN OVERLAY - Vintage film grain effect
+// 19. FILM GRAIN OVERLAY - CRT TV / VHS style with scanlines
 // ═══════════════════════════════════════════════════════════════════════════
 export const FilmGrainOverlay: React.FC<{
   enabled?: boolean
   opacity?: number
-}> = ({ enabled = true, opacity = 0.05 }) => {
+  speed?: number // 1-10, controls grain animation speed
+  scanlines?: boolean // Enable CRT scanlines
+  scanlineIntensity?: number // 0-1
+}> = ({ enabled = true, opacity = 0.15, speed = 5, scanlines = true, scanlineIntensity = 0.3 }) => {
+  const grainCanvasRef = useRef<HTMLCanvasElement>(null)
+  const scanlineCanvasRef = useRef<HTMLCanvasElement>(null)
+  const animationRef = useRef<number>(0)
+  const frameCount = useRef(0)
+  const scanlineOffset = useRef(0)
+
+  // Grain effect
+  useEffect(() => {
+    if (!enabled) return
+    const canvas = grainCanvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d', { alpha: true })
+    if (!ctx) return
+
+    // Use smaller canvas for performance, scale up with CSS
+    const scale = 0.4
+    const resize = () => {
+      canvas.width = Math.floor(window.innerWidth * scale)
+      canvas.height = Math.floor(window.innerHeight * scale)
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    // Pre-generate noise frames with varying intensity
+    const noiseFrames: ImageData[] = []
+    const frameTotal = 10
+    for (let f = 0; f < frameTotal; f++) {
+      const imageData = ctx.createImageData(canvas.width, canvas.height)
+      const data = imageData.data
+      for (let i = 0; i < data.length; i += 4) {
+        // More varied noise - some pixels brighter, some darker
+        const noise = Math.random()
+        const intensity = noise < 0.5
+          ? Math.floor(noise * 2 * 180) // Darker pixels
+          : Math.floor(128 + (noise - 0.5) * 2 * 127) // Brighter pixels
+        data[i] = intensity     // R
+        data[i + 1] = intensity // G
+        data[i + 2] = intensity // B
+        data[i + 3] = 255
+      }
+      noiseFrames.push(imageData)
+    }
+
+    const animate = () => {
+      frameCount.current++
+
+      // Update grain at variable speed
+      const updateInterval = Math.max(1, 5 - Math.floor(speed / 2.5))
+      if (frameCount.current % updateInterval === 0) {
+        const frameIndex = Math.floor(Math.random() * frameTotal)
+        ctx.putImageData(noiseFrames[frameIndex], 0, 0)
+      }
+
+      animationRef.current = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationRef.current)
+      window.removeEventListener('resize', resize)
+    }
+  }, [enabled, speed])
+
+  // Scanline effect - separate canvas for crisp lines + Pip-Boy scanner
+  useEffect(() => {
+    if (!enabled || !scanlines) return
+    const canvas = scanlineCanvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    // Pip-Boy style scanner state
+    let scannerY = -100
+    let scannerActive = false
+    let scannerSpeed = 0
+    let nextScanTime = Date.now() + 2000 + Math.random() * 5000
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+
+    const drawScanlines = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      // Pip-Boy style scanning beam - the main effect (no static scanlines)
+      if (scannerActive) {
+        // Wide glow area above the scan line (like Fallout 4 terminal refresh)
+        const glowHeight = 120
+        const glowGradient = ctx.createLinearGradient(0, scannerY - glowHeight, 0, scannerY + 20)
+        glowGradient.addColorStop(0, 'transparent')
+        glowGradient.addColorStop(0.5, `rgba(120, 255, 180, ${scanlineIntensity * 0.08})`)
+        glowGradient.addColorStop(0.8, `rgba(150, 255, 200, ${scanlineIntensity * 0.15})`)
+        glowGradient.addColorStop(0.95, `rgba(200, 255, 220, ${scanlineIntensity * 0.25})`)
+        glowGradient.addColorStop(1, `rgba(255, 255, 255, ${scanlineIntensity * 0.4})`)
+
+        ctx.fillStyle = glowGradient
+        ctx.fillRect(0, scannerY - glowHeight, canvas.width, glowHeight + 20)
+
+        // The main bright scan line
+        ctx.fillStyle = `rgba(200, 255, 220, ${scanlineIntensity * 0.7})`
+        ctx.fillRect(0, scannerY - 1, canvas.width, 3)
+
+        // Slight trail below the line
+        const trailGradient = ctx.createLinearGradient(0, scannerY, 0, scannerY + 40)
+        trailGradient.addColorStop(0, `rgba(150, 255, 200, ${scanlineIntensity * 0.2})`)
+        trailGradient.addColorStop(1, 'transparent')
+        ctx.fillStyle = trailGradient
+        ctx.fillRect(0, scannerY, canvas.width, 40)
+
+        // Update scanner position
+        scannerY += scannerSpeed
+        if (scannerY > canvas.height + 50) {
+          scannerActive = false
+          nextScanTime = Date.now() + 4000 + Math.random() * 10000 // Random 4-14 seconds
+        }
+      } else {
+        // Check if it's time for a new scan
+        if (Date.now() > nextScanTime) {
+          scannerActive = true
+          scannerY = -80
+          scannerSpeed = 3 + Math.random() * 4 // Slower, smoother speed 3-7 pixels per frame
+        }
+      }
+
+      // Subtle screen flicker (very occasional)
+      if (Math.random() < 0.002) {
+        ctx.fillStyle = `rgba(150, 255, 200, ${0.03 + Math.random() * 0.05})`
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+      }
+
+      // Subtle vignette for CRT curvature feel
+      const vignetteGradient = ctx.createRadialGradient(
+        canvas.width / 2, canvas.height / 2, canvas.height * 0.4,
+        canvas.width / 2, canvas.height / 2, canvas.height * 0.9
+      )
+      vignetteGradient.addColorStop(0, 'transparent')
+      vignetteGradient.addColorStop(1, `rgba(0, 0, 0, ${scanlineIntensity * 0.15})`)
+      ctx.fillStyle = vignetteGradient
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+    }
+
+    resize()
+    window.addEventListener('resize', resize)
+
+    // Animate scanlines with Pip-Boy scanner
+    let scanlineAnim: number
+    const animateScanlines = () => {
+      scanlineOffset.current += 0.03
+      if (Math.random() < 0.001) {
+        // Occasional VHS glitch - jump the scanlines
+        scanlineOffset.current += Math.random() * 15
+      }
+      drawScanlines()
+      scanlineAnim = requestAnimationFrame(animateScanlines)
+    }
+    animateScanlines()
+
+    return () => {
+      cancelAnimationFrame(scanlineAnim)
+      window.removeEventListener('resize', resize)
+    }
+  }, [enabled, scanlines, scanlineIntensity])
+
   if (!enabled) return null
 
   return (
     <>
-      <div
-        className="fixed inset-0 pointer-events-none z-[9920]"
+      {/* Grain layer - very high z-index to cover entire window including UI */}
+      <canvas
+        ref={grainCanvasRef}
+        className="fixed inset-0 pointer-events-none z-[99990]"
         style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
           opacity: opacity,
           mixBlendMode: 'overlay',
-          animation: 'grainShift 0.5s steps(10) infinite',
+          width: '100%',
+          height: '100%',
+          imageRendering: 'pixelated',
         }}
       />
-      <style>{`
-        @keyframes grainShift {
-          0%, 100% { transform: translate(0, 0); }
-          10% { transform: translate(-1%, -1%); }
-          20% { transform: translate(1%, 1%); }
-          30% { transform: translate(-1%, 1%); }
-          40% { transform: translate(1%, -1%); }
-          50% { transform: translate(-1%, 0); }
-          60% { transform: translate(1%, 0); }
-          70% { transform: translate(0, 1%); }
-          80% { transform: translate(0, -1%); }
-          90% { transform: translate(1%, 1%); }
-        }
-      `}</style>
+      {/* Scanline layer - very high z-index to cover entire window including UI */}
+      {scanlines && (
+        <canvas
+          ref={scanlineCanvasRef}
+          className="fixed inset-0 pointer-events-none z-[99991]"
+          style={{
+            opacity: 1,
+            mixBlendMode: 'multiply',
+          }}
+        />
+      )}
     </>
   )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 20. DREAMY HAZE OVERLAY - Soft dreamy blur effect
+// 20. DREAMY HAZE OVERLAY - Cinematic soft dreamy atmosphere
 // ═══════════════════════════════════════════════════════════════════════════
 export const DreamyHazeOverlay: React.FC<{
   enabled?: boolean
   intensity?: number // 0-10
   color?: string
-}> = ({ enabled = true, intensity = 5, color = 'rgba(255,182,193,0.1)' }) => {
+}> = ({ enabled = true, intensity = 5, color = 'rgba(255,150,180,0.25)' }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const animationRef = useRef<number>(0)
+  const timeRef = useRef(0)
+
+  useEffect(() => {
+    if (!enabled || intensity <= 0) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    const hazePoints = [
+      { x: 0.15, y: 0.1, size: 0.6, phase: 0 },
+      { x: 0.85, y: 0.2, size: 0.5, phase: Math.PI / 3 },
+      { x: 0.5, y: 0.45, size: 0.7, phase: Math.PI / 2 },
+      { x: 0.2, y: 0.8, size: 0.5, phase: Math.PI },
+      { x: 0.8, y: 0.85, size: 0.55, phase: Math.PI * 1.5 },
+      { x: 0.4, y: 0.3, size: 0.45, phase: Math.PI * 0.7 },
+      { x: 0.6, y: 0.7, size: 0.5, phase: Math.PI * 1.2 },
+    ]
+
+    const animate = () => {
+      timeRef.current += 0.004
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      // Much stronger base opacity
+      const baseOpacity = (intensity / 10) * 0.5
+
+      hazePoints.forEach((point) => {
+        const pulse = 0.6 + 0.4 * Math.sin(timeRef.current + point.phase)
+        const x = canvas.width * (point.x + 0.03 * Math.sin(timeRef.current * 0.4 + point.phase))
+        const y = canvas.height * (point.y + 0.03 * Math.cos(timeRef.current * 0.25 + point.phase))
+        const size = Math.min(canvas.width, canvas.height) * point.size * pulse
+
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, size)
+        gradient.addColorStop(0, color.replace(/[\d.]+\)$/, `${baseOpacity * pulse})`))
+        gradient.addColorStop(0.3, color.replace(/[\d.]+\)$/, `${baseOpacity * 0.6 * pulse})`))
+        gradient.addColorStop(0.6, color.replace(/[\d.]+\)$/, `${baseOpacity * 0.3 * pulse})`))
+        gradient.addColorStop(1, 'transparent')
+
+        ctx.beginPath()
+        ctx.arc(x, y, size, 0, Math.PI * 2)
+        ctx.fillStyle = gradient
+        ctx.fill()
+      })
+
+      // Stronger vignette
+      const vignetteGradient = ctx.createRadialGradient(
+        canvas.width / 2, canvas.height / 2, canvas.height * 0.2,
+        canvas.width / 2, canvas.height / 2, canvas.height * 0.85
+      )
+      vignetteGradient.addColorStop(0, 'transparent')
+      vignetteGradient.addColorStop(1, `rgba(0, 0, 0, ${intensity * 0.04})`)
+
+      ctx.fillStyle = vignetteGradient
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      animationRef.current = requestAnimationFrame(animate)
+    }
+
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animationRef.current)
+      window.removeEventListener('resize', resize)
+    }
+  }, [enabled, intensity, color])
+
   if (!enabled || intensity <= 0) return null
 
   return (
-    <div
+    <canvas
+      ref={canvasRef}
       className="fixed inset-0 pointer-events-none z-[9915]"
-      style={{
-        background: `radial-gradient(ellipse at 30% 20%, ${color} 0%, transparent 50%),
-                     radial-gradient(ellipse at 70% 80%, ${color} 0%, transparent 50%),
-                     radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.05) 0%, transparent 60%)`,
-        animation: 'dreamyFloat 20s ease-in-out infinite',
-        opacity: intensity * 0.1,
-      }}
-    >
-      <style>{`
-        @keyframes dreamyFloat {
-          0%, 100% { transform: scale(1) rotate(0deg); }
-          25% { transform: scale(1.05) rotate(1deg); }
-          50% { transform: scale(1.1) rotate(0deg); }
-          75% { transform: scale(1.05) rotate(-1deg); }
-        }
-      `}</style>
-    </div>
+      style={{ mixBlendMode: 'screen', filter: 'blur(30px)' }}
+    />
   )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 21. GOON MODE - Floating provocative text
+// 21. CRT CURVED SCREEN OVERLAY - Enhanced retro CRT look with all classic effects
 // ═══════════════════════════════════════════════════════════════════════════
-const GOON_WORDS = [
-  'PUMP', 'EDGE', 'GOON', 'STROKE', 'THROB', 'WET', 'HARDER',
-  'DEEPER', 'FASTER', 'SLOWER', 'HOLD', 'RELEASE', 'MOAN',
-  'DRIP', 'LEAK', 'PULSE', 'ACHE', 'NEED', 'CRAVE', 'BEG',
-  'WORSHIP', 'OBEY', 'SUBMIT', 'SURRENDER', 'DENY', 'EDGE MORE',
-  'KEEP GOING', 'DONT STOP', 'FEEL IT', 'LET GO', 'GOONING',
-  'BRAINMELT', 'PUMP IT', 'STROKE IT', 'GOON HARDER'
-]
+export const CRTCurveOverlay: React.FC<{
+  enabled?: boolean
+  intensity?: number // 0-10, controls curvature amount
+  showScanlines?: boolean
+  vignetteStrength?: number // 0-1
+  rgbSubpixels?: boolean // RGB subpixel simulation
+  chromaticAberration?: boolean // Color separation at edges
+  screenFlicker?: boolean // Random brightness flicker
+  flickerIntensity?: number // 0-1
+}> = ({
+  enabled = true,
+  intensity = 5,
+  showScanlines = false,
+  vignetteStrength = 0.4,
+  rgbSubpixels = true,
+  chromaticAberration = true,
+  screenFlicker = true,
+  flickerIntensity = 0.3
+}) => {
+  const [flickerOpacity, setFlickerOpacity] = useState(0)
+  const flickerRef = useRef<number>()
+
+  // Screen flicker effect - random subtle brightness variations
+  useEffect(() => {
+    if (!enabled || !screenFlicker) return
+
+    let lastFlicker = Date.now()
+    const animate = () => {
+      const now = Date.now()
+      // Flicker occasionally (every 50-200ms on average)
+      if (now - lastFlicker > 50 + Math.random() * 150) {
+        // Random flicker intensity, occasionally stronger
+        const isStrongFlicker = Math.random() < 0.1
+        const flicker = isStrongFlicker
+          ? (Math.random() * 0.15 + 0.05) * flickerIntensity
+          : (Math.random() * 0.04) * flickerIntensity
+        setFlickerOpacity(flicker)
+        lastFlicker = now
+
+        // Quick decay
+        setTimeout(() => setFlickerOpacity(0), 30 + Math.random() * 50)
+      }
+      flickerRef.current = requestAnimationFrame(animate)
+    }
+
+    flickerRef.current = requestAnimationFrame(animate)
+    return () => {
+      if (flickerRef.current) cancelAnimationFrame(flickerRef.current)
+    }
+  }, [enabled, screenFlicker, flickerIntensity])
+
+  if (!enabled) return null
+
+  // Calculate barrel distortion based on intensity (0-10 maps to subtle-strong curve)
+  const borderRadius = `${intensity * 2}% / ${intensity * 1.5}%`
+  const chromaticOffset = intensity * 0.15 // px offset for chromatic aberration
+
+  return (
+    <>
+      {/* Chromatic Aberration - RGB color separation at edges */}
+      {chromaticAberration && (
+        <>
+          {/* Red channel offset */}
+          <div
+            className="fixed inset-0 pointer-events-none z-[99983] mix-blend-screen"
+            style={{
+              background: `radial-gradient(ellipse at center, transparent 60%, rgba(255,0,0,${0.02 + intensity * 0.008}) 100%)`,
+              transform: `translate(${chromaticOffset}px, 0)`,
+              borderRadius,
+            }}
+          />
+          {/* Cyan channel offset (opposite of red) */}
+          <div
+            className="fixed inset-0 pointer-events-none z-[99983] mix-blend-screen"
+            style={{
+              background: `radial-gradient(ellipse at center, transparent 60%, rgba(0,255,255,${0.02 + intensity * 0.008}) 100%)`,
+              transform: `translate(${-chromaticOffset}px, 0)`,
+              borderRadius,
+            }}
+          />
+        </>
+      )}
+
+      {/* RGB Subpixel simulation - fine vertical RGB stripes */}
+      {rgbSubpixels && (
+        <div
+          className="fixed inset-0 pointer-events-none z-[99984]"
+          style={{
+            backgroundImage: `repeating-linear-gradient(
+              90deg,
+              rgba(255,0,0,${0.02 + intensity * 0.003}) 0px,
+              rgba(255,0,0,${0.02 + intensity * 0.003}) 1px,
+              rgba(0,255,0,${0.02 + intensity * 0.003}) 1px,
+              rgba(0,255,0,${0.02 + intensity * 0.003}) 2px,
+              rgba(0,0,255,${0.02 + intensity * 0.003}) 2px,
+              rgba(0,0,255,${0.02 + intensity * 0.003}) 3px
+            )`,
+            opacity: 0.4 + intensity * 0.06,
+            mixBlendMode: 'overlay',
+            borderRadius,
+          }}
+        />
+      )}
+
+      {/* Main CRT curvature overlay - vignette effect */}
+      <div
+        className="fixed inset-0 pointer-events-none z-[99985]"
+        style={{
+          background: `
+            radial-gradient(
+              ellipse at center,
+              transparent 0%,
+              transparent ${60 - intensity * 3}%,
+              rgba(0,0,0,${vignetteStrength * 0.3}) ${75 - intensity * 2}%,
+              rgba(0,0,0,${vignetteStrength * 0.6}) ${90 - intensity}%,
+              rgba(0,0,0,${vignetteStrength}) 100%
+            )
+          `,
+          boxShadow: `
+            inset 0 0 ${80 + intensity * 10}px rgba(0,0,0,${vignetteStrength * 0.5}),
+            inset 0 0 ${150 + intensity * 15}px rgba(0,0,0,${vignetteStrength * 0.3})
+          `,
+        }}
+      />
+
+      {/* Edge curvature simulation with subtle borders (barrel distortion feel) */}
+      <div
+        className="fixed inset-0 pointer-events-none z-[99986]"
+        style={{
+          borderRadius,
+          boxShadow: `
+            inset 0 0 ${40 + intensity * 8}px rgba(0,0,0,${0.2 + intensity * 0.03}),
+            inset 0 ${-intensity * 2}px ${intensity * 8}px rgba(0,0,0,0.1),
+            inset 0 ${intensity * 2}px ${intensity * 8}px rgba(0,0,0,0.1),
+            inset ${-intensity * 2}px 0 ${intensity * 8}px rgba(0,0,0,0.1),
+            inset ${intensity * 2}px 0 ${intensity * 8}px rgba(0,0,0,0.1)
+          `,
+        }}
+      />
+
+      {/* Screen edge highlight (subtle reflection on curved glass) */}
+      <div
+        className="fixed inset-0 pointer-events-none z-[99987]"
+        style={{
+          background: `
+            linear-gradient(
+              135deg,
+              rgba(255,255,255,${0.02 + intensity * 0.005}) 0%,
+              transparent 30%,
+              transparent 70%,
+              rgba(0,0,0,${0.05 + intensity * 0.01}) 100%
+            )
+          `,
+          borderRadius,
+        }}
+      />
+
+      {/* Fine CRT scanlines */}
+      {showScanlines && (
+        <div
+          className="fixed inset-0 pointer-events-none z-[99988]"
+          style={{
+            background: `repeating-linear-gradient(
+              0deg,
+              transparent 0px,
+              transparent 2px,
+              rgba(0,0,0,${0.03 + intensity * 0.005}) 2px,
+              rgba(0,0,0,${0.03 + intensity * 0.005}) 4px
+            )`,
+            borderRadius,
+          }}
+        />
+      )}
+
+      {/* Screen flicker overlay */}
+      {screenFlicker && flickerOpacity > 0 && (
+        <div
+          className="fixed inset-0 pointer-events-none z-[99989]"
+          style={{
+            backgroundColor: `rgba(255,255,255,${flickerOpacity})`,
+            mixBlendMode: 'overlay',
+            transition: 'opacity 30ms linear',
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 22. GOON WORDS SYSTEM - Floating provocative text with presets
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Word pack presets
+export const GOON_WORD_PACKS = {
+  praise: {
+    name: 'Praise',
+    description: 'Encouraging affirmations',
+    words: [
+      'GOOD BOY', 'PERFECT STROKER', 'AMAZING SLUT', 'YES, LIKE THAT', 'SO GOOD FOR ME',
+      'BEAUTIFUL COCK', 'HANDSOME AND HARD', 'OBEDIENT TOY', 'EAGER TO PLEASE', 'PRECIOUS CUMSLUT',
+      'DESERVE THIS', 'SO PROUD OF YOU', 'SPECIAL SLUT', 'LOVED AND USED', 'APPROVED TO CUM',
+      'PERFECT EDGER', 'GOOD PIGGY'
+    ]
+  },
+  humiliation: {
+    name: 'Humiliation',
+    description: 'Degrading reminders',
+    words: [
+      'ASHAMED AND HARD', 'EMBARRASSED SLUT', 'EXPOSED FOR USE', 'NAKED AND WEAK', 'HELPLESS COCK',
+      'LAUGHED AT', 'SO SMALL', 'INADEQUATE', 'INFERIOR FUCKTOY', 'BROKEN IN',
+      'PUBLIC PROPERTY', 'DEGRADED HOLE', 'SHAMED STROKER', 'OBJECTIFIED', 'HUMILIATED PIG',
+      'JUST A HOLE', 'RIDICULED AND USED'
+    ]
+  },
+  insult: {
+    name: 'Insult',
+    description: 'Harsh degradation',
+    words: [
+      'USELESS IDIOT', 'PATHETIC STROKER', 'WORTHLESS CUMSLUT', 'DISGUSTING PIG', 'FILTHY WHORE',
+      'LOSER', 'FREAK', 'DISGRACE', 'FAILURE', 'SCUM',
+      'HUMAN TOILET', 'REVOLTING', 'MINDLESS DOLL', 'STUPID CUNT', 'GARBAGE',
+      'PIECE OF SHIT', 'WASTE OF SPACE'
+    ]
+  },
+  kink: {
+    name: 'Kink',
+    description: 'BDSM-themed words',
+    words: [
+      'SUBMIT', 'SERVE', 'WORSHIP COCK', 'PROPERTY', 'USE ME',
+      'DEGRADE ME', 'OBEY', 'COLLARED SLUT', 'PAIN IS PLEASURE', "SIR'S FUCKTOY",
+      "MASTER'S HOLE", 'DEVOTED', 'BOUND TO PLEASE', 'KNEEL AND STROKE', 'OBJECTIFIED',
+      'FETISH DOLL', 'TOTAL SUBMISSION', 'OWNED'
+    ]
+  },
+  goon: {
+    name: 'Goon',
+    description: 'Classic gooning words',
+    words: [
+      'GOON', 'STROKE', 'PUMP', 'EDGE', 'MINDLESS',
+      'NO THOUGHTS', 'ADDICTED', 'PORN IS LIFE', 'LEAKING', 'DEEPER',
+      'FOREVER', 'SPIRAL', 'BATE', 'COCKDRUNK', 'EMPTY HEAD',
+      'RUIN IT', 'GOOD GOONER', 'LOOPED'
+    ]
+  },
+  mommy: {
+    name: 'Mommy',
+    description: 'Nurturing domme vibes',
+    words: [
+      "MOMMY'S GOOD BOY", 'STROKE FOR MOMMY', 'CUM FOR MOMMY', 'GOOD BOY', "MOMMY'S COCK",
+      'NURSE YOUR DICK', 'MILK IT BABY', 'LISTEN TO MOMMY', 'PRECIOUS BOY', 'MOMMY KNOWS BEST',
+      'EMPTY FOR MOMMY', 'OBEDIENT BOY', "MOMMY'S TOY", "CUM IN MOMMY'S HAND", 'SAFE TO LEAK',
+      'BE A GOOD BOY', 'THANK YOU MOMMY'
+    ]
+  },
+  brat: {
+    name: 'Brat',
+    description: 'Bratty sub energy',
+    words: [
+      'SPOILED BRAT', 'DEMANDING BITCH', 'GREEDY LITTLE SLUT', 'WORSHIP ME', 'GIMME MORE COCK',
+      'PRINCESS GETS WHAT SHE WANTS', 'EARN THIS PUSSY', 'THANK ME, DADDY', 'SUCH A GOOD TOY', 'NOW, PIGGY',
+      'I OWN YOUR STROKES', 'BEG FOR IT', 'SPOILED AND FUCKED', 'DESERVE THIS', 'ENTITLED TO YOUR CUM',
+      'BRATTY FUCKDOLL', 'MINE TO TEASE'
+    ]
+  },
+  pervert: {
+    name: 'Pervert',
+    description: 'Shame and deviance',
+    words: [
+      'FILTHY PERVERT', 'DEPRAVED', 'OBSESSED WITH COCK', 'TWISTED FUCK', 'SHAMELESS',
+      'PORN SICK', 'DEGENERATE', 'SICK FUCK', 'FREAK', 'CARNAL SLUT',
+      'UNHOLY STROKER', 'OBSCENE', 'GLUTTON FOR PORN', 'VULGAR BITCH', 'CORRUPTED',
+      'NASTY PIG', 'SINNING'
+    ]
+  },
+  seduction: {
+    name: 'Seduction',
+    description: 'Teasing and tempting',
+    words: [
+      'COME CLOSER', 'TOUCH YOURSELF', 'WANT ME?', 'YOU NEED THIS', 'DESIRE ME',
+      'SO HOT', 'IRRESISTIBLE', 'TEMPTED YET?', 'CRAVING MORE', 'GIVE IN',
+      'LET GO', 'SURRENDER', 'FEEL THE HEAT', 'BURNING UP', 'NEED IT BAD',
+      'ACHING FOR IT', 'DRIPPING WET'
+    ]
+  },
+  dirty: {
+    name: 'Dirty Talk',
+    description: 'Explicit dirty talk',
+    words: [
+      'FUCK ME', 'SO WET', 'HARDER', 'DEEPER', 'DON\'T STOP',
+      'RIGHT THERE', 'FILL ME UP', 'POUND ME', 'TASTE ME', 'LICK IT',
+      'SUCK IT', 'SPREAD IT', 'TAKE IT ALL', 'SO TIGHT', 'CREAM FOR ME',
+      'MAKE ME CUM', 'BREED ME'
+    ]
+  },
+  worship: {
+    name: 'Body Worship',
+    description: 'Appreciating the body',
+    words: [
+      'PERFECT ASS', 'BEAUTIFUL TITS', 'THICK THIGHS', 'GORGEOUS COCK', 'SEXY LIPS',
+      'DIVINE BODY', 'WORSHIP ME', 'FLAWLESS', 'STUNNING', 'MESMERIZING',
+      'HYPNOTIC CURVES', 'HEAVENLY', 'IRRESISTIBLE SKIN', 'PERFECT HOLE', 'DELICIOUS',
+      'MOUTHWATERING', 'ADDICTIVE BODY'
+    ]
+  },
+  denial: {
+    name: 'Denial & Tease',
+    description: 'Edge and denial play',
+    words: [
+      'NOT YET', 'KEEP EDGING', 'DON\'T CUM', 'HOLD IT', 'DENIED',
+      'EDGE LONGER', 'STAY ON THE EDGE', 'NO RELEASE', 'SUFFER FOR ME', 'BEG FOR IT',
+      'EARN YOUR ORGASM', 'RUINED', 'DESPERATE', 'ACHING', 'THROBBING',
+      'ALMOST THERE', 'BACK OFF'
+    ]
+  },
+  encouragement: {
+    name: 'Encouragement',
+    description: 'Positive affirmations',
+    words: [
+      'YOU CAN DO IT', 'SO CLOSE', 'ALMOST THERE', 'KEEP GOING', 'THAT\'S IT',
+      'PERFECT', 'JUST LIKE THAT', 'SO GOOD', 'DON\'T STOP NOW', 'YES YES YES',
+      'AMAZING', 'INCREDIBLE', 'YOU DESERVE THIS', 'LET IT BUILD', 'FEEL IT',
+      'EMBRACE IT', 'RELEASE'
+    ]
+  }
+} as const
+
+export type GoonWordPackId = keyof typeof GOON_WORD_PACKS
+
+export interface GoonWordsSettings {
+  enabled: boolean
+  enabledPacks: GoonWordPackId[]
+  customWords: string[]
+  fontSize: number // 16-48
+  fontFamily: string
+  fontColor: string
+  glowColor: string
+  frequency: number // 1-10 (seconds between words)
+  duration: number // 1-5 (seconds word is visible)
+  randomRotation: boolean
+  intensity: number // 0-10
+}
+
+export const DEFAULT_GOON_WORDS_SETTINGS: GoonWordsSettings = {
+  enabled: false,
+  enabledPacks: ['goon', 'kink'],
+  customWords: [],
+  fontSize: 32,
+  fontFamily: 'system-ui',
+  fontColor: '#ffffff',
+  glowColor: '#ff6b9d',
+  frequency: 5,
+  duration: 3,
+  randomRotation: true,
+  intensity: 5
+}
 
 export const GoonModeOverlay: React.FC<{
   enabled?: boolean
   intensity?: number // 0-10, affects word frequency and size
   colors?: string[]
-}> = ({ enabled = true, intensity = 5, colors = ['#ff6b9d', '#c44569', '#f8a5c2', '#ff4757', '#fff'] }) => {
+  settings?: Partial<GoonWordsSettings>
+}> = ({ enabled = true, intensity = 5, colors = ['#ffffff'], settings }) => {
   const [words, setWords] = useState<Array<{
     id: number
     word: string
@@ -896,52 +1562,98 @@ export const GoonModeOverlay: React.FC<{
   }>>([])
   const idRef = useRef(0)
 
+  // Get active word pool from enabled packs
+  const activeWords = React.useMemo(() => {
+    const enabledPacks = settings?.enabledPacks ?? DEFAULT_GOON_WORDS_SETTINGS.enabledPacks
+    const customWords = settings?.customWords ?? []
+
+    let wordPool: string[] = []
+    for (const packId of enabledPacks) {
+      const pack = GOON_WORD_PACKS[packId]
+      if (pack) {
+        wordPool = [...wordPool, ...pack.words]
+      }
+    }
+
+    // Add custom words
+    if (customWords.length > 0) {
+      wordPool = [...wordPool, ...customWords]
+    }
+
+    // Fallback to goon pack if nothing enabled
+    if (wordPool.length === 0) {
+      wordPool = [...GOON_WORD_PACKS.goon.words]
+    }
+
+    return wordPool
+  }, [settings?.enabledPacks, settings?.customWords])
+
+  const effectiveSettings = {
+    ...DEFAULT_GOON_WORDS_SETTINGS,
+    ...settings,
+    intensity
+  }
+
   useEffect(() => {
     if (!enabled || intensity <= 0) return
 
-    // Spawn new words based on intensity
+    // Spawn new words based on intensity and frequency setting
+    const baseInterval = effectiveSettings.frequency * 1000
     const interval = setInterval(() => {
+      const fontSize = effectiveSettings.fontSize + Math.random() * (intensity * 2)
       const newWord = {
         id: idRef.current++,
-        word: GOON_WORDS[Math.floor(Math.random() * GOON_WORDS.length)],
-        x: 10 + Math.random() * 80,
-        y: 10 + Math.random() * 80,
-        size: 16 + Math.random() * (intensity * 4),
-        color: colors[Math.floor(Math.random() * colors.length)],
-        rotation: -20 + Math.random() * 40,
-        duration: 2 + Math.random() * 3,
+        word: activeWords[Math.floor(Math.random() * activeWords.length)],
+        x: 5 + Math.random() * 90,
+        y: 5 + Math.random() * 90,
+        size: fontSize,
+        color: effectiveSettings.fontColor,
+        rotation: effectiveSettings.randomRotation ? (-25 + Math.random() * 50) : 0,
+        duration: effectiveSettings.duration + Math.random() * 1.5,
       }
-      setWords(prev => [...prev.slice(-15), newWord]) // Keep max 15 words
-    }, 3000 - intensity * 200) // More frequent at higher intensity
+      setWords(prev => [...prev.slice(-20), newWord]) // Keep max 20 words
+    }, Math.max(500, baseInterval - intensity * 200)) // Faster at higher intensity
 
     return () => clearInterval(interval)
-  }, [enabled, intensity, colors])
+  }, [enabled, intensity, activeWords, effectiveSettings.frequency, effectiveSettings.duration, effectiveSettings.fontSize, effectiveSettings.fontColor, effectiveSettings.randomRotation])
 
   useEffect(() => {
     // Remove expired words
     const cleanup = setInterval(() => {
-      setWords(prev => prev.slice(-10))
+      setWords(prev => prev.slice(-15))
     }, 5000)
     return () => clearInterval(cleanup)
   }, [])
 
   if (!enabled || intensity <= 0) return null
 
+  const glowColor = effectiveSettings.glowColor
+
   return (
     <div className="fixed inset-0 pointer-events-none z-[9940] overflow-hidden">
       {words.map((w) => (
         <div
           key={w.id}
-          className="absolute font-black uppercase tracking-wider"
+          className="absolute uppercase tracking-wider"
           style={{
             left: `${w.x}%`,
             top: `${w.y}%`,
             fontSize: w.size,
+            fontWeight: 900,
+            fontFamily: effectiveSettings.fontFamily,
             color: w.color,
-            textShadow: `0 0 20px ${w.color}, 0 0 40px ${w.color}`,
+            textShadow: `
+              0 0 10px ${glowColor},
+              0 0 20px ${glowColor},
+              0 0 40px ${glowColor},
+              2px 2px 0 rgba(0,0,0,0.8),
+              -2px -2px 0 rgba(0,0,0,0.8),
+              2px -2px 0 rgba(0,0,0,0.8),
+              -2px 2px 0 rgba(0,0,0,0.8)
+            `,
             transform: `rotate(${w.rotation}deg)`,
             animation: `goonWord ${w.duration}s ease-out forwards`,
-            opacity: 0.8,
+            WebkitTextStroke: '1px rgba(0,0,0,0.5)',
           }}
         >
           {w.word}
@@ -950,12 +1662,497 @@ export const GoonModeOverlay: React.FC<{
       <style>{`
         @keyframes goonWord {
           0% { opacity: 0; transform: scale(0.5) rotate(var(--rotation, 0deg)); }
-          20% { opacity: 0.9; transform: scale(1.1) rotate(var(--rotation, 0deg)); }
-          80% { opacity: 0.7; }
-          100% { opacity: 0; transform: scale(1.3) rotate(var(--rotation, 0deg)) translateY(-20px); }
+          15% { opacity: 1; transform: scale(1.15) rotate(var(--rotation, 0deg)); }
+          25% { transform: scale(1) rotate(var(--rotation, 0deg)); }
+          75% { opacity: 0.9; }
+          100% { opacity: 0; transform: scale(1.2) rotate(var(--rotation, 0deg)) translateY(-30px); }
         }
       `}</style>
     </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 23. INVERSION OVERLAY - Color inversion filter (like photo negative)
+// ═══════════════════════════════════════════════════════════════════════════
+export const InversionOverlay: React.FC<{
+  enabled?: boolean
+  intensity?: number // 0-1
+  animated?: boolean
+}> = ({ enabled = true, intensity = 1, animated = false }) => {
+  const [pulse, setPulse] = useState(1)
+
+  useEffect(() => {
+    if (!enabled || !animated) return
+    const interval = setInterval(() => {
+      setPulse(p => p === 1 ? 0.7 : 1)
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [enabled, animated])
+
+  if (!enabled) return null
+
+  return (
+    <div
+      className="fixed inset-0 pointer-events-none z-[9960]"
+      style={{
+        backdropFilter: `invert(${intensity * (animated ? pulse : 1)})`,
+        WebkitBackdropFilter: `invert(${intensity * (animated ? pulse : 1)})`,
+        transition: animated ? 'all 1s ease-in-out' : 'none',
+      }}
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 24. THERMAL OVERLAY - Heat vision / thermal camera effect
+// ═══════════════════════════════════════════════════════════════════════════
+export const ThermalOverlay: React.FC<{
+  enabled?: boolean
+  intensity?: number // 0-10
+}> = ({ enabled = true, intensity = 5 }) => {
+  if (!enabled) return null
+
+  const hueRotate = 180 + intensity * 10 // Shift towards thermal colors
+  const saturate = 1.5 + intensity * 0.15
+
+  return (
+    <>
+      {/* Main thermal filter */}
+      <div
+        className="fixed inset-0 pointer-events-none z-[9955]"
+        style={{
+          backdropFilter: `hue-rotate(${hueRotate}deg) saturate(${saturate}) contrast(1.2)`,
+          WebkitBackdropFilter: `hue-rotate(${hueRotate}deg) saturate(${saturate}) contrast(1.2)`,
+        }}
+      />
+      {/* Heat overlay gradient */}
+      <div
+        className="fixed inset-0 pointer-events-none z-[9956]"
+        style={{
+          background: `radial-gradient(circle at 50% 50%,
+            rgba(255, 50, 0, ${0.05 * intensity}) 0%,
+            rgba(255, 150, 0, ${0.03 * intensity}) 30%,
+            rgba(0, 100, 255, ${0.02 * intensity}) 70%,
+            transparent 100%)`,
+          mixBlendMode: 'overlay',
+        }}
+      />
+    </>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 25. HYPNO SPIRAL OVERLAY - Mesmerizing hypnotic spiral
+// ═══════════════════════════════════════════════════════════════════════════
+export const HypnoSpiralOverlay: React.FC<{
+  enabled?: boolean
+  speed?: number // 1-10
+  color?: string
+  opacity?: number
+}> = ({ enabled = true, speed = 5, color = '#ff6b9d', opacity = 0.15 }) => {
+  if (!enabled) return null
+
+  const duration = 20 - speed * 1.5 // 5s to 20s
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 pointer-events-none z-[9950] flex items-center justify-center"
+        style={{ opacity }}
+      >
+        <div
+          style={{
+            width: '200vmax',
+            height: '200vmax',
+            background: `conic-gradient(from 0deg,
+              ${color} 0deg, transparent 30deg,
+              ${color} 60deg, transparent 90deg,
+              ${color} 120deg, transparent 150deg,
+              ${color} 180deg, transparent 210deg,
+              ${color} 240deg, transparent 270deg,
+              ${color} 300deg, transparent 330deg,
+              ${color} 360deg)`,
+            animation: `hypnoSpin ${duration}s linear infinite`,
+            borderRadius: '50%',
+          }}
+        />
+      </div>
+      <style>{`
+        @keyframes hypnoSpin {
+          0% { transform: rotate(0deg) scale(1); }
+          50% { transform: rotate(180deg) scale(1.1); }
+          100% { transform: rotate(360deg) scale(1); }
+        }
+      `}</style>
+    </>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 26. LUST PULSE OVERLAY - Pulsing waves of desire from screen center
+// ═══════════════════════════════════════════════════════════════════════════
+export const LustPulseOverlay: React.FC<{
+  enabled?: boolean
+  color?: string
+  interval?: number // ms between pulses
+}> = ({ enabled = true, color = 'rgba(255, 107, 157, 0.3)', interval = 2000 }) => {
+  const [rings, setRings] = useState<number[]>([])
+
+  useEffect(() => {
+    if (!enabled) return
+    const timer = setInterval(() => {
+      setRings(prev => [...prev.slice(-4), Date.now()])
+    }, interval)
+    return () => clearInterval(timer)
+  }, [enabled, interval])
+
+  if (!enabled) return null
+
+  return (
+    <div className="fixed inset-0 pointer-events-none z-[9945] flex items-center justify-center overflow-hidden">
+      {rings.map((id) => (
+        <div
+          key={id}
+          className="absolute rounded-full"
+          style={{
+            border: `3px solid ${color}`,
+            animation: 'lustPulseRing 3s ease-out forwards',
+          }}
+        />
+      ))}
+      <style>{`
+        @keyframes lustPulseRing {
+          0% { width: 0; height: 0; opacity: 0.8; }
+          100% { width: 300vmax; height: 300vmax; opacity: 0; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 27. NEON GLOW OVERLAY - Neon edge glow effect
+// ═══════════════════════════════════════════════════════════════════════════
+export const NeonGlowOverlay: React.FC<{
+  enabled?: boolean
+  color?: string
+  intensity?: number // 0-10
+  animated?: boolean
+}> = ({ enabled = true, color = '#ff00ff', intensity = 5, animated = true }) => {
+  if (!enabled) return null
+
+  const glowSize = 20 + intensity * 8
+  const glowOpacity = 0.3 + intensity * 0.05
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 pointer-events-none z-[9940]"
+        style={{
+          boxShadow: `inset 0 0 ${glowSize}px ${color}, inset 0 0 ${glowSize * 2}px ${color}`,
+          opacity: glowOpacity,
+          animation: animated ? 'neonPulse 2s ease-in-out infinite' : 'none',
+        }}
+      />
+      <style>{`
+        @keyframes neonPulse {
+          0%, 100% { opacity: ${glowOpacity}; }
+          50% { opacity: ${glowOpacity * 1.5}; }
+        }
+      `}</style>
+    </>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 28. DRIPPING OVERLAY - Sexy dripping effect from top
+// ═══════════════════════════════════════════════════════════════════════════
+export const DrippingOverlay: React.FC<{
+  enabled?: boolean
+  color?: string
+  count?: number
+  speed?: number // 1-10
+}> = ({ enabled = true, color = 'rgba(255, 150, 200, 0.4)', count = 8, speed = 5 }) => {
+  const [drips, setDrips] = useState<Array<{ id: number; x: number; delay: number; size: number }>>([])
+
+  useEffect(() => {
+    if (!enabled) return
+    const newDrips = Array.from({ length: count }, (_, i) => ({
+      id: i,
+      x: Math.random() * 100,
+      delay: Math.random() * 5,
+      size: 10 + Math.random() * 30,
+    }))
+    setDrips(newDrips)
+  }, [enabled, count])
+
+  if (!enabled) return null
+
+  const duration = 15 - speed // 5s to 15s
+
+  return (
+    <>
+      <div className="fixed inset-0 pointer-events-none z-[9935] overflow-hidden">
+        {drips.map((drip) => (
+          <div
+            key={drip.id}
+            className="absolute top-0 rounded-b-full"
+            style={{
+              left: `${drip.x}%`,
+              width: drip.size,
+              height: '150vh',
+              background: `linear-gradient(to bottom, ${color} 0%, transparent 100%)`,
+              animation: `dripping ${duration}s ease-in infinite`,
+              animationDelay: `${drip.delay}s`,
+              opacity: 0,
+            }}
+          />
+        ))}
+      </div>
+      <style>{`
+        @keyframes dripping {
+          0% { transform: translateY(-100%); opacity: 0; }
+          10% { opacity: 0.8; }
+          90% { opacity: 0.6; }
+          100% { transform: translateY(100%); opacity: 0; }
+        }
+      `}</style>
+    </>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 29. EDGE PULSE OVERLAY - Screen edges pulse with arousal
+// ═══════════════════════════════════════════════════════════════════════════
+export const EdgePulseOverlay: React.FC<{
+  enabled?: boolean
+  color?: string
+  intensity?: number // 0-10
+  speed?: number // 1-10
+}> = ({ enabled = true, color = '#ff3366', intensity = 5, speed = 5 }) => {
+  if (!enabled) return null
+
+  const borderWidth = 2 + intensity * 0.8
+  const blurSize = 10 + intensity * 5
+  const duration = 3 - speed * 0.2
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 pointer-events-none z-[9925]"
+        style={{
+          border: `${borderWidth}px solid ${color}`,
+          boxShadow: `inset 0 0 ${blurSize}px ${color}`,
+          animation: `edgePulse ${duration}s ease-in-out infinite`,
+        }}
+      />
+      <style>{`
+        @keyframes edgePulse {
+          0%, 100% { opacity: 0.3; }
+          50% { opacity: 0.7; }
+        }
+      `}</style>
+    </>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 30. BREATHE SYNC OVERLAY - Visual breathing guide for edging
+// ═══════════════════════════════════════════════════════════════════════════
+export const BreatheSyncOverlay: React.FC<{
+  enabled?: boolean
+  inhaleTime?: number // seconds
+  holdTime?: number
+  exhaleTime?: number
+  color?: string
+}> = ({ enabled = true, inhaleTime = 4, holdTime = 2, exhaleTime = 4, color = 'rgba(100, 200, 255, 0.2)' }) => {
+  const [phase, setPhase] = useState<'inhale' | 'hold' | 'exhale'>('inhale')
+  const [scale, setScale] = useState(0.8)
+
+  useEffect(() => {
+    if (!enabled) return
+    const totalCycle = inhaleTime + holdTime + exhaleTime
+    let elapsed = 0
+
+    const interval = setInterval(() => {
+      elapsed = (elapsed + 0.05) % totalCycle
+
+      if (elapsed < inhaleTime) {
+        setPhase('inhale')
+        setScale(0.8 + (elapsed / inhaleTime) * 0.4)
+      } else if (elapsed < inhaleTime + holdTime) {
+        setPhase('hold')
+        setScale(1.2)
+      } else {
+        setPhase('exhale')
+        const exhaleProgress = (elapsed - inhaleTime - holdTime) / exhaleTime
+        setScale(1.2 - exhaleProgress * 0.4)
+      }
+    }, 50)
+
+    return () => clearInterval(interval)
+  }, [enabled, inhaleTime, holdTime, exhaleTime])
+
+  if (!enabled) return null
+
+  return (
+    <div className="fixed inset-0 pointer-events-none z-[9920] flex items-center justify-center">
+      <div
+        className="rounded-full transition-transform duration-100"
+        style={{
+          width: '60vmin',
+          height: '60vmin',
+          background: `radial-gradient(circle, ${color} 0%, transparent 70%)`,
+          transform: `scale(${scale})`,
+        }}
+      />
+      <div className="absolute text-white/60 text-2xl font-light tracking-widest uppercase">
+        {phase === 'inhale' && 'Breathe In...'}
+        {phase === 'hold' && 'Hold...'}
+        {phase === 'exhale' && 'Breathe Out...'}
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 31. COLOR CYCLE OVERLAY - Cycling color wash for trance effect
+// ═══════════════════════════════════════════════════════════════════════════
+export const ColorCycleOverlay: React.FC<{
+  enabled?: boolean
+  speed?: number // 1-10
+  opacity?: number
+}> = ({ enabled = true, speed = 5, opacity = 0.15 }) => {
+  const [hue, setHue] = useState(0)
+
+  useEffect(() => {
+    if (!enabled) return
+    const interval = setInterval(() => {
+      setHue(h => (h + speed * 0.5) % 360)
+    }, 50)
+    return () => clearInterval(interval)
+  }, [enabled, speed])
+
+  if (!enabled) return null
+
+  return (
+    <div
+      className="fixed inset-0 pointer-events-none z-[9910]"
+      style={{
+        background: `linear-gradient(135deg,
+          hsla(${hue}, 80%, 50%, ${opacity}) 0%,
+          hsla(${(hue + 60) % 360}, 80%, 50%, ${opacity}) 33%,
+          hsla(${(hue + 120) % 360}, 80%, 50%, ${opacity}) 66%,
+          hsla(${(hue + 180) % 360}, 80%, 50%, ${opacity}) 100%)`,
+        mixBlendMode: 'overlay',
+      }}
+    />
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 32. PIXELATE OVERLAY - Pixelation effect that intensifies
+// ═══════════════════════════════════════════════════════════════════════════
+export const PixelateOverlay: React.FC<{
+  enabled?: boolean
+  intensity?: number // 0-10 (0 = no pixelation, 10 = very blocky)
+  animated?: boolean
+}> = ({ enabled = true, intensity = 3, animated = false }) => {
+  const [currentIntensity, setCurrentIntensity] = useState(intensity)
+
+  useEffect(() => {
+    if (!enabled || !animated) {
+      setCurrentIntensity(intensity)
+      return
+    }
+    const interval = setInterval(() => {
+      setCurrentIntensity(prev => {
+        const next = prev + (Math.random() - 0.5) * 2
+        return Math.max(0, Math.min(10, next))
+      })
+    }, 500)
+    return () => clearInterval(interval)
+  }, [enabled, animated, intensity])
+
+  if (!enabled || currentIntensity <= 0) return null
+
+  // SVG filter for pixelation effect
+  const pixelSize = Math.max(1, currentIntensity * 2)
+
+  return (
+    <>
+      <svg className="fixed" style={{ width: 0, height: 0 }}>
+        <defs>
+          <filter id="pixelate-filter">
+            <feFlood x="0" y="0" width={pixelSize} height={pixelSize} />
+            <feComposite width={pixelSize} height={pixelSize} />
+            <feTile result="tile" />
+            <feComposite in="SourceGraphic" in2="tile" operator="in" />
+            <feMorphology operator="dilate" radius={pixelSize / 4} />
+          </filter>
+        </defs>
+      </svg>
+      <div
+        className="fixed inset-0 pointer-events-none z-[9905]"
+        style={{
+          backdropFilter: `blur(${currentIntensity * 0.3}px)`,
+          WebkitBackdropFilter: `blur(${currentIntensity * 0.3}px)`,
+        }}
+      />
+    </>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 33. VAPORWAVE OVERLAY - Retro aesthetic with grid and sun
+// ═══════════════════════════════════════════════════════════════════════════
+export const VaporwaveOverlay: React.FC<{
+  enabled?: boolean
+  opacity?: number
+}> = ({ enabled = true, opacity = 0.2 }) => {
+  if (!enabled) return null
+
+  return (
+    <>
+      <div className="fixed inset-0 pointer-events-none z-[9900]" style={{ opacity }}>
+        {/* Sun */}
+        <div
+          className="absolute"
+          style={{
+            bottom: '30%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '40vmin',
+            height: '20vmin',
+            background: 'linear-gradient(to bottom, #ff6b9d 0%, #ff9a56 50%, #ffcd56 100%)',
+            borderRadius: '50% 50% 0 0',
+            boxShadow: '0 0 60px rgba(255, 107, 157, 0.5)',
+          }}
+        />
+        {/* Grid floor */}
+        <div
+          className="absolute bottom-0 left-0 right-0"
+          style={{
+            height: '40%',
+            background: `
+              linear-gradient(transparent 0%, rgba(255, 107, 157, 0.1) 100%),
+              repeating-linear-gradient(90deg, rgba(255, 107, 157, 0.3) 0px, transparent 1px, transparent 50px),
+              repeating-linear-gradient(0deg, rgba(255, 107, 157, 0.3) 0px, transparent 1px, transparent 50px)
+            `,
+            transform: 'perspective(200px) rotateX(60deg)',
+            transformOrigin: 'center bottom',
+            animation: 'vaporwaveScroll 5s linear infinite',
+          }}
+        />
+      </div>
+      <style>{`
+        @keyframes vaporwaveScroll {
+          0% { background-position: 0 0; }
+          100% { background-position: 0 50px; }
+        }
+      `}</style>
+    </>
   )
 }
 
@@ -1111,14 +2308,35 @@ export interface ArousalEffectsConfig {
   trail: boolean
   wave: boolean
   goonMode?: boolean
+  goonWordsSettings?: Partial<GoonWordsSettings>
   sparkles?: boolean
   bokeh?: boolean
   starfield?: boolean
   filmGrain?: boolean
   dreamyHaze?: boolean
+  crtCurve?: boolean
+  crtIntensity?: number // 0-10
+  crtRgbSubpixels?: boolean
+  crtChromaticAberration?: boolean
+  crtScreenFlicker?: boolean
   climaxTrigger?: number
   climaxType?: 'cum' | 'squirt' | 'orgasm'
   onClimaxComplete?: () => void
+  // New effects
+  inversion?: boolean
+  inversionIntensity?: number
+  thermal?: boolean
+  thermalIntensity?: number
+  hypnoSpiral?: boolean
+  hypnoSpiralSpeed?: number
+  lustPulse?: boolean
+  neonGlow?: boolean
+  neonColor?: string
+  dripping?: boolean
+  edgePulse?: boolean
+  breatheSync?: boolean
+  colorCycle?: boolean
+  vaporwave?: boolean
 }
 
 export const ArousalEffects: React.FC<ArousalEffectsConfig> = ({
@@ -1130,14 +2348,35 @@ export const ArousalEffects: React.FC<ArousalEffectsConfig> = ({
   trail,
   wave,
   goonMode = false,
+  goonWordsSettings,
   sparkles = false,
   bokeh = false,
   starfield = false,
   filmGrain = false,
   dreamyHaze = false,
+  crtCurve = false,
+  crtIntensity = 5,
+  crtRgbSubpixels = true,
+  crtChromaticAberration = true,
+  crtScreenFlicker = true,
   climaxTrigger = 0,
   climaxType = 'orgasm',
   onClimaxComplete,
+  // New effects
+  inversion = false,
+  inversionIntensity = 1,
+  thermal = false,
+  thermalIntensity = 5,
+  hypnoSpiral = false,
+  hypnoSpiralSpeed = 5,
+  lustPulse = false,
+  neonGlow = false,
+  neonColor = '#ff00ff',
+  dripping = false,
+  edgePulse = false,
+  breatheSync = false,
+  colorCycle = false,
+  vaporwave = false,
 }) => {
   // Calculate BPM based on heat level (60-120 BPM)
   const bpm = 60 + heatLevel * 6
@@ -1151,8 +2390,20 @@ export const ArousalEffects: React.FC<ArousalEffectsConfig> = ({
       {sparkles && <SparkleOverlay density={Math.max(3, heatLevel)} speed={heatLevel} />}
       {bokeh && <BokehOverlay count={8 + heatLevel} />}
       {starfield && <StarfieldOverlay density={30 + heatLevel * 5} />}
-      {filmGrain && <FilmGrainOverlay opacity={0.03 + heatLevel * 0.005} />}
+      {filmGrain && <FilmGrainOverlay opacity={0.12 + heatLevel * 0.01} scanlines={true} scanlineIntensity={0.25 + heatLevel * 0.02} />}
       {dreamyHaze && <DreamyHazeOverlay intensity={heatLevel} />}
+
+      {/* NEW: Advanced visual effects */}
+      {inversion && <InversionOverlay intensity={inversionIntensity} />}
+      {thermal && <ThermalOverlay intensity={thermalIntensity} />}
+      {hypnoSpiral && <HypnoSpiralOverlay speed={hypnoSpiralSpeed} opacity={0.1 + heatLevel * 0.02} />}
+      {lustPulse && <LustPulseOverlay interval={3000 - heatLevel * 200} />}
+      {neonGlow && <NeonGlowOverlay color={neonColor} intensity={heatLevel} />}
+      {dripping && <DrippingOverlay speed={heatLevel} />}
+      {edgePulse && <EdgePulseOverlay intensity={heatLevel} speed={heatLevel} />}
+      {breatheSync && <BreatheSyncOverlay />}
+      {colorCycle && <ColorCycleOverlay speed={heatLevel} opacity={0.1 + heatLevel * 0.02} />}
+      {vaporwave && <VaporwaveOverlay opacity={0.15 + heatLevel * 0.02} />}
 
       {/* Heat-based effects */}
       {particles && heatLevel >= 3 && <PleasureParticles count={heatLevel * 2} />}
@@ -1163,10 +2414,274 @@ export const ArousalEffects: React.FC<ArousalEffectsConfig> = ({
       {wave && heatLevel >= 8 && <SeductionWave speed={4 - heatLevel * 0.2} />}
 
       {/* Goon Mode - floating provocative text */}
-      {goonMode && <GoonModeOverlay enabled={goonMode} intensity={heatLevel} />}
+      {goonMode && <GoonModeOverlay enabled={goonMode} intensity={goonWordsSettings?.intensity ?? heatLevel} settings={goonWordsSettings} />}
+
+      {/* CRT Curved Screen Effect with enhanced features */}
+      {crtCurve && (
+        <CRTCurveOverlay
+          enabled={crtCurve}
+          intensity={crtIntensity}
+          rgbSubpixels={crtRgbSubpixels}
+          chromaticAberration={crtChromaticAberration}
+          screenFlicker={crtScreenFlicker}
+        />
+      )}
 
       {/* Climax overlay - triggered externally */}
       <ClimaxOverlay trigger={climaxTrigger} type={climaxType} onComplete={onClimaxComplete} />
+    </>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 22. CUM COUNTDOWN OVERLAY - Sexy countdown to climax
+// ═══════════════════════════════════════════════════════════════════════════
+export interface CumCountdownConfig {
+  duration: number // seconds
+  onComplete?: () => void
+  onCancel?: () => void
+  visualStyle?: 'minimal' | 'dramatic' | 'intense'
+  showPulse?: boolean
+  playVoice?: boolean
+}
+
+export const CumCountdownOverlay: React.FC<{
+  active: boolean
+  config: CumCountdownConfig
+}> = ({ active, config }) => {
+  const [timeLeft, setTimeLeft] = useState(config.duration)
+  const [phase, setPhase] = useState<'countdown' | 'final' | 'complete'>('countdown')
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const startTimeRef = useRef<number>(0)
+
+  useEffect(() => {
+    if (!active) {
+      setTimeLeft(config.duration)
+      setPhase('countdown')
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+      return
+    }
+
+    startTimeRef.current = Date.now()
+    setTimeLeft(config.duration)
+    setPhase('countdown')
+
+    intervalRef.current = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000)
+      const remaining = Math.max(0, config.duration - elapsed)
+      setTimeLeft(remaining)
+
+      // Final 5 seconds - intense phase
+      if (remaining <= 5 && remaining > 0) {
+        setPhase('final')
+      }
+
+      // Complete
+      if (remaining <= 0) {
+        setPhase('complete')
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current)
+          intervalRef.current = null
+        }
+        config.onComplete?.()
+      }
+    }, 100)
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [active, config.duration])
+
+  // TTS Voice countdown
+  const lastSpokenRef = useRef<number>(-1)
+  useEffect(() => {
+    if (!active || !config.playVoice) return
+    if (typeof window === 'undefined' || !window.speechSynthesis) return
+
+    // Speak countdown numbers in final 10 seconds
+    if (timeLeft <= 10 && timeLeft > 0 && timeLeft !== lastSpokenRef.current) {
+      lastSpokenRef.current = timeLeft
+      const utterance = new SpeechSynthesisUtterance(timeLeft.toString())
+      utterance.rate = 0.9
+      utterance.pitch = 1.2
+      // Try to use a female voice if available
+      const voices = window.speechSynthesis.getVoices()
+      const femaleVoice = voices.find(v =>
+        v.name.includes('female') ||
+        v.name.includes('Female') ||
+        v.name.includes('Samantha') ||
+        v.name.includes('Victoria') ||
+        v.name.includes('Karen') ||
+        v.name.includes('Zira')
+      )
+      if (femaleVoice) utterance.voice = femaleVoice
+      window.speechSynthesis.speak(utterance)
+    }
+
+    // Speak "CUM!" on complete
+    if (timeLeft <= 0 && lastSpokenRef.current !== 0) {
+      lastSpokenRef.current = 0
+      const utterance = new SpeechSynthesisUtterance('Cum now!')
+      utterance.rate = 0.8
+      utterance.pitch = 1.3
+      utterance.volume = 1
+      const voices = window.speechSynthesis.getVoices()
+      const femaleVoice = voices.find(v =>
+        v.name.includes('female') ||
+        v.name.includes('Female') ||
+        v.name.includes('Samantha') ||
+        v.name.includes('Victoria') ||
+        v.name.includes('Karen') ||
+        v.name.includes('Zira')
+      )
+      if (femaleVoice) utterance.voice = femaleVoice
+      window.speechSynthesis.speak(utterance)
+    }
+  }, [active, timeLeft, config.playVoice])
+
+  if (!active && phase !== 'complete') return null
+
+  const getCountdownText = () => {
+    if (timeLeft <= 0) return 'CUM!'
+    if (timeLeft <= 3) return timeLeft.toString()
+    if (timeLeft <= 5) return timeLeft.toString()
+    if (timeLeft <= 10) return timeLeft.toString()
+    return timeLeft.toString()
+  }
+
+  const getSubText = () => {
+    if (timeLeft <= 0) return 'NOW!'
+    if (timeLeft <= 3) return 'ALMOST THERE...'
+    if (timeLeft <= 5) return 'GET READY...'
+    if (timeLeft <= 10) return 'KEEP STROKING...'
+    return 'EDGE FOR ME...'
+  }
+
+  const pulseIntensity = phase === 'final' ? 1 + (5 - timeLeft) * 0.1 : 1
+  const glowIntensity = phase === 'final' ? 20 + (5 - timeLeft) * 10 : 10
+
+  return (
+    <>
+      {/* Background pulse overlay */}
+      <div
+        className="fixed inset-0 pointer-events-none z-[99995] transition-all duration-200"
+        style={{
+          background: phase === 'final'
+            ? `radial-gradient(circle at center, rgba(255, 50, 100, ${0.1 + (5 - timeLeft) * 0.05}) 0%, transparent 70%)`
+            : phase === 'complete'
+            ? 'radial-gradient(circle at center, rgba(255, 100, 150, 0.4) 0%, transparent 70%)'
+            : 'transparent',
+          animation: phase === 'final' ? `countdownPulse ${0.5 - timeLeft * 0.05}s ease-in-out infinite` : 'none',
+        }}
+      />
+
+      {/* Main countdown display */}
+      <div
+        className="fixed inset-0 pointer-events-none z-[99996] flex items-center justify-center"
+        style={{
+          animation: phase === 'complete' ? 'climaxFlash 0.5s ease-out' : 'none',
+        }}
+      >
+        <div
+          className="text-center transform transition-all duration-200"
+          style={{
+            transform: `scale(${pulseIntensity})`,
+          }}
+        >
+          {/* Main number */}
+          <div
+            className="font-black tracking-tight"
+            style={{
+              fontSize: phase === 'complete' ? '20rem' : timeLeft <= 5 ? '16rem' : '12rem',
+              color: phase === 'complete' ? '#ff3366' : timeLeft <= 3 ? '#ff4477' : timeLeft <= 5 ? '#ff6699' : '#ffffff',
+              textShadow: `
+                0 0 ${glowIntensity}px currentColor,
+                0 0 ${glowIntensity * 2}px currentColor,
+                0 0 ${glowIntensity * 3}px rgba(255, 100, 150, 0.5)
+              `,
+              lineHeight: 1,
+              animation: phase === 'final' ? 'countdownBounce 0.3s ease-out' : 'none',
+            }}
+          >
+            {getCountdownText()}
+          </div>
+
+          {/* Sub text */}
+          <div
+            className="text-2xl font-bold uppercase tracking-widest mt-4"
+            style={{
+              color: 'rgba(255, 255, 255, 0.9)',
+              textShadow: '0 0 10px rgba(255, 100, 150, 0.8)',
+            }}
+          >
+            {getSubText()}
+          </div>
+
+          {/* Progress ring */}
+          {timeLeft > 0 && (
+            <svg
+              className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 -z-10"
+              width="500"
+              height="500"
+              viewBox="0 0 500 500"
+            >
+              <circle
+                cx="250"
+                cy="250"
+                r="230"
+                fill="none"
+                stroke="rgba(255, 255, 255, 0.1)"
+                strokeWidth="8"
+              />
+              <circle
+                cx="250"
+                cy="250"
+                r="230"
+                fill="none"
+                stroke={timeLeft <= 5 ? '#ff4477' : '#ff6699'}
+                strokeWidth="8"
+                strokeLinecap="round"
+                strokeDasharray={`${2 * Math.PI * 230}`}
+                strokeDashoffset={`${2 * Math.PI * 230 * (1 - timeLeft / config.duration)}`}
+                transform="rotate(-90 250 250)"
+                style={{
+                  transition: 'stroke-dashoffset 0.1s linear',
+                  filter: `drop-shadow(0 0 ${glowIntensity}px currentColor)`,
+                }}
+              />
+            </svg>
+          )}
+        </div>
+      </div>
+
+      {/* Cancel hint */}
+      {active && timeLeft > 0 && (
+        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-[99997] text-white/50 text-sm">
+          Press ESC to cancel
+        </div>
+      )}
+
+      <style>{`
+        @keyframes countdownPulse {
+          0%, 100% { opacity: 0.8; }
+          50% { opacity: 1; }
+        }
+        @keyframes countdownBounce {
+          0% { transform: scale(0.9); }
+          50% { transform: scale(1.1); }
+          100% { transform: scale(1); }
+        }
+        @keyframes climaxFlash {
+          0% { background: rgba(255, 50, 100, 0.8); }
+          100% { background: transparent; }
+        }
+      `}</style>
     </>
   )
 }

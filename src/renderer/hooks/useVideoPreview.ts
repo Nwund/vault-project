@@ -8,10 +8,13 @@ interface UseVideoPreviewOptions {
   clipCount?: number // how many clips to show
   hoverDelay?: number // ms to wait before starting preview (2 seconds)
   muted?: boolean // whether to mute the video (default true)
+  autoPlay?: boolean // whether to start preview immediately when visible (wall mode)
+  autoPlayUrl?: string // URL to use for autoPlay
+  autoPlayDuration?: number // duration for autoPlay
 }
 
 export function useVideoPreview(options: UseVideoPreviewOptions = {}) {
-  const { clipDuration = 1.5, clipCount = 4, hoverDelay = 2000, muted = true } = options
+  const { clipDuration = 1.5, clipCount = 4, hoverDelay = 2000, muted = true, autoPlay = false, autoPlayUrl, autoPlayDuration } = options
   const videoRef = useRef<HTMLVideoElement>(null)
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const clipTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -58,6 +61,18 @@ export function useVideoPreview(options: UseVideoPreviewOptions = {}) {
       videoRef.current.muted = muted
     }
   }, [muted])
+
+  // Auto-play when enabled and URL is available
+  useEffect(() => {
+    if (autoPlay && autoPlayUrl) {
+      startPreview(autoPlayUrl, autoPlayDuration)
+    }
+    return () => {
+      if (autoPlay) {
+        stopPreview()
+      }
+    }
+  }, [autoPlay, autoPlayUrl, autoPlayDuration]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const startPreview = useCallback((videoUrl: string, duration?: number) => {
     if (!videoRef.current) return
