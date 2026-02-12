@@ -9,7 +9,7 @@ export default defineConfig({
     build: {
       rollupOptions: {
         // Native modules must stay external. Binary paths resolved at runtime.
-        external: ['better-sqlite3']
+        external: ['better-sqlite3', 'onnxruntime-node', 'sharp']
       }
     },
     resolve: {
@@ -44,6 +44,10 @@ export default defineConfig({
       alias: {
         '@renderer': path.resolve('src/renderer')
       }
+    },
+    server: {
+      port: 5173,
+      strictPort: false // Auto-find next available port if 5173 is busy
     }
   }
 })
