@@ -132,54 +132,7 @@ async function main() {
   const dirs = getMediaDirs()
   logMain('info', 'Media dirs', { dirs })
 
-  // Clean up database entries for files that no longer exist or are outside media dirs
-  const removedCount = cleanupMissingFiles(db, dirs)
-  if (removedCount > 0) {
-    logMain('info', 'Cleaned up missing files', { count: removedCount })
-  }
-
-  // Clean up stale thumbnails and analyzeError flags from previous installs
-  {
-    const allMedia = db.listAllMediaPaths()
-    let staleThumbs = 0
-    let clearedErrors = 0
-    for (const { id } of allMedia) {
-      const row = db.getMedia(id)
-      if (!row) continue
-      if (row.thumbPath && !fs.existsSync(row.thumbPath)) {
-        db.clearThumbPath(id)
-        staleThumbs++
-      }
-      if (row.analyzeError) {
-        db.clearAnalyzeError(id)
-        clearedErrors++
-      }
-    }
-    if (staleThumbs > 0) logMain('info', 'Cleared stale thumb paths', { count: staleThumbs })
-    if (clearedErrors > 0) logMain('info', 'Cleared stale analyzeError flags', { count: clearedErrors })
-  }
-
-  await rescanAll(db, dirs)
-
-  // Deduplicate DB entries (different path styles for same file, e.g. C:\foo vs C:/foo)
-  const dbPaths = db.listAllMediaPaths()
-  const pathMap = new Map<string, string[]>()
-  for (const p of dbPaths) {
-    const normalized = path.resolve(p.path).toLowerCase()
-    if (!pathMap.has(normalized)) pathMap.set(normalized, [])
-    pathMap.get(normalized)!.push(p.id)
-  }
-  let removedDupes = 0
-  for (const [, ids] of pathMap) {
-    for (let i = 1; i < ids.length; i++) {
-      db.deleteMediaById(ids[i])
-      removedDupes++
-    }
-  }
-  if (removedDupes > 0) {
-    console.log(`[Startup] Removed ${removedDupes} duplicate DB entries`)
-  }
-
+  // Start watchers immediately (lightweight)
   startWatchersForDirs(dirs)
 
   const jobRunner = startJobRunner(
@@ -288,6 +241,73 @@ async function main() {
     logMain('warn', 'FFmpeg not found, AI Intelligence system disabled')
     errorLogger.warn('Main', 'FFmpeg not found - AI features disabled')
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DEFERRED STARTUP OPERATIONS
+  // These run AFTER the window is shown to improve perceived startup time
+  // ═══════════════════════════════════════════════════════════════════════════
+  setImmediate(async () => {
+    logMain('info', 'Starting deferred startup operations...')
+    const deferredStart = Date.now()
+
+    try {
+      // 1. Clean up database entries for files that no longer exist
+      const removedCount = cleanupMissingFiles(db, dirs)
+      if (removedCount > 0) {
+        logMain('info', 'Cleaned up missing files', { count: removedCount })
+      }
+
+      // 2. Clean up stale thumbnails and analyzeError flags
+      const allMedia = db.listAllMediaPaths()
+      let staleThumbs = 0
+      let clearedErrors = 0
+      for (const { id } of allMedia) {
+        const row = db.getMedia(id)
+        if (!row) continue
+        if (row.thumbPath && !fs.existsSync(row.thumbPath)) {
+          db.clearThumbPath(id)
+          staleThumbs++
+        }
+        if (row.analyzeError) {
+          db.clearAnalyzeError(id)
+          clearedErrors++
+        }
+      }
+      if (staleThumbs > 0) logMain('info', 'Cleared stale thumb paths', { count: staleThumbs })
+      if (clearedErrors > 0) logMain('info', 'Cleared stale analyzeError flags', { count: clearedErrors })
+
+      // 3. Scan media directories for new files
+      await rescanAll(db, dirs)
+
+      // 4. Deduplicate DB entries (different path styles for same file)
+      const dbPaths = db.listAllMediaPaths()
+      const pathMap = new Map<string, string[]>()
+      for (const p of dbPaths) {
+        const normalized = path.resolve(p.path).toLowerCase()
+        if (!pathMap.has(normalized)) pathMap.set(normalized, [])
+        pathMap.get(normalized)!.push(p.id)
+      }
+      let removedDupes = 0
+      for (const [, ids] of pathMap) {
+        for (let i = 1; i < ids.length; i++) {
+          db.deleteMediaById(ids[i])
+          removedDupes++
+        }
+      }
+      if (removedDupes > 0) {
+        logMain('info', 'Removed duplicate DB entries', { count: removedDupes })
+      }
+
+      // 5. Poke job runner to process any pending thumbnail jobs
+      jobRunner.poke()
+
+      const elapsed = Date.now() - deferredStart
+      logMain('info', 'Deferred startup operations completed', { elapsedMs: elapsed })
+    } catch (err) {
+      logMain('error', 'Deferred startup operations failed', { error: String(err) })
+      errorLogger.error('Main', 'Deferred startup operations failed', err)
+    }
+  })
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) await createMainWindow()

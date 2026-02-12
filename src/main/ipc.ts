@@ -11,14 +11,13 @@ import { VoiceLineService } from './services/audio/voice-line-service'
 import { NSFWTagger } from './services/tagging/nsfw-tagger'
 import { getSmartTagger } from './services/tagging/smart-tagger'
 import { getHybridTagger } from './services/tagging/hybrid-tagger'
-import { analyzeVideo, isAnalyzerAvailable, type VideoAnalysis } from './services/ai/video-analyzer'
+import { analyzeVideo, isAnalyzerAvailable } from './services/ai/video-analyzer'
 import { aiCleanupTags, aiGenerateTags, aiSuggestFilename, aiBatchRename, isOllamaAvailable } from './services/ai/ai-library-tools'
 
 import {
   getSettings,
   updateSettings,
   getMediaDirs,
-  setMediaDirs,
   getCacheDir,
   setCacheDir,
   updateLibrarySettings,
@@ -80,15 +79,13 @@ import {
   type VaultSettings,
   type GoonStats,
   type SessionModeId,
-  type SettingsProfile,
-  type DailyChallengeType,
-  type DailyChallengeState
+  type DailyChallengeType
 } from './settings'
 import { toVaultUrl } from './vaultProtocol'
 import { getAICacheService } from './services/ai-cache-service'
 import { getLicenseService } from './services/license-service'
 import { errorLogger } from './services/error-logger'
-import { needsTranscode, probeNeedsTranscode, transcodeToMp4, getTranscodedPath, transcodeLowRes } from './services/transcode'
+import { needsTranscode, transcodeToMp4, getTranscodedPath, transcodeLowRes } from './services/transcode'
 import { makeVideoThumb, makeImageThumb, probeVideoDurationSec } from './thumbs'
 
 type OnDirsChanged = (newDirs: string[]) => Promise<void>

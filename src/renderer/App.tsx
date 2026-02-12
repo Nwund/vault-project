@@ -7629,6 +7629,10 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
 
+  // Image loading error state for GIFs and images
+  const [imageLoadError, setImageLoadError] = useState(false)
+  const [imageRetryCount, setImageRetryCount] = useState(0)
+
   // Handle text drag
   const handleTextDragStart = useCallback((which: 'top' | 'bottom') => (e: React.MouseEvent) => {
     e.preventDefault()
@@ -7893,11 +7897,16 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
       setPreviewUrl(null)
       setVideoUrl(null)
       setCapturedFrameUrl(null)
+      setImageLoadError(false)
+      setImageRetryCount(0)
       return
     }
 
     let cancelled = false
     const loadPreview = async () => {
+      // Reset error state when loading new media
+      setImageLoadError(false)
+
       try {
         const filename = selectedMedia.filename?.toLowerCase() || ''
         const isGif = filename.endsWith('.gif')
@@ -7941,6 +7950,7 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
         if (!cancelled) {
           setPreviewUrl(null)
           setVideoUrl(null)
+          setImageLoadError(true)
           showToast('error', 'Failed to load media preview')
         }
       }
@@ -7948,7 +7958,7 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
 
     loadPreview()
     return () => { cancelled = true }
-  }, [selectedMedia, showToast])
+  }, [selectedMedia, showToast, imageRetryCount])
 
   // Load data - fetch ALL images and GIFs for brainwash editing
   useEffect(() => {
@@ -8302,6 +8312,28 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                             Pause video and capture the perfect frame
                           </div>
                         </div>
+                      ) : imageLoadError ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-white/60">
+                          <div className="text-4xl">⚠️</div>
+                          <div className="text-sm">Failed to load image</div>
+                          <div className="text-xs text-white/40 max-w-xs text-center">
+                            The file may have been moved, deleted, or is in an unsupported format.
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setImageRetryCount(c => c + 1)}
+                              className="px-3 py-1.5 rounded-lg bg-[var(--primary)] hover:opacity-90 text-white text-xs font-medium"
+                            >
+                              Retry
+                            </button>
+                            <button
+                              onClick={() => setSelectedMedia(null)}
+                              className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs"
+                            >
+                              Select Another
+                            </button>
+                          </div>
+                        </div>
                       ) : (croppedImageUrl || capturedFrameUrl || previewUrl) ? (
                         <img
                           src={croppedImageUrl || capturedFrameUrl || previewUrl || ''}
@@ -8311,6 +8343,14 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                             filter: buildFilterCSS(),
                             imageRendering: filterValues.pixelate > 0 ? 'pixelated' : 'auto',
                             pointerEvents: cropMode ? 'none' : 'auto',
+                          }}
+                          onError={(e) => {
+                            console.error('[Brainwash] Image failed to load:', selectedMedia.path)
+                            setImageLoadError(true)
+                          }}
+                          onLoad={() => {
+                            // Clear error state on successful load
+                            if (imageLoadError) setImageLoadError(false)
                           }}
                         />
                       ) : (
