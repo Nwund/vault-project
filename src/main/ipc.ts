@@ -26,6 +26,9 @@ import { getBackupRestoreService, type BackupOptions, type RestoreOptions } from
 import { getScheduledTasksService, type ScheduledTask } from './services/scheduled-tasks'
 import { getSimilarContentService } from './services/similar-content'
 import { getMediaInfoService } from './services/media-info'
+import { getKeyboardShortcutsService, type ShortcutAction, type ShortcutConfig } from './services/keyboard-shortcuts'
+import { getFileWatcherService } from './services/file-watcher'
+import { getAdvancedStatsService } from './services/advanced-stats'
 
 import {
   getSettings,
@@ -4574,6 +4577,188 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('mediaInfo:getQualityStats', async () => {
     const service = getMediaInfoService(db)
     return service.getQualityStats()
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // KEYBOARD SHORTCUTS - Global hotkey management
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('shortcuts:getAll', async () => {
+    const service = getKeyboardShortcutsService()
+    return service.getShortcuts()
+  })
+
+  ipcMain.handle('shortcuts:getByCategory', async (_ev, category: ShortcutAction['category']) => {
+    const service = getKeyboardShortcutsService()
+    return service.getShortcutsByCategory(category)
+  })
+
+  ipcMain.handle('shortcuts:get', async (_ev, id: string) => {
+    const service = getKeyboardShortcutsService()
+    return service.getShortcut(id)
+  })
+
+  ipcMain.handle('shortcuts:update', async (_ev, id: string, newKey: string) => {
+    const service = getKeyboardShortcutsService()
+    try {
+      const result = service.updateShortcut(id, newKey)
+      return { success: true, shortcut: result }
+    } catch (error: any) {
+      return { success: false, error: error?.message }
+    }
+  })
+
+  ipcMain.handle('shortcuts:toggle', async (_ev, id: string, enabled: boolean) => {
+    const service = getKeyboardShortcutsService()
+    return service.toggleShortcut(id, enabled)
+  })
+
+  ipcMain.handle('shortcuts:reset', async (_ev, id: string) => {
+    const service = getKeyboardShortcutsService()
+    return service.resetShortcut(id)
+  })
+
+  ipcMain.handle('shortcuts:resetAll', async () => {
+    const service = getKeyboardShortcutsService()
+    service.resetAll()
+    return { success: true }
+  })
+
+  ipcMain.handle('shortcuts:setGlobalEnabled', async (_ev, enabled: boolean) => {
+    const service = getKeyboardShortcutsService()
+    service.setGlobalEnabled(enabled)
+    return { success: true }
+  })
+
+  ipcMain.handle('shortcuts:isGlobalEnabled', async () => {
+    const service = getKeyboardShortcutsService()
+    return service.isGlobalEnabled()
+  })
+
+  ipcMain.handle('shortcuts:getKeyboardMap', async () => {
+    const service = getKeyboardShortcutsService()
+    return service.getKeyboardMap()
+  })
+
+  ipcMain.handle('shortcuts:export', async () => {
+    const service = getKeyboardShortcutsService()
+    return service.exportConfig()
+  })
+
+  ipcMain.handle('shortcuts:import', async (_ev, config: Partial<ShortcutConfig>) => {
+    const service = getKeyboardShortcutsService()
+    service.importConfig(config)
+    return { success: true }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FILE WATCHER - Real-time directory monitoring
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('watcher:watchDirectory', async (_ev, dirPath: string, options?: { recursive?: boolean; autoImport?: boolean }) => {
+    const service = getFileWatcherService()
+    const result = service.watchDirectory(dirPath, options)
+    return result
+  })
+
+  ipcMain.handle('watcher:unwatchDirectory', async (_ev, dirPath: string) => {
+    const service = getFileWatcherService()
+    return service.unwatchDirectory(dirPath)
+  })
+
+  ipcMain.handle('watcher:toggleDirectory', async (_ev, dirPath: string, enabled: boolean) => {
+    const service = getFileWatcherService()
+    return service.toggleDirectory(dirPath, enabled)
+  })
+
+  ipcMain.handle('watcher:getWatchedDirectories', async () => {
+    const service = getFileWatcherService()
+    return service.getWatchedDirectories()
+  })
+
+  ipcMain.handle('watcher:isWatching', async (_ev, dirPath: string) => {
+    const service = getFileWatcherService()
+    return service.isWatching(dirPath)
+  })
+
+  ipcMain.handle('watcher:scanDirectory', async (_ev, dirPath: string) => {
+    const service = getFileWatcherService()
+    return service.scanDirectory(dirPath)
+  })
+
+  ipcMain.handle('watcher:getStats', async () => {
+    const service = getFileWatcherService()
+    return service.getStats()
+  })
+
+  ipcMain.handle('watcher:stopAll', async () => {
+    const service = getFileWatcherService()
+    service.stopAll()
+    return { success: true }
+  })
+
+  ipcMain.handle('watcher:restartAll', async () => {
+    const service = getFileWatcherService()
+    service.restartAll()
+    return { success: true }
+  })
+
+  // Set up file watcher event forwarding
+  const fileWatcher = getFileWatcherService()
+  fileWatcher.on('newMediaFile', (event: any) => {
+    broadcast('watcher:newFile', event)
+  })
+  fileWatcher.on('mediaFileRemoved', (event: any) => {
+    broadcast('watcher:fileRemoved', event)
+  })
+  fileWatcher.on('filesChanged', (events: any[]) => {
+    broadcast('watcher:filesChanged', events)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ADVANCED STATS - Deep analytics and insights
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('advancedStats:getStorage', async () => {
+    const service = getAdvancedStatsService(db)
+    return service.getStorageStats()
+  })
+
+  ipcMain.handle('advancedStats:getQuality', async () => {
+    const service = getAdvancedStatsService(db)
+    return service.getQualityBreakdown()
+  })
+
+  ipcMain.handle('advancedStats:getDuration', async () => {
+    const service = getAdvancedStatsService(db)
+    return service.getDurationStats()
+  })
+
+  ipcMain.handle('advancedStats:getTags', async () => {
+    const service = getAdvancedStatsService(db)
+    return service.getTagStats()
+  })
+
+  ipcMain.handle('advancedStats:getActivity', async () => {
+    const service = getAdvancedStatsService(db)
+    return service.getActivityStats()
+  })
+
+  ipcMain.handle('advancedStats:getGrowth', async () => {
+    const service = getAdvancedStatsService(db)
+    return service.getGrowthStats()
+  })
+
+  ipcMain.handle('advancedStats:getHealth', async () => {
+    const service = getAdvancedStatsService(db)
+    return service.getLibraryHealth()
+  })
+
+  ipcMain.handle('advancedStats:getDashboard', async () => {
+    const service = getAdvancedStatsService(db)
+    return service.getDashboardStats()
+  })
+
+  ipcMain.handle('advancedStats:getTimeRange', async (_ev, startDate: number, endDate: number) => {
+    const service = getAdvancedStatsService(db)
+    return service.getTimeRangeStats(startDate, endDate)
   })
 
   // Auto-organize NSFW Soundpack on startup
