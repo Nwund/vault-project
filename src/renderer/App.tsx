@@ -3945,9 +3945,15 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
                 {query || activeTags.length > 0 || typeFilter !== 'all' ? 'No results found' : 'Library is empty'}
               </div>
               {!(query || activeTags.length > 0 || typeFilter !== 'all') && (
-                <div className="text-xs text-white/40 max-w-xs">
-                  Add a media folder in Settings to start building your collection
-                </div>
+                <>
+                  <div className="text-xs text-white/40 max-w-xs">
+                    Add a media folder in Settings to start building your collection
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <kbd className="px-2 py-1 rounded bg-white/10 text-[10px] font-mono">Ctrl+K</kbd>
+                    <span className="text-xs text-white/30">Quick actions</span>
+                  </div>
+                </>
               )}
               {(query || activeTags.length > 0 || typeFilter !== 'all') && (
                 <button
@@ -11406,8 +11412,14 @@ function PlaylistsPage() {
                 </div>
               )})}
               {playlists.length === 0 && (
-                <div className="text-xs text-[var(--muted)] text-center py-4">
-                  No playlists yet. Create one above.
+                <div className="text-center py-8">
+                  <ListMusic size={32} className="mx-auto mb-3 text-[var(--muted)] opacity-50" />
+                  <div className="text-sm text-[var(--muted)] mb-2">No sessions yet</div>
+                  <div className="text-xs text-white/30 mb-3">Create your first playlist or use a template</div>
+                  <div className="flex justify-center gap-2">
+                    <kbd className="px-2 py-1 rounded bg-white/10 text-[10px] font-mono">N</kbd>
+                    <span className="text-xs text-white/30">New playlist</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -11601,10 +11613,24 @@ function PlaylistsPage() {
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center p-6">
-        <div className="text-6xl mb-4 opacity-30">🎬</div>
-              <div className="text-lg font-medium text-[var(--muted)]">Select a playlist</div>
-              <div className="text-sm text-[var(--text-subtle)] mt-1">
-                Choose a playlist from the sidebar or create a new one
+              <div className="text-6xl mb-4 opacity-30">🎬</div>
+              <div className="text-lg font-medium text-[var(--muted)]">Select a session</div>
+              <div className="text-sm text-[var(--text-subtle)] mt-2 max-w-xs">
+                Choose a playlist from the sidebar or use a quick-start template
+              </div>
+              <div className="flex gap-4 mt-6 text-xs text-white/30">
+                <div className="flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/10 font-mono text-[10px]">↑↓</kbd>
+                  <span>Navigate</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/10 font-mono text-[10px]">N</kbd>
+                  <span>New</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/10 font-mono text-[10px]">G</kbd>
+                  <span>Generate</span>
+                </div>
               </div>
             </div>
           )}
