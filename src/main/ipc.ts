@@ -29,6 +29,9 @@ import { getMediaInfoService } from './services/media-info'
 import { getKeyboardShortcutsService, type ShortcutAction, type ShortcutConfig } from './services/keyboard-shortcuts'
 import { getFileWatcherService } from './services/file-watcher'
 import { getAdvancedStatsService } from './services/advanced-stats'
+import { getQuickActionsService, type ActionContext } from './services/quick-actions'
+import { getViewPresetsService, type ViewFilters, type ViewConfig } from './services/view-presets'
+import { getMediaCompareService, type CompareOptions } from './services/media-compare'
 
 import {
   getSettings,
@@ -4759,6 +4762,140 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('advancedStats:getTimeRange', async (_ev, startDate: number, endDate: number) => {
     const service = getAdvancedStatsService(db)
     return service.getTimeRangeStats(startDate, endDate)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // QUICK ACTIONS - Context menu actions
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('quickActions:getAll', async () => {
+    const service = getQuickActionsService(db)
+    return service.getActions()
+  })
+
+  ipcMain.handle('quickActions:getForContext', async (_ev, context: { type: string; count: number }) => {
+    const service = getQuickActionsService(db)
+    return service.getActionsForContext(context as any)
+  })
+
+  ipcMain.handle('quickActions:getByCategory', async (_ev, category: string) => {
+    const service = getQuickActionsService(db)
+    return service.getActionsByCategory(category as any)
+  })
+
+  ipcMain.handle('quickActions:execute', async (_ev, actionId: string, context: ActionContext) => {
+    const service = getQuickActionsService(db)
+    return service.executeAction(actionId, context)
+  })
+
+  ipcMain.handle('quickActions:toggle', async (_ev, actionId: string, enabled: boolean) => {
+    const service = getQuickActionsService(db)
+    return service.toggleAction(actionId, enabled)
+  })
+
+  ipcMain.handle('quickActions:addCustom', async (_ev, action: any) => {
+    const service = getQuickActionsService(db)
+    return service.addCustomAction(action)
+  })
+
+  ipcMain.handle('quickActions:removeCustom', async (_ev, actionId: string) => {
+    const service = getQuickActionsService(db)
+    return service.removeCustomAction(actionId)
+  })
+
+  ipcMain.handle('quickActions:getShortcutMap', async () => {
+    const service = getQuickActionsService(db)
+    return service.getShortcutMap()
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VIEW PRESETS - Save and load view configurations
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('viewPresets:getAll', async () => {
+    const service = getViewPresetsService(db)
+    return service.getPresets()
+  })
+
+  ipcMain.handle('viewPresets:getBuiltin', async () => {
+    const service = getViewPresetsService(db)
+    return service.getBuiltinPresets()
+  })
+
+  ipcMain.handle('viewPresets:getCustom', async () => {
+    const service = getViewPresetsService(db)
+    return service.getCustomPresets()
+  })
+
+  ipcMain.handle('viewPresets:get', async (_ev, id: string) => {
+    const service = getViewPresetsService(db)
+    return service.getPreset(id)
+  })
+
+  ipcMain.handle('viewPresets:getActive', async () => {
+    const service = getViewPresetsService(db)
+    return service.getActivePreset()
+  })
+
+  ipcMain.handle('viewPresets:setActive', async (_ev, id: string | null) => {
+    const service = getViewPresetsService(db)
+    return service.setActivePreset(id)
+  })
+
+  ipcMain.handle('viewPresets:create', async (_ev, preset: any) => {
+    const service = getViewPresetsService(db)
+    return service.createPreset(preset)
+  })
+
+  ipcMain.handle('viewPresets:update', async (_ev, id: string, updates: any) => {
+    const service = getViewPresetsService(db)
+    return service.updatePreset(id, updates)
+  })
+
+  ipcMain.handle('viewPresets:delete', async (_ev, id: string) => {
+    const service = getViewPresetsService(db)
+    return service.deletePreset(id)
+  })
+
+  ipcMain.handle('viewPresets:duplicate', async (_ev, id: string, newName?: string) => {
+    const service = getViewPresetsService(db)
+    return service.duplicatePreset(id, newName)
+  })
+
+  ipcMain.handle('viewPresets:saveCurrent', async (_ev, name: string, sort: any, filters: ViewFilters, view: ViewConfig) => {
+    const service = getViewPresetsService(db)
+    return service.saveCurrentAsPreset(name, sort, filters, view)
+  })
+
+  ipcMain.handle('viewPresets:getCount', async (_ev, id: string) => {
+    const service = getViewPresetsService(db)
+    return service.getPresetCount(id)
+  })
+
+  ipcMain.handle('viewPresets:export', async () => {
+    const service = getViewPresetsService(db)
+    return service.exportPresets()
+  })
+
+  ipcMain.handle('viewPresets:import', async (_ev, presets: any[], overwrite?: boolean) => {
+    const service = getViewPresetsService(db)
+    return service.importPresets(presets, overwrite)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MEDIA COMPARE - Side-by-side comparison
+  // ═══════════════════════════════════════════════════════════════════════════
+  ipcMain.handle('mediaCompare:compare', async (_ev, mediaIds: string[], options?: CompareOptions) => {
+    const service = getMediaCompareService(db)
+    return service.compare(mediaIds, options)
+  })
+
+  ipcMain.handle('mediaCompare:quick', async (_ev, id1: string, id2: string) => {
+    const service = getMediaCompareService(db)
+    return service.quickCompare(id1, id2)
+  })
+
+  ipcMain.handle('mediaCompare:findDuplicates', async (_ev, mediaId: string, limit?: number) => {
+    const service = getMediaCompareService(db)
+    return service.findDuplicateCandidates(mediaId, limit)
   })
 
   // Auto-organize NSFW Soundpack on startup
