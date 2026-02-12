@@ -1094,6 +1094,43 @@ export default function App() {
     return () => { unsubAchievement?.() }
   }, [showToast, confetti])
 
+  // Streak protection - warn users when they're about to lose their streak
+  const [streakWarningShown, setStreakWarningShown] = useState(false)
+  useEffect(() => {
+    let alive = true
+    const checkStreak = async () => {
+      try {
+        const status = await window.api.goon?.getStreakStatus?.()
+        if (!alive || !status) return
+
+        // Show warning if streak is at risk and we haven't shown it yet this session
+        if (status.atRisk && !streakWarningShown && status.currentStreak >= 3) {
+          setStreakWarningShown(true)
+          showToast(
+            'warning',
+            `Your ${status.currentStreak}-day streak is at risk! Only ${status.hoursRemaining.toFixed(1)} hours left.`
+          )
+        }
+
+        // Reset the warning flag if user has had a session today (streak saved)
+        if (status.hasSessionToday) {
+          setStreakWarningShown(false)
+        }
+      } catch {
+        // Streak API may not be available
+      }
+    }
+
+    // Check on mount and every 30 minutes
+    checkStreak()
+    const interval = setInterval(checkStreak, 30 * 60 * 1000)
+
+    return () => {
+      alive = false
+      clearInterval(interval)
+    }
+  }, [showToast, streakWarningShown])
+
   // Apply appearance/display settings to CSS custom properties
   useEffect(() => {
     const appearance = settings?.appearance

@@ -58,6 +58,7 @@ import {
   recordGoonWallSession,
   recordGoonWallTime,
   recordGoonWallShuffle,
+  getStreakStatus,
   GOON_THEMES,
   SESSION_MODES,
   ACHIEVEMENTS,
@@ -1840,6 +1841,11 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     broadcast('goon:statsChanged', stats)
     broadcast('goon:sessionEnded', stats)
     return { stats, newAchievements }
+  })
+
+  // Get streak protection status
+  ipcMain.handle('goon:getStreakStatus', async () => {
+    return getStreakStatus()
   })
 
   // Record a video watch (called when user opens a video)

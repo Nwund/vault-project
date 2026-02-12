@@ -459,6 +459,13 @@ const api = {
     getAchievements: () => invoke('goon:getAchievements'),
     checkAchievements: () => invoke('goon:checkAchievements'),
     recordWatch: (mediaId: string) => invoke('goon:recordWatch', mediaId),
+    getStreakStatus: () => invoke<{
+      currentStreak: number
+      atRisk: boolean
+      hoursRemaining: number
+      lastSessionDate: number | null
+      hasSessionToday: boolean
+    }>('goon:getStreakStatus'),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

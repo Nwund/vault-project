@@ -1209,6 +1209,52 @@ export function recordGoonWallShuffle(): GoonStats {
   })
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STREAK PROTECTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface StreakStatus {
+  currentStreak: number
+  atRisk: boolean  // True if streak will be lost if no session today
+  hoursRemaining: number  // Hours until streak is lost
+  lastSessionDate: number | null
+  hasSessionToday: boolean
+}
+
+export function getStreakStatus(): StreakStatus {
+  const stats = getGoonStats()
+  const now = Date.now()
+  const today = new Date(now).toISOString().split('T')[0]
+
+  // Check if user has had a session today
+  let hasSessionToday = false
+  if (stats.lastSessionDate) {
+    const lastDate = new Date(stats.lastSessionDate).toISOString().split('T')[0]
+    hasSessionToday = lastDate === today
+  }
+
+  // Calculate hours until midnight (when streak would be lost)
+  const midnight = new Date(now)
+  midnight.setHours(24, 0, 0, 0)
+  const msUntilMidnight = midnight.getTime() - now
+  const hoursRemaining = Math.max(0, msUntilMidnight / (1000 * 60 * 60))
+
+  // Streak is at risk if:
+  // 1. User has a streak > 0
+  // 2. User hasn't had a session today
+  // 3. Less than 4 hours until midnight (configurable warning window)
+  const warningWindowHours = 4
+  const atRisk = stats.currentStreak > 0 && !hasSessionToday && hoursRemaining <= warningWindowHours
+
+  return {
+    currentStreak: stats.currentStreak,
+    atRisk,
+    hoursRemaining: Math.round(hoursRemaining * 10) / 10,  // Round to 1 decimal
+    lastSessionDate: stats.lastSessionDate,
+    hasSessionToday
+  }
+}
+
 export function checkAndUnlockAchievements(vaultStats?: { totalMedia?: number; playlistCount?: number; tagCount?: number }): string[] {
   const stats = getGoonStats()
   const newlyUnlocked: string[] = []
