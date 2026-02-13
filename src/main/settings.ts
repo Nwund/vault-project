@@ -291,6 +291,8 @@ export interface GoonwallSettings {
 
 export type ColorBlindMode = 'none' | 'protanopia' | 'deuteranopia' | 'tritanopia' | 'high-contrast'
 
+export type FontStyle = 'default' | 'degrading' | '80s-hacker' | 'perverse' | 'neon' | 'retro' | 'gothic'
+
 export interface AppearanceSettings {
   themeId: ThemeId
   animationSpeed: 'none' | 'reduced' | 'full'
@@ -298,6 +300,7 @@ export interface AppearanceSettings {
   sidebarPosition: 'left' | 'right'
   thumbnailSize: 'small' | 'medium' | 'large'
   fontSize: 'small' | 'medium' | 'large'
+  fontStyle: FontStyle
   compactMode: boolean
   useSystemTheme: boolean
   colorBlindMode: ColorBlindMode
@@ -354,6 +357,13 @@ export interface DataSettings {
   autoBackupIntervalDays: number
 }
 
+export interface PerformanceSettings {
+  maxMemoryMB: number           // Max memory usage in MB (512, 1024, 2048, 4096)
+  thumbnailCacheSize: number    // Number of thumbnails to cache (500, 1000, 2000, 5000)
+  videoConcurrency: number      // Max concurrent video loads (1, 2, 4, 8)
+  lowMemoryMode: boolean        // Reduce memory usage at cost of performance
+}
+
 export interface AISettings {
   veniceApiKey: string
   tier2Enabled: boolean
@@ -370,7 +380,7 @@ export interface SoundSettings {
   ambienceVolume: number
 }
 
-export type GoonWordPackId = 'praise' | 'humiliation' | 'insult' | 'kink' | 'goon' | 'mommy' | 'brat' | 'pervert'
+export type GoonWordPackId = 'praise' | 'humiliation' | 'insult' | 'kink' | 'goon' | 'mommy' | 'brat' | 'pervert' | 'seduction' | 'dirty' | 'worship' | 'denial' | 'encouragement'
 
 export interface GoonWordsSettings {
   enabled: boolean
@@ -423,6 +433,7 @@ export interface VaultSettings {
   goonStats: GoonStats
   activeSessionMode: SessionModeId
   ai: AISettings  // AI Intelligence settings (Venice API, protected tags, etc.)
+  performance: PerformanceSettings  // Memory and performance tuning
   hasSeenWelcome: boolean  // First-time welcome tutorial completed
   // Legacy support
   mediaDirs?: string[]
@@ -517,6 +528,7 @@ const DEFAULTS: VaultSettings = {
     sidebarPosition: 'left',
     thumbnailSize: 'medium',
     fontSize: 'medium',
+    fontStyle: 'default',  // Options: default, degrading, 80s-hacker, perverse, neon, retro, gothic
     compactMode: false,
     useSystemTheme: false,
     colorBlindMode: 'none'  // Options: none, protanopia, deuteranopia, tritanopia, high-contrast
@@ -930,7 +942,13 @@ const DEFAULTS: VaultSettings = {
     activityHeatmap: {}
   },
   activeSessionMode: 'custom',
-  hasSeenWelcome: false  // Show welcome tutorial on first launch
+  hasSeenWelcome: false,  // Show welcome tutorial on first launch
+  performance: {
+    maxMemoryMB: 2048,
+    thumbnailCacheSize: 2000,
+    videoConcurrency: 4,
+    lowMemoryMode: false
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

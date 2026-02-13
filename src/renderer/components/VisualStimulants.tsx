@@ -1198,6 +1198,8 @@ export const CRTCurveOverlay: React.FC<{
   flickerIntensity?: number // 0-1
   showTVBorder?: boolean // Dark TV bezel in corners
   tvBorderImage?: string // Optional custom TV border image URL
+  glitchOverlayGifs?: string[] // Array of GIF URLs for glitch overlay effects
+  activeGlitchGif?: string // Currently active GIF overlay
 }> = ({
   enabled = true,
   intensity = 5,
@@ -1208,7 +1210,9 @@ export const CRTCurveOverlay: React.FC<{
   screenFlicker = true,
   flickerIntensity = 0.3,
   showTVBorder = true,
-  tvBorderImage
+  tvBorderImage,
+  glitchOverlayGifs = [],
+  activeGlitchGif
 }) => {
   const [flickerOpacity, setFlickerOpacity] = useState(0)
   const flickerRef = useRef<number>()
@@ -1283,17 +1287,32 @@ export const CRTCurveOverlay: React.FC<{
       {/* Barrel distortion dark corners - creates the concave CRT look */}
       <canvas
         ref={canvasRef}
-        className="fixed inset-0 pointer-events-none z-[99980]"
+        className="fixed inset-0 pointer-events-none z-[99970]"
         style={{ mixBlendMode: 'multiply' }}
       />
 
-      {/* TV Border - dark bezel in corners simulating TV frame */}
+      {/* GIF Overlay Effects - Rendered BEHIND the TV border */}
+      {activeGlitchGif && (
+        <div
+          className="fixed inset-0 pointer-events-none z-[99975]"
+          style={{
+            backgroundImage: `url(${activeGlitchGif})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            opacity: 0.7,
+            mixBlendMode: 'screen',
+          }}
+        />
+      )}
+
+      {/* TV Border - dark bezel in corners simulating TV frame - ALWAYS IN FRONT */}
       {showTVBorder && (
         <>
           {tvBorderImage ? (
             /* Custom TV border overlay image */
             <div
-              className="fixed inset-0 pointer-events-none z-[99981]"
+              className="fixed inset-0 pointer-events-none z-[99995]"
               style={{
                 backgroundImage: `url(${tvBorderImage})`,
                 backgroundSize: 'cover',
@@ -1305,7 +1324,7 @@ export const CRTCurveOverlay: React.FC<{
             <>
               {/* Top-left corner */}
               <div
-                className="fixed pointer-events-none z-[99981]"
+                className="fixed pointer-events-none z-[99995]"
                 style={{
                   top: 0,
                   left: 0,
@@ -1316,7 +1335,7 @@ export const CRTCurveOverlay: React.FC<{
               />
               {/* Top-right corner */}
               <div
-                className="fixed pointer-events-none z-[99981]"
+                className="fixed pointer-events-none z-[99995]"
                 style={{
                   top: 0,
                   right: 0,
@@ -1327,7 +1346,7 @@ export const CRTCurveOverlay: React.FC<{
               />
               {/* Bottom-left corner */}
               <div
-                className="fixed pointer-events-none z-[99981]"
+                className="fixed pointer-events-none z-[99995]"
                 style={{
                   bottom: 0,
                   left: 0,
@@ -1338,7 +1357,7 @@ export const CRTCurveOverlay: React.FC<{
               />
               {/* Bottom-right corner */}
               <div
-                className="fixed pointer-events-none z-[99981]"
+                className="fixed pointer-events-none z-[99995]"
                 style={{
                   bottom: 0,
                   right: 0,
@@ -1349,7 +1368,7 @@ export const CRTCurveOverlay: React.FC<{
               />
               {/* Top edge darkening */}
               <div
-                className="fixed pointer-events-none z-[99981]"
+                className="fixed pointer-events-none z-[99995]"
                 style={{
                   top: 0,
                   left: 0,
@@ -1360,7 +1379,7 @@ export const CRTCurveOverlay: React.FC<{
               />
               {/* Bottom edge darkening */}
               <div
-                className="fixed pointer-events-none z-[99981]"
+                className="fixed pointer-events-none z-[99995]"
                 style={{
                   bottom: 0,
                   left: 0,
@@ -1371,7 +1390,7 @@ export const CRTCurveOverlay: React.FC<{
               />
               {/* Left edge darkening */}
               <div
-                className="fixed pointer-events-none z-[99981]"
+                className="fixed pointer-events-none z-[99995]"
                 style={{
                   top: 0,
                   bottom: 0,
@@ -1382,7 +1401,7 @@ export const CRTCurveOverlay: React.FC<{
               />
               {/* Right edge darkening */}
               <div
-                className="fixed pointer-events-none z-[99981]"
+                className="fixed pointer-events-none z-[99995]"
                 style={{
                   top: 0,
                   bottom: 0,
@@ -1569,6 +1588,249 @@ function drawBarrelDistortion(ctx: CanvasRenderingContext2D, width: number, heig
   })
 
   ctx.globalCompositeOperation = 'source-over'
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 21.5. TV BORDER WITH GLASS EFFECT - Standalone TV frame overlay
+// ═══════════════════════════════════════════════════════════════════════════
+export const TvBorderOverlay: React.FC<{
+  enabled?: boolean
+  borderImage?: string // Custom TV border image URL
+  showGlassEffect?: boolean // Glass reflection overlay
+  glassOpacity?: number // 0-1
+  borderPadding?: number // Percentage to shrink content by (0-15)
+  borderStyle?: 'classic' | 'modern' | 'retro' | 'minimal'
+}> = ({
+  enabled = true,
+  borderImage,
+  showGlassEffect = true,
+  glassOpacity = 0.15,
+  borderPadding = 3,
+  borderStyle = 'classic'
+}) => {
+  if (!enabled) return null
+
+  return (
+    <>
+      {/* Layer 1 (Back): Content area darkening for border padding effect */}
+      {borderPadding > 0 && (
+        <div
+          className="fixed inset-0 pointer-events-none z-[99960]"
+          style={{
+            boxShadow: `inset 0 0 0 ${borderPadding}vh rgba(0,0,0,0.95)`,
+          }}
+        />
+      )}
+
+      {/* Layer 2 (Middle): Glass reflection effect */}
+      {showGlassEffect && (
+        <>
+          {/* Main glass reflection - top left shine */}
+          <div
+            className="fixed inset-0 pointer-events-none z-[99990]"
+            style={{
+              background: `
+                linear-gradient(
+                  135deg,
+                  rgba(255,255,255,${glassOpacity * 0.8}) 0%,
+                  rgba(255,255,255,${glassOpacity * 0.3}) 10%,
+                  transparent 30%
+                )
+              `,
+            }}
+          />
+          {/* Secondary reflection - subtle bottom right */}
+          <div
+            className="fixed inset-0 pointer-events-none z-[99990]"
+            style={{
+              background: `
+                linear-gradient(
+                  -45deg,
+                  rgba(255,255,255,${glassOpacity * 0.2}) 0%,
+                  transparent 15%
+                )
+              `,
+            }}
+          />
+          {/* Glass distortion effect - slight blur at edges */}
+          <div
+            className="fixed inset-0 pointer-events-none z-[99991]"
+            style={{
+              background: `
+                radial-gradient(
+                  ellipse 100% 100% at center,
+                  transparent 85%,
+                  rgba(200,200,200,${glassOpacity * 0.1}) 95%,
+                  rgba(180,180,180,${glassOpacity * 0.15}) 100%
+                )
+              `,
+            }}
+          />
+        </>
+      )}
+
+      {/* Layer 3 (Front): TV Border frame */}
+      {borderImage ? (
+        /* Custom TV border image overlay */
+        <div
+          className="fixed inset-0 pointer-events-none z-[99998]"
+          style={{
+            backgroundImage: `url(${borderImage})`,
+            backgroundSize: '100% 100%',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            // Add slight depth with drop shadow
+            filter: 'drop-shadow(0 0 10px rgba(0,0,0,0.5))',
+          }}
+        />
+      ) : (
+        /* Generated TV border based on style */
+        <div
+          className="fixed inset-0 pointer-events-none z-[99998]"
+          style={{
+            boxShadow: borderStyle === 'classic'
+              ? `
+                inset 0 0 0 ${borderPadding * 0.8}vh rgba(20,20,20,1),
+                inset 0 0 0 ${borderPadding * 0.9}vh rgba(40,40,40,1),
+                inset 0 0 0 ${borderPadding}vh rgba(10,10,10,1),
+                inset 0 0 30px rgba(0,0,0,0.8)
+              `
+              : borderStyle === 'retro'
+              ? `
+                inset 0 0 0 ${borderPadding * 0.7}vh rgba(60,50,40,1),
+                inset 0 0 0 ${borderPadding * 0.85}vh rgba(80,70,60,1),
+                inset 0 0 0 ${borderPadding}vh rgba(40,35,30,1),
+                inset 0 0 40px rgba(0,0,0,0.7)
+              `
+              : borderStyle === 'modern'
+              ? `
+                inset 0 0 0 ${borderPadding * 0.9}vh rgba(30,30,35,1),
+                inset 0 0 0 ${borderPadding}vh rgba(15,15,20,1),
+                inset 0 0 20px rgba(0,0,0,0.6)
+              `
+              : `inset 0 0 0 ${borderPadding}vh rgba(0,0,0,1)`,
+            borderRadius: borderStyle === 'modern' ? '0' : borderStyle === 'retro' ? '5vh' : '2vh',
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 21.6. PIP-BOY / FALLOUT STYLE OVERLAY - Retro terminal aesthetic
+// ═══════════════════════════════════════════════════════════════════════════
+export const PipBoyOverlay: React.FC<{
+  enabled?: boolean
+  color?: 'green' | 'amber' | 'blue' | 'white'
+  intensity?: number // 0-10
+  showScanlines?: boolean
+  showNoise?: boolean
+  showVignette?: boolean
+  showGlow?: boolean
+}> = ({
+  enabled = true,
+  color = 'green',
+  intensity = 5,
+  showScanlines = true,
+  showNoise = true,
+  showVignette = true,
+  showGlow = true
+}) => {
+  if (!enabled) return null
+
+  const colorMap = {
+    green: { primary: '0, 255, 100', glow: 'rgba(0, 255, 100, 0.15)' },
+    amber: { primary: '255, 180, 50', glow: 'rgba(255, 180, 50, 0.15)' },
+    blue: { primary: '100, 200, 255', glow: 'rgba(100, 200, 255, 0.15)' },
+    white: { primary: '220, 220, 200', glow: 'rgba(220, 220, 200, 0.1)' }
+  }
+
+  const { primary, glow } = colorMap[color]
+
+  return (
+    <>
+      {/* Phosphor glow effect */}
+      {showGlow && (
+        <div
+          className="fixed inset-0 pointer-events-none z-[99950]"
+          style={{
+            background: glow,
+            mixBlendMode: 'screen',
+          }}
+        />
+      )}
+
+      {/* CRT Scanlines */}
+      {showScanlines && (
+        <div
+          className="fixed inset-0 pointer-events-none z-[99955]"
+          style={{
+            background: `repeating-linear-gradient(
+              0deg,
+              transparent 0px,
+              transparent 2px,
+              rgba(0,0,0,${0.15 + intensity * 0.02}) 2px,
+              rgba(0,0,0,${0.15 + intensity * 0.02}) 4px
+            )`,
+          }}
+        />
+      )}
+
+      {/* Static noise */}
+      {showNoise && (
+        <div
+          className="fixed inset-0 pointer-events-none z-[99956]"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E")`,
+            opacity: 0.3 + intensity * 0.05,
+            animation: 'pipboyNoise 0.1s steps(3) infinite',
+          }}
+        />
+      )}
+
+      {/* Color tint overlay */}
+      <div
+        className="fixed inset-0 pointer-events-none z-[99957]"
+        style={{
+          background: `rgba(${primary}, ${0.03 + intensity * 0.007})`,
+          mixBlendMode: 'color',
+        }}
+      />
+
+      {/* Vignette */}
+      {showVignette && (
+        <div
+          className="fixed inset-0 pointer-events-none z-[99958]"
+          style={{
+            background: `radial-gradient(
+              ellipse at center,
+              transparent 50%,
+              rgba(0,0,0,${0.3 + intensity * 0.05}) 100%
+            )`,
+          }}
+        />
+      )}
+
+      {/* Terminal frame lines */}
+      <div
+        className="fixed inset-0 pointer-events-none z-[99959]"
+        style={{
+          border: `2px solid rgba(${primary}, ${0.2 + intensity * 0.03})`,
+          boxShadow: `inset 0 0 ${20 + intensity * 5}px rgba(${primary}, ${0.05 + intensity * 0.01})`,
+        }}
+      />
+
+      <style>{`
+        @keyframes pipboyNoise {
+          0% { transform: translate(0, 0); }
+          33% { transform: translate(-1px, 1px); }
+          66% { transform: translate(1px, -1px); }
+          100% { transform: translate(0, 0); }
+        }
+      `}</style>
+    </>
+  )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2514,6 +2776,19 @@ export interface ArousalEffectsConfig {
   crtRgbSubpixels?: boolean
   crtChromaticAberration?: boolean
   crtScreenFlicker?: boolean
+  crtTvBorderImage?: string // Custom TV border overlay image
+  crtActiveGlitchGif?: string // Currently active glitch GIF overlay
+  // Standalone TV Border with Glass
+  tvBorderEnabled?: boolean
+  tvBorderImage?: string
+  tvBorderGlass?: boolean
+  tvBorderGlassOpacity?: number
+  tvBorderPadding?: number
+  tvBorderStyle?: 'classic' | 'modern' | 'retro' | 'minimal'
+  // Pip-Boy / Fallout style overlay
+  pipBoyEnabled?: boolean
+  pipBoyColor?: 'green' | 'amber' | 'blue' | 'white'
+  pipBoyIntensity?: number
   climaxTrigger?: number
   climaxType?: 'cum' | 'squirt' | 'orgasm'
   onClimaxComplete?: () => void
@@ -2592,6 +2867,19 @@ export const ArousalEffects: React.FC<ArousalEffectsConfig> = ({
   crtRgbSubpixels = true,
   crtChromaticAberration = true,
   crtScreenFlicker = true,
+  crtTvBorderImage,
+  crtActiveGlitchGif,
+  // Standalone TV Border with Glass
+  tvBorderEnabled = false,
+  tvBorderImage,
+  tvBorderGlass = true,
+  tvBorderGlassOpacity = 0.15,
+  tvBorderPadding = 3,
+  tvBorderStyle = 'classic',
+  // Pip-Boy / Fallout style overlay
+  pipBoyEnabled = false,
+  pipBoyColor = 'green',
+  pipBoyIntensity = 5,
   climaxTrigger = 0,
   climaxType = 'orgasm',
   onClimaxComplete,
@@ -2720,6 +3008,29 @@ export const ArousalEffects: React.FC<ArousalEffectsConfig> = ({
           rgbSubpixels={crtRgbSubpixels}
           chromaticAberration={crtChromaticAberration}
           screenFlicker={crtScreenFlicker}
+          tvBorderImage={crtTvBorderImage}
+          activeGlitchGif={crtActiveGlitchGif}
+        />
+      )}
+
+      {/* Standalone TV Border with Glass Effect */}
+      {tvBorderEnabled && (
+        <TvBorderOverlay
+          enabled={tvBorderEnabled}
+          borderImage={tvBorderImage}
+          showGlassEffect={tvBorderGlass}
+          glassOpacity={tvBorderGlassOpacity}
+          borderPadding={tvBorderPadding}
+          borderStyle={tvBorderStyle}
+        />
+      )}
+
+      {/* Pip-Boy / Fallout Style Overlay */}
+      {pipBoyEnabled && (
+        <PipBoyOverlay
+          enabled={pipBoyEnabled}
+          color={pipBoyColor}
+          intensity={pipBoyIntensity}
         />
       )}
 

@@ -128,6 +128,12 @@ import { getLicenseService, type TierLimits } from './services/license-service'
 import { errorLogger } from './services/error-logger'
 import { needsTranscode, transcodeToMp4, getTranscodedPath, transcodeLowRes, detectHardwareEncoders, getEncoders, getPreferredEncoder, setPreferredEncoder, type HardwareEncoder, type EncoderInfo } from './services/transcode'
 import { makeVideoThumb, makeImageThumb, probeVideoDurationSec } from './thumbs'
+import ffmpeg from 'fluent-ffmpeg'
+import { ffmpegBin, ffprobeBin } from './ffpaths'
+
+// Configure ffmpeg paths for GIF creation
+if (ffmpegBin) ffmpeg.setFfmpegPath(ffmpegBin)
+if (ffprobeBin) ffmpeg.setFfprobePath(ffprobeBin)
 
 type OnDirsChanged = (newDirs: string[]) => Promise<void>
 
@@ -1108,6 +1114,212 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       return { success: true, restoredId: lastDeleted.id }
     } catch (err: any) {
       console.error('[IPC] media:undoDelete error:', err?.message)
+      return { success: false, error: err?.message }
+    }
+  })
+
+  // Create GIF from video segment
+  ipcMain.handle('media:createGif', async (_ev, options: {
+    mediaId: string
+    startTime: number
+    endTime: number
+    fps?: number
+    width?: number
+    quality?: 'low' | 'medium' | 'high'
+  }): Promise<{ success: boolean; gifPath?: string; error?: string }> => {
+    try {
+      const { mediaId, startTime, endTime, fps = 15, width = 480, quality = 'medium' } = options
+
+      // Get media from database
+      const media = db.getMedia(mediaId)
+      if (!media) {
+        return { success: false, error: 'Media not found' }
+      }
+
+      if (media.type !== 'video') {
+        return { success: false, error: 'Can only create GIF from video files' }
+      }
+
+      // Validate time range
+      const duration = endTime - startTime
+      if (duration <= 0 || duration > 30) {
+        return { success: false, error: 'GIF duration must be between 0 and 30 seconds' }
+      }
+
+      // Create output path in cache directory
+      const cacheDir = getCacheDir()
+      const gifDir = path.join(cacheDir, 'gifs')
+      if (!fs.existsSync(gifDir)) {
+        fs.mkdirSync(gifDir, { recursive: true })
+      }
+
+      const outputFilename = `${mediaId}_${startTime.toFixed(1)}-${endTime.toFixed(1)}_${Date.now()}.gif`
+      const outputPath = path.join(gifDir, outputFilename)
+
+      // Quality settings
+      const qualitySettings = {
+        low: { scale: 320, fps: 10, dither: 'none' },
+        medium: { scale: 480, fps: 15, dither: 'bayer:bayer_scale=3' },
+        high: { scale: 640, fps: 20, dither: 'floyd_steinberg' }
+      }
+      const settings = qualitySettings[quality]
+
+      console.log(`[GIF] Creating GIF from ${media.filename}: ${startTime}s to ${endTime}s`)
+
+      // Use fluent-ffmpeg to create the GIF with a palette for better quality
+      return new Promise((resolve) => {
+        // Two-pass approach for better quality:
+        // Pass 1: Generate palette
+        // Pass 2: Use palette to create GIF
+        const tempPalette = path.join(gifDir, `palette_${Date.now()}.png`)
+
+        // Generate palette
+        ffmpeg(media.path)
+          .setStartTime(startTime)
+          .setDuration(duration)
+          .outputOptions([
+            `-vf`, `fps=${settings.fps},scale=${settings.scale}:-1:flags=lanczos,palettegen=stats_mode=diff`
+          ])
+          .output(tempPalette)
+          .on('error', (err) => {
+            console.error('[GIF] Palette generation error:', err.message)
+            // Fallback: create GIF without palette
+            ffmpeg(media.path)
+              .setStartTime(startTime)
+              .setDuration(duration)
+              .outputOptions([
+                `-vf`, `fps=${settings.fps},scale=${settings.scale}:-1:flags=lanczos`,
+                `-loop`, `0`
+              ])
+              .output(outputPath)
+              .on('error', (err2) => {
+                console.error('[GIF] Creation error:', err2.message)
+                resolve({ success: false, error: err2.message })
+              })
+              .on('end', () => {
+                console.log('[GIF] Created (fallback):', outputPath)
+                resolve({ success: true, gifPath: outputPath })
+              })
+              .run()
+          })
+          .on('end', () => {
+            // Use palette to create GIF
+            ffmpeg(media.path)
+              .setStartTime(startTime)
+              .setDuration(duration)
+              .input(tempPalette)
+              .complexFilter([
+                `[0:v]fps=${settings.fps},scale=${settings.scale}:-1:flags=lanczos[x]`,
+                `[x][1:v]paletteuse=dither=${settings.dither}`
+              ])
+              .outputOptions([`-loop`, `0`])
+              .output(outputPath)
+              .on('error', (err) => {
+                console.error('[GIF] Creation error:', err.message)
+                // Clean up temp palette
+                try { fs.unlinkSync(tempPalette) } catch {}
+                resolve({ success: false, error: err.message })
+              })
+              .on('end', () => {
+                console.log('[GIF] Created:', outputPath)
+                // Clean up temp palette
+                try { fs.unlinkSync(tempPalette) } catch {}
+                resolve({ success: true, gifPath: outputPath })
+              })
+              .run()
+          })
+          .run()
+      })
+    } catch (err: any) {
+      console.error('[IPC] media:createGif error:', err?.message)
+      return { success: false, error: err?.message }
+    }
+  })
+
+  // Save GIF to user-selected folder
+  ipcMain.handle('media:saveGif', async (_ev, gifPath: string): Promise<{ success: boolean; savedPath?: string; error?: string }> => {
+    try {
+      if (!fs.existsSync(gifPath)) {
+        return { success: false, error: 'GIF file not found' }
+      }
+
+      const result = await dialog.showSaveDialog({
+        title: 'Save GIF',
+        defaultPath: path.basename(gifPath),
+        filters: [{ name: 'GIF Image', extensions: ['gif'] }]
+      })
+
+      if (result.canceled || !result.filePath) {
+        return { success: false, error: 'Save cancelled' }
+      }
+
+      fs.copyFileSync(gifPath, result.filePath)
+      return { success: true, savedPath: result.filePath }
+    } catch (err: any) {
+      console.error('[IPC] media:saveGif error:', err?.message)
+      return { success: false, error: err?.message }
+    }
+  })
+
+  // Add GIF to library (copy to media directory)
+  ipcMain.handle('media:addGifToLibrary', async (_ev, gifPath: string): Promise<{ success: boolean; mediaId?: string; error?: string }> => {
+    try {
+      if (!fs.existsSync(gifPath)) {
+        return { success: false, error: 'GIF file not found' }
+      }
+
+      // Get first media directory
+      const mediaDirs = getMediaDirs()
+      if (mediaDirs.length === 0) {
+        return { success: false, error: 'No media directories configured' }
+      }
+
+      // Copy to first media directory with unique name
+      const filename = path.basename(gifPath)
+      const destPath = path.join(mediaDirs[0], filename)
+      fs.copyFileSync(gifPath, destPath)
+
+      // Trigger rescan to add to library
+      broadcast('vault:changed')
+
+      return { success: true }
+    } catch (err: any) {
+      console.error('[IPC] media:addGifToLibrary error:', err?.message)
+      return { success: false, error: err?.message }
+    }
+  })
+
+  // Rename GIF file
+  ipcMain.handle('media:renameGif', async (_ev, gifPath: string, newName: string): Promise<{ success: boolean; newPath?: string; error?: string }> => {
+    try {
+      if (!fs.existsSync(gifPath)) {
+        return { success: false, error: 'GIF file not found' }
+      }
+
+      // Sanitize the new name
+      const sanitizedName = newName.replace(/[<>:"/\\|?*]/g, '_').trim()
+      if (!sanitizedName) {
+        return { success: false, error: 'Invalid filename' }
+      }
+
+      // Ensure it ends with .gif
+      const finalName = sanitizedName.endsWith('.gif') ? sanitizedName : `${sanitizedName}.gif`
+
+      // Build new path
+      const dir = path.dirname(gifPath)
+      const newPath = path.join(dir, finalName)
+
+      // Check if target already exists
+      if (fs.existsSync(newPath) && newPath !== gifPath) {
+        return { success: false, error: 'A file with that name already exists' }
+      }
+
+      // Rename the file
+      fs.renameSync(gifPath, newPath)
+
+      return { success: true, newPath }
+    } catch (err: any) {
+      console.error('[IPC] media:renameGif error:', err?.message)
       return { success: false, error: err?.message }
     }
   })

@@ -94,8 +94,8 @@ export class ProcessingQueue {
   queueUntagged(): { queued: number } {
     const untagged = this.rawDb.prepare(`
       SELECT m.id FROM media m
-      LEFT JOIN media_tags mt ON m.id = mt.media_id
-      WHERE mt.media_id IS NULL
+      LEFT JOIN media_tags mt ON m.id = mt.mediaId
+      WHERE mt.mediaId IS NULL
       AND NOT EXISTS (SELECT 1 FROM ai_processing_queue WHERE media_id = m.id)
     `).all() as Array<{ id: string }>
 
@@ -106,6 +106,18 @@ export class ProcessingQueue {
     }
 
     return { queued }
+  }
+
+  /**
+   * Get count of untagged media items (for UI badge)
+   */
+  getUntaggedCount(): number {
+    const result = this.rawDb.prepare(`
+      SELECT COUNT(*) as count FROM media m
+      LEFT JOIN media_tags mt ON m.id = mt.mediaId
+      WHERE mt.mediaId IS NULL
+    `).get() as { count: number } | undefined
+    return result?.count ?? 0
   }
 
   /**
@@ -548,7 +560,7 @@ export class ProcessingQueue {
     // Apply matched tags
     for (const tag of matchedTags) {
       this.rawDb.prepare(`
-        INSERT OR IGNORE INTO media_tags (media_id, tag_id) VALUES (?, ?)
+        INSERT OR IGNORE INTO media_tags (mediaId, tagId) VALUES (?, ?)
       `).run(mediaId, tag.id)
     }
 
@@ -561,7 +573,7 @@ export class ProcessingQueue {
 
     for (const tagId of newTagIds) {
       this.rawDb.prepare(`
-        INSERT OR IGNORE INTO media_tags (media_id, tag_id) VALUES (?, ?)
+        INSERT OR IGNORE INTO media_tags (mediaId, tagId) VALUES (?, ?)
       `).run(mediaId, tagId)
     }
 
@@ -590,7 +602,7 @@ export class ProcessingQueue {
       // Then apply the selected ones
       for (const tagId of edits.selectedTagIds) {
         this.rawDb.prepare(`
-          INSERT OR IGNORE INTO media_tags (media_id, tag_id) VALUES (?, ?)
+          INSERT OR IGNORE INTO media_tags (mediaId, tagId) VALUES (?, ?)
         `).run(mediaId, tagId)
       }
     }
@@ -602,7 +614,7 @@ export class ProcessingQueue {
       )
       for (const tagId of newTagIds) {
         this.rawDb.prepare(`
-          INSERT OR IGNORE INTO media_tags (media_id, tag_id) VALUES (?, ?)
+          INSERT OR IGNORE INTO media_tags (mediaId, tagId) VALUES (?, ?)
         `).run(mediaId, tagId)
       }
     }

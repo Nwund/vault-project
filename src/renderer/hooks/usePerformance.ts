@@ -118,8 +118,10 @@ export function useVideoDecoder(id: string): boolean {
 
 /**
  * LRU file URL cache with size limit
+ * Increased to 2000 entries for large libraries (100s of GBs with thousands of files)
+ * URLs are just strings so memory footprint is minimal (~200KB for 2000 entries)
  */
-const MAX_CACHE_SIZE = 500
+const MAX_CACHE_SIZE = 2000
 const fileUrlCache = new Map<string, string>()
 
 export async function toFileUrlCached(path: string): Promise<string> {
@@ -149,10 +151,15 @@ export function clearFileUrlCache() {
 
 /**
  * Batch preload multiple file URLs
+ * Increased batch size to 50 for faster initial loading of large grids
  */
 export async function preloadFileUrls(paths: string[]): Promise<void> {
   const uncached = paths.filter(p => !fileUrlCache.has(p))
-  await Promise.all(uncached.slice(0, 10).map(p => toFileUrlCached(p)))
+  // Process in batches of 50 for better performance
+  const batchSize = 50
+  for (let i = 0; i < Math.min(uncached.length, batchSize); i += 10) {
+    await Promise.all(uncached.slice(i, i + 10).map(p => toFileUrlCached(p)))
+  }
 }
 
 /**

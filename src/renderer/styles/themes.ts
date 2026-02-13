@@ -1932,7 +1932,13 @@ export function getThemeCSS(theme: Theme): string {
 export function applyTheme(themeId: ThemeId): void {
   const theme = getTheme(themeId)
   document.documentElement.setAttribute('data-theme', themeId)
+  document.documentElement.setAttribute('data-theme-mode', theme.isDark ? 'dark' : 'light')
   document.documentElement.style.cssText = getThemeCSS(theme)
+}
+
+// Helper to check if current theme is light
+export function isLightTheme(themeId: ThemeId): boolean {
+  return !getTheme(themeId).isDark
 }
 
 export function getSystemPrefersDark(): boolean {

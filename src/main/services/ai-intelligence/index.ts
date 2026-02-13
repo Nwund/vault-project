@@ -100,6 +100,16 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
     return processingQueue.queueUntagged()
   })
 
+  // Get count of untagged media (for UI badge)
+  ipcMain.handle('ai:get-untagged-count', async () => {
+    if (!processingQueue) return 0
+    try {
+      return processingQueue.getUntaggedCount()
+    } catch {
+      return 0
+    }
+  })
+
   // Queue specific media IDs
   ipcMain.handle('ai:queue-specific', async (_ev, mediaIds: string[]) => {
     if (!processingQueue) throw new Error('Processing queue not initialized')
@@ -325,43 +335,176 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
       // Get existing tags for this media
       const tags = db.raw.prepare('SELECT t.name FROM tags t JOIN media_tags mt ON t.id = mt.tagId JOIN media m ON m.id = mt.mediaId WHERE m.id = ?').all(mediaId) as { name: string }[]
 
-      if (tags.length === 0) {
-        return null // No tags available, let frontend use fallback
-      }
-
       const tagNames = tags.map(t => t.name.toLowerCase())
 
-      // Determine content type
-      const isAnime = tagNames.some(t => ['hentai', 'anime', '2d', 'animated', 'drawn'].includes(t))
-
-      // Caption templates based on detected content type
+      // Comprehensive caption templates based on detected content type
       const captionOptions = {
         goon: [
           { top: 'STROKE', bottom: 'EDGE' },
-          { top: 'GOOD GOONER', bottom: null },
-          { top: 'PORN IS LIFE', bottom: null },
+          { top: 'GOOD GOONER', bottom: 'KEEP PUMPING' },
+          { top: 'PORN IS LIFE', bottom: 'EMBRACE IT' },
           { top: 'LEAK FOR ME', bottom: null },
+          { top: 'MINDLESS', bottom: 'PUMPING' },
+          { top: 'NO THOUGHTS', bottom: 'JUST STROKE' },
+          { top: 'EDGE LONGER', bottom: null },
+          { top: 'DEEPER', bottom: 'INTO THE SPIRAL' },
+          { top: 'ADDICTED', bottom: "CAN'T STOP" },
+          { top: 'GOOD BOY', bottom: 'PUMP HARDER' },
         ],
         degrading: [
           { top: 'LOOK AT THIS', bottom: 'YOU PATHETIC FUCK' },
           { top: 'YOU LOVE THIS', bottom: "DON'T YOU" },
+          { top: 'PATHETIC', bottom: 'KEEP STROKING' },
+          { top: "CAN'T HELP YOURSELF", bottom: null },
+          { top: 'EXPOSED', bottom: 'AND HARD' },
+          { top: 'SUCH A LOSER', bottom: null },
+          { top: 'WEAK', bottom: 'FOR PORN' },
+          { top: 'SHAMEFUL', bottom: 'KEEP GOING' },
         ],
         worship: [
           { top: 'WORSHIP', bottom: 'SUBMIT' },
-          { top: 'PERFECT', bottom: null },
+          { top: 'PERFECT', bottom: 'DIVINE' },
+          { top: 'GODDESS', bottom: null },
+          { top: 'BOW DOWN', bottom: null },
+          { top: 'SERVE', bottom: 'OBEY' },
+          { top: 'BEAUTIFUL', bottom: 'WORSHIP HER' },
         ],
         hentai: [
           { top: 'ANIME BRAIN', bottom: 'ROT' },
           { top: '2D > 3D', bottom: null },
-        ]
+          { top: 'WAIFU', bottom: 'MATERIAL' },
+          { top: 'DEGENERATE', bottom: 'WEEB' },
+          { top: 'CULTURED', bottom: null },
+          { top: 'HENTAI', bottom: 'ENJOYER' },
+        ],
+        ass: [
+          { top: 'THAT ASS', bottom: 'IS PERFECT' },
+          { top: 'WORSHIP IT', bottom: null },
+          { top: 'THICC', bottom: null },
+          { top: 'CAKE', bottom: 'FOR DAYS' },
+          { top: 'BOOTY', bottom: 'HYPNOTIZED' },
+        ],
+        boobs: [
+          { top: 'THOSE TITS', bottom: 'AMAZING' },
+          { top: 'TITTY', bottom: 'HYPNOTIZED' },
+          { top: 'BIG', bottom: 'BEAUTIFUL' },
+          { top: 'MOMMY', bottom: 'MILKERS' },
+          { top: 'STACKED', bottom: null },
+        ],
+        femdom: [
+          { top: 'OBEY', bottom: 'YOUR GODDESS' },
+          { top: 'KNEEL', bottom: null },
+          { top: 'YES MISTRESS', bottom: null },
+          { top: 'SUBMIT', bottom: 'TO HER' },
+          { top: 'DOMINATED', bottom: null },
+          { top: "SHE'S IN CHARGE", bottom: null },
+        ],
+        sissy: [
+          { top: 'SISSY', bottom: 'BRAIN' },
+          { top: 'PRETTY GIRL', bottom: null },
+          { top: 'FEMINIZED', bottom: null },
+          { top: 'GOOD GIRL', bottom: null },
+          { top: 'SO PRETTY', bottom: 'SO HORNY' },
+        ],
+        denial: [
+          { top: 'EDGE', bottom: "DON'T CUM" },
+          { top: 'NOT YET', bottom: 'KEEP EDGING' },
+          { top: 'DENIED', bottom: null },
+          { top: 'HOLD IT', bottom: 'LONGER' },
+          { top: 'SUFFER', bottom: 'FOR ME' },
+        ],
+        encouragement: [
+          { top: 'SO CLOSE', bottom: 'KEEP GOING' },
+          { top: 'ALMOST THERE', bottom: null },
+          { top: "THAT'S IT", bottom: 'GOOD' },
+          { top: 'PERFECT', bottom: null },
+          { top: 'LET GO', bottom: null },
+          { top: 'RELEASE', bottom: null },
+        ],
+        blowjob: [
+          { top: 'SUCK IT', bottom: null },
+          { top: 'DEEP', bottom: null },
+          { top: 'THROAT IT', bottom: null },
+          { top: 'GOOD GIRL', bottom: null },
+          { top: 'DROOLING', bottom: null },
+        ],
+        pov: [
+          { top: 'LOOK AT HER', bottom: null },
+          { top: 'YOUR VIEW', bottom: null },
+          { top: 'IMAGINE', bottom: null },
+          { top: 'RIGHT THERE', bottom: null },
+        ],
+        milf: [
+          { top: 'MOMMY', bottom: 'KNOWS BEST' },
+          { top: 'EXPERIENCED', bottom: null },
+          { top: 'MATURE', bottom: 'PERFECTION' },
+        ],
+        teen: [
+          { top: 'SO YOUNG', bottom: 'SO HOT' },
+          { top: 'FRESH', bottom: null },
+          { top: 'CUTE', bottom: null },
+        ],
+        lesbian: [
+          { top: 'GIRLS', bottom: 'PLAYING' },
+          { top: 'SAPPHIC', bottom: 'BLISS' },
+          { top: 'LICK', bottom: null },
+        ],
+        hardcore: [
+          { top: 'FUCK', bottom: 'HARDER' },
+          { top: 'POUND', bottom: 'IT' },
+          { top: 'ROUGH', bottom: null },
+          { top: 'DESTROY', bottom: 'HER' },
+        ],
+        creampie: [
+          { top: 'FILL HER', bottom: null },
+          { top: 'BREED', bottom: null },
+          { top: 'INSIDE', bottom: null },
+          { top: 'DRIPPING', bottom: null },
+        ],
+        facial: [
+          { top: 'CUM', bottom: 'COVERED' },
+          { top: 'GLAZED', bottom: null },
+          { top: 'MESSY', bottom: null },
+        ],
       }
 
-      // Select category based on content
-      let category = 'goon'
-      if (isAnime) category = 'hentai'
+      // Detect content type from tags
+      const categoryMatchers: { category: string; keywords: string[] }[] = [
+        { category: 'hentai', keywords: ['hentai', 'anime', '2d', 'animated', 'drawn', 'cartoon', 'manga'] },
+        { category: 'femdom', keywords: ['femdom', 'dominatrix', 'mistress', 'domme', 'goddess', 'foot worship'] },
+        { category: 'sissy', keywords: ['sissy', 'feminization', 'crossdress', 'trap', 'femboy'] },
+        { category: 'ass', keywords: ['ass', 'butt', 'booty', 'anal', 'pawg', 'thicc'] },
+        { category: 'boobs', keywords: ['tits', 'boobs', 'breasts', 'busty', 'big tits', 'huge tits'] },
+        { category: 'denial', keywords: ['denial', 'edge', 'edging', 'tease', 'ruined'] },
+        { category: 'blowjob', keywords: ['blowjob', 'bj', 'oral', 'deepthroat', 'suck'] },
+        { category: 'pov', keywords: ['pov', 'point of view'] },
+        { category: 'milf', keywords: ['milf', 'mature', 'cougar', 'mom'] },
+        { category: 'teen', keywords: ['teen', 'young', 'petite', 'barely legal'] },
+        { category: 'lesbian', keywords: ['lesbian', 'girl on girl', 'sapphic'] },
+        { category: 'hardcore', keywords: ['hardcore', 'rough', 'hard fuck', 'pounding'] },
+        { category: 'creampie', keywords: ['creampie', 'breeding', 'cum inside'] },
+        { category: 'facial', keywords: ['facial', 'cumshot', 'bukkake'] },
+        { category: 'worship', keywords: ['worship', 'divine', 'goddess', 'perfect body'] },
+        { category: 'degrading', keywords: ['humiliation', 'degradation', 'pathetic', 'loser'] },
+      ]
+
+      // Find matching category
+      let category = 'goon' // default
+      for (const matcher of categoryMatchers) {
+        if (tagNames.some(t => matcher.keywords.some(k => t.includes(k)))) {
+          category = matcher.category
+          break
+        }
+      }
+
+      // If no tags but we still want to return something, pick from goon or encouragement randomly
+      if (tags.length === 0) {
+        const randomCategories = ['goon', 'encouragement', 'denial']
+        category = randomCategories[Math.floor(Math.random() * randomCategories.length)]
+      }
 
       // Pick random caption from category
-      const options = captionOptions[category as keyof typeof captionOptions]
+      const options = captionOptions[category as keyof typeof captionOptions] || captionOptions.goon
       const selected = options[Math.floor(Math.random() * options.length)]
 
       return {

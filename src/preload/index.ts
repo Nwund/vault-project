@@ -171,6 +171,18 @@ const api = {
     delete: (mediaId: string) => invoke<{ success: boolean; deletedMedia?: any; error?: string }>('media:delete', mediaId),
     // Undo last delete (restores media to library if file still exists)
     undoDelete: () => invoke<{ success: boolean; restoredId?: string; error?: string }>('media:undoDelete'),
+    // GIF creation from video
+    createGif: (options: {
+      mediaId: string
+      startTime: number
+      endTime: number
+      fps?: number
+      width?: number
+      quality?: 'low' | 'medium' | 'high'
+    }) => invoke<{ success: boolean; gifPath?: string; error?: string }>('media:createGif', options),
+    saveGif: (gifPath: string) => invoke<{ success: boolean; savedPath?: string; error?: string }>('media:saveGif', gifPath),
+    addGifToLibrary: (gifPath: string) => invoke<{ success: boolean; mediaId?: string; error?: string }>('media:addGifToLibrary', gifPath),
+    renameGif: (gifPath: string, newName: string) => invoke<{ success: boolean; newPath?: string; error?: string }>('media:renameGif', gifPath, newName),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
