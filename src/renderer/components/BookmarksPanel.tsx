@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { Bookmark, Plus, Trash2, Edit2, Check, X, ChevronLeft, ChevronRight, Clock, Download } from 'lucide-react'
+import { formatDuration } from '../utils/formatters'
 
 interface VideoBookmark {
   id: string
@@ -134,14 +135,6 @@ export function BookmarksPanel({ mediaId, currentTime, duration, onSeek, isCompa
     if (prev) onSeek(prev.timestamp)
   }
 
-  const formatTime = (sec: number) => {
-    const h = Math.floor(sec / 3600)
-    const m = Math.floor((sec % 3600) / 60)
-    const s = Math.floor(sec % 60)
-    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-    return `${m}:${s.toString().padStart(2, '0')}`
-  }
-
   // Compact mode - just show bookmark indicators on timeline
   if (isCompact && !isExpanded) {
     return (
@@ -224,7 +217,7 @@ export function BookmarksPanel({ mediaId, currentTime, duration, onSeek, isCompa
           <div className="flex items-center gap-2">
             <span className="text-xs text-zinc-500">
               <Clock className="w-3 h-3 inline mr-1" />
-              {formatTime(currentTime)}
+              {formatDuration(currentTime)}
             </span>
             <div className="flex-1" />
             <button

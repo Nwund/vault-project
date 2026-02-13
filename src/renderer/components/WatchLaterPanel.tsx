@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { Clock, Play, Trash2, GripVertical, Shuffle, ChevronUp, ChevronDown, X, Plus, Bell, BellOff } from 'lucide-react'
+import { formatDuration } from '../utils/formatters'
 
 interface WatchLaterItem {
   id: string
@@ -117,15 +118,6 @@ export function WatchLaterPanel({ isOpen, onClose, onPlayMedia, selectedMediaIds
     }
     setDraggedItem(null)
     setDragOverItem(null)
-  }
-
-  const formatDuration = (sec?: number) => {
-    if (!sec) return '--:--'
-    const h = Math.floor(sec / 3600)
-    const m = Math.floor((sec % 3600) / 60)
-    const s = Math.floor(sec % 60)
-    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-    return `${m}:${s.toString().padStart(2, '0')}`
   }
 
   const formatTotalDuration = (sec: number) => {
