@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { Copy, Trash2, Check, X, HardDrive, FileText, Hash, Loader2, ChevronDown, ChevronRight, FolderOpen, Eye } from 'lucide-react'
+import { formatBytes } from '../utils/formatters'
 
 interface DuplicateMedia {
   id: string
@@ -184,13 +185,6 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
     }
   }
 
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
-  }
-
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleDateString()
   }
@@ -218,7 +212,7 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
             <span>Exact Duplicates: {stats.exactDuplicates}</span>
             <span>Same Size: {stats.sizeDuplicates}</span>
             <span>Same Name: {stats.nameDuplicates}</span>
-            <span>Est. Savings: {formatSize(stats.estimatedSavings)}</span>
+            <span>Est. Savings: {formatBytes(stats.estimatedSavings)}</span>
           </div>
         )}
 
@@ -305,7 +299,7 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
                   <span className="font-bold">{scanResult.groups.length}</span> groups
                 </div>
                 <div className="text-sm">
-                  Potential savings: <span className="text-green-400 font-bold">{formatSize(scanResult.potentialSavings)}</span>
+                  Potential savings: <span className="text-green-400 font-bold">{formatBytes(scanResult.potentialSavings)}</span>
                 </div>
               </div>
 
@@ -328,13 +322,13 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
                         <ChevronRight className="w-4 h-4 text-zinc-400" />
                       )}
                       <span className="flex-1 text-sm font-medium">
-                        {group.count} files • {formatSize(group.totalSize)}
+                        {group.count} files • {formatBytes(group.totalSize)}
                       </span>
                       <span className="text-xs text-zinc-500 px-2 py-0.5 bg-zinc-700 rounded">
                         {group.type}
                       </span>
                       <span className="text-xs text-green-400">
-                        Save {formatSize(group.savingsIfReduced)}
+                        Save {formatBytes(group.savingsIfReduced)}
                       </span>
                       <button
                         onClick={(e) => { e.stopPropagation(); selectAllDuplicates(group) }}
@@ -397,7 +391,7 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
 
                               {/* Stats */}
                               <div className="text-right text-xs text-zinc-400 flex-shrink-0">
-                                <div>{formatSize(media.size)}</div>
+                                <div>{formatBytes(media.size)}</div>
                                 <div>{formatDate(media.addedAt)}</div>
                               </div>
 
