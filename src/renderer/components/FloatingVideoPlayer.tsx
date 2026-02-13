@@ -1460,7 +1460,6 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                     height: prev.width / ratio
                   }))
                 }
-                console.log('[FloatingPlayer] Metadata loaded:', media.path, { width: video.videoWidth, height: video.videoHeight })
               }}
               onError={handleError}
               onTimeUpdate={handleTimeUpdate}

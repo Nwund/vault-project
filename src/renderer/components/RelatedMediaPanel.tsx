@@ -86,10 +86,12 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
   const handleFindSeries = async () => {
     try {
       const seriesIds = await window.api.invoke('relationships:findSeries', mediaId)
-      // Could open a modal showing the full series
-      console.log('Series:', seriesIds)
+      // TODO: Could open a modal showing the full series
+      if (seriesIds?.length > 0) {
+        // Series found - could display in UI
+      }
     } catch (e) {
-      console.error('Failed to find series:', e)
+      console.error('[RelatedMedia] Failed to find series:', e)
     }
   }
 

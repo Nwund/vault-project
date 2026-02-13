@@ -69,7 +69,7 @@ function getGreeting(): string {
   return 'Night Owl Mode'
 }
 
-function MediaCard({ media, onClick, badge, progress, rank }: {
+const MediaCard = React.memo(function MediaCard({ media, onClick, badge, progress, rank }: {
   media: MediaItem
   onClick: () => void
   badge?: React.ReactNode
@@ -180,7 +180,13 @@ function MediaCard({ media, onClick, badge, progress, rank }: {
       </div>
     </div>
   )
-}
+}, (prev, next) => {
+  // Custom comparison for memoization
+  return prev.media.id === next.media.id &&
+         prev.media.thumbPath === next.media.thumbPath &&
+         prev.progress === next.progress &&
+         prev.rank === next.rank
+})
 
 function HorizontalSection({ title, icon, items, loading, onRefresh, onSeeAll, children, gradient }: {
   title: string

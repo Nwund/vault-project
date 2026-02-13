@@ -3672,8 +3672,6 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   const refresh = useCallback(async () => {
     setIsLoading(true)
     try {
-      console.log('[Library] Refreshing media...')
-
       // Parse advanced search syntax
       const parsed = parseAdvancedSearch(debouncedQuery)
       const effectiveTags = [...activeTags, ...parsed.tags]
@@ -3707,7 +3705,6 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
         tags: effectiveTags,
         sortBy: dbSortBy
       })
-      console.log('[Library] Raw response:', m)
       let items: MediaRow[] = Array.isArray(m) ? m : (m as any)?.items ?? (m as any)?.media ?? []
 
       // Apply rating filter from advanced syntax
@@ -3745,7 +3742,6 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
           return true
         })
       }
-      console.log('[Library] Loaded items:', items.length)
 
       // Compute type counts
       const counts = { video: 0, image: 0, gif: 0 }
@@ -6777,7 +6773,6 @@ function GoonWallPage(props: {
 
     // Subscribe to vault changes (file additions/deletions)
     const unsub = window.api.events?.onVaultChanged?.(() => {
-      console.log('[GoonWall] Vault changed, reloading videos...')
       void loadVideos()
     })
 
@@ -9369,7 +9364,6 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
         // Include all media types - videos can have frames captured
         const allItems = ((mediaList as any).items ?? mediaList ?? []) as MediaRow[]
         setAllMedia(allItems)
-        console.log(`[Brainwash] Loaded ${allItems.length} media items (images, GIFs, and videos for frame capture)`)
       } catch (err) {
         console.error('Failed to load captions data:', err)
       }
