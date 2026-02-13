@@ -330,6 +330,17 @@ Verify ALL sliders, toggles, dropdowns, and buttons function and persist correct
 
 **Build Stats:** TypeScript clean, renderer 1.67 MB JS, build time ~5.8s
 
+### Accessibility Improvements (Feb 13, 2026):
+- [x] **Icon-Only Button Accessibility** - Added title/aria-label attributes to all icon-only buttons across:
+  - HomeDashboard: scroll left/right buttons
+  - RelatedMediaPanel: add form, accept suggestion, play, remove buttons
+  - MediaNotesPanel: add form, save, cancel, edit, delete buttons
+  - BookmarksPanel: collapse button
+  - WatchLaterPanel: close button
+  - TagSelector: remove tag button
+  - DuplicatesModal: close and checkbox selection buttons
+  - App.tsx: task dismiss and notification dismiss buttons
+
 ---
 
 ## QUICK WINS (Can do in <30 min each)
