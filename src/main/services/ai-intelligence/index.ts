@@ -517,6 +517,47 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
       return null
     }
   })
+
+  // Generate captions using Venice AI vision (when API key is configured)
+  ipcMain.handle('ai:venice-caption', async (_ev, mediaId: string, style?: string) => {
+    try {
+      if (!tier2Vision?.isEnabled()) {
+        return { error: 'Venice AI not configured', topText: null, bottomText: null }
+      }
+
+      // Get the media path from database
+      const media = db.raw.prepare('SELECT path, thumbPath, type FROM media WHERE id = ?').get(mediaId) as {
+        path: string
+        thumbPath: string | null
+        type: string
+      } | undefined
+
+      if (!media) {
+        return { error: 'Media not found', topText: null, bottomText: null }
+      }
+
+      // Use thumbnail if available (smaller file), otherwise use original
+      const imagePath = media.thumbPath || media.path
+      const captionStyle = (style || 'generic') as 'goon' | 'degrading' | 'worship' | 'hentai' | 'generic'
+
+      const result = await tier2Vision.generateCaptions(imagePath, captionStyle)
+      return {
+        topText: result.topText,
+        bottomText: result.bottomText,
+        source: 'venice'
+      }
+    } catch (err) {
+      console.error('[AI] Venice caption generation failed:', err)
+      return { error: String(err), topText: null, bottomText: null }
+    }
+  })
+
+  // Check if Venice AI is configured
+  ipcMain.handle('ai:venice-status', async () => {
+    return {
+      configured: tier2Vision?.isEnabled() ?? false
+    }
+  })
 }
 
 export { FrameExtractor, ModelDownloader, Tier1OnnxTagger, Tier2VisionLLM, Tier3TagMatcher, ProcessingQueue }

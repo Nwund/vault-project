@@ -341,6 +341,28 @@ Verify ALL sliders, toggles, dropdowns, and buttons function and persist correct
   - DuplicatesModal: close and checkbox selection buttons
   - App.tsx: task dismiss and notification dismiss buttons
 
+### Code Cleanup & Dead Code Removal (Feb 13, 2026):
+- [x] **Removed unused imports from App.tsx** - Removed `fisherYatesShuffle`, `randomPick` from shuffle utils; removed `playGreeting`, `playSoundFromCategory`, `hasSounds` from soundPlayer utils
+- [x] **Deleted unused hook files** - Removed `usePhysicsSimulation.ts` and `useVideoPreloader.ts` (not imported anywhere)
+- [x] **Cleaned hooks/index.ts** - Removed usePhysicsSimulation export
+- [x] **Removed local formatter redefinitions** - Removed duplicate `formatDuration()` and `formatBytes()` from App.tsx (using imported versions)
+- [x] **Cleaned formatters.ts** - Removed unused `formatRelativeTime()` and `truncate()` functions
+- [x] **Cleaned usePerformance.ts** - Removed 8 unused functions: `useVideoDecoder`, `clearFileUrlCache`, `preloadFileUrls`, `getPooledVideo`, `returnVideoToPool`, `preloadVideo`, `requestIdleCallback`, `cancelIdleCallback`
+
+### Performance Optimizations (Feb 13, 2026):
+- [x] **TagSelector memoization** - Added `useMemo` to `filteredTags` and `exactMatch` computations to avoid unnecessary recalculations
+- [x] **Throttled mousemove handlers** - Added 50ms throttling to 3 edge detection handlers in App.tsx (Zen mode, GoonWall, FloatingVideoPlayer) to reduce state updates
+- [x] **Code deduplication** - BookmarksPanel and DuplicatesModal now use shared `formatDuration` and `formatBytes` from utils/formatters.ts
+- [x] **Fixed biased shuffle** - Replaced `sort(() => Math.random() - 0.5)` with proper `shuffleTake()` for quick tags randomization
+- [x] **VirtualizedMediaGrid memoization** - Wrapped grid dimension calculations in `useMemo` to avoid recalculation on every render
+
+### Error Handling Improvements (Feb 13, 2026):
+- [x] **BookmarksPanel** - Added try-catch to `goToNext()` and `goToPrevious()` navigation functions
+- [x] **WatchLaterPanel** - Added try-catch to all async handlers: `handleRemove`, `handlePlayNext`, `handleShuffle`, `handleBumpPriority`, `handleClearQueue`, `handleAddSelected`, `handleDragEnd` (with revert on failure)
+- [x] **DuplicatesModal** - Wrapped `shell:showItemInFolder` call in try-catch with error logging
+- [x] **useVideoPreview** - Added error logging for video.play() failures (filtering out expected errors), added video load error event handler
+- [x] **useAmbienceAudio** - Added error logging to onerror handlers and audio.play() failures with URL context
+
 ---
 
 ## QUICK WINS (Can do in <30 min each)
@@ -352,3 +374,55 @@ Verify ALL sliders, toggles, dropdowns, and buttons function and persist correct
 
 ## RECOMMENDED ORDER
 Start with Priority 1 (critical bugs), then work through Priority 2 (usability), then tackle Priority 3 features. Save Priority 5-6 for after core app is stable.
+
+---
+
+## NOTES FOR NEXT SESSION (Feb 13, 2026)
+
+### Summary of Completed Work This Session:
+1. **Removed unused code** - Deleted unused imports from App.tsx, deleted 2 unused hook files (usePhysicsSimulation.ts, useVideoPreloader.ts)
+2. **Performance** - Added memoization to TagSelector, throttled 3 mousemove handlers
+3. **Error handling** - Added try-catch to BookmarksPanel, WatchLaterPanel, DuplicatesModal async operations
+4. **Accessibility** - Added title/aria-label to icon-only buttons (from previous session, documented now)
+
+### Remaining Audit Findings (Medium/Low Priority):
+1. **Promise.all pattern** - HomeDashboard loadContinueWatching could use Promise.allSettled instead of try-catch per item
+2. **User-visible error feedback** - Most catch blocks still only log to console; consider adding toast notifications
+3. ~~**TagSelector creation error** - The catch block doesn't prevent addTag from being called after error~~ (VERIFIED: code is correct, catch prevents execution)
+4. ~~**RelatedMediaPanel cascading errors** - loadRelated still runs after failed delete~~ (VERIFIED: loadRelated is inside try block)
+5. ~~**useVideoPreview** - Missing error logging for video.play() failures~~ (FIXED)
+6. ~~**useAmbienceAudio** - onerror handlers don't log which track failed~~ (FIXED)
+
+### Potential Future Optimizations:
+1. ~~**Remove unused exports from shuffle.ts** - `fisherYatesShuffle` and `randomPick` are no longer imported anywhere~~ (DONE - removed)
+2. **Consolidate URL caching** - usePerformance.ts and urlCache.ts both have toFileUrlCached implementations (uses different APIs: thumbs.getUrl vs fs.toFileUrl)
+3. **Remove unused exports from soundPlayer.ts** - Several functions are exported but only used internally (kept for potential future use)
+
+### Remaining Performance Audit Findings (Lower Priority):
+1. **Multiple sort operations in App.tsx** (lines 3495-3592) - Could be memoized or moved to backend
+2. **Missing memoization on availableTags filters** (lines 13513, 13540) - Settings page tag filters
+3. **toLowerCase in search suggestions** - Pre-lowercase tag names for faster filtering
+4. **Inline style objects in HomeDashboard** - Could defeat memoization
+5. **HorizontalSection not memoized** - Could add React.memo
+6. **Canvas setup in VisualStimulants** - Potential memory leak on resize listener
+7. **Expensive Map/Set operations in DuplicatesModal** - Could use immer or more efficient updates
+
+### Build Status:
+- TypeScript: Clean (no errors)
+- All changes verified working
+- Dev server HMR picking up all changes
+
+### Files Changed This Session:
+- `src/renderer/App.tsx` - Removed unused imports, throttled mousemove handlers, fixed biased shuffle, removed duplicate formatters
+- `src/renderer/hooks/index.ts` - Removed usePhysicsSimulation export
+- `src/renderer/hooks/useVideoPreview.ts` - Added error logging
+- `src/renderer/hooks/useAmbienceAudio.ts` - Added error logging
+- `src/renderer/hooks/usePerformance.ts` - Removed 8 unused functions (~75 lines)
+- `src/renderer/utils/shuffle.ts` - Removed unused functions
+- `src/renderer/utils/formatters.ts` - Removed unused functions (~25 lines)
+- `src/renderer/components/TagSelector.tsx` - Added useMemo for performance
+- `src/renderer/components/BookmarksPanel.tsx` - Added try-catch
+- `src/renderer/components/WatchLaterPanel.tsx` - Added try-catch
+- `src/renderer/components/DuplicatesModal.tsx` - Added try-catch
+- `src/renderer/components/VirtualizedMediaGrid.tsx` - Added useMemo for grid calculations
+- Deleted: `src/renderer/hooks/usePhysicsSimulation.ts`, `src/renderer/hooks/useVideoPreloader.ts`

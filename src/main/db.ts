@@ -290,6 +290,7 @@ export function createDb() {
       ORDER BY mc.updatedAt DESC;
     `),
     listCaptionTemplates: db.prepare(`SELECT * FROM caption_templates ORDER BY category, createdAt DESC;`),
+    findCaptionTemplate: db.prepare(`SELECT id FROM caption_templates WHERE (topText IS ? OR (topText IS NULL AND ? IS NULL)) AND (bottomText IS ? OR (bottomText IS NULL AND ? IS NULL)) LIMIT 1;`),
     insertCaptionTemplate: db.prepare(`INSERT INTO caption_templates(id, topText, bottomText, category, createdAt) VALUES(?, ?, ?, ?, ?);`),
     deleteCaptionTemplate: db.prepare(`DELETE FROM caption_templates WHERE id=?;`)
   }
@@ -974,7 +975,14 @@ export function createDb() {
     return stmts.listCaptionTemplates.all() as CaptionTemplateRow[]
   }
 
-  function captionTemplateAdd(topText: string | null, bottomText: string | null, category: string = 'custom'): CaptionTemplateRow {
+  function captionTemplateAdd(topText: string | null, bottomText: string | null, category: string = 'custom'): CaptionTemplateRow | null {
+    // Check for duplicate (same topText and bottomText)
+    const existing = stmts.findCaptionTemplate.get(topText, topText, bottomText, bottomText) as { id: string } | undefined
+    if (existing) {
+      // Already exists, don't add duplicate
+      return null
+    }
+
     const id = nanoid()
     const now = Date.now()
     stmts.insertCaptionTemplate.run(id, topText, bottomText, category, now)

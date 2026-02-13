@@ -677,12 +677,13 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('media:randomByTags', async (_ev, tags: string[], opts?: any) => {
     const limit = opts?.limit ?? 50
+    const typeFilter = opts?.type ?? 'video' // Default to video for Feed compatibility
     let items: any[] = []
     if (tags.length === 0) {
-      items = db.listMedia({ q: '', type: 'video', tag: '', limit: 500, offset: 0 }).items
+      items = db.listMedia({ q: '', type: typeFilter, tag: '', limit: 500, offset: 0 }).items
     } else {
       for (const tag of tags) {
-        const result = db.listMedia({ q: '', type: '', tag, limit: 200, offset: 0 })
+        const result = db.listMedia({ q: '', type: typeFilter, tag, limit: 200, offset: 0 })
         items.push(...result.items)
       }
       const seen = new Set<string>()

@@ -28,29 +28,3 @@ export function formatBytes(n: number | null | undefined): string {
   return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
 
-/**
- * Format date to relative time (e.g., "2 hours ago", "3 days ago")
- */
-export function formatRelativeTime(date: Date | string | number): string {
-  const now = Date.now()
-  const then = new Date(date).getTime()
-  const diff = now - then
-
-  const seconds = Math.floor(diff / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
-
-  if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`
-  if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`
-  if (minutes > 0) return `${minutes} min${minutes > 1 ? 's' : ''} ago`
-  return 'just now'
-}
-
-/**
- * Truncate a string with ellipsis
- */
-export function truncate(str: string, maxLength: number): string {
-  if (str.length <= maxLength) return str
-  return str.slice(0, maxLength - 1) + '…'
-}

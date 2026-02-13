@@ -441,12 +441,19 @@ export class ProcessingQueue {
     tier2: Tier2Result | null,
     tier3: Tier3Result
   ): void {
+    console.log(`[AI] Storing results for ${mediaId}:`, {
+      tier1Tags: tier1.tags.length,
+      tier2: tier2 ? { title: tier2.title, tags: tier2.additionalTags.length } : null,
+      tier3: { matched: tier3.matchedTags.length, new: tier3.newTagSuggestions.length }
+    })
+
     // Check if record exists
     const existing = this.rawDb.prepare(`
       SELECT id FROM ai_analysis_results WHERE media_id = ?
     `).get(mediaId)
 
     if (existing) {
+      console.log(`[AI] Updating existing record for ${mediaId}`)
       this.rawDb.prepare(`
         UPDATE ai_analysis_results SET
           nsfw_category = ?,
@@ -474,6 +481,7 @@ export class ProcessingQueue {
         mediaId
       )
     } else {
+      console.log(`[AI] Inserting new record for ${mediaId}`)
       this.rawDb.prepare(`
         INSERT INTO ai_analysis_results (
           media_id, nsfw_category, nsfw_confidence, tier1_raw_tags,
@@ -493,6 +501,12 @@ export class ProcessingQueue {
         JSON.stringify(tier3.newTagSuggestions)
       )
     }
+
+    // Verify the record was stored
+    const verification = this.rawDb.prepare(`
+      SELECT review_status FROM ai_analysis_results WHERE media_id = ?
+    `).get(mediaId) as { review_status: string } | undefined
+    console.log(`[AI] Verification for ${mediaId}: status = ${verification?.review_status ?? 'NOT FOUND'}`)
   }
 
   /**
@@ -502,9 +516,37 @@ export class ProcessingQueue {
     const limit = options?.limit ?? 50
     const offset = options?.offset ?? 0
 
-    const total = (this.rawDb.prepare(`
+    // Count items that have matching media (consistent with actual results)
+    const totalResult = this.rawDb.prepare(`
+      SELECT COUNT(*) as count
+      FROM ai_analysis_results ar
+      INNER JOIN media m ON ar.media_id = m.id
+      WHERE ar.review_status = 'pending'
+    `).get() as { count: number }
+    const total = totalResult.count
+
+    // Also check for orphaned records (analysis results with no media)
+    const orphanedCount = (this.rawDb.prepare(`
+      SELECT COUNT(*) as count
+      FROM ai_analysis_results ar
+      LEFT JOIN media m ON ar.media_id = m.id
+      WHERE ar.review_status = 'pending' AND m.id IS NULL
+    `).get() as { count: number }).count
+
+    if (orphanedCount > 0) {
+      console.log(`[AI Review] Warning: ${orphanedCount} orphaned analysis results (media deleted)`)
+      // Clean up orphaned records
+      this.rawDb.prepare(`
+        DELETE FROM ai_analysis_results
+        WHERE media_id NOT IN (SELECT id FROM media)
+      `).run()
+    }
+
+    // Debug: Log raw counts
+    const rawTotal = (this.rawDb.prepare(`
       SELECT COUNT(*) as count FROM ai_analysis_results WHERE review_status = 'pending'
     `).get() as { count: number }).count
+    console.log(`[AI Review] Raw pending count: ${rawTotal}, Valid with media: ${total}`)
 
     const rows = this.rawDb.prepare(`
       SELECT
@@ -520,11 +562,13 @@ export class ProcessingQueue {
         m.filename,
         m.thumbPath
       FROM ai_analysis_results ar
-      JOIN media m ON ar.media_id = m.id
+      INNER JOIN media m ON ar.media_id = m.id
       WHERE ar.review_status = 'pending'
       ORDER BY ar.created_at DESC
       LIMIT ? OFFSET ?
     `).all(limit, offset) as any[]
+
+    console.log(`[AI Review] Returned ${rows.length} items`)
 
     const items: ReviewItem[] = rows.map(row => ({
       mediaId: row.media_id,

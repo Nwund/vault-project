@@ -52,39 +52,63 @@ export function WatchLaterPanel({ isOpen, onClose, onPlayMedia, selectedMediaIds
   }, [isOpen, loadQueue])
 
   const handleRemove = async (mediaId: string) => {
-    await window.api.invoke('watchLater:remove', mediaId)
-    setQueue(prev => prev.filter(item => item.mediaId !== mediaId))
+    try {
+      await window.api.invoke('watchLater:remove', mediaId)
+      setQueue(prev => prev.filter(item => item.mediaId !== mediaId))
+    } catch (e) {
+      console.error('Failed to remove from queue:', e)
+    }
   }
 
   const handlePlayNext = async () => {
-    const next = await window.api.invoke('watchLater:popNext')
-    if (next) {
-      onPlayMedia(next.mediaId)
-      loadQueue()
+    try {
+      const next = await window.api.invoke('watchLater:popNext')
+      if (next) {
+        onPlayMedia(next.mediaId)
+        loadQueue()
+      }
+    } catch (e) {
+      console.error('Failed to play next:', e)
     }
   }
 
   const handleShuffle = async () => {
-    await window.api.invoke('watchLater:shuffle')
-    loadQueue()
+    try {
+      await window.api.invoke('watchLater:shuffle')
+      loadQueue()
+    } catch (e) {
+      console.error('Failed to shuffle queue:', e)
+    }
   }
 
   const handleBumpPriority = async (mediaId: string) => {
-    await window.api.invoke('watchLater:bumpPriority', mediaId)
-    loadQueue()
+    try {
+      await window.api.invoke('watchLater:bumpPriority', mediaId)
+      loadQueue()
+    } catch (e) {
+      console.error('Failed to bump priority:', e)
+    }
   }
 
   const handleClearQueue = async () => {
     if (confirm('Clear entire watch later queue?')) {
-      await window.api.invoke('watchLater:clearQueue')
-      loadQueue()
+      try {
+        await window.api.invoke('watchLater:clearQueue')
+        loadQueue()
+      } catch (e) {
+        console.error('Failed to clear queue:', e)
+      }
     }
   }
 
   const handleAddSelected = async () => {
     if (selectedMediaIds.length > 0) {
-      await window.api.invoke('watchLater:addMultiple', selectedMediaIds)
-      loadQueue()
+      try {
+        await window.api.invoke('watchLater:addMultiple', selectedMediaIds)
+        loadQueue()
+      } catch (e) {
+        console.error('Failed to add to queue:', e)
+      }
     }
   }
 
@@ -112,8 +136,14 @@ export function WatchLaterPanel({ isOpen, onClose, onPlayMedia, selectedMediaIds
         setQueue(newQueue)
 
         // Update order on backend
-        const orderedIds = newQueue.map(item => item.mediaId)
-        await window.api.invoke('watchLater:reorder', orderedIds)
+        try {
+          const orderedIds = newQueue.map(item => item.mediaId)
+          await window.api.invoke('watchLater:reorder', orderedIds)
+        } catch (e) {
+          console.error('Failed to reorder queue:', e)
+          // Revert to original order on failure
+          loadQueue()
+        }
       }
     }
     setDraggedItem(null)

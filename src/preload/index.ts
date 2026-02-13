@@ -689,6 +689,10 @@ const api = {
 
     // Caption generation - analyze image and suggest captions
     analyzeForCaption: (mediaId: string) => invoke<{ topText: string | null; bottomText: string | null; category: string } | null>('ai:analyze-for-caption', mediaId),
+
+    // Venice AI caption generation (when configured)
+    veniceCaption: (mediaId: string, style?: string) => invoke<{ topText: string | null; bottomText: string | null; source?: string; error?: string }>('ai:venice-caption', mediaId, style),
+    veniceStatus: () => invoke<{ configured: boolean }>('ai:venice-status'),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

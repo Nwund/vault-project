@@ -8,7 +8,7 @@ import { RelatedMediaPanel } from './RelatedMediaPanel'
 import { MediaNotesPanel } from './MediaNotesPanel'
 import { BookmarksPanel } from './BookmarksPanel'
 import { formatDuration } from '../utils/formatters'
-import { toFileUrlCached } from '../utils/urlCache'
+import { toFileUrlCached } from '../hooks/usePerformance'
 
 interface MediaRow {
   id: string

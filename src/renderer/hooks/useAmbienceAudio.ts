@@ -102,13 +102,18 @@ export function useAmbienceAudio(settings: AmbienceSettings | null) {
         fadeTimeoutRef.current = setTimeout(playNextTrack, 500 + Math.random() * 2000)
       }
 
-      audio.onerror = () => {
-        // On error, try next track after delay
+      audio.onerror = (e) => {
+        // Log which track failed, then try next
+        console.warn('[Ambience] Audio error on fallback track:', url, e)
         fadeTimeoutRef.current = setTimeout(playNextTrack, 1000)
       }
 
       audioRef.current = audio
-      audio.play().catch(() => {})
+      audio.play().catch((err) => {
+        if (err.name !== 'NotAllowedError' && err.name !== 'AbortError') {
+          console.warn('[Ambience] Play failed:', err.name)
+        }
+      })
       return
     }
 
@@ -130,12 +135,18 @@ export function useAmbienceAudio(settings: AmbienceSettings | null) {
       fadeTimeoutRef.current = setTimeout(playNextTrack, 500 + Math.random() * 2000)
     }
 
-    audio.onerror = () => {
+    audio.onerror = (e) => {
+      // Log which track failed, then try next
+      console.warn('[Ambience] Audio error:', url, e)
       fadeTimeoutRef.current = setTimeout(playNextTrack, 1000)
     }
 
     audioRef.current = audio
-    audio.play().catch(() => {})
+    audio.play().catch((err) => {
+      if (err.name !== 'NotAllowedError' && err.name !== 'AbortError') {
+        console.warn('[Ambience] Play failed:', err.name)
+      }
+    })
   }, [settings, getTracks])
 
   // Load sounds on mount

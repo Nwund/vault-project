@@ -2,7 +2,9 @@
 // Virtualized media grid for performance with large libraries
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-const { Grid: FixedSizeGrid } = require('react-window') as any
+// react-window v2 exports 'Grid' but @types/react-window is for v1 with 'FixedSizeGrid'
+// Using require to bridge the type mismatch until types are updated
+const { Grid: FixedSizeGrid } = require('react-window') as { Grid: React.ComponentType<any> }
 
 // Inline type to avoid import issues
 interface GridChildComponentProps {
@@ -189,10 +191,13 @@ export const VirtualizedMediaGrid: React.FC<VirtualizedMediaGridProps> = ({
     return () => observer.disconnect()
   }, [])
 
-  // Calculate grid dimensions
-  const columnCount = Math.max(1, Math.floor((containerSize.width - gap) / (columnWidth + gap)))
-  const rowCount = Math.ceil(items.length / columnCount)
-  const actualColumnWidth = (containerSize.width - gap * (columnCount + 1)) / columnCount
+  // Calculate grid dimensions (memoized to avoid recalculation on every render)
+  const { columnCount, rowCount, actualColumnWidth } = useMemo(() => {
+    const cols = Math.max(1, Math.floor((containerSize.width - gap) / (columnWidth + gap)))
+    const rows = Math.ceil(items.length / cols)
+    const colWidth = (containerSize.width - gap * (cols + 1)) / cols
+    return { columnCount: cols, rowCount: rows, actualColumnWidth: colWidth }
+  }, [containerSize.width, gap, columnWidth, items.length])
 
   // Cell renderer
   const Cell = useCallback(({ columnIndex, rowIndex, style }: GridChildComponentProps) => {

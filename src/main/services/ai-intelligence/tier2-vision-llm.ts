@@ -274,4 +274,95 @@ Respond with JSON only.`
       }
     }
   }
+
+  /**
+   * Generate captions (top/bottom text) for Brainwash editor using Venice AI
+   */
+  async generateCaptions(
+    imagePath: string,
+    style: 'goon' | 'degrading' | 'worship' | 'hentai' | 'generic' = 'generic'
+  ): Promise<{ topText: string | null; bottomText: string | null }> {
+    if (!this.isEnabled()) {
+      throw new Error('Venice AI not configured - add API key in settings')
+    }
+
+    console.log(`[Tier2] Generating captions for: ${imagePath}, style: ${style}`)
+
+    // Read and convert image to base64
+    if (!fs.existsSync(imagePath)) {
+      throw new Error(`Image not found: ${imagePath}`)
+    }
+    const buffer = fs.readFileSync(imagePath)
+    const base64 = buffer.toString('base64')
+    const imageData = `data:image/jpeg;base64,${base64}`
+
+    // Style-specific prompt instructions
+    const styleInstructions: Record<string, string> = {
+      goon: 'Create captions for a gooner meme. Use explicit, encouraging language about stroking, edging, pumping, addiction to porn. Be raw and direct.',
+      degrading: 'Create degrading/humiliation captions. Mock the viewer for being addicted, pathetic, weak for porn. Be harsh but playful.',
+      worship: 'Create worship/devotion captions. Emphasize beauty, perfection, submission, obedience. Treat the subject as divine.',
+      hentai: 'Create anime/hentai captions. Reference 2D, waifus, degenerate culture. Can be ironic or sincere weeb humor.',
+      generic: 'Create attention-grabbing captions that fit the image content. Can be sexual, provocative, or humorous depending on what fits.'
+    }
+
+    const systemPrompt = `You are a caption generator for Brainwash, an adult meme/caption creator tool in the Vault application.
+Your job is to create impactful TOP and BOTTOM text captions for adult images, similar to classic meme format.
+
+RULES:
+- TOP text appears at the top of the image (usually 1-5 words, setup or intro)
+- BOTTOM text appears at the bottom (usually 1-5 words, punchline or emphasis)
+- Keep each line SHORT and PUNCHY. These are captions, not sentences.
+- Use ALL CAPS for impact (standard meme style)
+- Be explicit and adult-oriented. This is NSFW content.
+- Respond with ONLY JSON, no other text.
+
+STYLE INSTRUCTIONS:
+${styleInstructions[style]}
+
+OUTPUT FORMAT:
+{
+  "topText": "UPPER TEXT HERE",
+  "bottomText": "LOWER TEXT HERE"
+}
+
+Either field can be null if a single line caption works better. Do not include quotes or punctuation in the caption text itself.`
+
+    const content: any[] = [
+      { type: 'image_url', image_url: { url: imageData } },
+      { type: 'text', text: 'Generate captions for this image. Respond with JSON only.' }
+    ]
+
+    const requestBody = {
+      model: 'qwen3-vl-235b-a22b',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content }
+      ],
+      max_tokens: 256,
+      temperature: 0.8, // Higher temp for more creative captions
+      venice_parameters: {
+        include_venice_system_prompt: false
+      }
+    }
+
+    try {
+      const response = await this.callVeniceApi(requestBody)
+
+      // Parse the response
+      const jsonMatch = response.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) {
+        console.warn('[Tier2] No JSON found in caption response')
+        return { topText: null, bottomText: null }
+      }
+
+      const parsed = JSON.parse(jsonMatch[0])
+      return {
+        topText: parsed.topText || parsed.top_text || null,
+        bottomText: parsed.bottomText || parsed.bottom_text || null
+      }
+    } catch (err) {
+      console.error('[Tier2] Caption generation failed:', err)
+      throw err
+    }
+  }
 }

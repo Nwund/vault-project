@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Play, Clock, Sparkles, Plus, ChevronRight, RefreshCw, Film, Image, Heart, TrendingUp, Shuffle, Zap, ListVideo, BarChart3, Eye, Timer, Star, Flame, Crown, Target, Gamepad2 } from 'lucide-react'
 import { formatDuration } from '../utils/formatters'
-import { toFileUrlCached } from '../utils/urlCache'
+import { toFileUrlCached } from '../hooks/usePerformance'
 
 interface MediaItem {
   id: string

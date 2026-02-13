@@ -20,7 +20,7 @@ import { TagSelector } from './components/TagSelector'
 import { useHeatLevel } from './components/HeatOverlay'
 import { ArousalEffects, CumCountdownOverlay, HeartsOverlay, RainOverlay, GlitchOverlay, BubblesOverlay, MatrixRainOverlay, ConfettiOverlay } from './components/VisualStimulants'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { fisherYatesShuffle, shuffleTake, randomPick } from './utils/shuffle'
+import { shuffleTake } from './utils/shuffle'
 import { formatDuration, formatBytes } from './utils/formatters'
 import { cleanupVideo, useVideoPool, videoPool } from './hooks/useVideoCleanup'
 import { useAnime } from './hooks/useAnime'
@@ -107,9 +107,10 @@ import {
   FileSearch,
   Ban,
   Dice5,
-  Tv
+  Tv,
+  AlertTriangle
 } from 'lucide-react'
-import { playGreeting, playSoundFromCategory, playClimaxForType, hasSounds } from './utils/soundPlayer'
+import { playClimaxForType } from './utils/soundPlayer'
 import vaultLogo from './assets/vault-logo.png'
 
 // CRT Overlay assets
@@ -131,6 +132,15 @@ type GlobalTask = {
   progress: number // 0-100
   status: string
   startedAt: number
+}
+
+// API result type helper - handles both array and { items: T[] } responses
+type ApiListResult<T> = T[] | { items?: T[]; media?: T[] }
+
+// Extract items from API response that may be array or object with items/media property
+function extractItems<T>(result: ApiListResult<T>): T[] {
+  if (Array.isArray(result)) return result
+  return (result as { items?: T[]; media?: T[] })?.items ?? (result as { items?: T[]; media?: T[] })?.media ?? []
 }
 
 const GlobalTaskContext = React.createContext<{
@@ -727,9 +737,26 @@ interface SoundSettings {
   ambienceVolume: number
 }
 
+// Session analytics returned from sessionHistory:getAnalytics
+type SessionAnalytics = {
+  totalSessions: number
+  totalDuration: number
+  avgSessionDuration: number
+  avgMediaPerSession: number
+  mostActiveHour: number
+  mostActiveDay: string
+}
+
+// Result from media.optimizeNames API
+type OptimizeNamesResult = {
+  success: boolean
+  optimized: number
+  skipped: number
+  failed: number
+  error?: string
+}
+
 type VaultSettings = {
-  mediaDirs: string[]
-  cacheDir: string
   uiSoundsEnabled?: boolean
   hasSeenWelcome?: boolean
   library?: {
@@ -778,9 +805,9 @@ type VaultSettings = {
     incognitoMode?: boolean
     clearOnExit?: boolean
   }
-  ui: {
-    themeId: string
-    animations: boolean
+  ui?: {
+    themeId?: string
+    animations?: boolean
   }
   goonwall?: {
     tileCount?: number
@@ -1075,14 +1102,21 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleGlobalKeys)
   }, [showShortcutsHelp, showCommandPalette, zenMode, globalShowToast])
 
-  // Zen mode edge detection - show UI when mouse near edges
+  // Zen mode edge detection - show UI when mouse near edges (throttled)
   useEffect(() => {
     if (!zenMode) {
       setZenModeEdgeActive(false)
       return
     }
 
+    let lastRun = 0
+    const throttleMs = 50 // Run at most every 50ms
+
     const handleMouseMove = (e: MouseEvent) => {
+      const now = Date.now()
+      if (now - lastRun < throttleMs) return
+      lastRun = now
+
       const edgeThreshold = 60 // pixels from edge
       const nearEdge =
         e.clientX < edgeThreshold ||
@@ -1339,10 +1373,9 @@ export default function App() {
 
   // Apply theme using our theme system
   useEffect(() => {
-    // Try new settings structure first, fall back to legacy
-    const themeId = settings?.appearance?.themeId ?? settings?.ui?.themeId ?? 'obsidian'
+    const themeId = settings?.appearance?.themeId ?? 'obsidian'
     applyThemeCSS(themeId as ThemeId)
-  }, [settings?.appearance?.themeId, settings?.ui?.themeId])
+  }, [settings?.appearance?.themeId])
 
   // Apply font style from settings
   useEffect(() => {
@@ -1948,8 +1981,8 @@ export default function App() {
                     const current = settings?.appearance?.themeId ?? 'obsidian'
                     const idx = presets.indexOf(current)
                     const next = presets[(idx + 1) % presets.length]
-                    window.api.settings.setTheme(next).then((s: any) => {
-                      if (s) setSettings(s as any)
+                    window.api.settings.setTheme(next).then((s: VaultSettings | null) => {
+                      if (s) setSettings(s)
                       applyThemeCSS(next as ThemeId)
                     })
                   }}
@@ -2134,8 +2167,8 @@ export default function App() {
               patchSettings={patchSettings}
               onThemeChange={(id: string) => {
                 applyThemeCSS(id as ThemeId)
-                window.api.settings.setTheme(id).then((next: any) => {
-                  if (next) setSettings(next as any)
+                window.api.settings.setTheme(id).then((next: VaultSettings | null) => {
+                  if (next) setSettings(next)
                 })
               }}
               visualEffects={{
@@ -2570,7 +2603,7 @@ export default function App() {
                   { id: 'randomVideo', icon: Shuffle, label: 'Play Random Video', shortcut: 'R', action: async () => {
                     try {
                       const result = await window.api.media.list({ limit: 100, type: 'video' })
-                      const items = Array.isArray(result) ? result : (result as any)?.items ?? []
+                      const items = extractItems<MediaRow>(result)
                       if (items.length > 0) {
                         const randomItem = items[Math.floor(Math.random() * items.length)]
                         window.dispatchEvent(new CustomEvent('vault-open-video', { detail: randomItem }))
@@ -3344,15 +3377,13 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   // Randomize quick tags on mount and when tags change
   useEffect(() => {
     if (tags.length > 0) {
-      const shuffled = [...tags].sort(() => Math.random() - 0.5)
-      setRandomQuickTags(shuffled.slice(0, 10))
+      setRandomQuickTags(shuffleTake(tags, 10))
     }
   }, [tags])
 
   const refreshQuickTags = () => {
     if (tags.length > 0) {
-      const shuffled = [...tags].sort(() => Math.random() - 0.5)
-      setRandomQuickTags(shuffled.slice(0, 10))
+      setRandomQuickTags(shuffleTake(tags, 10))
     }
   }
 
@@ -3659,7 +3690,8 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
         const ratingPart = token.slice(7)
         const match = ratingPart.match(/^(>=|<=|>|<|=)?(\d+)$/)
         if (match) {
-          result.ratingOp = (match[1] || '=') as any
+          const op = match[1] || '='
+          result.ratingOp = op as '=' | '>' | '<' | '>=' | '<='
           result.rating = parseInt(match[2], 10)
         }
       }
@@ -3709,7 +3741,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
         tags: effectiveTags,
         sortBy: dbSortBy
       })
-      let items: MediaRow[] = Array.isArray(m) ? m : (m as any)?.items ?? (m as any)?.media ?? []
+      let items: MediaRow[] = extractItems<MediaRow>(m)
 
       // Apply rating filter from advanced syntax
       if (parsed.rating !== null) {
@@ -4624,7 +4656,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
                 const name = t.name
                 const suffix = name.replace('category:', '')
                 const display = suffix.replace(/-/g, ' ')
-                const item = { name, display, count: (t as any).count }
+                const item = { name, display, count: t.count }
 
                 if (['female', 'male'].includes(suffix)) {
                   groups['Gender'].push(item)
@@ -4686,7 +4718,10 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
         </div>
 
         <div
-          ref={(el) => { (contentRef as any).current = el; if (layout === 'wall') (wallScrollRef as any).current = el }}
+          ref={(el) => {
+            (contentRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+            if (layout === 'wall') (wallScrollRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+          }}
           className={cn(
             "flex-1 min-w-0 overflow-auto transition-all duration-300 ease-in-out relative",
             layout === 'wall' ? 'p-0' : 'p-4'
@@ -5127,7 +5162,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
                   showToast('success', `Renamed ${result.optimized} files (${result.skipped} skipped, ${result.failed} failed)`)
                   await refresh()
                 } else {
-                  showToast('error', 'Rename failed: ' + (result as any).error)
+                  showToast('error', 'Rename failed: ' + (result as OptimizeNamesResult).error)
                 }
               } catch (err) {
                 console.error('[Library] Failed to rename:', err)
@@ -6147,31 +6182,7 @@ function MediaInfoModal({ media, onClose }: { media: MediaRow; onClose: () => vo
     })
   }, [media.id])
 
-  // Format file size
-  const formatBytes = (bytes?: number) => {
-    if (!bytes || !Number.isFinite(bytes)) return '—'
-    const units = ['B', 'KB', 'MB', 'GB']
-    let v = bytes
-    let i = 0
-    while (v >= 1024 && i < units.length - 1) {
-      v /= 1024
-      i++
-    }
-    return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-  }
-
-  // Format duration
-  const formatDuration = (sec?: number | null) => {
-    if (!sec || sec <= 0) return '—'
-    const s = Math.floor(sec)
-    const h = Math.floor(s / 3600)
-    const m = Math.floor((s % 3600) / 60)
-    const r = s % 60
-    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
-    return `${m}:${String(r).padStart(2, '0')}`
-  }
-
-  // Format date
+  // Format date (formatBytes and formatDuration imported from utils/formatters)
   const formatDate = (ms?: number | null) => {
     if (!ms) return '—'
     return new Date(ms).toLocaleDateString(undefined, {
@@ -6599,7 +6610,7 @@ function GoonWallPage(props: {
 
   // Visual effects settings from goonwall settings
   const visualEffects = useMemo(() => {
-    const ve = (props.settings?.goonwall as any)?.visualEffects ?? {}
+    const ve = props.settings?.goonwall?.visualEffects ?? {}
     return {
       heatOverlay: ve.heatOverlay ?? true,
       vignetteIntensity: ve.vignetteIntensity ?? 0.3,
@@ -6617,7 +6628,7 @@ function GoonWallPage(props: {
       if (gw.muted !== undefined) setMuted(gw.muted)
       if (gw.showHud !== undefined) setShowHud(gw.showHud)
       if (gw.layout) setLayout(gw.layout)
-      if ((gw as any).countdownDuration !== undefined) setCountdownDuration((gw as any).countdownDuration)
+      if (gw.countdownDuration !== undefined) setCountdownDuration(gw.countdownDuration)
     }
   }, [props.settings?.goonwall])
 
@@ -6838,14 +6849,21 @@ function GoonWallPage(props: {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [props.heatLevel, props.onHeatChange, focusedTileIndex, cascadeShuffle, countdownActive, showCountdownPicker])
 
-  // Edge reveal detection - show controls when mouse near edges
+  // Edge reveal detection - show controls when mouse near edges (throttled)
   useEffect(() => {
     if (!edgeRevealMode) {
       setEdgeActive(false)
       return
     }
 
+    let lastRun = 0
+    const throttleMs = 50
+
     const handleMouseMove = (e: MouseEvent) => {
+      const now = Date.now()
+      if (now - lastRun < throttleMs) return
+      lastRun = now
+
       const edgeThreshold = 80
       const nearEdge =
         e.clientX < edgeThreshold ||
@@ -7514,49 +7532,70 @@ const GoonTile = React.memo(function GoonTile(props: {
   }, [media.id, media.path, onShuffle, onBroken, retried])
 
   // Playback recovery - handle browser pausing/stalling videos due to resource limits
+  // Use refs to avoid re-renders and prevent recovery loops
   const playbackRecoveryRef = useRef<NodeJS.Timeout | null>(null)
+  const recoveryAttemptsRef = useRef(0)
+  const lastPlayTimeRef = useRef(0)
+  const isRecoveringRef = useRef(false)
 
   const attemptPlaybackRecovery = useCallback(() => {
     const video = videoRef.current
-    if (!video || !url || !ready) return
+    if (!video || !url || !ready || isRecoveringRef.current) return
+
+    // Limit recovery attempts to prevent infinite loops
+    if (recoveryAttemptsRef.current >= 3) {
+      console.log('[GoonTile] Max recovery attempts reached, giving up')
+      return
+    }
+
+    // Don't recover if we just started playing recently (within 5 seconds)
+    const timeSincePlay = Date.now() - lastPlayTimeRef.current
+    if (timeSincePlay < 5000) return
 
     // Only recover if video should be playing but isn't
-    if (video.paused && !video.ended) {
-      video.play().catch(() => {
-        // If play() fails, the browser is limiting resources - this is OK
+    if (video.paused && !video.ended && video.readyState >= 2) {
+      isRecoveringRef.current = true
+      recoveryAttemptsRef.current++
+
+      video.play().then(() => {
+        lastPlayTimeRef.current = Date.now()
+        isRecoveringRef.current = false
+      }).catch(() => {
+        isRecoveringRef.current = false
+        // Browser is limiting resources - this is OK, don't keep retrying
       })
     }
   }, [url, ready])
 
-  // Handle stall/waiting - video is buffering
+  // Handle stall/waiting - video is buffering (only recover after longer delay)
   const handleWaiting = useCallback(() => {
-    // Video is waiting for data - schedule recovery attempt with longer delay
-    if (playbackRecoveryRef.current) clearTimeout(playbackRecoveryRef.current)
-    playbackRecoveryRef.current = setTimeout(attemptPlaybackRecovery, 3000) // Wait 3 seconds before trying recovery
+    // Don't schedule recovery if already pending or too many attempts
+    if (playbackRecoveryRef.current || recoveryAttemptsRef.current >= 3) return
+    playbackRecoveryRef.current = setTimeout(() => {
+      playbackRecoveryRef.current = null
+      attemptPlaybackRecovery()
+    }, 8000) // Wait 8 seconds - browser may resolve on its own
   }, [attemptPlaybackRecovery])
 
-  // Handle pause - recover if not user-initiated (but with delay to avoid interruption)
+  // Handle pause - only recover after significant delay to avoid fighting browser
   const handlePause = useCallback(() => {
-    // Browser may pause videos to save resources - try to resume after delay
-    if (playbackRecoveryRef.current) clearTimeout(playbackRecoveryRef.current)
-    playbackRecoveryRef.current = setTimeout(attemptPlaybackRecovery, 2000) // Wait 2 seconds
+    // Don't schedule recovery if already pending or too many attempts
+    if (playbackRecoveryRef.current || recoveryAttemptsRef.current >= 3) return
+    playbackRecoveryRef.current = setTimeout(() => {
+      playbackRecoveryRef.current = null
+      attemptPlaybackRecovery()
+    }, 10000) // Wait 10 seconds - let browser manage resources
   }, [attemptPlaybackRecovery])
 
-  // Periodic playback check - catch silent failures where video freezes
-  // Only check every 10 seconds to reduce overhead
-  useEffect(() => {
-    if (!ready || !url) return
+  // Reset recovery attempts when video actually plays successfully
+  const handlePlay = useCallback(() => {
+    recoveryAttemptsRef.current = 0
+    lastPlayTimeRef.current = Date.now()
+    isRecoveringRef.current = false
+  }, [])
 
-    const checkInterval = setInterval(() => {
-      const video = videoRef.current
-      // Only try to resume if video is paused and has been for a while
-      if (video && video.paused && !video.ended && video.readyState >= 2) {
-        video.play().catch(() => {})
-      }
-    }, 10000) // Check every 10 seconds instead of 3
-
-    return () => clearInterval(checkInterval)
-  }, [ready, url])
+  // No periodic check - let browser manage resources naturally
+  // The stall/pause handlers above will catch actual problems
 
   // Cleanup playback recovery timer on unmount
   useEffect(() => {
@@ -7648,6 +7687,7 @@ const GoonTile = React.memo(function GoonTile(props: {
           style={{ opacity: ready ? 1 : 0 }}
           onLoadedMetadata={handleLoadedMetadata}
           onCanPlay={() => setReady(true)}
+          onPlay={handlePlay}
           onError={handleError}
           onWaiting={handleWaiting}
           onPause={handlePause}
@@ -8841,7 +8881,8 @@ function AiTaggerPage() {
 
 // Thumbnail component with on-demand generation for captioned media
 // Uses IntersectionObserver for lazy loading to improve performance
-function CaptionedThumb({ mediaId, thumbPath, filename, filePath, className, style }: { mediaId: string; thumbPath: string | null; filename: string; filePath?: string | null; className?: string; style?: React.CSSProperties }) {
+// Memoized to prevent re-renders when parent state changes
+const CaptionedThumb = React.memo(function CaptionedThumb({ mediaId, thumbPath, filename, filePath, className, style }: { mediaId: string; thumbPath: string | null; filename: string; filePath?: string | null; className?: string; style?: React.CSSProperties }) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [isVisible, setIsVisible] = useState(false)
@@ -8912,13 +8953,17 @@ function CaptionedThumb({ mediaId, thumbPath, filename, filePath, className, sty
   }, [mediaId, thumbPath, filePath, filename, isVisible])
 
   return (
-    <div ref={containerRef} className={cn("w-full h-full", className)} style={style}>
+    <div ref={containerRef} className={cn("w-full h-full relative", className)} style={style}>
       {!isVisible || (loading && !thumbUrl) ? (
-        <div className="w-full h-full flex items-center justify-center bg-black/30">
-          <Loader2 size={20} className="animate-spin text-[var(--muted)]" />
+        <div className="w-full h-full flex items-center justify-center bg-black/50">
+          <img
+            src={thumbnailLoadingGif}
+            alt="Loading..."
+            className="w-12 h-12 opacity-60"
+          />
         </div>
       ) : !thumbUrl ? (
-        <div className="w-full h-full flex items-center justify-center">
+        <div className="w-full h-full flex items-center justify-center bg-black/30">
           <ImageIcon size={24} className="text-[var(--muted)]" />
         </div>
       ) : (
@@ -8927,11 +8972,15 @@ function CaptionedThumb({ mediaId, thumbPath, filename, filePath, className, sty
           alt={filename}
           className="w-full h-full object-cover"
           loading="lazy"
+          onError={(e) => {
+            // If thumbnail fails to load, show placeholder
+            e.currentTarget.style.display = 'none'
+          }}
         />
       )}
     </div>
   )
-}
+})
 
 // Image filter types for stacking
 type ImageFilter = 'invert' | 'grayscale' | 'sepia' | 'saturate' | 'contrast' | 'brightness' | 'blur' | 'hueRotate' | 'pixelate' | 'lowQuality'
@@ -9225,7 +9274,15 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
 
   // AI caption generation state
   const [generatingCaption, setGeneratingCaption] = useState(false)
+  const [veniceConfigured, setVeniceConfigured] = useState(false)
   const [selectedFilterPreset, setSelectedFilterPreset] = useState('none')
+
+  // Check Venice AI status on mount
+  useEffect(() => {
+    window.api.ai.veniceStatus?.().then((status: { configured: boolean } | null) => {
+      setVeniceConfigured(status?.configured ?? false)
+    }).catch(() => setVeniceConfigured(false))
+  }, [])
   const [mediaTypeFilter, setMediaTypeFilter] = useState<'all' | 'image' | 'gif' | 'video'>('all')
 
   // Default caption presets (fallback if settings don't have them)
@@ -9320,6 +9377,10 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
           // For images (including GIFs), use direct file URL
           const url = await toFileUrlCached(selectedMedia.path)
           if (!cancelled && url) {
+            // Log GIF loading for debugging
+            if (isGif) {
+              console.log('[Brainwash] Loading GIF:', selectedMedia.path, '-> URL:', url)
+            }
             setPreviewUrl(url)
             setVideoUrl(null)
           }
@@ -9366,7 +9427,7 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
         setTemplates(templateList as CaptionTemplate[])
 
         // Include all media types - videos can have frames captured
-        const allItems = ((mediaList as any).items ?? mediaList ?? []) as MediaRow[]
+        const allItems = extractItems<MediaRow>(mediaList)
         setAllMedia(allItems)
       } catch (err) {
         console.error('Failed to load captions data:', err)
@@ -9717,7 +9778,7 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                               fontSize: `${(currentPreset?.fontSize || 48) / 2}px`,
                               color: captionBarColor === 'black' ? '#ffffff' : '#000000',
                               fontWeight: currentPreset?.fontWeight || 'bold',
-                              textTransform: currentPreset?.textTransform as any || 'uppercase',
+                              textTransform: currentPreset?.textTransform || 'uppercase',
                             }}
                           >
                             {topText}
@@ -9787,8 +9848,24 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                             imageRendering: filterValues.pixelate > 0 ? 'pixelated' : 'auto',
                             pointerEvents: cropMode ? 'none' : 'auto',
                           }}
-                          onError={(e) => {
-                            console.error('[Brainwash] Image failed to load:', selectedMedia.path)
+                          onError={async (e) => {
+                            const filename = selectedMedia.filename?.toLowerCase() || ''
+                            const isGif = filename.endsWith('.gif')
+                            console.error('[Brainwash] Image failed to load:', selectedMedia.path, isGif ? '(GIF)' : '')
+
+                            // For GIFs, try fallback to thumbnail if available
+                            if (isGif && selectedMedia.thumbPath && !croppedImageUrl && !capturedFrameUrl) {
+                              try {
+                                const thumbUrl = await toFileUrlCached(selectedMedia.thumbPath)
+                                if (thumbUrl) {
+                                  console.log('[Brainwash] GIF load failed, using thumbnail fallback')
+                                  setPreviewUrl(thumbUrl)
+                                  return // Don't set error state, we have a fallback
+                                }
+                              } catch {
+                                // Thumbnail also failed
+                              }
+                            }
                             setImageLoadError(true)
                           }}
                           onLoad={() => {
@@ -9851,7 +9928,7 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                             fontSize: `${(currentPreset?.fontSize || 48) / 2}px`,
                             color: currentPreset?.fontColor || '#ffffff',
                             fontWeight: currentPreset?.fontWeight || 'bold',
-                            textTransform: currentPreset?.textTransform as any || 'uppercase',
+                            textTransform: currentPreset?.textTransform || 'uppercase',
                             WebkitTextStroke: currentPreset?.strokeEnabled
                               ? `${currentPreset.strokeWidth || 2}px ${currentPreset.strokeColor || '#000000'}`
                               : 'none',
@@ -9879,7 +9956,7 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                             fontSize: `${(currentPreset?.fontSize || 48) / 2}px`,
                             color: currentPreset?.fontColor || '#ffffff',
                             fontWeight: currentPreset?.fontWeight || 'bold',
-                            textTransform: currentPreset?.textTransform as any || 'uppercase',
+                            textTransform: currentPreset?.textTransform || 'uppercase',
                             WebkitTextStroke: currentPreset?.strokeEnabled
                               ? `${currentPreset.strokeWidth || 2}px ${currentPreset.strokeColor || '#000000'}`
                               : 'none',
@@ -9918,7 +9995,7 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                               fontSize: `${(currentPreset?.fontSize || 48) / 2}px`,
                               color: captionBarColor === 'black' ? '#ffffff' : '#000000',
                               fontWeight: currentPreset?.fontWeight || 'bold',
-                              textTransform: currentPreset?.textTransform as any || 'uppercase',
+                              textTransform: currentPreset?.textTransform || 'uppercase',
                             }}
                           >
                             {bottomText}
@@ -10349,14 +10426,27 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                         if (!selectedMedia) return
                         setGeneratingCaption(true)
                         try {
-                          // Use AI to generate captions based on image analysis
+                          // Try Venice AI first if configured, then fall back to template-based
+                          if (veniceConfigured) {
+                            const veniceResult = await window.api.ai.veniceCaption?.(selectedMedia.id, 'generic')
+                            if (veniceResult && !veniceResult.error && (veniceResult.topText || veniceResult.bottomText)) {
+                              if (veniceResult.topText) setTopText(veniceResult.topText)
+                              if (veniceResult.bottomText) setBottomText(veniceResult.bottomText)
+                              showToast('success', 'Venice AI caption generated!')
+                              return
+                            }
+                            // If Venice fails, fall through to template-based
+                            console.log('[Brainwash] Venice AI failed, falling back to templates:', veniceResult?.error)
+                          }
+
+                          // Use template-based captions (analyzes tags)
                           const result = await window.api.ai.analyzeForCaption?.(selectedMedia.id)
                           if (result?.topText) setTopText(result.topText)
                           if (result?.bottomText) setBottomText(result.bottomText)
                           if (result?.topText || result?.bottomText) {
-                            showToast('success', 'AI caption generated!')
+                            showToast('success', veniceConfigured ? 'Caption generated (fallback)' : 'AI caption generated!')
                           } else {
-                            showToast('info', 'Using random caption (no AI result)')
+                            showToast('info', 'Using random caption')
                             // Fallback: pick a random caption from examples
                             const randomCaption = EXAMPLE_CAPTIONS[Math.floor(Math.random() * EXAMPLE_CAPTIONS.length)]
                             if (randomCaption.top) setTopText(randomCaption.top)
@@ -10374,15 +10464,19 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                         }
                       }}
                       disabled={generatingCaption || !selectedMedia}
-                      className="flex-1 px-3 py-2 rounded-xl bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-300 text-xs hover:from-purple-500/30 hover:to-pink-500/30 transition flex items-center justify-center gap-1.5 disabled:opacity-50"
-                      title="AI Generate Caption"
+                      className={`flex-1 px-3 py-2 rounded-xl text-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50 ${
+                        veniceConfigured
+                          ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 hover:from-cyan-500/30 hover:to-purple-500/30'
+                          : 'bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-300 hover:from-purple-500/30 hover:to-pink-500/30'
+                      }`}
+                      title={veniceConfigured ? 'Generate with Venice AI vision' : 'Generate from templates (configure Venice AI for smarter captions)'}
                     >
                       {generatingCaption ? (
                         <Loader2 size={14} className="animate-spin" />
                       ) : (
                         <Sparkles size={14} />
                       )}
-                      AI Caption
+                      {veniceConfigured ? 'Venice AI' : 'AI Caption'}
                     </button>
                     <button
                       onClick={async () => {
@@ -10980,7 +11074,9 @@ function FeedPage() {
   const [showSettings, setShowSettings] = useState(false) // Feed settings panel
   const [playbackSpeed, setPlaybackSpeed] = useState(1) // Video playback rate
   const [feedResolution, setFeedResolution] = useState<'original' | '720p' | '480p' | '360p'>(() => {
-    return (localStorage.getItem('vault-feed-resolution') as any) || 'original'
+    const stored = localStorage.getItem('vault-feed-resolution')
+    if (stored === '720p' || stored === '480p' || stored === '360p') return stored
+    return 'original'
   })
   const containerRef = useRef<HTMLDivElement>(null)
   const videoRefs = useRef<Map<number, HTMLVideoElement>>(new Map())
@@ -11186,14 +11282,14 @@ function FeedPage() {
       e.preventDefault()
       e.stopPropagation()
       if (wheelCooldownRef.current) return
-      if (Math.abs(e.deltaY) < 30) return // ignore tiny scroll events
+      if (Math.abs(e.deltaY) < 15) return // ignore tiny scroll events (lowered for responsiveness)
       wheelCooldownRef.current = true
       if (e.deltaY > 0) {
         setCurrentIndex(prev => Math.min(prev + 1, videos.length - 1))
       } else {
         setCurrentIndex(prev => Math.max(prev - 1, 0))
       }
-      setTimeout(() => { wheelCooldownRef.current = false }, 400)
+      setTimeout(() => { wheelCooldownRef.current = false }, 300) // Snappier navigation
     }
     // Use capture phase to catch events before they reach video elements
     el.addEventListener('wheel', handleWheel, { passive: false, capture: true })
@@ -11265,7 +11361,7 @@ function FeedPage() {
     }
   }, [resetHudTimeout])
 
-  // Edge reveal detection - show controls when mouse near edges (like GoonWall)
+  // Edge reveal detection - show controls when mouse near edges (like GoonWall, throttled)
   // Uses container bounds instead of window bounds for proper windowed mode support
   useEffect(() => {
     if (!edgeRevealMode) {
@@ -11273,7 +11369,14 @@ function FeedPage() {
       return
     }
 
+    let lastRun = 0
+    const throttleMs = 50
+
     const handleMouseMove = (e: MouseEvent) => {
+      const now = Date.now()
+      if (now - lastRun < throttleMs) return
+      lastRun = now
+
       const edgeThreshold = 80
       const container = containerRef.current
       if (!container) {
@@ -11838,8 +11941,8 @@ function FeedPage() {
         })}
       </div>
 
-      {/* Side navigation */}
-      <div className={`absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2 transition-opacity duration-300 ${hideUI ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+      {/* Side navigation - left side to avoid overlap with action buttons */}
+      <div className={`absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2 transition-opacity duration-300 ${hideUI ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         <button
           onClick={() => setCurrentIndex(prev => Math.max(prev - 1, 0))}
           disabled={currentIndex === 0}
@@ -11893,6 +11996,8 @@ const FeedItem = React.memo(function FeedItem(props: {
   const [url, setUrl] = useState(preloadedUrl || '')
   const [loading, setLoading] = useState(true)
   const [transcodeRetried, setTranscodeRetried] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
   // Double-tap to like
   const [showHeartAnimation, setShowHeartAnimation] = useState(false)
   const lastTapRef = useRef<number>(0)
@@ -11955,9 +12060,10 @@ const FeedItem = React.memo(function FeedItem(props: {
   }, [isLiked, onToggleLike])
 
   useEffect(() => {
-    if (preloadedUrl && resolution === 'original') { setUrl(preloadedUrl); return }
+    if (preloadedUrl && resolution === 'original') { setUrl(preloadedUrl); setLoadError(null); return }
     let alive = true
     setTranscodeRetried(false)
+    setLoadError(null)
     ;(async () => {
       try {
         // Use lower resolution if specified
@@ -11970,13 +12076,15 @@ const FeedItem = React.memo(function FeedItem(props: {
         // Original quality or fallback
         const u = await window.api.media.getPlayableUrl(video.id)
         if (alive && u) { setUrl(u as string); return }
-      } catch {}
+      } catch (e) {
+        console.error('[Feed] Failed to get playable URL:', video.id, e)
+      }
       // Fallback to direct file URL
       const u = await toFileUrlCached(video.path)
       if (alive) setUrl(u)
     })()
     return () => { alive = false }
-  }, [video.id, video.path, preloadedUrl, resolution])
+  }, [video.id, video.path, preloadedUrl, resolution, retryCount])
 
   const filename = video.filename || video.path.split(/[/\\]/).pop() || 'Unknown'
 
@@ -12016,18 +12124,29 @@ const FeedItem = React.memo(function FeedItem(props: {
               onVideoEnded()
             }
           }}
-          onError={() => {
-            // Retry with force transcode before skipping
+          onError={(e) => {
+            console.error('[Feed] Video playback error:', video.id, video.filename, e)
+            // Retry with force transcode before showing error
             if (!transcodeRetried) {
               setTranscodeRetried(true)
               window.api.media.getPlayableUrl(video.id, true).then((u: any) => {
-                if (u) setUrl(u as string)
-                else { setLoading(false); onSkip() }
-              }).catch(() => { setLoading(false); onSkip() })
+                if (u) {
+                  console.log('[Feed] Force transcode succeeded for', video.id)
+                  setUrl(u as string)
+                } else {
+                  console.error('[Feed] Force transcode returned null for', video.id)
+                  setLoading(false)
+                  setLoadError('Video format not supported')
+                }
+              }).catch((err) => {
+                console.error('[Feed] Force transcode failed:', video.id, err)
+                setLoading(false)
+                setLoadError('Failed to transcode video')
+              })
               return
             }
             setLoading(false)
-            onSkip()
+            setLoadError('Video failed to load')
           }}
         />
       )}
@@ -12070,9 +12189,38 @@ const FeedItem = React.memo(function FeedItem(props: {
       )}
 
       {/* Loading state */}
-      {loading && (
+      {loading && !loadError && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-8 h-8 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+        </div>
+      )}
+
+      {/* Error state */}
+      {loadError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 text-center p-4">
+          <AlertTriangle className="w-12 h-12 text-orange-400 mb-4" />
+          <p className="text-white font-medium mb-2">{loadError}</p>
+          <p className="text-white/60 text-sm mb-4 max-w-xs truncate">{filename}</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setLoadError(null)
+                setLoading(true)
+                setTranscodeRetried(false)
+                setRetryCount(prev => prev + 1)
+              }}
+              className="px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:opacity-90 transition flex items-center gap-2"
+            >
+              <RefreshCw size={16} />
+              Retry
+            </button>
+            <button
+              onClick={onSkip}
+              className="px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition"
+            >
+              Skip
+            </button>
+          </div>
         </div>
       )}
 
@@ -12577,7 +12725,7 @@ function PlaylistsPage() {
       } else {
         // Random selection
         const result = await window.api.media.list({ limit: targetCount * 2, sortBy: 'random' })
-        const items = Array.isArray(result) ? result : (result as any)?.items ?? []
+        const items = extractItems<MediaRow>(result)
         media = items
           .filter((m: any) => aiContentFilter === 'all' || m.type === aiContentFilter)
           .slice(0, targetCount)
@@ -13556,7 +13704,7 @@ function PlaylistsPage() {
                   {[{ value: '', label: 'All' }, { value: 'video', label: 'Videos' }, { value: 'image', label: 'Images' }, { value: 'gif', label: 'GIFs' }].map(opt => (
                     <button
                       key={opt.value}
-                      onClick={() => setSmartType(opt.value as any)}
+                      onClick={() => setSmartType(opt.value as '' | 'video' | 'image' | 'gif')}
                       className={cn(
                         'px-4 py-2 rounded-lg border text-sm transition',
                         smartType === opt.value
@@ -13597,7 +13745,7 @@ function PlaylistsPage() {
                   <label className="text-sm font-medium mb-2 block">Sort By</label>
                   <select
                     value={smartSortBy}
-                    onChange={(e) => setSmartSortBy(e.target.value as any)}
+                    onChange={(e) => setSmartSortBy(e.target.value as 'addedAt' | 'rating' | 'views' | 'random')}
                     className="w-full px-3 py-2 rounded-xl bg-black/30 border border-[var(--border)] text-sm"
                   >
                     <option value="addedAt">Date Added</option>
@@ -13836,6 +13984,63 @@ type DailyChallengeStateUI = {
   streak: number
 }
 
+// Reactive time counter that updates every second for a dynamic feel
+function ReactiveTimeCounter({ totalSeconds }: { totalSeconds: number }) {
+  const [tick, setTick] = useState(0)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick(prev => prev + 1)
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Add tick to seconds for the visual effect (doesn't change actual total, just makes it feel live)
+  const displaySeconds = totalSeconds + (tick % 60)
+
+  const days = Math.floor(displaySeconds / 86400)
+  const hours = Math.floor((displaySeconds % 86400) / 3600)
+  const minutes = Math.floor((displaySeconds % 3600) / 60)
+  const seconds = displaySeconds % 60
+
+  if (days > 0) {
+    return (
+      <span className="font-mono">
+        <span className="text-white font-bold">{days}</span>
+        <span className="text-[var(--muted)]">d </span>
+        <span className="text-white font-bold">{hours.toString().padStart(2, '0')}</span>
+        <span className="text-[var(--muted)]">h </span>
+        <span className="text-white font-bold">{minutes.toString().padStart(2, '0')}</span>
+        <span className="text-[var(--muted)]">m </span>
+        <span className="text-[var(--primary)] font-bold animate-pulse">{seconds.toString().padStart(2, '0')}</span>
+        <span className="text-[var(--muted)]">s</span>
+      </span>
+    )
+  }
+
+  if (hours > 0) {
+    return (
+      <span className="font-mono">
+        <span className="text-white font-bold">{hours}</span>
+        <span className="text-[var(--muted)]">h </span>
+        <span className="text-white font-bold">{minutes.toString().padStart(2, '0')}</span>
+        <span className="text-[var(--muted)]">m </span>
+        <span className="text-[var(--primary)] font-bold animate-pulse">{seconds.toString().padStart(2, '0')}</span>
+        <span className="text-[var(--muted)]">s</span>
+      </span>
+    )
+  }
+
+  return (
+    <span className="font-mono">
+      <span className="text-white font-bold">{minutes}</span>
+      <span className="text-[var(--muted)]">m </span>
+      <span className="text-[var(--primary)] font-bold animate-pulse">{seconds.toString().padStart(2, '0')}</span>
+      <span className="text-[var(--muted)]">s</span>
+    </span>
+  )
+}
+
 function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof useConfetti>; anime?: ReturnType<typeof useAnime> }) {
   const [goonStats, setGoonStats] = useState<GoonStats | null>(null)
   const [vaultStats, setVaultStats] = useState<any>(null)
@@ -13843,14 +14048,7 @@ function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof useConfet
   const [loading, setLoading] = useState(true)
   const [achievementTab, setAchievementTab] = useState<string>('all')
   const [dailyChallenges, setDailyChallenges] = useState<DailyChallengeStateUI | null>(null)
-  const [sessionAnalytics, setSessionAnalytics] = useState<{
-    totalSessions: number
-    totalDuration: number
-    avgSessionDuration: number
-    avgMediaPerSession: number
-    mostActiveHour: number
-    mostActiveDay: string
-  } | null>(null)
+  const [sessionAnalytics, setSessionAnalytics] = useState<SessionAnalytics | null>(null)
   const { showToast } = useToast()
 
   useEffect(() => {
@@ -13894,7 +14092,7 @@ function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof useConfet
       ])
       setGoonStats(gs)
       setVaultStats(vs)
-      if (sa) setSessionAnalytics(sa as any)
+      if (sa) setSessionAnalytics(sa as SessionAnalytics)
       const a = await window.api.goon.getAchievements()
       setAchievements(a)
     } catch (e) {
@@ -14111,7 +14309,10 @@ function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof useConfet
             <div className="text-sm text-[var(--muted)]">Total Collection Size</div>
           </div>
           <div className="flex items-center gap-6 text-sm">
-            <div><span className="text-white font-medium">{fmtDuration(vs?.totalDurationSec ?? 0)}</span> <span className="text-[var(--muted)]">of video</span></div>
+            <div className="flex items-center gap-1">
+              <ReactiveTimeCounter totalSeconds={vs?.totalDurationSec ?? 0} />
+              <span className="text-[var(--muted)]">of video</span>
+            </div>
             <div><span className="text-white font-medium">{fmt(vs?.totalMedia ?? 0)}</span> <span className="text-[var(--muted)]">files</span></div>
           </div>
         </div>
@@ -14656,9 +14857,8 @@ function SettingsPage(props: {
     }
   }, [matchingTabs])
 
-  // Support both new and legacy settings structure
-  const mediaDirs = s?.library?.mediaDirs ?? s?.mediaDirs ?? []
-  const cacheDir = s?.library?.cacheDir ?? s?.cacheDir ?? ''
+  const mediaDirs = s?.library?.mediaDirs ?? []
+  const cacheDir = s?.library?.cacheDir ?? ''
   const privacySettings = s?.privacy ?? {}
   const playbackSettings = s?.playback ?? {}
 
@@ -15465,7 +15665,7 @@ function SettingsPage(props: {
                       </div>
                       <select
                         value={props.visualEffects.tvBorderStyle}
-                        onChange={(e) => props.onVisualEffectsChange.setTvBorderStyle(e.target.value as any)}
+                        onChange={(e) => props.onVisualEffectsChange.setTvBorderStyle(e.target.value as 'classic' | 'modern' | 'retro' | 'minimal')}
                         className="px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm"
                       >
                         <option value="classic">Classic</option>
@@ -15539,7 +15739,7 @@ function SettingsPage(props: {
                       </div>
                       <select
                         value={props.visualEffects.pipBoyColor}
-                        onChange={(e) => props.onVisualEffectsChange.setPipBoyColor(e.target.value as any)}
+                        onChange={(e) => props.onVisualEffectsChange.setPipBoyColor(e.target.value as 'green' | 'amber' | 'blue' | 'white')}
                         className="px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm"
                       >
                         <option value="green">Green (Classic)</option>

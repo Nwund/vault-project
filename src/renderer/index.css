@@ -39,7 +39,7 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
-  --shadow-glow: 0 0 20px rgba(139, 92, 246, 0.3);
+  --shadow-glow: 0 0 12px rgba(139, 92, 246, 0.25);
   --blur-sm: 8px;
   --blur-md: 16px;
   --blur-lg: 32px;
@@ -1008,7 +1008,7 @@ input[type="range"]::-webkit-slider-thumb:active {
 }
 
 .glow-text {
-  text-shadow: 0 0 20px var(--glow);
+  text-shadow: 0 0 10px var(--glow);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -2352,13 +2352,13 @@ button:focus-visible,
 
 .text-glow {
   text-shadow:
-    0 0 10px currentColor,
-    0 0 20px currentColor,
-    0 0 40px currentColor;
+    0 0 5px currentColor,
+    0 0 10px rgba(var(--primary-rgb), 0.4),
+    0 0 20px rgba(var(--primary-rgb), 0.2);
 }
 
 .text-glow-subtle {
-  text-shadow: 0 0 10px rgba(var(--primary-rgb), 0.5);
+  text-shadow: 0 0 6px rgba(var(--primary-rgb), 0.35);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

@@ -52,7 +52,12 @@ export function useVideoPreview(options: UseVideoPreviewOptions = {}) {
     const currentClip = clipIndexRef.current % clipCount
     video.currentTime = clipPositions[currentClip]
 
-    video.play().catch(() => {})
+    video.play().catch(err => {
+      // Only log unexpected errors (NotAllowedError is common and expected)
+      if (err.name !== 'NotAllowedError' && err.name !== 'AbortError') {
+        console.warn('[VideoPreview] Play failed:', err.name)
+      }
+    })
 
     // Schedule next clip
     clipTimeoutRef.current = setTimeout(() => {
@@ -105,8 +110,20 @@ export function useVideoPreview(options: UseVideoPreviewOptions = {}) {
       canPlayHandlerRef.current = null
     }
 
+    const handleError = () => {
+      console.warn('[VideoPreview] Video load error:', videoUrl)
+      setIsPlaying(false)
+      setIsWaiting(false)
+      // Minimal cleanup without calling stopPreview to avoid circular ref
+      if (canPlayHandlerRef.current) {
+        video.removeEventListener('canplay', canPlayHandlerRef.current)
+        canPlayHandlerRef.current = null
+      }
+    }
+
     canPlayHandlerRef.current = handleCanPlay
     video.addEventListener('canplay', handleCanPlay)
+    video.addEventListener('error', handleError, { once: true })
     video.load()
   }, [playNextClip, muted])
 

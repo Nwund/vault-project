@@ -126,13 +126,21 @@ export function BookmarksPanel({ mediaId, currentTime, duration, onSeek, isCompa
   }
 
   const goToNext = async () => {
-    const next = await window.api.invoke('bookmarks:getNext', mediaId, currentTime)
-    if (next) onSeek(next.timestamp)
+    try {
+      const next = await window.api.invoke('bookmarks:getNext', mediaId, currentTime)
+      if (next) onSeek(next.timestamp)
+    } catch (e) {
+      console.error('Failed to navigate to next bookmark:', e)
+    }
   }
 
   const goToPrevious = async () => {
-    const prev = await window.api.invoke('bookmarks:getPrevious', mediaId, currentTime)
-    if (prev) onSeek(prev.timestamp)
+    try {
+      const prev = await window.api.invoke('bookmarks:getPrevious', mediaId, currentTime)
+      if (prev) onSeek(prev.timestamp)
+    } catch (e) {
+      console.error('Failed to navigate to previous bookmark:', e)
+    }
   }
 
   // Compact mode - just show bookmark indicators on timeline

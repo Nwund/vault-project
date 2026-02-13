@@ -978,17 +978,17 @@ export function getSettings(): VaultSettings {
 
 export function getMediaDirs(): string[] {
   const s = getSettings()
-  return s.library?.mediaDirs ?? s.mediaDirs ?? DEFAULTS.library.mediaDirs
+  return s.library?.mediaDirs ?? DEFAULTS.library.mediaDirs
 }
 
 export function getCacheDir(): string {
   const s = getSettings()
-  return s.library?.cacheDir ?? s.cacheDir ?? DEFAULTS.library.cacheDir
+  return s.library?.cacheDir ?? DEFAULTS.library.cacheDir
 }
 
 export function getThemeId(): ThemeId {
   const s = getSettings()
-  return s.appearance?.themeId ?? (s.ui?.themeId as ThemeId) ?? DEFAULTS.appearance.themeId
+  return s.appearance?.themeId ?? DEFAULTS.appearance.themeId
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

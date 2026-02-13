@@ -421,7 +421,13 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
                                   <Eye className="w-4 h-4 text-zinc-400" />
                                 </button>
                                 <button
-                                  onClick={() => window.api.invoke('shell:showItemInFolder', media.path)}
+                                  onClick={async () => {
+                                    try {
+                                      await window.api.invoke('shell:showItemInFolder', media.path)
+                                    } catch (e) {
+                                      console.error('Failed to show in folder:', e)
+                                    }
+                                  }}
                                   className="p-1 hover:bg-zinc-600 rounded"
                                   title="Show in folder"
                                 >

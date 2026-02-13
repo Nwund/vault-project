@@ -1,7 +1,7 @@
 // File: src/renderer/components/TagSelector.tsx
 // Searchable dropdown tag selector per specification
 
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { X, Plus, Search, Tag, ChevronDown } from 'lucide-react'
 
 interface TagOption {
@@ -48,14 +48,20 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
   const inputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Filter tags based on search, excluding already selected
-  const filteredTags = tags
-    .filter(tag => !selectedTags.includes(tag.name))
-    .filter(tag => tag.name.toLowerCase().includes(search.toLowerCase()))
-    .slice(0, maxResults)
+  // Filter tags based on search, excluding already selected (memoized)
+  const filteredTags = useMemo(() => {
+    const searchLower = search.toLowerCase()
+    return tags
+      .filter(tag => !selectedTags.includes(tag.name))
+      .filter(tag => tag.name.toLowerCase().includes(searchLower))
+      .slice(0, maxResults)
+  }, [tags, selectedTags, search, maxResults])
 
-  // Check if search matches any tag exactly
-  const exactMatch = tags.some(t => t.name.toLowerCase() === search.toLowerCase())
+  // Check if search matches any tag exactly (memoized)
+  const exactMatch = useMemo(() =>
+    tags.some(t => t.name.toLowerCase() === search.toLowerCase()),
+    [tags, search]
+  )
   const showCreateOption = search.trim() && !exactMatch && onCreateTag
 
   // Close dropdown when clicking outside

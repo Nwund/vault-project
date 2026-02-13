@@ -78,53 +78,36 @@ export function useLazyLoad(
 }
 
 /**
- * Hook for video element cleanup
- */
-export function useVideoCleanup(videoRef: React.RefObject<HTMLVideoElement>) {
-  useEffect(() => {
-    return () => {
-      const video = videoRef.current
-      if (video) {
-        video.pause()
-        video.src = ''
-        video.load() // Release decoder
-      }
-    }
-  }, [])
-}
-
-/**
- * Manages limited concurrent video decoders
- */
-const activeDecoders = new Set<string>()
-const MAX_DECODERS = 6
-
-export function useVideoDecoder(id: string): boolean {
-  const [canDecode, setCanDecode] = useState(false)
-
-  useEffect(() => {
-    if (activeDecoders.size < MAX_DECODERS) {
-      activeDecoders.add(id)
-      setCanDecode(true)
-    }
-
-    return () => {
-      activeDecoders.delete(id)
-    }
-  }, [id])
-
-  return canDecode
-}
-
-/**
- * LRU file URL cache with size limit
- * Increased to 2000 entries for large libraries (100s of GBs with thousands of files)
+ * LRU file URL cache with configurable size limit
+ * Size can be configured via Settings > Library > Memory Cache Size
  * URLs are just strings so memory footprint is minimal (~200KB for 2000 entries)
  */
-const MAX_CACHE_SIZE = 2000
+let memoryCacheSize = 2000 // Default, will be updated from settings
 const fileUrlCache = new Map<string, string>()
 
+// Initialize cache size from settings (called once on app startup)
+let cacheInitialized = false
+async function initCacheSize(): Promise<void> {
+  if (cacheInitialized) return
+  cacheInitialized = true
+  try {
+    const settings = await window.api.settings.get()
+    const configuredSize = (settings as any)?.library?.memoryCacheSize
+    if (configuredSize && typeof configuredSize === 'number' && configuredSize > 0) {
+      memoryCacheSize = configuredSize
+      console.log('[Cache] Memory cache size set to:', memoryCacheSize)
+    }
+  } catch (e) {
+    // Use default if settings can't be loaded
+  }
+}
+
 export async function toFileUrlCached(path: string): Promise<string> {
+  // Lazy initialize cache size from settings
+  if (!cacheInitialized) {
+    void initCacheSize()
+  }
+
   const cached = fileUrlCache.get(path)
   if (cached) {
     // Move to end (most recently used)
@@ -136,7 +119,7 @@ export async function toFileUrlCached(path: string): Promise<string> {
   const url = await window.api.fs.toFileUrl(path)
 
   // Evict oldest entries if cache is full
-  if (fileUrlCache.size >= MAX_CACHE_SIZE) {
+  if (fileUrlCache.size >= memoryCacheSize) {
     const firstKey = fileUrlCache.keys().next().value
     if (firstKey) fileUrlCache.delete(firstKey)
   }
@@ -145,77 +128,18 @@ export async function toFileUrlCached(path: string): Promise<string> {
   return url
 }
 
-export function clearFileUrlCache() {
-  fileUrlCache.clear()
-}
-
 /**
- * Batch preload multiple file URLs
- * Increased batch size to 50 for faster initial loading of large grids
+ * Update cache size limit (called when settings change)
  */
-export async function preloadFileUrls(paths: string[]): Promise<void> {
-  const uncached = paths.filter(p => !fileUrlCache.has(p))
-  // Process in batches of 50 for better performance
-  const batchSize = 50
-  for (let i = 0; i < Math.min(uncached.length, batchSize); i += 10) {
-    await Promise.all(uncached.slice(i, i + 10).map(p => toFileUrlCached(p)))
+export function setCacheSize(size: number): void {
+  if (size > 0) {
+    memoryCacheSize = size
+    // If current cache exceeds new limit, evict oldest entries
+    while (fileUrlCache.size > memoryCacheSize) {
+      const firstKey = fileUrlCache.keys().next().value
+      if (firstKey) fileUrlCache.delete(firstKey)
+      else break
+    }
   }
 }
 
-/**
- * Video element pool for reuse
- */
-const videoPool: HTMLVideoElement[] = []
-const MAX_POOL_SIZE = 8
-
-export function getPooledVideo(): HTMLVideoElement {
-  const video = videoPool.pop()
-  if (video) {
-    video.src = ''
-    video.load()
-    return video
-  }
-  return document.createElement('video')
-}
-
-export function returnVideoToPool(video: HTMLVideoElement): void {
-  if (videoPool.length < MAX_POOL_SIZE) {
-    video.pause()
-    video.src = ''
-    video.load()
-    video.removeAttribute('src')
-    videoPool.push(video)
-  }
-}
-
-/**
- * Preload video by creating a hidden video element
- */
-export function preloadVideo(url: string): () => void {
-  const video = getPooledVideo()
-  video.preload = 'metadata'
-  video.src = url
-  video.load()
-
-  return () => {
-    returnVideoToPool(video)
-  }
-}
-
-/**
- * Request idle callback with fallback
- */
-export function requestIdleCallback(callback: () => void, timeout = 100): number {
-  if (typeof (globalThis as any).requestIdleCallback === 'function') {
-    return (globalThis as any).requestIdleCallback(callback, { timeout })
-  }
-  return setTimeout(callback, 1) as unknown as number
-}
-
-export function cancelIdleCallback(id: number): void {
-  if (typeof (globalThis as any).cancelIdleCallback === 'function') {
-    (globalThis as any).cancelIdleCallback(id)
-  } else {
-    clearTimeout(id)
-  }
-}
