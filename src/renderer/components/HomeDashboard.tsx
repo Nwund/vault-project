@@ -263,6 +263,7 @@ function HorizontalSection({ title, icon, items, loading, onRefresh, onSeeAll, c
           <button
             onClick={() => scroll('left')}
             className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-black/80 text-white flex items-center justify-center opacity-0 group-hover/section:opacity-100 transition-opacity shadow-xl hover:bg-black hover:scale-110"
+            aria-label="Scroll left"
           >
             <ChevronRight size={20} className="rotate-180" />
           </button>
@@ -273,6 +274,7 @@ function HorizontalSection({ title, icon, items, loading, onRefresh, onSeeAll, c
           <button
             onClick={() => scroll('right')}
             className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-black/80 text-white flex items-center justify-center opacity-0 group-hover/section:opacity-100 transition-opacity shadow-xl hover:bg-black hover:scale-110"
+            aria-label="Scroll right"
           >
             <ChevronRight size={20} />
           </button>

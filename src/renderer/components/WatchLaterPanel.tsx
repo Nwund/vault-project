@@ -151,7 +151,7 @@ export function WatchLaterPanel({ isOpen, onClose, onPlayMedia, selectedMediaIds
               </span>
             )}
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-zinc-700 rounded">
+          <button onClick={onClose} className="p-1 hover:bg-zinc-700 rounded" title="Close">
             <X className="w-5 h-5 text-zinc-400" />
           </button>
         </div>

@@ -177,6 +177,8 @@ function GlobalProgressBar() {
                 <button
                   onClick={(e) => { e.stopPropagation(); removeTask(task.id) }}
                   className="p-1 hover:bg-white/10 rounded transition"
+                  aria-label="Dismiss completed task"
+                  title="Dismiss"
                 >
                   <X size={12} className="text-white/60" />
                 </button>
@@ -249,6 +251,8 @@ function ToastContainer() {
           <button
             onClick={(e) => { e.stopPropagation(); dismissToast(toast.id) }}
             className="p-1 hover:bg-white/20 rounded transition"
+            aria-label="Dismiss notification"
+            title="Dismiss"
           >
             <X size={14} />
           </button>

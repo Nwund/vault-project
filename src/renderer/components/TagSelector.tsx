@@ -158,6 +158,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
                 removeTag(tag)
               }}
               className="ml-0.5 hover:bg-[var(--primary)]/30 rounded p-0.5 transition"
+              title={`Remove ${tag}`}
             >
               <X size={10} />
             </button>

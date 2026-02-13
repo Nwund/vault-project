@@ -206,7 +206,7 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
             <Copy className="w-5 h-5 text-orange-400" />
             <h2 className="text-lg font-semibold text-white">Duplicate Finder</h2>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-zinc-700 rounded">
+          <button onClick={onClose} className="p-1 hover:bg-zinc-700 rounded" title="Close">
             <X className="w-5 h-5 text-zinc-400" />
           </button>
         </div>
@@ -369,6 +369,7 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
                                   'border-zinc-500 hover:border-zinc-400'
                                 }`}
                                 disabled={isKeep}
+                                title={isKeep ? 'Keep this file' : isSelected ? 'Deselect for deletion' : 'Select for deletion'}
                               >
                                 {(isKeep || isSelected) && <Check className="w-3 h-3" />}
                               </button>

@@ -136,6 +136,7 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
           <button
             onClick={() => setShowAddForm(!showAddForm)}
             className={`p-1.5 rounded ${showAddForm ? 'bg-zinc-700' : 'hover:bg-zinc-700'}`}
+            title={showAddForm ? 'Close add form' : 'Add relationship'}
           >
             {showAddForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
           </button>
@@ -174,6 +175,7 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
                 <button
                   onClick={() => handleAcceptSuggestion(suggestion)}
                   className="p-1 bg-cyan-600 hover:bg-cyan-500 rounded"
+                  title="Accept suggestion"
                 >
                   <Plus className="w-3 h-3" />
                 </button>
@@ -233,12 +235,14 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
                     <button
                       onClick={(e) => { e.stopPropagation(); onPlayMedia(item.id) }}
                       className="p-1 hover:bg-zinc-600 rounded"
+                      title="Play media"
                     >
                       <ChevronRight className="w-3 h-3 text-zinc-400" />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleRemoveRelationship(item.relationshipId) }}
                       className="p-1 hover:bg-zinc-600 rounded"
+                      title="Remove relationship"
                     >
                       <Trash2 className="w-3 h-3 text-red-400" />
                     </button>

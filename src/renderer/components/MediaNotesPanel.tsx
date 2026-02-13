@@ -146,6 +146,7 @@ export function MediaNotesPanel({ mediaId, className = '' }: MediaNotesPanelProp
         <button
           onClick={() => setShowAddForm(!showAddForm)}
           className={`p-1.5 rounded ${showAddForm ? 'bg-zinc-700' : 'hover:bg-zinc-700'}`}
+          title={showAddForm ? 'Close form' : 'Add note'}
         >
           {showAddForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
         </button>
@@ -224,12 +225,14 @@ export function MediaNotesPanel({ mediaId, className = '' }: MediaNotesPanelProp
                       <button
                         onClick={handleSaveEdit}
                         className="p-1 bg-green-600 hover:bg-green-500 rounded"
+                        title="Save"
                       >
                         <Check className="w-3 h-3" />
                       </button>
                       <button
                         onClick={() => setEditingId(null)}
                         className="p-1 bg-zinc-600 hover:bg-zinc-500 rounded"
+                        title="Cancel"
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -257,12 +260,14 @@ export function MediaNotesPanel({ mediaId, className = '' }: MediaNotesPanelProp
                         <button
                           onClick={() => handleEdit(note)}
                           className="p-1 hover:bg-zinc-600 rounded"
+                          title="Edit note"
                         >
                           <Edit2 className="w-3 h-3 text-zinc-400" />
                         </button>
                         <button
                           onClick={() => handleDelete(note.id)}
                           className="p-1 hover:bg-zinc-600 rounded"
+                          title="Delete note"
                         >
                           <Trash2 className="w-3 h-3 text-red-400" />
                         </button>

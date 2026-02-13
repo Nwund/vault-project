@@ -191,7 +191,7 @@ export function BookmarksPanel({ mediaId, currentTime, duration, onSeek, isCompa
             </button>
           )}
           {isCompact && (
-            <button onClick={() => setIsExpanded(false)} className="p-1 hover:bg-zinc-700 rounded">
+            <button onClick={() => setIsExpanded(false)} className="p-1 hover:bg-zinc-700 rounded" title="Collapse">
               <X className="w-3.5 h-3.5 text-zinc-400" />
             </button>
           )}
