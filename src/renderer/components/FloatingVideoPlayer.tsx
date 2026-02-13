@@ -3,10 +3,12 @@
 
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2, RectangleHorizontal } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2, RectangleHorizontal, Crop, Minus, Square } from 'lucide-react'
 import { RelatedMediaPanel } from './RelatedMediaPanel'
 import { MediaNotesPanel } from './MediaNotesPanel'
 import { BookmarksPanel } from './BookmarksPanel'
+import { formatDuration } from '../utils/formatters'
+import { toFileUrlCached } from '../utils/urlCache'
 
 interface MediaRow {
   id: string
@@ -27,22 +29,6 @@ interface FloatingVideoPlayerProps {
   initialPosition?: { x: number; y: number }
   otherPlayerBounds?: Array<{ x: number; y: number; width: number; height: number }> // For collision detection
   onBoundsChange?: (bounds: { x: number; y: number; width: number; height: number }) => void
-}
-
-// URL cache for file paths
-const urlCache = new Map<string, string>()
-async function toFileUrlCached(absPath: string): Promise<string> {
-  if (urlCache.has(absPath)) return urlCache.get(absPath)!
-  const url = await window.api.thumbs.getUrl(absPath)
-  urlCache.set(absPath, url)
-  return url
-}
-
-function formatDuration(sec: number | null | undefined): string {
-  if (!sec) return ''
-  const m = Math.floor(sec / 60)
-  const s = Math.floor(sec % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
 }
 
 export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, instanceIndex = 0, initialPosition, otherPlayerBounds = [], onBoundsChange }: FloatingVideoPlayerProps) {
@@ -74,6 +60,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisResult, setAnalysisResult] = useState<string | null>(null)
   const [isLiked, setIsLiked] = useState(false)
+  const [isLikeLoading, setIsLikeLoading] = useState(false)
   const [transcodeRetried, setTranscodeRetried] = useState(false)
   const [showQualityMenu, setShowQualityMenu] = useState(false)
   const [currentResolution, setCurrentResolution] = useState<string>(() => {
@@ -114,8 +101,19 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   // Playback speed
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [showSpeedMenu, setShowSpeedMenu] = useState(false)
+  // Video cropping
+  const [isCropMode, setIsCropMode] = useState(false)
+  const [cropValues, setCropValues] = useState({ top: 0, right: 0, bottom: 0, left: 0 }) // percentages
+  const [showCropMenu, setShowCropMenu] = useState(false)
+  // Mini player mode - compact corner thumbnail
+  const [isMiniMode, setIsMiniMode] = useState(false)
+  const miniModeSize = { width: 180, height: 100 }
+  const normalSizeRef = useRef({ width: 480, height: 270, x: 0, y: 0 })
+  // Progress bar hover tooltip
+  const [progressHover, setProgressHover] = useState<{ x: number; time: number } | null>(null)
   const imageContainerRef = useRef<HTMLDivElement>(null)
   const errorHandled = useRef(false) // Prevent duplicate error handling
+  const isMountedRef = useRef(true) // Track if component is mounted for async operations
   const videoRef = useRef<HTMLVideoElement>(null)
   const watchSessionStarted = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -138,6 +136,12 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       onBoundsChange?.({ ...position, ...size })
     }
   }, [position.x, position.y, size.width, size.height]) // Don't include onBoundsChange to avoid loops
+
+  // Track component mount state for async operations
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => { isMountedRef.current = false }
+  }, [])
 
   // Get current index in media list
   const currentIndex = mediaList.findIndex(m => m.id === media.id)
@@ -437,6 +441,35 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     }
   }, [])
 
+  // Toggle mini player mode
+  const toggleMiniMode = useCallback(() => {
+    if (isMiniMode) {
+      // Restore normal size and position
+      setSize({ width: normalSizeRef.current.width, height: normalSizeRef.current.height })
+      setPosition({ x: normalSizeRef.current.x, y: normalSizeRef.current.y })
+      setIsMiniMode(false)
+    } else {
+      // Save current size and position, then shrink to mini
+      normalSizeRef.current = {
+        width: size.width,
+        height: size.height,
+        x: position.x,
+        y: position.y
+      }
+      // Position in bottom-right corner
+      setPosition({
+        x: window.innerWidth - miniModeSize.width - 16,
+        y: window.innerHeight - miniModeSize.height - 16
+      })
+      setSize(miniModeSize)
+      setIsMiniMode(true)
+      // Close any open panels
+      setShowRelatedPanel(false)
+      setShowNotesPanel(false)
+      setShowBookmarksPanel(false)
+    }
+  }, [isMiniMode, size, position])
+
   // Apply playback speed
   useEffect(() => {
     if (videoRef.current) {
@@ -454,16 +487,20 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   }, [])
 
   const handleToggleLike = useCallback(async () => {
+    if (isLikeLoading) return // Prevent spam-clicking
     const wasLiked = isLiked
     const newRating = wasLiked ? 0 : 5
+    setIsLikeLoading(true)
     setIsLiked(!wasLiked)
     try {
       await window.api.media.setRating(media.id, newRating)
     } catch (err) {
       console.error('[FloatingPlayer] Like failed:', err)
       setIsLiked(wasLiked)
+    } finally {
+      setIsLikeLoading(false)
     }
-  }, [isLiked, media.id])
+  }, [isLiked, isLikeLoading, media.id])
 
   const handleBlacklist = useCallback(async () => {
     try {
@@ -723,6 +760,12 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         e.preventDefault()
         if (!isFullscreen) {
           setIsTheaterMode(prev => !prev)
+        }
+      } else if (e.key === 'c' || e.key === 'C') {
+        // Toggle Crop Mode
+        e.preventDefault()
+        if (media.type === 'video') {
+          setIsCropMode(prev => !prev)
         }
       }
     }
@@ -1083,12 +1126,14 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     try {
       // Step 1: Run AI tagging
       const tagResult = await window.api.aiTools?.generateTags?.(media.id)
+      if (!isMountedRef.current) return
       if (tagResult?.success && tagResult.applied > 0) {
         results.push(`${tagResult.applied} tags`)
       }
 
       // Step 2: Run deep video analysis
       const analysisRes = await window.api.videoAnalysis?.analyze?.(media.id)
+      if (!isMountedRef.current) return
       if (analysisRes?.success) {
         const scenes = analysisRes.analysis?.scenes?.length ?? 0
         if (scenes > 0) results.push(`${scenes} scenes`)
@@ -1096,6 +1141,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
 
       // Step 3: Suggest and apply AI filename
       const renameResult = await window.api.aiTools?.suggestFilename?.(media.id)
+      if (!isMountedRef.current) return
       if (renameResult?.success && renameResult.suggestedName) {
         results.push(`renamed`)
       }
@@ -1103,13 +1149,14 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       setAnalysisResult(results.length > 0 ? `AI: ${results.join(', ')}` : 'Analysis complete')
 
       // Auto-hide result after 5 seconds
-      setTimeout(() => setAnalysisResult(null), 5000)
+      setTimeout(() => { if (isMountedRef.current) setAnalysisResult(null) }, 5000)
     } catch (e: any) {
+      if (!isMountedRef.current) return
       console.error('[AI Analyze] Error:', e)
       setAnalysisResult(`Error: ${e.message}`)
-      setTimeout(() => setAnalysisResult(null), 3000)
+      setTimeout(() => { if (isMountedRef.current) setAnalysisResult(null) }, 3000)
     } finally {
-      setIsAnalyzing(false)
+      if (isMountedRef.current) setIsAnalyzing(false)
     }
   }
 
@@ -1128,6 +1175,18 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         zIndex: 9998,
         cursor: 'default'
       }
+    : isMiniMode
+    ? {
+        position: 'fixed',
+        left: position.x,
+        top: position.y,
+        width: miniModeSize.width,
+        height: miniModeSize.height,
+        zIndex: 9500, // Higher z-index for mini player
+        cursor: isDragging ? 'grabbing' : 'default',
+        borderRadius: '12px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
+      }
     : {
         position: 'fixed',
         left: position.x,
@@ -1145,8 +1204,8 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       style={containerStyle}
       onMouseMove={resetHideControlsTimer}
     >
-      {/* Resize handles (not in fullscreen or theater mode) */}
-      {!isFullscreen && !isTheaterMode && (
+      {/* Resize handles (not in fullscreen, theater, or mini mode) */}
+      {!isFullscreen && !isTheaterMode && !isMiniMode && (
         <>
           {/* Edge handles */}
           <div
@@ -1222,7 +1281,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       )}
 
       {/* Draggable header (not in fullscreen or theater mode) */}
-      {!isFullscreen && (
+      {!isFullscreen && !isMiniMode && (
         <div
           className={`absolute top-0 left-0 right-0 h-9 bg-gradient-to-b from-black/90 to-transparent z-10 flex items-center justify-between px-3 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}
           onMouseDown={isTheaterMode ? undefined : handleMouseDown}
@@ -1241,6 +1300,13 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                 <PictureInPicture2 size={14} />
               </button>
             )}
+            <button
+              onClick={toggleMiniMode}
+              className="p-1 hover:bg-white/20 rounded transition"
+              title="Mini Player"
+            >
+              <Minus size={14} />
+            </button>
             <button
               onClick={() => setIsTheaterMode(prev => !prev)}
               className={`p-1 hover:bg-white/20 rounded transition ${isTheaterMode ? 'text-purple-400 bg-white/10' : ''}`}
@@ -1263,6 +1329,54 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               <X size={14} />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Mini mode overlay - simplified UI */}
+      {isMiniMode && (
+        <div
+          className="absolute inset-0 z-20 flex flex-col cursor-grab"
+          onMouseDown={handleMouseDown}
+        >
+          {/* Mini header with controls */}
+          <div className="absolute top-0 left-0 right-0 flex items-center justify-end gap-0.5 p-1 bg-gradient-to-b from-black/80 to-transparent no-drag">
+            <button
+              onClick={(e) => { e.stopPropagation(); toggleMiniMode() }}
+              className="p-1 hover:bg-white/30 rounded transition"
+              title="Expand"
+            >
+              <Square size={12} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onClose() }}
+              className="p-1 hover:bg-red-500/50 rounded transition"
+              title="Close"
+            >
+              <X size={12} />
+            </button>
+          </div>
+          {/* Click to play/pause overlay */}
+          {media.type === 'video' && (
+            <div
+              className="flex-1 flex items-center justify-center cursor-pointer no-drag"
+              onClick={(e) => { e.stopPropagation(); togglePlay() }}
+            >
+              {isPaused && (
+                <div className="p-2 rounded-full bg-black/50 backdrop-blur-sm">
+                  <Play size={20} className="text-white" />
+                </div>
+              )}
+            </div>
+          )}
+          {/* Mini progress bar for videos */}
+          {media.type === 'video' && duration > 0 && (
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10">
+              <div
+                className="h-full bg-[var(--primary)]"
+                style={{ width: `${(currentTime / duration) * 100}%` }}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -1310,44 +1424,170 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       {/* Video/Image - only render when URL is ready */}
       {media.type === 'video' ? (
         url ? (
-          <video
-            ref={videoRef}
-            src={url}
-            autoPlay
-            loop
-            playsInline
-            preload="auto"
-            className={`w-full h-full object-contain bg-black ${isFullscreen ? '' : ''}`}
-            style={lowQualityMode ? {
-              filter: `blur(${lowQualityIntensity * 0.15}px) contrast(${1 + lowQualityIntensity * 0.05}) saturate(${Math.max(0.5, 1 - lowQualityIntensity * 0.05)})`,
-              imageRendering: lowQualityIntensity > 5 ? 'pixelated' : 'auto',
-            } : undefined}
-            onClick={togglePlay}
-            onCanPlay={handleCanPlay}
-            onLoadedMetadata={(e) => {
-              // Capture actual video dimensions and set aspect ratio - only once per video
-              if (aspectRatioSet.current) return
-              const video = e.currentTarget
-              if (video.videoWidth && video.videoHeight) {
-                aspectRatioSet.current = true
-                const ratio = video.videoWidth / video.videoHeight
-                setAspectRatio(ratio)
-                // Adjust size to match video aspect ratio
-                setSize(prev => ({
-                  width: prev.width,
-                  height: prev.width / ratio
-                }))
-              }
-              console.log('[FloatingPlayer] Metadata loaded:', media.path, { width: video.videoWidth, height: video.videoHeight })
-            }}
-            onError={handleError}
-            onTimeUpdate={handleTimeUpdate}
-            onPlay={handleVideoPlay}
-            onPause={() => setIsPaused(true)}
-            onStalled={() => console.warn('[FloatingPlayer] Video stalled:', media.path)}
-            onWaiting={() => setIsLoading(true)}
-            onPlaying={() => setIsLoading(false)}
-          />
+          <div className="relative w-full h-full">
+            <video
+              ref={videoRef}
+              src={url}
+              autoPlay
+              loop
+              playsInline
+              preload="auto"
+              className={`w-full h-full object-contain bg-black ${isFullscreen ? '' : ''}`}
+              style={{
+                ...(lowQualityMode ? {
+                  filter: `blur(${lowQualityIntensity * 0.15}px) contrast(${1 + lowQualityIntensity * 0.05}) saturate(${Math.max(0.5, 1 - lowQualityIntensity * 0.05)})`,
+                  imageRendering: lowQualityIntensity > 5 ? 'pixelated' : 'auto' as const,
+                } : {}),
+                // Apply crop via clip-path
+                ...((cropValues.top > 0 || cropValues.right > 0 || cropValues.bottom > 0 || cropValues.left > 0) ? {
+                  clipPath: `inset(${cropValues.top}% ${cropValues.right}% ${cropValues.bottom}% ${cropValues.left}%)`,
+                } : {}),
+              }}
+              onClick={isCropMode ? undefined : togglePlay}
+              onDoubleClick={isCropMode ? undefined : toggleFullscreen}
+              onCanPlay={handleCanPlay}
+              onLoadedMetadata={(e) => {
+                // Capture actual video dimensions and set aspect ratio - only once per video
+                if (aspectRatioSet.current) return
+                const video = e.currentTarget
+                if (video.videoWidth && video.videoHeight) {
+                  aspectRatioSet.current = true
+                  const ratio = video.videoWidth / video.videoHeight
+                  setAspectRatio(ratio)
+                  // Adjust size to match video aspect ratio
+                  setSize(prev => ({
+                    width: prev.width,
+                    height: prev.width / ratio
+                  }))
+                }
+                console.log('[FloatingPlayer] Metadata loaded:', media.path, { width: video.videoWidth, height: video.videoHeight })
+              }}
+              onError={handleError}
+              onTimeUpdate={handleTimeUpdate}
+              onPlay={handleVideoPlay}
+              onPause={() => setIsPaused(true)}
+              onStalled={() => console.warn('[FloatingPlayer] Video stalled:', media.path)}
+              onWaiting={() => setIsLoading(true)}
+              onPlaying={() => setIsLoading(false)}
+            />
+            {/* Crop mode overlay with handles */}
+            {isCropMode && (
+              <div className="absolute inset-0 z-10">
+                {/* Semi-transparent overlay showing cropped areas */}
+                <div className="absolute inset-0 pointer-events-none">
+                  <div className="absolute bg-black/60" style={{ top: 0, left: 0, right: 0, height: `${cropValues.top}%` }} />
+                  <div className="absolute bg-black/60" style={{ bottom: 0, left: 0, right: 0, height: `${cropValues.bottom}%` }} />
+                  <div className="absolute bg-black/60" style={{ top: `${cropValues.top}%`, left: 0, bottom: `${cropValues.bottom}%`, width: `${cropValues.left}%` }} />
+                  <div className="absolute bg-black/60" style={{ top: `${cropValues.top}%`, right: 0, bottom: `${cropValues.bottom}%`, width: `${cropValues.right}%` }} />
+                </div>
+                {/* Crop handles */}
+                <div
+                  className="absolute left-1/2 -translate-x-1/2 w-12 h-3 bg-white/80 rounded cursor-ns-resize hover:bg-white"
+                  style={{ top: `${cropValues.top}%` }}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    const startY = e.clientY
+                    const startVal = cropValues.top
+                    const container = containerRef.current?.getBoundingClientRect()
+                    if (!container) return
+                    const onMove = (ev: MouseEvent) => {
+                      const delta = ((ev.clientY - startY) / container.height) * 100
+                      setCropValues(v => ({ ...v, top: Math.max(0, Math.min(50, startVal + delta)) }))
+                    }
+                    const onUp = () => {
+                      window.removeEventListener('mousemove', onMove)
+                      window.removeEventListener('mouseup', onUp)
+                    }
+                    window.addEventListener('mousemove', onMove)
+                    window.addEventListener('mouseup', onUp)
+                  }}
+                />
+                <div
+                  className="absolute left-1/2 -translate-x-1/2 w-12 h-3 bg-white/80 rounded cursor-ns-resize hover:bg-white"
+                  style={{ bottom: `${cropValues.bottom}%` }}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    const startY = e.clientY
+                    const startVal = cropValues.bottom
+                    const container = containerRef.current?.getBoundingClientRect()
+                    if (!container) return
+                    const onMove = (ev: MouseEvent) => {
+                      const delta = ((startY - ev.clientY) / container.height) * 100
+                      setCropValues(v => ({ ...v, bottom: Math.max(0, Math.min(50, startVal + delta)) }))
+                    }
+                    const onUp = () => {
+                      window.removeEventListener('mousemove', onMove)
+                      window.removeEventListener('mouseup', onUp)
+                    }
+                    window.addEventListener('mousemove', onMove)
+                    window.addEventListener('mouseup', onUp)
+                  }}
+                />
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 w-3 h-12 bg-white/80 rounded cursor-ew-resize hover:bg-white"
+                  style={{ left: `${cropValues.left}%` }}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    const startX = e.clientX
+                    const startVal = cropValues.left
+                    const container = containerRef.current?.getBoundingClientRect()
+                    if (!container) return
+                    const onMove = (ev: MouseEvent) => {
+                      const delta = ((ev.clientX - startX) / container.width) * 100
+                      setCropValues(v => ({ ...v, left: Math.max(0, Math.min(50, startVal + delta)) }))
+                    }
+                    const onUp = () => {
+                      window.removeEventListener('mousemove', onMove)
+                      window.removeEventListener('mouseup', onUp)
+                    }
+                    window.addEventListener('mousemove', onMove)
+                    window.addEventListener('mouseup', onUp)
+                  }}
+                />
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 w-3 h-12 bg-white/80 rounded cursor-ew-resize hover:bg-white"
+                  style={{ right: `${cropValues.right}%` }}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    const startX = e.clientX
+                    const startVal = cropValues.right
+                    const container = containerRef.current?.getBoundingClientRect()
+                    if (!container) return
+                    const onMove = (ev: MouseEvent) => {
+                      const delta = ((startX - ev.clientX) / container.width) * 100
+                      setCropValues(v => ({ ...v, right: Math.max(0, Math.min(50, startVal + delta)) }))
+                    }
+                    const onUp = () => {
+                      window.removeEventListener('mousemove', onMove)
+                      window.removeEventListener('mouseup', onUp)
+                    }
+                    window.addEventListener('mousemove', onMove)
+                    window.addEventListener('mouseup', onUp)
+                  }}
+                />
+                {/* Crop mode indicator */}
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-black/80 rounded-full text-xs text-white flex items-center gap-2">
+                  <Crop size={12} />
+                  Crop Mode - Drag handles to adjust
+                </div>
+                {/* Done/Reset buttons */}
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-2">
+                  <button
+                    onClick={() => setCropValues({ top: 0, right: 0, bottom: 0, left: 0 })}
+                    className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-xs text-white"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    onClick={() => setIsCropMode(false)}
+                    className="px-3 py-1 bg-green-500/80 hover:bg-green-500 rounded text-xs text-white"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="w-full h-full bg-black" />
         )
@@ -1393,7 +1633,8 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         )
       )}
 
-      {/* Bottom controls */}
+      {/* Bottom controls (hidden in mini mode) */}
+      {!isMiniMode && (
       <div
         className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}
         style={{ padding: isFullscreen ? '20px' : '12px' }}
@@ -1404,6 +1645,15 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
             ref={progressRef}
             className="w-full h-1.5 bg-white/20 rounded-full mb-3 cursor-pointer group relative"
             onClick={handleProgressClick}
+            onMouseMove={(e) => {
+              if (progressRef.current && duration > 0) {
+                const rect = progressRef.current.getBoundingClientRect()
+                const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+                const time = percent * duration
+                setProgressHover({ x: e.clientX - rect.left, time })
+              }
+            }}
+            onMouseLeave={() => setProgressHover(null)}
             onContextMenu={(e) => {
               e.preventDefault()
               if (progressRef.current && duration > 0) {
@@ -1422,6 +1672,15 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
             >
               <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition" />
             </div>
+            {/* Hover time tooltip */}
+            {progressHover && (
+              <div
+                className="absolute -top-8 px-2 py-1 bg-black/90 rounded-md text-[11px] text-white font-medium pointer-events-none z-20 transform -translate-x-1/2"
+                style={{ left: progressHover.x }}
+              >
+                {formatDuration(progressHover.time)}
+              </div>
+            )}
             {/* Markers */}
             {markers.map((marker) => (
               <div
@@ -1672,12 +1931,62 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               </div>
             )}
 
+            {/* Crop control */}
+            {media.type === 'video' && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowCropMenu(prev => !prev)}
+                  className={`p-2 rounded-lg transition ${(cropValues.top > 0 || cropValues.right > 0 || cropValues.bottom > 0 || cropValues.left > 0) ? 'bg-yellow-500/80 text-white' : 'bg-white/10 hover:bg-white/20'}`}
+                  title="Crop Video (C)"
+                >
+                  <Crop size={16} />
+                </button>
+                {showCropMenu && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 py-1 bg-black/95 rounded-lg border border-white/20 min-w-[120px]">
+                    <button
+                      onClick={() => { setIsCropMode(true); setShowCropMenu(false) }}
+                      className="w-full px-3 py-1.5 text-[11px] text-left hover:bg-white/10 transition text-white/80"
+                    >
+                      Edit Crop...
+                    </button>
+                    <button
+                      onClick={() => { setCropValues({ top: 5, right: 5, bottom: 5, left: 5 }); setShowCropMenu(false) }}
+                      className="w-full px-3 py-1.5 text-[11px] text-left hover:bg-white/10 transition text-white/80"
+                    >
+                      Light (5%)
+                    </button>
+                    <button
+                      onClick={() => { setCropValues({ top: 10, right: 10, bottom: 10, left: 10 }); setShowCropMenu(false) }}
+                      className="w-full px-3 py-1.5 text-[11px] text-left hover:bg-white/10 transition text-white/80"
+                    >
+                      Medium (10%)
+                    </button>
+                    <button
+                      onClick={() => { setCropValues({ top: 15, right: 15, bottom: 15, left: 15 }); setShowCropMenu(false) }}
+                      className="w-full px-3 py-1.5 text-[11px] text-left hover:bg-white/10 transition text-white/80"
+                    >
+                      Heavy (15%)
+                    </button>
+                    {(cropValues.top > 0 || cropValues.right > 0 || cropValues.bottom > 0 || cropValues.left > 0) && (
+                      <button
+                        onClick={() => { setCropValues({ top: 0, right: 0, bottom: 0, left: 0 }); setShowCropMenu(false) }}
+                        className="w-full px-3 py-1.5 text-[11px] text-left hover:bg-white/10 transition text-red-400 border-t border-white/10"
+                      >
+                        Reset Crop
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <button
               onClick={handleToggleLike}
-              className={`p-2 rounded-lg transition ${isLiked ? 'bg-pink-500/80 shadow-[0_0_12px_rgba(236,72,153,0.5)]' : 'bg-white/10 hover:bg-pink-500/60'}`}
+              disabled={isLikeLoading}
+              className={`p-2 rounded-lg transition ${isLiked ? 'bg-pink-500/80 shadow-[0_0_12px_rgba(236,72,153,0.5)]' : 'bg-white/10 hover:bg-pink-500/60'} ${isLikeLoading ? 'opacity-50 cursor-wait' : ''}`}
               title={isLiked ? 'Unlike (L)' : 'Like (L)'}
             >
-              <Heart size={16} className={isLiked ? 'fill-current' : ''} />
+              <Heart size={16} className={`${isLiked ? 'fill-current' : ''} ${isLikeLoading ? 'animate-pulse' : ''}`} />
             </button>
 
             {media.type === 'video' && (
@@ -1862,6 +2171,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
           </div>
         </div>
       </div>
+      )}
 
       {/* Fullscreen header (only in fullscreen) */}
       {isFullscreen && (

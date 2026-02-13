@@ -21,10 +21,12 @@ import { useHeatLevel } from './components/HeatOverlay'
 import { ArousalEffects, CumCountdownOverlay, HeartsOverlay, RainOverlay, GlitchOverlay, BubblesOverlay, MatrixRainOverlay, ConfettiOverlay } from './components/VisualStimulants'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { fisherYatesShuffle, shuffleTake, randomPick } from './utils/shuffle'
+import { formatDuration, formatBytes } from './utils/formatters'
 import { cleanupVideo, useVideoPool, videoPool } from './hooks/useVideoCleanup'
 import { useAnime } from './hooks/useAnime'
 import { useConfetti } from './hooks/useConfetti'
 import { useUiSounds } from './hooks/useUiSounds'
+import { useAmbienceAudio } from './hooks/useAmbienceAudio'
 import { FloatingVideoPlayer } from './components/FloatingVideoPlayer'
 import { WatchLaterPanel } from './components/WatchLaterPanel'
 import { MediaNotesPanel } from './components/MediaNotesPanel'
@@ -94,10 +96,31 @@ import {
   FolderPlus,
   Github,
   MessageCircle,
-  Code
+  Code,
+  Palette,
+  Keyboard,
+  Wand2,
+  Command,
+  MoreHorizontal,
+  ScanLine,
+  Tags,
+  FileSearch,
+  Ban,
+  Dice5,
+  Tv
 } from 'lucide-react'
 import { playGreeting, playSoundFromCategory, playClimaxForType, hasSounds } from './utils/soundPlayer'
 import vaultLogo from './assets/vault-logo.png'
+
+// CRT Overlay assets
+import tvBorderSvg from './assets/overlays/tv-border.svg'
+import thumbnailLoadingGif from './assets/overlays/thumbnail-loading.gif'
+import glitchTv1 from './assets/overlays/glitch-tv-1.gif'
+import glitchTv2 from './assets/overlays/glitch-tv-2.gif'
+import glitchTv3 from './assets/overlays/glitch-tv-3.gif'
+
+// Available CRT glitch GIF overlays
+const CRT_GLITCH_GIFS = [glitchTv1, glitchTv2, glitchTv3]
 
 //
 // GLOBAL TASK CONTEXT - Track running background tasks across the app
@@ -152,7 +175,7 @@ function GlobalProgressBar() {
               <span className="text-xs text-white/60 w-10 text-right">{task.progress}%</span>
               {task.progress >= 100 && (
                 <button
-                  onClick={() => removeTask(task.id)}
+                  onClick={(e) => { e.stopPropagation(); removeTask(task.id) }}
                   className="p-1 hover:bg-white/10 rounded transition"
                 >
                   <X size={12} className="text-white/60" />
@@ -224,7 +247,7 @@ function ToastContainer() {
           {getToastIcon(toast.type)}
           <span className="flex-1">{toast.message}</span>
           <button
-            onClick={() => dismissToast(toast.id)}
+            onClick={(e) => { e.stopPropagation(); dismissToast(toast.id) }}
             className="p-1 hover:bg-white/20 rounded transition"
           >
             <X size={14} />
@@ -392,6 +415,26 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
         hideContextMenu()
       }
     },
+    {
+      label: 'Rename',
+      icon: <Edit2 size={14} />,
+      action: async () => {
+        if (contextMenu.mediaId && contextMenu.mediaData?.filename) {
+          const currentName = contextMenu.mediaData.filename
+          const newName = window.prompt('Enter new filename:', currentName)
+          if (newName && newName.trim() && newName !== currentName) {
+            try {
+              await window.api.media?.rename?.(contextMenu.mediaId, newName.trim())
+              showToast('success', 'Renamed successfully')
+              window.dispatchEvent(new CustomEvent('media-renamed', { detail: { mediaId: contextMenu.mediaId } }))
+            } catch (e: any) {
+              showToast('error', e?.message || 'Failed to rename')
+            }
+          }
+        }
+        hideContextMenu()
+      }
+    },
     { type: 'separator' as const },
     {
       label: 'Rate 5 Stars',
@@ -419,6 +462,47 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
           // Update daily challenge progress for rating items
           window.api.challenges?.updateProgress?.('rate_items', 1)
           showToast('success', newRating === 5 ? 'Added to favorites' : 'Removed from favorites')
+        }
+        hideContextMenu()
+      }
+    },
+    {
+      label: 'Queue for AI Analysis',
+      icon: <Sparkles size={14} />,
+      action: async () => {
+        if (contextMenu.mediaId && contextMenu.mediaData?.type === 'video') {
+          try {
+            await window.api.ai?.queueForAnalysis?.([contextMenu.mediaId])
+            showToast('success', 'Added to AI analysis queue')
+          } catch (e) {
+            showToast('error', 'Failed to queue for analysis')
+          }
+        } else {
+          showToast('info', 'AI analysis is only available for videos')
+        }
+        hideContextMenu()
+      }
+    },
+    {
+      label: 'Add to Blacklist',
+      icon: <Ban size={14} />,
+      action: async () => {
+        if (contextMenu.mediaId) {
+          try {
+            const settings = await window.api.settings.get()
+            const blacklist = settings?.blacklist ?? { enabled: true, tags: [], mediaIds: [] }
+            if (!blacklist.mediaIds.includes(contextMenu.mediaId)) {
+              blacklist.mediaIds.push(contextMenu.mediaId)
+              await window.api.settings.update?.({ blacklist })
+              showToast('success', 'Added to blacklist')
+              // Trigger refresh
+              window.dispatchEvent(new CustomEvent('media-blacklisted', { detail: { mediaId: contextMenu.mediaId } }))
+            } else {
+              showToast('info', 'Already in blacklist')
+            }
+          } catch (e) {
+            showToast('error', 'Failed to add to blacklist')
+          }
         }
         hideContextMenu()
       }
@@ -461,7 +545,14 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
           return (
             <button
               key={i}
-              onClick={item.action}
+              onClick={async (e) => {
+                e.stopPropagation()
+                try {
+                  await item.action?.()
+                } catch (err) {
+                  console.error('[ContextMenu] Action failed:', err)
+                }
+              }}
               className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition ${
                 item.danger
                   ? 'text-red-400 hover:bg-red-500/20'
@@ -566,6 +657,15 @@ interface VisualEffectsSettings {
   crtRgbSubpixels: boolean
   crtChromaticAberration: boolean
   crtScreenFlicker: boolean
+  crtGlitchGif: number | null
+  tvBorder: boolean
+  tvBorderGlass: boolean
+  tvBorderGlassOpacity: number
+  tvBorderPadding: number
+  tvBorderStyle: 'classic' | 'modern' | 'retro' | 'minimal'
+  pipBoy: boolean
+  pipBoyColor: 'green' | 'amber' | 'blue' | 'white'
+  pipBoyIntensity: number
   heatLevel: number
   goonWords: GoonWordsSettings
   // New ambient overlays
@@ -632,18 +732,25 @@ type VaultSettings = {
     mediaDirs?: string[]
     cacheDir?: string
     thumbnailQuality?: 'low' | 'medium' | 'high'
+    previewQuality?: 'low' | 'medium' | 'high'
     scanOnStartup?: boolean
     watchForNewFiles?: boolean
     cacheSizeLimitMB?: number
+    disableHoverPreviews?: boolean
+    maxConcurrentVideos?: number
+    memoryCacheSize?: number
+    preloadMargin?: number
   }
   appearance?: {
     themeId?: string
     thumbnailSize?: 'small' | 'medium' | 'large'
     colorBlindMode?: 'none' | 'protanopia' | 'deuteranopia' | 'tritanopia' | 'highContrast'
     fontSize?: 'small' | 'medium' | 'large'
+    fontStyle?: 'default' | 'degrading' | '80s-hacker' | 'perverse' | 'neon' | 'retro' | 'gothic'
     animationSpeed?: 'none' | 'reduced' | 'full'
     accentColor?: string
     compactMode?: boolean
+    reduceAnimations?: boolean
   }
   playback?: {
     defaultVolume?: number
@@ -714,6 +821,12 @@ type VaultSettings = {
   visualEffects?: VisualEffectsSettings
   goonStats?: GoonStats
   sound?: SoundSettings
+  performance?: {
+    maxMemoryMB?: number
+    thumbnailCacheSize?: number
+    videoConcurrency?: number
+    lowMemoryMode?: boolean
+  }
 }
 
 declare global {
@@ -726,26 +839,48 @@ function cn(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ')
 }
 
-function formatBytes(n: number) {
-  if (!Number.isFinite(n)) return ''
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let v = n
-  let i = 0
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024
-    i += 1
-  }
-  return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-}
+// Animated counter component for visual interest
+function AnimatedCounter({ value, duration = 1000, className = '' }: { value: number; duration?: number; className?: string }) {
+  const [displayValue, setDisplayValue] = useState(0)
+  const startRef = useRef<number | null>(null)
+  const frameRef = useRef<number>(0)
+  const prevValueRef = useRef(0)
 
-function formatDuration(sec: number | null | undefined) {
-  if (!sec || sec <= 0) return ''
-  const s = Math.floor(sec)
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  const r = s % 60
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
-  return `${m}:${String(r).padStart(2, '0')}`
+  useEffect(() => {
+    const startValue = prevValueRef.current
+    const diff = value - startValue
+
+    if (diff === 0) return
+
+    const startTime = performance.now()
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime
+      const progress = Math.min(elapsed / duration, 1)
+
+      // Ease out cubic for smooth deceleration
+      const eased = 1 - Math.pow(1 - progress, 3)
+      const current = Math.floor(startValue + diff * eased)
+
+      setDisplayValue(current)
+
+      if (progress < 1) {
+        frameRef.current = requestAnimationFrame(animate)
+      } else {
+        prevValueRef.current = value
+      }
+    }
+
+    frameRef.current = requestAnimationFrame(animate)
+
+    return () => {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current)
+      }
+    }
+  }, [value, duration])
+
+  return <span className={cn('count-up', className)}>{displayValue.toLocaleString()}</span>
 }
 
 // Use themes from our theme system
@@ -786,6 +921,9 @@ type NavId = (typeof NAV)[number]['id']
 
 export default function App() {
   const [page, setPage] = useState<NavId>('home')
+  const [prevPage, setPrevPage] = useState<NavId>('home')
+  const [pageTransition, setPageTransition] = useState<'enter' | 'exit' | null>(null)
+  const [fabOpen, setFabOpen] = useState(false)
   const [settings, setSettings] = useState<VaultSettings | null>(null)
   const [sessionActive, setSessionActive] = useState(false)
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
@@ -811,6 +949,19 @@ export default function App() {
   const [crtRgbSubpixels, setCrtRgbSubpixels] = useState(true) // RGB subpixel simulation
   const [crtChromaticAberration, setCrtChromaticAberration] = useState(true) // Color separation at edges
   const [crtScreenFlicker, setCrtScreenFlicker] = useState(true) // Random brightness flicker
+  const [crtGlitchGifIndex, setCrtGlitchGifIndex] = useState<number | null>(null) // Active CRT glitch GIF (null = none)
+
+  // Standalone TV Border with Glass
+  const [tvBorderEnabled, setTvBorderEnabled] = useState(false)
+  const [tvBorderGlass, setTvBorderGlass] = useState(true)
+  const [tvBorderGlassOpacity, setTvBorderGlassOpacity] = useState(0.15)
+  const [tvBorderPadding, setTvBorderPadding] = useState(3)
+  const [tvBorderStyle, setTvBorderStyle] = useState<'classic' | 'modern' | 'retro' | 'minimal'>('classic')
+
+  // Pip-Boy / Fallout style overlay
+  const [pipBoyEnabled, setPipBoyEnabled] = useState(false)
+  const [pipBoyColor, setPipBoyColor] = useState<'green' | 'amber' | 'blue' | 'white'>('green')
+  const [pipBoyIntensity, setPipBoyIntensity] = useState(5)
 
   // New ambient overlays
   const [heartsEnabled, setHeartsEnabled] = useState(false) // Floating hearts
@@ -822,6 +973,13 @@ export default function App() {
 
   // Keyboard shortcuts help modal
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
+
+  // Quick Actions panel state
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false)
+  const [showKeybindsEditor, setShowKeybindsEditor] = useState(false)
+
+  // Untagged media count for AI badge
+  const [untaggedCount, setUntaggedCount] = useState(0)
 
   // Command Palette (Ctrl+K) - quick actions search
   const [showCommandPalette, setShowCommandPalette] = useState(false)
@@ -956,21 +1114,30 @@ export default function App() {
     removeTask: removeGlobalTask
   }), [globalTasks, addGlobalTask, updateGlobalTask, removeGlobalTask])
 
-  // Toast notification state
+  // Toast notification state with proper timer cleanup
   const [toasts, setToasts] = useState<Toast[]>([])
+  const toastTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   const showToast = useCallback((type: ToastType, message: string, duration: number = 4000) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`
     setToasts(prev => [...prev, { id, type, message, duration }])
-    // Auto-dismiss
+    // Auto-dismiss with tracked timer
     if (duration > 0) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        toastTimersRef.current.delete(id)
         setToasts(prev => prev.filter(t => t.id !== id))
       }, duration)
+      toastTimersRef.current.set(id, timer)
     }
   }, [])
 
   const dismissToast = useCallback((id: string) => {
+    // Clear timer when manually dismissed
+    const timer = toastTimersRef.current.get(id)
+    if (timer) {
+      clearTimeout(timer)
+      toastTimersRef.current.delete(id)
+    }
     setToasts(prev => prev.filter(t => t.id !== id))
   }, [])
 
@@ -1017,6 +1184,14 @@ export default function App() {
   const anime = useAnime()
   const confetti = useConfetti()
   useUiSounds(settings?.uiSoundsEnabled ?? true)
+
+  // Ambient audio playback
+  useAmbienceAudio(settings?.sound ? {
+    enabled: settings.sound.ambienceEnabled ?? false,
+    track: settings.sound.ambienceTrack ?? 'none',
+    volume: settings.sound.ambienceVolume ?? 0.3
+  } : null)
+
   const mainContentRef = useRef<HTMLElement>(null)
   const prevPageRef = useRef<string>(page)
 
@@ -1065,8 +1240,27 @@ export default function App() {
     confetti.fireworks()
   }, [heatLevel, confetti])
 
-  // Random climax trigger effect
+  // Smooth page navigation with transition
+  const navigateTo = useCallback((newPage: NavId) => {
+    if (newPage === page) return
+    setPrevPage(page)
+    setPageTransition('exit')
+    setTimeout(() => {
+      setPage(newPage)
+      setPageTransition('enter')
+      setTimeout(() => setPageTransition(null), 250)
+    }, 150)
+  }, [page])
+
+  // Random climax trigger effect - use ref to properly track timer across recursive scheduling
+  const climaxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
+    // Clear any existing timer on re-run or disable
+    if (climaxTimerRef.current) {
+      clearTimeout(climaxTimerRef.current)
+      climaxTimerRef.current = null
+    }
+
     if (!randomClimaxEnabled) return
 
     // Random interval between 30-90 seconds based on heat level
@@ -1078,20 +1272,23 @@ export default function App() {
 
     const scheduleNextClimax = () => {
       const interval = getRandomInterval()
-      return setTimeout(() => {
+      climaxTimerRef.current = setTimeout(() => {
         // Randomly pick climax type
         const types: Array<'cum' | 'squirt' | 'orgasm'> = ['cum', 'squirt', 'orgasm']
         const randomType = types[Math.floor(Math.random() * types.length)]
         triggerClimax(randomType)
         // Schedule next one
-        if (randomClimaxEnabled) {
-          timerId = scheduleNextClimax()
-        }
+        scheduleNextClimax()
       }, interval)
     }
 
-    let timerId = scheduleNextClimax()
-    return () => clearTimeout(timerId)
+    scheduleNextClimax()
+    return () => {
+      if (climaxTimerRef.current) {
+        clearTimeout(climaxTimerRef.current)
+        climaxTimerRef.current = null
+      }
+    }
   }, [randomClimaxEnabled, heatLevel, triggerClimax])
 
   const [selected, setSelected] = useState<string[]>([])
@@ -1120,12 +1317,34 @@ export default function App() {
     }
   }, [])
 
+  // Fetch untagged media count for AI badge
+  useEffect(() => {
+    const fetchUntaggedCount = async () => {
+      try {
+        const result = await window.api.invoke('ai:get-untagged-count')
+        setUntaggedCount(typeof result === 'number' ? result : 0)
+      } catch {
+        // API might not exist, that's ok
+      }
+    }
+    fetchUntaggedCount()
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchUntaggedCount, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
   // Apply theme using our theme system
   useEffect(() => {
     // Try new settings structure first, fall back to legacy
     const themeId = settings?.appearance?.themeId ?? settings?.ui?.themeId ?? 'obsidian'
     applyThemeCSS(themeId as ThemeId)
   }, [settings?.appearance?.themeId, settings?.ui?.themeId])
+
+  // Apply font style from settings
+  useEffect(() => {
+    const fontStyle = settings?.appearance?.fontStyle ?? 'default'
+    document.documentElement.setAttribute('data-font-style', fontStyle)
+  }, [settings?.appearance?.fontStyle])
 
   // Sync visual effects from settings
   useEffect(() => {
@@ -1142,6 +1361,7 @@ export default function App() {
       if (ve.crtRgbSubpixels !== undefined) setCrtRgbSubpixels(ve.crtRgbSubpixels)
       if (ve.crtChromaticAberration !== undefined) setCrtChromaticAberration(ve.crtChromaticAberration)
       if (ve.crtScreenFlicker !== undefined) setCrtScreenFlicker(ve.crtScreenFlicker)
+      if (ve.crtGlitchGif !== undefined) setCrtGlitchGifIndex(ve.crtGlitchGif)
       if (ve.heatLevel !== undefined) setAmbientHeatLevel(ve.heatLevel)
       if (ve.goonWords?.enabled !== undefined) setGoonModeEnabled(ve.goonWords.enabled)
       // New ambient overlays
@@ -1389,6 +1609,77 @@ export default function App() {
 
       {/* Toast Notifications */}
       <ToastContainer />
+
+      {/* Floating Action Button */}
+      {!zenMode && page !== 'goonwall' && page !== 'feed' && (
+        <>
+          {fabOpen && (
+            <div className="fab-menu">
+              <button
+                className="fab-menu-item"
+                onClick={() => {
+                  // Play random video
+                  window.api.media.getAll().then((all: any[]) => {
+                    const videos = all.filter((m: any) => m.type === 'video')
+                    if (videos.length > 0) {
+                      const random = videos[Math.floor(Math.random() * videos.length)]
+                      navigateTo('library')
+                      setTimeout(() => {
+                        sessionStorage.setItem('vault_pending_media', random.id)
+                        window.dispatchEvent(new Event('vault_pending_media_check'))
+                      }, 300)
+                    }
+                  })
+                  setFabOpen(false)
+                }}
+                title="Play Random Video"
+              >
+                <Dice5 size={20} />
+              </button>
+              <button
+                className="fab-menu-item"
+                onClick={() => {
+                  navigateTo('goonwall')
+                  setFabOpen(false)
+                }}
+                title="Open Goon Wall"
+              >
+                <Tv size={20} />
+              </button>
+              <button
+                className="fab-menu-item"
+                onClick={() => {
+                  navigateTo('feed')
+                  setFabOpen(false)
+                }}
+                title="Open Feed"
+              >
+                <Flame size={20} />
+              </button>
+              <button
+                className="fab-menu-item"
+                onClick={() => {
+                  // Navigate to library and signal to open Watch Later panel
+                  sessionStorage.setItem('vault_open_watch_later', 'true')
+                  navigateTo('library')
+                  setFabOpen(false)
+                }}
+                title="Watch Later Queue"
+              >
+                <Clock size={20} />
+              </button>
+            </div>
+          )}
+          <button
+            className="fab"
+            onClick={() => setFabOpen(!fabOpen)}
+            title="Quick Actions"
+          >
+            <Plus size={24} className={cn('transition-transform duration-300', fabOpen && 'rotate-45')} />
+          </button>
+        </>
+      )}
+
       {/* Context Menu */}
       <ContextMenuOverlay
         onAddToPlaylist={handleContextMenuAddToPlaylist}
@@ -1439,6 +1730,17 @@ export default function App() {
           crtRgbSubpixels={crtRgbSubpixels}
           crtChromaticAberration={crtChromaticAberration}
           crtScreenFlicker={crtScreenFlicker}
+          crtTvBorderImage={tvBorderSvg}
+          crtActiveGlitchGif={crtGlitchGifIndex !== null ? CRT_GLITCH_GIFS[crtGlitchGifIndex] : undefined}
+          tvBorderEnabled={tvBorderEnabled}
+          tvBorderImage={tvBorderSvg}
+          tvBorderGlass={tvBorderGlass}
+          tvBorderGlassOpacity={tvBorderGlassOpacity}
+          tvBorderPadding={tvBorderPadding}
+          tvBorderStyle={tvBorderStyle}
+          pipBoyEnabled={pipBoyEnabled}
+          pipBoyColor={pipBoyColor}
+          pipBoyIntensity={pipBoyIntensity}
           goonMode={goonModeEnabled}
           goonWordsSettings={settings?.visualEffects?.goonWords}
           climaxTrigger={climaxTrigger}
@@ -1472,7 +1774,44 @@ export default function App() {
       )}
 
       {/* Pixel Cursor CSS - disabled during maintenance */}
-      <div className="h-full w-full flex relative">
+      <div className="h-full w-full flex relative overflow-hidden">
+        {/* Animated Background Orbs - subtle visual interest */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
+          <div
+            className="animated-bg-orb"
+            style={{
+              width: '400px',
+              height: '400px',
+              background: 'var(--primary)',
+              top: '10%',
+              left: '-5%',
+              animationDelay: '0s'
+            }}
+          />
+          <div
+            className="animated-bg-orb"
+            style={{
+              width: '300px',
+              height: '300px',
+              background: 'var(--secondary)',
+              top: '60%',
+              right: '-5%',
+              animationDelay: '-5s'
+            }}
+          />
+          <div
+            className="animated-bg-orb"
+            style={{
+              width: '250px',
+              height: '250px',
+              background: 'var(--primary)',
+              bottom: '-5%',
+              left: '30%',
+              animationDelay: '-10s'
+            }}
+          />
+        </div>
+
         {/* Left Sidebar Edge Hover Zone - hidden in Zen Mode */}
         <div
           className={cn(
@@ -1518,7 +1857,7 @@ export default function App() {
         <aside
           aria-label="Main navigation"
           className={cn(
-            'shrink-0 border-r border-[var(--border)] bg-[var(--panel)]',
+            'shrink-0 border-r border-[var(--border)] glass',
             'transition-all duration-300 ease-in-out overflow-hidden',
             zenMode ? 'w-0' : leftSidebarOpen ? 'w-[240px]' : 'w-0'
           )}
@@ -1543,18 +1882,22 @@ export default function App() {
                   key={n.id}
                   onClick={(e) => {
                     anime.pulse(e.currentTarget, 1.05)
-                    setPage(n.id)
+                    navigateTo(n.id)
                   }}
                   title={n.tip}
                   aria-label={`${n.name}${isActive ? ' (current page)' : ''}`}
                   aria-current={isActive ? 'page' : undefined}
                   className={cn(
-                    'w-full text-left px-3 py-2.5 rounded-xl text-sm transition border flex items-center gap-3',
+                    'relative w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all duration-200 border flex items-center gap-3',
                     isActive
-                      ? 'bg-[var(--primary)]/15 border-[var(--primary)]/30 text-[var(--primary)]'
-                      : 'bg-transparent border-transparent hover:bg-white/5 hover:border-white/10 text-[var(--text)]'
+                      ? 'bg-[var(--primary)]/15 border-[var(--primary)]/30 text-[var(--primary)] shadow-lg shadow-[var(--primary)]/10'
+                      : 'bg-transparent border-transparent hover:bg-white/5 hover:border-white/10 text-[var(--text)] hover:translate-x-1'
                   )}
                 >
+                  {/* Active indicator bar */}
+                  {isActive && (
+                    <div className="nav-active-indicator" />
+                  )}
                   <NavIcon id={n.id} active={isActive} />
                   <span className="flex-1">{n.name}</span>
                   {/* AI Processing indicator */}
@@ -1567,14 +1910,133 @@ export default function App() {
                       {globalAiStatus.processing}
                     </span>
                   )}
+                  {/* Untagged items badge */}
+                  {n.id === 'ai' && !globalAiStatus?.isRunning && untaggedCount > 0 && (
+                    <span
+                      className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400"
+                      title={`${untaggedCount} untagged items`}
+                    >
+                      {untaggedCount > 99 ? '99+' : untaggedCount}
+                    </span>
+                  )}
                 </button>
               )
             })}
           </nav>
 
+          {/* Quick Actions Section - Bottom of Sidebar */}
+          <div className="mt-auto px-3 pb-4 border-t border-[var(--border)] pt-3">
+            <button
+              onClick={() => setQuickActionsOpen(!quickActionsOpen)}
+              className="w-full text-left px-3 py-2 rounded-xl text-sm transition flex items-center gap-2 bg-transparent border-transparent hover:bg-[var(--surface)] text-[var(--text-muted)]"
+            >
+              <MoreHorizontal size={16} />
+              <span className="flex-1">Quick Actions</span>
+              <ChevronDown size={14} className={cn('transition-transform', quickActionsOpen && 'rotate-180')} />
+            </button>
+
+            {quickActionsOpen && (
+              <div className="mt-2 space-y-1 pl-2">
+                {/* Theme Presets */}
+                <button
+                  onClick={() => {
+                    const presets = ['obsidian', 'moonlight', 'neon-lust', 'arctic', 'void']
+                    const current = settings?.appearance?.themeId ?? 'obsidian'
+                    const idx = presets.indexOf(current)
+                    const next = presets[(idx + 1) % presets.length]
+                    window.api.settings.setTheme(next).then((s: any) => {
+                      if (s) setSettings(s as any)
+                      applyThemeCSS(next as ThemeId)
+                    })
+                  }}
+                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
+                >
+                  <Palette size={14} />
+                  <span>Cycle Theme</span>
+                </button>
+
+                {/* AI Quick Tools */}
+                <button
+                  onClick={() => setPage('ai')}
+                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
+                >
+                  <Wand2 size={14} />
+                  <span>AI Tools</span>
+                </button>
+
+                {/* Rescan Library */}
+                <button
+                  onClick={() => {
+                    window.api.vault.rescan()
+                    globalShowToast?.('info', 'Rescanning library...')
+                  }}
+                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
+                >
+                  <ScanLine size={14} />
+                  <span>Rescan Library</span>
+                </button>
+
+                {/* Tag Manager */}
+                <button
+                  onClick={() => {
+                    setPage('settings')
+                    // Could scroll to tags section
+                  }}
+                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
+                >
+                  <Tags size={14} />
+                  <span>Manage Tags</span>
+                </button>
+
+                {/* Find Duplicates */}
+                <button
+                  onClick={() => {
+                    setPage('library')
+                    // Dispatch custom event to open duplicates modal after page loads
+                    setTimeout(() => {
+                      window.dispatchEvent(new CustomEvent('vault-open-duplicates'))
+                    }, 100)
+                  }}
+                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
+                >
+                  <FileSearch size={14} />
+                  <span>Find Duplicates</span>
+                </button>
+
+                {/* Command Palette */}
+                <button
+                  onClick={() => setShowCommandPalette(true)}
+                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
+                >
+                  <Command size={14} />
+                  <span>Command Palette</span>
+                  <span className="ml-auto text-[10px] opacity-50">Ctrl+K</span>
+                </button>
+
+                {/* Keybinds */}
+                <button
+                  onClick={() => setShowKeybindsEditor(true)}
+                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
+                >
+                  <Keyboard size={14} />
+                  <span>Keybinds</span>
+                </button>
+              </div>
+            )}
+          </div>
+
         </aside>
 
-        <main ref={mainContentRef} role="main" aria-label="Main content" className="flex-1 min-w-0 min-h-0 h-full overflow-hidden transition-all duration-300 ease-in-out">
+        <main
+          ref={mainContentRef}
+          role="main"
+          aria-label="Main content"
+          className={cn(
+            'flex-1 min-w-0 min-h-0 h-full overflow-hidden transition-all duration-300 ease-in-out',
+            pageTransition === 'enter' && 'page-transition-enter',
+            pageTransition === 'exit' && 'page-transition-exit'
+          )}
+        >
           {page === 'home' ? (
             <ErrorBoundary pageName="Home">
               <HomeDashboard
@@ -1582,14 +2044,15 @@ export default function App() {
                   // Navigate to library and set pending media to open
                   window.api.goon?.recordWatch?.(mediaId).catch(() => {})
                   sessionStorage.setItem('vault_pending_media', mediaId)
-                  setPage('library')
+                  navigateTo('library')
                 }}
-                onNavigateToLibrary={() => setPage('library')}
+                onNavigateToLibrary={() => navigateTo('library')}
+                onNavigateToStats={() => navigateTo('stats')}
               />
             </ErrorBoundary>
           ) : page === 'library' ? (
             <ErrorBoundary pageName="Library">
-              <LibraryPage settings={settings} selected={selected} setSelected={setSelected} tagBarOpen={tagBarOpen} setTagBarOpen={setTagBarOpen} confetti={confetti} anime={anime} onNavigateToFeed={() => setPage('feed')} />
+              <LibraryPage settings={settings} selected={selected} setSelected={setSelected} tagBarOpen={tagBarOpen} setTagBarOpen={setTagBarOpen} confetti={confetti} anime={anime} onNavigateToFeed={() => navigateTo('feed')} />
             </ErrorBoundary>
           ) : page === 'goonwall' ? (
             <ErrorBoundary pageName="Goon Wall">
@@ -1683,6 +2146,15 @@ export default function App() {
                 crtRgbSubpixels: crtRgbSubpixels,
                 crtChromaticAberration: crtChromaticAberration,
                 crtScreenFlicker: crtScreenFlicker,
+                crtGlitchGif: crtGlitchGifIndex,
+                tvBorder: tvBorderEnabled,
+                tvBorderGlass: tvBorderGlass,
+                tvBorderGlassOpacity: tvBorderGlassOpacity,
+                tvBorderPadding: tvBorderPadding,
+                tvBorderStyle: tvBorderStyle,
+                pipBoy: pipBoyEnabled,
+                pipBoyColor: pipBoyColor,
+                pipBoyIntensity: pipBoyIntensity,
                 heatLevel: ambientHeatLevel,
                 hearts: heartsEnabled,
                 rain: rainEnabled,
@@ -1735,6 +2207,42 @@ export default function App() {
                 setCrtScreenFlicker: (v) => {
                   setCrtScreenFlicker(v)
                   window.api.settings.visualEffects?.update?.({ crtScreenFlicker: v })
+                },
+                setCrtGlitchGif: (v) => {
+                  setCrtGlitchGifIndex(v)
+                  window.api.settings.visualEffects?.update?.({ crtGlitchGif: v })
+                },
+                setTvBorder: (v) => {
+                  setTvBorderEnabled(v)
+                  window.api.settings.visualEffects?.update?.({ tvBorder: v })
+                },
+                setTvBorderGlass: (v) => {
+                  setTvBorderGlass(v)
+                  window.api.settings.visualEffects?.update?.({ tvBorderGlass: v })
+                },
+                setTvBorderGlassOpacity: (v) => {
+                  setTvBorderGlassOpacity(v)
+                  window.api.settings.visualEffects?.update?.({ tvBorderGlassOpacity: v })
+                },
+                setTvBorderPadding: (v) => {
+                  setTvBorderPadding(v)
+                  window.api.settings.visualEffects?.update?.({ tvBorderPadding: v })
+                },
+                setTvBorderStyle: (v) => {
+                  setTvBorderStyle(v)
+                  window.api.settings.visualEffects?.update?.({ tvBorderStyle: v })
+                },
+                setPipBoy: (v) => {
+                  setPipBoyEnabled(v)
+                  window.api.settings.visualEffects?.update?.({ pipBoy: v })
+                },
+                setPipBoyColor: (v) => {
+                  setPipBoyColor(v)
+                  window.api.settings.visualEffects?.update?.({ pipBoyColor: v })
+                },
+                setPipBoyIntensity: (v) => {
+                  setPipBoyIntensity(v)
+                  window.api.settings.visualEffects?.update?.({ pipBoyIntensity: v })
                 },
                 setHeatLevel: (v) => {
                   setAmbientHeatLevel(v)
@@ -1972,6 +2480,10 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     <kbd className="px-2 py-1 bg-black/30 rounded text-xs">T</kbd>
                     <span className="text-white/70">Theater Mode</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">C</kbd>
+                    <span className="text-white/70">Crop Video</span>
                   </div>
                 </div>
               </div>
@@ -2299,7 +2811,11 @@ export default function App() {
               <button
                 onClick={async () => {
                   setShowWelcomeTutorial(false)
-                  await window.api.settings.update({ hasSeenWelcome: true })
+                  try {
+                    await window.api.settings.update({ hasSeenWelcome: true })
+                  } catch (err) {
+                    console.warn('[Welcome] Failed to save welcome state:', err)
+                  }
                 }}
                 className="text-sm text-white/40 hover:text-white/70 transition"
               >
@@ -2329,7 +2845,11 @@ export default function App() {
                   <button
                     onClick={async () => {
                       setShowWelcomeTutorial(false)
-                      await window.api.settings.update({ hasSeenWelcome: true })
+                      try {
+                        await window.api.settings.update({ hasSeenWelcome: true })
+                      } catch (err) {
+                        console.warn('[Welcome] Failed to save welcome state:', err)
+                      }
                       showToast('success', 'Welcome to Vault! Add folders in Settings to get started.')
                     }}
                     className="px-5 py-2 rounded-lg bg-gradient-to-r from-[var(--accent)] to-purple-500 hover:opacity-90 transition font-medium flex items-center gap-2"
@@ -2339,6 +2859,104 @@ export default function App() {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Keybinds Editor Popup - Global */}
+      {showKeybindsEditor && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowKeybindsEditor(false)}>
+          <div className="bg-[var(--background)] border border-[var(--border)] rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+              <div className="flex items-center gap-3">
+                <Keyboard size={20} className="text-[var(--primary)]" />
+                <h2 className="text-lg font-semibold">Keyboard Shortcuts</h2>
+              </div>
+              <button onClick={() => setShowKeybindsEditor(false)} className="p-1.5 rounded-lg hover:bg-[var(--surface)] transition">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto max-h-[60vh] space-y-4">
+              {/* Navigation */}
+              <div>
+                <h3 className="text-sm font-medium text-[var(--muted)] mb-2">Navigation</h3>
+                <div className="space-y-1">
+                  {[
+                    { keys: 'Ctrl + K', action: 'Open Command Palette' },
+                    { keys: 'Ctrl + ,', action: 'Open Settings' },
+                    { keys: 'Escape', action: 'Close Modal / Exit Zen Mode' },
+                    { keys: 'Z', action: 'Toggle Zen Mode' },
+                    { keys: '1-9', action: 'Navigate to Page' },
+                  ].map(k => (
+                    <div key={k.keys} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-[var(--surface)]">
+                      <span className="text-sm">{k.action}</span>
+                      <kbd className="px-2 py-0.5 bg-[var(--surface)] rounded text-xs font-mono">{k.keys}</kbd>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Playback */}
+              <div>
+                <h3 className="text-sm font-medium text-[var(--muted)] mb-2">Playback</h3>
+                <div className="space-y-1">
+                  {[
+                    { keys: 'Space', action: 'Play / Pause' },
+                    { keys: '← / →', action: 'Seek -10s / +10s' },
+                    { keys: '↑ / ↓', action: 'Volume Up / Down' },
+                    { keys: 'M', action: 'Mute / Unmute' },
+                    { keys: 'F', action: 'Toggle Fullscreen' },
+                    { keys: 'L', action: 'Toggle Loop' },
+                    { keys: 'N', action: 'Next Media' },
+                    { keys: 'P', action: 'Previous Media' },
+                  ].map(k => (
+                    <div key={k.keys} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-[var(--surface)]">
+                      <span className="text-sm">{k.action}</span>
+                      <kbd className="px-2 py-0.5 bg-[var(--surface)] rounded text-xs font-mono">{k.keys}</kbd>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Library */}
+              <div>
+                <h3 className="text-sm font-medium text-[var(--muted)] mb-2">Library</h3>
+                <div className="space-y-1">
+                  {[
+                    { keys: 'Ctrl + A', action: 'Select All' },
+                    { keys: 'Ctrl + Shift + A', action: 'Deselect All' },
+                    { keys: 'Delete', action: 'Remove Selected' },
+                    { keys: 'Ctrl + F', action: 'Focus Search' },
+                    { keys: 'R', action: 'Random Media' },
+                  ].map(k => (
+                    <div key={k.keys} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-[var(--surface)]">
+                      <span className="text-sm">{k.action}</span>
+                      <kbd className="px-2 py-0.5 bg-[var(--surface)] rounded text-xs font-mono">{k.keys}</kbd>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Goon Wall */}
+              <div>
+                <h3 className="text-sm font-medium text-[var(--muted)] mb-2">Goon Wall</h3>
+                <div className="space-y-1">
+                  {[
+                    { keys: 'S', action: 'Shuffle Tiles' },
+                    { keys: 'G', action: 'Toggle Goon Mode' },
+                    { keys: '+/-', action: 'Adjust Grid Size' },
+                  ].map(k => (
+                    <div key={k.keys} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-[var(--surface)]">
+                      <span className="text-sm">{k.action}</span>
+                      <kbd className="px-2 py-0.5 bg-[var(--surface)] rounded text-xs font-mono">{k.keys}</kbd>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-[var(--border)] text-xs text-[var(--muted)] text-center">
+              Press <kbd className="px-1.5 py-0.5 bg-[var(--surface)] rounded font-mono">?</kbd> anytime to show shortcuts
             </div>
           </div>
         </div>
@@ -2548,6 +3166,15 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
     if (newSize) setTileSize(newSize)
   }, [props.settings?.appearance?.thumbnailSize])
 
+  // Check for pending Watch Later panel open from FAB
+  useEffect(() => {
+    const shouldOpenWatchLater = sessionStorage.getItem('vault_open_watch_later')
+    if (shouldOpenWatchLater === 'true') {
+      sessionStorage.removeItem('vault_open_watch_later')
+      setShowWatchLaterPanel(true)
+    }
+  }, [])
+
   // Persist filter state to sessionStorage when filters change
   useEffect(() => {
     const filters = { query, activeTags, typeFilter, sortBy, sortAscending, pageSize, layout }
@@ -2640,11 +3267,16 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
     const handleOpenWatchLater = () => {
       setShowWatchLaterPanel(true)
     }
+    const handleOpenDuplicates = () => {
+      setShowDuplicatesModal(true)
+    }
     window.addEventListener('vault-open-video', handleOpenVideo as EventListener)
     window.addEventListener('vault-open-watch-later', handleOpenWatchLater)
+    window.addEventListener('vault-open-duplicates', handleOpenDuplicates)
     return () => {
       window.removeEventListener('vault-open-video', handleOpenVideo as EventListener)
       window.removeEventListener('vault-open-watch-later', handleOpenWatchLater)
+      window.removeEventListener('vault-open-duplicates', handleOpenDuplicates)
     }
   }, [addFloatingPlayer])
 
@@ -3197,24 +3829,21 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   }
 
   // Get grid/mosaic style based on layout mode
-  // All layouts now use CSS Grid for consistent left-to-right, top-to-bottom ordering
   const getGridStyle = (): React.CSSProperties => {
     if (layout === 'wall') {
-      // Wall mode: grid layout with minimal gaps for tight tiled appearance
+      // Wall mode: masonry layout with ZERO gaps - items touch each other
       return {
-        display: 'grid',
-        gridTemplateColumns: `repeat(${mosaicCols}, 1fr)`,
-        gap: '2px',
+        columnCount: mosaicCols,
+        columnGap: '0px',
         width: '100%',
       }
     }
     if (layout === 'mosaic') {
       const gap = mosaicCols >= 7 ? 4 : mosaicCols >= 5 ? 6 : 8
-      // Grid layout with specified column count for mosaic appearance
+      // Masonry-style column layout - fills top-to-bottom, then next column
       return {
-        display: 'grid',
-        gridTemplateColumns: `repeat(${mosaicCols}, 1fr)`,
-        gap: `${gap}px`,
+        columnCount: mosaicCols,
+        columnGap: `${gap}px`,
         width: '100%',
       }
     }
@@ -3703,6 +4332,141 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
         </div>
       </TopBar>
 
+      {/* Quick Filters Bar - common filter presets */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)] bg-[var(--surface)]/30 overflow-x-auto">
+        <span className="text-[10px] text-[var(--muted)] uppercase tracking-wide shrink-0">Quick:</span>
+        <button
+          onClick={() => {
+            setSortBy('newest')
+            setSortAscending(false)
+            setTypeFilter('all')
+            setActiveTags([])
+          }}
+          className={cn(
+            'px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0',
+            sortBy === 'newest' && typeFilter === 'all' && activeTags.length === 0
+              ? 'bg-[var(--primary)] text-white'
+              : 'bg-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
+          )}
+        >
+          Recent
+        </button>
+        <button
+          onClick={() => {
+            setTypeFilter('video')
+            setActiveTags([])
+          }}
+          className={cn(
+            'px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 flex items-center gap-1',
+            typeFilter === 'video'
+              ? 'bg-blue-500 text-white'
+              : 'bg-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
+          )}
+        >
+          <Play size={10} className="fill-current" /> Videos
+        </button>
+        <button
+          onClick={() => {
+            setTypeFilter('image')
+            setActiveTags([])
+          }}
+          className={cn(
+            'px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 flex items-center gap-1',
+            typeFilter === 'image'
+              ? 'bg-purple-500 text-white'
+              : 'bg-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
+          )}
+        >
+          <ImageIcon size={10} /> Images
+        </button>
+        <button
+          onClick={() => {
+            // Filter to favorites (rating:5)
+            setQuery('rating:5')
+            setTypeFilter('all')
+          }}
+          className={cn(
+            'px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 flex items-center gap-1',
+            query === 'rating:5'
+              ? 'bg-red-500 text-white'
+              : 'bg-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
+          )}
+        >
+          <Heart size={10} className="fill-current" /> Favorites
+        </button>
+        <button
+          onClick={() => {
+            setSortBy('views')
+            setSortAscending(false)
+            setTypeFilter('all')
+          }}
+          className={cn(
+            'px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 flex items-center gap-1',
+            sortBy === 'views'
+              ? 'bg-amber-500 text-white'
+              : 'bg-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
+          )}
+        >
+          <Eye size={10} /> Most Viewed
+        </button>
+        <button
+          onClick={() => {
+            setSortBy('duration')
+            setSortAscending(false)
+            setTypeFilter('video')
+          }}
+          className={cn(
+            'px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 flex items-center gap-1',
+            sortBy === 'duration'
+              ? 'bg-cyan-500 text-white'
+              : 'bg-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
+          )}
+        >
+          <Clock size={10} /> Longest
+        </button>
+        <button
+          onClick={() => {
+            setTypeFilter('gif')
+            setActiveTags([])
+          }}
+          className={cn(
+            'px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 flex items-center gap-1',
+            typeFilter === 'gif'
+              ? 'bg-pink-500 text-white'
+              : 'bg-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
+          )}
+        >
+          <Sparkles size={10} /> GIFs
+        </button>
+        <button
+          onClick={() => {
+            setSortBy('random')
+            setTypeFilter('all')
+          }}
+          className={cn(
+            'px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 flex items-center gap-1',
+            sortBy === 'random'
+              ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
+              : 'bg-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
+          )}
+        >
+          <Shuffle size={10} /> Shuffle
+        </button>
+        {query && (
+          <button
+            onClick={() => {
+              setQuery('')
+              setTypeFilter('all')
+              setActiveTags([])
+              setSortBy('newest')
+            }}
+            className="px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 flex items-center gap-1 bg-red-500/20 text-red-400 hover:bg-red-500/30"
+          >
+            <X size={10} /> Clear
+          </button>
+        )}
+      </div>
+
       <div className="flex-1 flex min-w-0 w-full relative overflow-hidden">
         {/* Tag Sidebar Edge Hover Zone - always at left edge of this container */}
         <div
@@ -3923,7 +4687,10 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
 
         <div
           ref={(el) => { (contentRef as any).current = el; if (layout === 'wall') (wallScrollRef as any).current = el }}
-          className="flex-1 min-w-0 overflow-auto p-4 transition-all duration-300 ease-in-out relative"
+          className={cn(
+            "flex-1 min-w-0 overflow-auto transition-all duration-300 ease-in-out relative",
+            layout === 'wall' ? 'p-0' : 'p-4'
+          )}
           onDragOver={(e) => {
             e.preventDefault()
             e.stopPropagation()
@@ -4059,24 +4826,25 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
             )}
           </div>
 
-          <div className="w-full min-w-0 overflow-hidden">
+          <div className="w-full min-w-0">
             <div ref={gridRef} className="w-full min-w-0" style={getGridStyle()}>
               {sortedMedia.slice((currentPage - 1) * effectivePageSize, currentPage * effectivePageSize).map((m, index) => {
               const isPlaying = openIds.includes(m.id)
               const canAddMore = openIds.length < MAX_FLOATING_PLAYERS
               const canOpen = isPlaying || canAddMore
               const isFocused = focusedIndex === index
-              const gap = mosaicCols >= 7 ? 4 : mosaicCols >= 5 ? 6 : 8
               return (
                 <div
                   key={m.id}
                   className={cn(
                     'animate-fadeInUp',
+                    // Column layouts (mosaic/wall) need break-inside-avoid to prevent items splitting across columns
+                    (layout === 'mosaic' || layout === 'wall') && 'break-inside-avoid',
+                    // Wall mode: no margin/spacing at all
+                    layout === 'wall' ? 'mb-0' : layout === 'mosaic' ? 'mb-2' : '',
                     isFocused && 'ring-2 ring-[var(--primary)] ring-offset-2 ring-offset-[var(--bg)] rounded-xl'
                   )}
                   style={{
-                    breakInside: layout === 'mosaic' || layout === 'wall' ? 'avoid' : undefined,
-                    marginBottom: layout === 'mosaic' ? `${gap}px` : layout === 'wall' ? '2px' : undefined,
                     animationDelay: layout === 'wall' ? '0ms' : `${Math.min(index * 30, 500)}ms`,
                     animationFillMode: 'backwards'
                   }}
@@ -4790,7 +5558,7 @@ const MediaTile = React.memo(function MediaTile(props: {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className={cn(
-        'text-left overflow-hidden relative group',
+        'text-left overflow-hidden relative group card-shine',
         'transition-all duration-300 ease-out',
         layout === 'wall' ? 'border-0 bg-black' : 'border bg-black/20',
         disabled
@@ -4833,33 +5601,39 @@ const MediaTile = React.memo(function MediaTile(props: {
         className="bg-black/25 relative overflow-hidden"
         style={{
           // Wall mode: masonry-style with varied aspect ratios
-          // Mosaic mode: use natural aspect ratio for true masonry layout
+          // Mosaic mode: use natural aspect ratio but clamp very tall thumbnails to prevent gaps
           // Grid mode: fixed aspect ratio for uniform appearance
-          aspectRatio: layout === 'wall' || layout === 'mosaic'
+          aspectRatio: layout === 'wall'
               ? (media.width && media.height
-                  ? media.width / media.height // Use numeric ratio for reliability
+                  ? media.width / media.height
                   : (() => {
-                      // Generate varied aspect ratios from media ID for visual interest
-                      // Use more extreme variations to make mosaic obvious
                       const hash = media.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
-                      const ratios = [
-                        1.78,  // 16:9 landscape
-                        1.33,  // 4:3 landscape
-                        1.0,   // 1:1 square
-                        0.75,  // 3:4 portrait
-                        0.56,  // 9:16 tall portrait (phone video)
-                        2.35,  // Cinematic ultrawide
-                        0.8,   // 4:5 slight portrait
-                        1.5,   // 3:2 photo landscape
-                      ]
+                      const ratios = [1.78, 1.33, 1.0, 0.75, 0.56, 2.35, 0.8, 1.5]
+                      return ratios[hash % ratios.length]
+                    })())
+              : layout === 'mosaic'
+              ? (media.width && media.height
+                  // Clamp aspect ratio: min 0.7 (not too tall), max 2.5 (not too wide)
+                  // This prevents very tall thumbnails from creating huge gaps
+                  ? Math.max(0.7, Math.min(2.5, media.width / media.height))
+                  : (() => {
+                      const hash = media.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0)
+                      // More balanced ratios for mosaic - no super tall ones
+                      const ratios = [1.78, 1.33, 1.0, 0.8, 1.5, 1.2, 0.9, 1.1]
                       return ratios[hash % ratios.length]
                     })())
               : (compact ? 16/9 : 16/10)
         }}
       >
-        {/* Sexy loading shimmer */}
+        {/* Sexy loading shimmer with loading GIF */}
         {!isLoaded && thumbUrl && (
-          <div className="absolute inset-0 sexy-shimmer" />
+          <div className="absolute inset-0 overflow-hidden">
+            <img
+              src={thumbnailLoadingGif}
+              alt=""
+              className="w-full h-full object-cover opacity-40"
+            />
+          </div>
         )}
 
         {thumbUrl && !thumbError ? (
@@ -4884,12 +5658,14 @@ const MediaTile = React.memo(function MediaTile(props: {
               }}
               onError={() => setThumbError(true)}
             />
-            {/* Video preview overlay */}
+            {/* Video preview overlay - match thumbnail sizing exactly */}
             {isVideo && (
               <video
                 ref={videoRef}
                 className={cn(
-                  'absolute inset-0 w-full h-full object-contain transition-opacity duration-300',
+                  'absolute inset-0 w-full h-full transition-opacity duration-300',
+                  // Match thumbnail sizing: cover for wall/mosaic, contain for grid
+                  layout === 'mosaic' || layout === 'wall' ? 'object-cover' : 'object-contain',
                   isPreviewPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 )}
                 muted={previewMuted}
@@ -4904,8 +5680,12 @@ const MediaTile = React.memo(function MediaTile(props: {
             <div className="text-white/20 text-[10px]">{media.type === 'video' ? 'Video' : media.type === 'gif' ? 'GIF' : 'Image'}</div>
           </div>
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-black/40 to-black/60 flex items-center justify-center">
-            <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+          <div className="w-full h-full bg-gradient-to-br from-black/40 to-black/60 flex items-center justify-center overflow-hidden">
+            <img
+              src={thumbnailLoadingGif}
+              alt=""
+              className="w-full h-full object-cover opacity-60"
+            />
           </div>
         )}
 
@@ -6572,8 +7352,8 @@ const GoonTile = React.memo(function GoonTile(props: {
   const [ready, setReady] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const autoShuffleRef = useRef<NodeJS.Timeout | null>(null)
-  const [audioVolume, setAudioVolume] = useState(0) // Start at 0, fade in when ready
-  const fadeIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const audioVolumeRef = useRef(0) // Use ref instead of state to avoid re-renders
+  const fadeAnimationRef = useRef<number | null>(null)
 
   // Right-click to skip to next video
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -6641,14 +7421,14 @@ const GoonTile = React.memo(function GoonTile(props: {
     return () => { alive = false; clearTimeout(timer) }
   }, [media.id, media.path, onShuffle, tileCount, index])
 
-  // Cleanup video and fade interval on unmount
+  // Cleanup video and fade animation on unmount
   useEffect(() => {
     return () => {
       const video = videoRef.current
       if (video) cleanupVideo(video)
-      if (fadeIntervalRef.current) {
-        clearInterval(fadeIntervalRef.current)
-        fadeIntervalRef.current = null
+      if (fadeAnimationRef.current) {
+        cancelAnimationFrame(fadeAnimationRef.current)
+        fadeAnimationRef.current = null
       }
     }
   }, [])
@@ -6658,74 +7438,49 @@ const GoonTile = React.memo(function GoonTile(props: {
     if (videoRef.current) videoRef.current.muted = muted
   }, [muted])
 
-  // Audio crossfade - fade out when shuffling, fade in when ready
+  // Audio crossfade using requestAnimationFrame for smooth performance
   useEffect(() => {
-    if (fadeIntervalRef.current) {
-      clearInterval(fadeIntervalRef.current)
-      fadeIntervalRef.current = null
+    if (fadeAnimationRef.current) {
+      cancelAnimationFrame(fadeAnimationRef.current)
+      fadeAnimationRef.current = null
+    }
+
+    const video = videoRef.current
+    if (!video) return
+
+    const fadeAudio = (targetVolume: number, duration: number) => {
+      const startVolume = audioVolumeRef.current
+      const startTime = performance.now()
+
+      const animate = (currentTime: number) => {
+        const elapsed = currentTime - startTime
+        const progress = Math.min(elapsed / duration, 1)
+        const newVolume = startVolume + (targetVolume - startVolume) * progress
+
+        audioVolumeRef.current = newVolume
+        if (video && !muted) video.volume = newVolume
+
+        if (progress < 1) {
+          fadeAnimationRef.current = requestAnimationFrame(animate)
+        }
+      }
+
+      fadeAnimationRef.current = requestAnimationFrame(animate)
     }
 
     if (isShuffling) {
-      // Fade out audio over 250ms
-      const fadeStep = 0.1
-      const fadeInterval = 25
-      fadeIntervalRef.current = setInterval(() => {
-        setAudioVolume(prev => {
-          const next = Math.max(0, prev - fadeStep)
-          if (next <= 0 && fadeIntervalRef.current) {
-            clearInterval(fadeIntervalRef.current)
-            fadeIntervalRef.current = null
-          }
-          return next
-        })
-      }, fadeInterval)
+      fadeAudio(0, 200) // Fade out over 200ms
+    } else if (ready && !muted) {
+      fadeAudio(1, 300) // Fade in over 300ms
     }
 
     return () => {
-      if (fadeIntervalRef.current) {
-        clearInterval(fadeIntervalRef.current)
-        fadeIntervalRef.current = null
+      if (fadeAnimationRef.current) {
+        cancelAnimationFrame(fadeAnimationRef.current)
+        fadeAnimationRef.current = null
       }
     }
-  }, [isShuffling])
-
-  // Fade in audio when video becomes ready
-  useEffect(() => {
-    if (ready && !isShuffling && !muted) {
-      if (fadeIntervalRef.current) {
-        clearInterval(fadeIntervalRef.current)
-        fadeIntervalRef.current = null
-      }
-
-      // Fade in audio over 300ms
-      const fadeStep = 0.08
-      const fadeInterval = 25
-      fadeIntervalRef.current = setInterval(() => {
-        setAudioVolume(prev => {
-          const next = Math.min(1, prev + fadeStep)
-          if (next >= 1 && fadeIntervalRef.current) {
-            clearInterval(fadeIntervalRef.current)
-            fadeIntervalRef.current = null
-          }
-          return next
-        })
-      }, fadeInterval)
-    }
-
-    return () => {
-      if (fadeIntervalRef.current) {
-        clearInterval(fadeIntervalRef.current)
-        fadeIntervalRef.current = null
-      }
-    }
-  }, [ready, isShuffling, muted])
-
-  // Apply volume to video element
-  useEffect(() => {
-    if (videoRef.current && !muted) {
-      videoRef.current.volume = audioVolume
-    }
-  }, [audioVolume, muted])
+  }, [isShuffling, ready, muted])
 
   // Seek to "climax point" (70-80% through video) on metadata load
   const handleLoadedMetadata = useCallback(() => {
@@ -6776,28 +7531,30 @@ const GoonTile = React.memo(function GoonTile(props: {
 
   // Handle stall/waiting - video is buffering
   const handleWaiting = useCallback(() => {
-    // Video is waiting for data - schedule recovery attempt
+    // Video is waiting for data - schedule recovery attempt with longer delay
     if (playbackRecoveryRef.current) clearTimeout(playbackRecoveryRef.current)
-    playbackRecoveryRef.current = setTimeout(attemptPlaybackRecovery, 1000)
+    playbackRecoveryRef.current = setTimeout(attemptPlaybackRecovery, 3000) // Wait 3 seconds before trying recovery
   }, [attemptPlaybackRecovery])
 
-  // Handle pause - recover if not user-initiated
+  // Handle pause - recover if not user-initiated (but with delay to avoid interruption)
   const handlePause = useCallback(() => {
-    // Browser may pause videos to save resources - try to resume
+    // Browser may pause videos to save resources - try to resume after delay
     if (playbackRecoveryRef.current) clearTimeout(playbackRecoveryRef.current)
-    playbackRecoveryRef.current = setTimeout(attemptPlaybackRecovery, 500)
+    playbackRecoveryRef.current = setTimeout(attemptPlaybackRecovery, 2000) // Wait 2 seconds
   }, [attemptPlaybackRecovery])
 
   // Periodic playback check - catch silent failures where video freezes
+  // Only check every 10 seconds to reduce overhead
   useEffect(() => {
     if (!ready || !url) return
 
     const checkInterval = setInterval(() => {
       const video = videoRef.current
-      if (video && video.paused && !video.ended && ready) {
+      // Only try to resume if video is paused and has been for a while
+      if (video && video.paused && !video.ended && video.readyState >= 2) {
         video.play().catch(() => {})
       }
-    }, 3000) // Check every 3 seconds
+    }, 10000) // Check every 10 seconds instead of 3
 
     return () => clearInterval(checkInterval)
   }, [ready, url])
@@ -7333,11 +8090,7 @@ function AiTaggerPage() {
     setNewTagInput('')
   }
 
-  function formatBytes(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
+  // formatBytes is imported from utils/formatters
 
   return (
     <div className="h-full flex flex-col bg-[var(--bg)]">
@@ -7570,7 +8323,7 @@ function AiTaggerPage() {
                   </div>
                   <div className="h-2 bg-white/10 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] transition-all duration-300"
+                      className="h-full bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] transition-all duration-300 progress-striped"
                       style={{ width: `${processingProgress.percent}%` }}
                     />
                   </div>
@@ -7959,8 +8712,12 @@ function AiTaggerPage() {
                     <button
                       key={tag}
                       onClick={async () => {
-                        await window.api.ai.removeProtectedTag?.(tag)
-                        loadProtectedTags()
+                        try {
+                          await window.api.ai.removeProtectedTag?.(tag)
+                          loadProtectedTags()
+                        } catch (err) {
+                          console.error('[Settings] Failed to remove protected tag:', err)
+                        }
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500/20 border border-green-500/30 text-green-400 text-sm hover:bg-green-500/30 transition"
                     >
@@ -7979,9 +8736,13 @@ function AiTaggerPage() {
                   onChange={(e) => setNewProtectedTag(e.target.value)}
                   onKeyDown={async (e) => {
                     if (e.key === 'Enter' && newProtectedTag.trim()) {
-                      await window.api.ai.addProtectedTag?.(newProtectedTag.trim())
-                      setNewProtectedTag('')
-                      loadProtectedTags()
+                      try {
+                        await window.api.ai.addProtectedTag?.(newProtectedTag.trim())
+                        setNewProtectedTag('')
+                        loadProtectedTags()
+                      } catch (err) {
+                        console.error('[Settings] Failed to add protected tag:', err)
+                      }
                     }
                   }}
                   placeholder="Enter tag to protect..."
@@ -7990,9 +8751,13 @@ function AiTaggerPage() {
                 <button
                   onClick={async () => {
                     if (newProtectedTag.trim()) {
-                      await window.api.ai.addProtectedTag?.(newProtectedTag.trim())
-                      setNewProtectedTag('')
-                      loadProtectedTags()
+                      try {
+                        await window.api.ai.addProtectedTag?.(newProtectedTag.trim())
+                        setNewProtectedTag('')
+                        loadProtectedTags()
+                      } catch (err) {
+                        console.error('[Settings] Failed to add protected tag:', err)
+                      }
                     }
                   }}
                   className="px-4 py-2 rounded-xl bg-green-500/20 border border-green-500/30 text-green-400 text-sm hover:bg-green-500/30 transition"
@@ -8076,22 +8841,42 @@ function AiTaggerPage() {
 }
 
 // Thumbnail component with on-demand generation for captioned media
+// Uses IntersectionObserver for lazy loading to improve performance
 function CaptionedThumb({ mediaId, thumbPath, filename, filePath, className, style }: { mediaId: string; thumbPath: string | null; filename: string; filePath?: string | null; className?: string; style?: React.CSSProperties }) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isVisible, setIsVisible] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Lazy loading with IntersectionObserver
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '100px' } // Start loading 100px before visible
+    )
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current)
+    }
+
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
+    if (!isVisible) return // Don't load until visible
+
     let cancelled = false
     async function loadThumb() {
       setLoading(true)
       try {
-        // For images and GIFs, use direct file path (better quality for Brainwash editing)
-        const ext = (filename || '').toLowerCase()
-        const isImage = ext.endsWith('.png') || ext.endsWith('.jpg') || ext.endsWith('.jpeg') ||
-                        ext.endsWith('.webp') || ext.endsWith('.bmp') || ext.endsWith('.gif')
-
-        if (isImage && filePath) {
-          const url = await toFileUrlCached(filePath)
+        // Always use thumbnail path first for performance
+        if (thumbPath) {
+          const url = await toFileUrlCached(thumbPath)
           if (!cancelled && url) {
             setThumbUrl(url)
             setLoading(false)
@@ -8099,9 +8884,13 @@ function CaptionedThumb({ mediaId, thumbPath, filename, filePath, className, sty
           }
         }
 
-        // Fall back to thumbnail path
-        if (thumbPath) {
-          const url = await toFileUrlCached(thumbPath)
+        // Fall back to file path for images (only if no thumbnail)
+        const ext = (filename || '').toLowerCase()
+        const isImage = ext.endsWith('.png') || ext.endsWith('.jpg') || ext.endsWith('.jpeg') ||
+                        ext.endsWith('.webp') || ext.endsWith('.bmp') || ext.endsWith('.gif')
+
+        if (isImage && filePath) {
+          const url = await toFileUrlCached(filePath)
           if (!cancelled && url) {
             setThumbUrl(url)
             setLoading(false)
@@ -8121,31 +8910,27 @@ function CaptionedThumb({ mediaId, thumbPath, filename, filePath, className, sty
     }
     loadThumb()
     return () => { cancelled = true }
-  }, [mediaId, thumbPath, filePath, filename])
-
-  if (loading && !thumbUrl) {
-    return (
-      <div className={cn("w-full h-full flex items-center justify-center bg-black/30", className)}>
-        <Loader2 size={20} className="animate-spin text-[var(--muted)]" />
-      </div>
-    )
-  }
-
-  if (!thumbUrl) {
-    return (
-      <div className={cn("w-full h-full flex items-center justify-center", className)}>
-        <ImageIcon size={24} className="text-[var(--muted)]" />
-      </div>
-    )
-  }
+  }, [mediaId, thumbPath, filePath, filename, isVisible])
 
   return (
-    <img
-      src={thumbUrl}
-      alt={filename}
-      className={cn("w-full h-full object-cover", className)}
-      style={style}
-    />
+    <div ref={containerRef} className={cn("w-full h-full", className)} style={style}>
+      {!isVisible || (loading && !thumbUrl) ? (
+        <div className="w-full h-full flex items-center justify-center bg-black/30">
+          <Loader2 size={20} className="animate-spin text-[var(--muted)]" />
+        </div>
+      ) : !thumbUrl ? (
+        <div className="w-full h-full flex items-center justify-center">
+          <ImageIcon size={24} className="text-[var(--muted)]" />
+        </div>
+      ) : (
+        <img
+          src={thumbUrl}
+          alt={filename}
+          className="w-full h-full object-cover"
+          loading="lazy"
+        />
+      )}
+    </div>
   )
 }
 
@@ -8179,7 +8964,7 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
   const [selectedPreset, setSelectedPreset] = useState('default')
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  const [activeTab, setActiveTab] = useState<'editor' | 'captioned' | 'templates'>('editor')
+  const [activeTab, setActiveTab] = useState<'editor' | 'captioned' | 'templates' | 'gifmaker'>('editor')
   const [captionModeEnabled, setCaptionModeEnabled] = useState(settings?.captions?.enabled ?? false)
 
   // New filter states
@@ -8219,6 +9004,26 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
   // Image loading error state for GIFs and images
   const [imageLoadError, setImageLoadError] = useState(false)
   const [imageRetryCount, setImageRetryCount] = useState(0)
+
+  // GIF Maker state
+  const [gifStartTime, setGifStartTime] = useState(0)
+  const [gifEndTime, setGifEndTime] = useState(3)
+  const [gifFps, setGifFps] = useState(15)
+  const [gifQuality, setGifQuality] = useState<'low' | 'medium' | 'high'>('medium')
+  const [gifGenerating, setGifGenerating] = useState(false)
+  const [gifPreviewUrl, setGifPreviewUrl] = useState<string | null>(null)
+  const [gifOutputPath, setGifOutputPath] = useState<string | null>(null)
+  const [gifVideoUrl, setGifVideoUrl] = useState<string | null>(null)
+  const [gifSelectedVideo, setGifSelectedVideo] = useState<MediaRow | null>(null)
+  const gifVideoRef = useRef<HTMLVideoElement>(null)
+  const [gifShuffledVideos, setGifShuffledVideos] = useState<MediaRow[]>([])
+  const [gifSearchQuery, setGifSearchQuery] = useState('')
+  const [gifRenameValue, setGifRenameValue] = useState('')
+
+  // Edit captioned media
+  const [editingCaption, setEditingCaption] = useState<CaptionedMedia | null>(null)
+  const [editCaptionTop, setEditCaptionTop] = useState('')
+  const [editCaptionBottom, setEditCaptionBottom] = useState('')
 
   // Handle text drag
   const handleTextDragStart = useCallback((which: 'top' | 'bottom') => (e: React.MouseEvent) => {
@@ -8589,7 +9394,7 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
       const q = searchQuery.toLowerCase()
       filtered = filtered.filter(m => (m.filename || '').toLowerCase().includes(q))
     }
-    return filtered.slice(0, 500) // Show up to 500 items in Brainwash grid
+    return filtered.slice(0, 150) // Reduced from 500 to 150 for better performance
   }, [allMedia, searchQuery, mediaTypeFilter])
 
   // Shuffle media for random selection
@@ -8610,6 +9415,33 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
     const randomIndex = Math.floor(Math.random() * filteredMedia.length)
     setSelectedMedia(filteredMedia[randomIndex])
   }, [filteredMedia])
+
+  // GIF Maker - Shuffle videos
+  const shuffleVideosForGif = useCallback(() => {
+    const videos = allMedia.filter(m => m.type === 'video')
+    const shuffled = [...videos]
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    }
+    setGifShuffledVideos(shuffled)
+  }, [allMedia])
+
+  // GIF Maker - Pick random video
+  const pickRandomVideoForGif = useCallback(async () => {
+    const videos = allMedia.filter(m => m.type === 'video')
+    if (videos.length === 0) return
+    const randomIndex = Math.floor(Math.random() * videos.length)
+    const video = videos[randomIndex]
+    setGifSelectedVideo(video)
+    if (video.path) {
+      const url = await toFileUrlCached(video.path)
+      setGifVideoUrl(url)
+      setGifPreviewUrl(null)
+      setGifStartTime(0)
+      setGifEndTime(Math.min(5, video.durationSec || 5))
+    }
+  }, [allMedia])
 
   // Apply filter preset
   const applyFilterPreset = useCallback((presetId: string) => {
@@ -8672,6 +9504,32 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
     }
   }
 
+  const handleEditCaption = (caption: CaptionedMedia) => {
+    setEditingCaption(caption)
+    setEditCaptionTop(caption.topText || '')
+    setEditCaptionBottom(caption.bottomText || '')
+  }
+
+  const handleSaveEditedCaption = async () => {
+    if (!editingCaption) return
+    try {
+      await window.api.captions?.upsert?.(
+        editingCaption.mediaId,
+        editCaptionTop || null,
+        editCaptionBottom || null,
+        editingCaption.presetId || 'default'
+      )
+      // Refresh captioned list
+      const updated = await window.api.captions?.listCaptioned?.() ?? []
+      setCaptionedMedia(updated as CaptionedMedia[])
+      setEditingCaption(null)
+      showToast('success', 'Caption updated!')
+    } catch (err) {
+      console.error('Failed to update caption:', err)
+      showToast('error', 'Failed to update caption')
+    }
+  }
+
   const handleApplyTemplate = (template: { top: string | null; bottom: string | null }) => {
     setTopText(template.top || '')
     setBottomText(template.bottom || '')
@@ -8726,7 +9584,7 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
 
       {/* Tabs */}
       <div className="shrink-0 flex border-b border-[var(--border)] bg-[var(--panel)]">
-        {(['editor', 'captioned', 'templates'] as const).map(tab => (
+        {(['editor', 'gifmaker', 'captioned', 'templates'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -8737,7 +9595,7 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                 : 'border-transparent text-[var(--muted)] hover:text-white'
             )}
           >
-            {tab === 'editor' ? 'Create Caption' : tab === 'captioned' ? 'Captioned Media' : 'Templates'}
+            {tab === 'editor' ? 'Create Caption' : tab === 'gifmaker' ? '🎬 GIF Maker' : tab === 'captioned' ? 'Captioned Media' : 'Templates'}
           </button>
         ))}
       </div>
@@ -9604,9 +10462,395 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
               )}
             </div>
           </div>
+        ) : activeTab === 'gifmaker' ? (
+          /* GIF Maker Tab - Create GIFs from video clips */
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Video Selection */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold">Select Video</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={pickRandomVideoForGif}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--primary)]/20 text-[var(--primary)] text-xs hover:bg-[var(--primary)]/30 transition"
+                    title="Pick random video"
+                  >
+                    <Zap size={12} />
+                    Random
+                  </button>
+                  <button
+                    onClick={shuffleVideosForGif}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-xs hover:bg-white/20 transition"
+                    title="Shuffle all videos"
+                  >
+                    <Shuffle size={12} />
+                    Shuffle
+                  </button>
+                </div>
+              </div>
+
+              {/* Search */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Search videos..."
+                  value={gifSearchQuery}
+                  onChange={e => setGifSearchQuery(e.target.value)}
+                  className="flex-1 px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm"
+                />
+              </div>
+
+              {/* Video Grid */}
+              <div className="grid grid-cols-3 gap-2 max-h-[400px] overflow-y-auto">
+                {(gifShuffledVideos.length > 0 ? gifShuffledVideos : allMedia.filter(m => m.type === 'video')).filter(m =>
+                  !gifSearchQuery || (m.filename || '').toLowerCase().includes(gifSearchQuery.toLowerCase())
+                ).slice(0, 150).map(m => (
+                  <button
+                    key={m.id}
+                    onClick={async () => {
+                      setGifSelectedVideo(m)
+                      if (m.path) {
+                        try {
+                          const url = await toFileUrlCached(m.path)
+                          setGifVideoUrl(url)
+                          setGifPreviewUrl(null)
+                          setGifStartTime(0)
+                          setGifEndTime(Math.min(5, m.durationSec || 5))
+                        } catch (err) {
+                          console.error('[GifMaker] Failed to load video URL:', err)
+                        }
+                      }
+                    }}
+                    className={cn(
+                      'aspect-video rounded-lg overflow-hidden border-2 transition relative',
+                      gifSelectedVideo?.id === m.id ? 'border-[var(--primary)]' : 'border-transparent hover:border-white/20'
+                    )}
+                  >
+                    <CaptionedThumb mediaId={m.id} thumbPath={m.thumbPath ?? null} filename={m.filename ?? ''} />
+                    <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-[10px]">
+                      {m.durationSec ? `${Math.floor(m.durationSec / 60)}:${String(Math.floor(m.durationSec % 60)).padStart(2, '0')}` : '?'}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* GIF Preview & Controls */}
+            <div className="space-y-4">
+              {/* Video Preview */}
+              <div className="aspect-video bg-black rounded-xl overflow-hidden relative">
+                {gifVideoUrl ? (
+                  <>
+                    <video
+                      ref={gifVideoRef}
+                      src={gifVideoUrl}
+                      className="w-full h-full object-contain"
+                      controls
+                      onLoadedMetadata={() => {
+                        if (gifVideoRef.current && gifSelectedVideo?.durationSec) {
+                          setGifEndTime(Math.min(5, gifSelectedVideo.durationSec))
+                        }
+                      }}
+                    />
+                    <div className="absolute top-2 left-2 px-2 py-1 rounded bg-black/70 text-xs">
+                      {gifSelectedVideo?.filename || 'Video'}
+                    </div>
+                  </>
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-[var(--muted)]">
+                    <Play size={48} className="mb-2 opacity-50" />
+                    <p className="text-sm">Select a video to create a GIF</p>
+                  </div>
+                )}
+              </div>
+
+              {/* GIF Settings */}
+              {gifVideoUrl && (
+                <div className="bg-[var(--surface)] rounded-xl p-4 space-y-4">
+                  <div className="text-sm font-semibold">GIF Settings</div>
+
+                  {/* Time Range */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-[var(--muted)] block mb-1">Start Time (sec)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={gifEndTime - 0.1}
+                        step={0.1}
+                        value={gifStartTime}
+                        onChange={e => setGifStartTime(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-[var(--muted)] block mb-1">End Time (sec)</label>
+                      <input
+                        type="number"
+                        min={gifStartTime + 0.1}
+                        max={gifSelectedVideo?.durationSec || 60}
+                        step={0.1}
+                        value={gifEndTime}
+                        onChange={e => setGifEndTime(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Duration display */}
+                  <div className="text-xs text-[var(--muted)]">
+                    Duration: {(gifEndTime - gifStartTime).toFixed(1)} seconds
+                    {gifEndTime - gifStartTime > 10 && (
+                      <span className="text-yellow-500 ml-2">(Warning: Long GIFs will be large files)</span>
+                    )}
+                  </div>
+
+                  {/* Quick set buttons */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        if (gifVideoRef.current) {
+                          setGifStartTime(gifVideoRef.current.currentTime)
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-white/10 text-xs hover:bg-white/20 transition"
+                    >
+                      Set Start from Player
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (gifVideoRef.current) {
+                          setGifEndTime(gifVideoRef.current.currentTime)
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-white/10 text-xs hover:bg-white/20 transition"
+                    >
+                      Set End from Player
+                    </button>
+                  </div>
+
+                  {/* FPS & Quality */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-[var(--muted)] block mb-1">Frame Rate (FPS)</label>
+                      <select
+                        value={gifFps}
+                        onChange={e => setGifFps(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm"
+                      >
+                        <option value={10}>10 FPS (small file)</option>
+                        <option value={15}>15 FPS (balanced)</option>
+                        <option value={24}>24 FPS (smooth)</option>
+                        <option value={30}>30 FPS (very smooth)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-[var(--muted)] block mb-1">Quality</label>
+                      <select
+                        value={gifQuality}
+                        onChange={e => setGifQuality(e.target.value as 'low' | 'medium' | 'high')}
+                        className="w-full px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm"
+                      >
+                        <option value="low">Low (320px, small file)</option>
+                        <option value="medium">Medium (480px)</option>
+                        <option value="high">High (720px, large file)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Generate Button */}
+                  <button
+                    onClick={async () => {
+                      if (!gifSelectedVideo?.id) return
+                      setGifGenerating(true)
+                      try {
+                        const result = await window.api.media?.createGif?.({
+                          mediaId: gifSelectedVideo.id,
+                          startTime: gifStartTime,
+                          endTime: gifEndTime,
+                          fps: gifFps,
+                          quality: gifQuality
+                        })
+                        if (result?.success && result.gifPath) {
+                          const url = await toFileUrlCached(result.gifPath)
+                          setGifPreviewUrl(url)
+                          // Store path for save operations
+                          setGifOutputPath(result.gifPath)
+                          showToast('success', 'GIF created successfully!')
+                        } else {
+                          showToast('error', result?.error || 'Failed to create GIF')
+                        }
+                      } catch (err: any) {
+                        showToast('error', err?.message || 'Failed to create GIF')
+                      }
+                      setGifGenerating(false)
+                    }}
+                    disabled={gifGenerating || !gifSelectedVideo}
+                    className="w-full py-3 rounded-xl bg-[var(--primary)] hover:opacity-90 disabled:opacity-50 text-white font-medium flex items-center justify-center gap-2"
+                  >
+                    {gifGenerating ? (
+                      <>
+                        <RefreshCw size={16} className="animate-spin" />
+                        Creating GIF...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={16} />
+                        Create GIF
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* GIF Preview */}
+              {gifPreviewUrl && gifOutputPath && (
+                <div className="bg-[var(--surface)] rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-semibold">Preview</div>
+                    <div className="text-xs text-[var(--muted)]">
+                      {gifOutputPath.split(/[\\/]/).pop()}
+                    </div>
+                  </div>
+                  <div className="aspect-video bg-black rounded-lg overflow-hidden">
+                    <img src={gifPreviewUrl} alt="GIF Preview" className="w-full h-full object-contain" />
+                  </div>
+
+                  {/* Rename GIF */}
+                  <div className="space-y-2">
+                    <label className="text-xs text-[var(--muted)]">Rename GIF (optional)</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Enter new name..."
+                        value={gifRenameValue}
+                        onChange={e => setGifRenameValue(e.target.value)}
+                        className="flex-1 px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm"
+                      />
+                      <button
+                        onClick={async () => {
+                          if (!gifRenameValue.trim() || !gifOutputPath) return
+                          try {
+                            const result = await window.api.media?.renameGif?.(gifOutputPath, gifRenameValue.trim())
+                            if (result?.success && result.newPath) {
+                              setGifOutputPath(result.newPath)
+                              const url = await toFileUrlCached(result.newPath)
+                              setGifPreviewUrl(url)
+                              setGifRenameValue('')
+                              showToast('success', 'GIF renamed!')
+                            } else {
+                              showToast('error', result?.error || 'Failed to rename')
+                            }
+                          } catch {
+                            showToast('error', 'Failed to rename GIF')
+                          }
+                        }}
+                        disabled={!gifRenameValue.trim()}
+                        className="px-4 py-2 rounded-lg bg-[var(--primary)]/20 text-[var(--primary)] text-sm hover:bg-[var(--primary)]/30 transition disabled:opacity-50"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const result = await window.api.media?.addGifToLibrary?.(gifOutputPath)
+                          if (result?.success) {
+                            showToast('success', 'GIF added to library!')
+                          } else {
+                            showToast('error', result?.error || 'Failed to add to library')
+                          }
+                        } catch {
+                          showToast('error', 'Failed to add to library')
+                        }
+                      }}
+                      className="flex-1 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium"
+                    >
+                      Add to Library
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const result = await window.api.media?.saveGif?.(gifOutputPath)
+                          if (result?.success) {
+                            showToast('success', `GIF saved to ${result.savedPath}`)
+                          } else if (result?.error !== 'Save cancelled') {
+                            showToast('error', result?.error || 'Failed to save GIF')
+                          }
+                        } catch {
+                          showToast('error', 'Failed to save GIF')
+                        }
+                      }}
+                      className="flex-1 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-medium"
+                    >
+                      Save to Folder
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         ) : activeTab === 'captioned' ? (
           <div className="space-y-4">
             <div className="text-sm font-semibold">Captioned Media ({captionedMedia.length})</div>
+
+            {/* Edit Caption Modal */}
+            {editingCaption && (
+              <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                <div className="bg-[var(--panel)] rounded-xl p-6 max-w-md w-full space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-lg font-semibold">Edit Caption</div>
+                    <button
+                      onClick={() => setEditingCaption(null)}
+                      className="p-1 rounded-lg hover:bg-white/10"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="text-xs text-[var(--muted)]">{editingCaption.filename}</div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-[var(--muted)] block mb-1">Top Text</label>
+                      <input
+                        type="text"
+                        value={editCaptionTop}
+                        onChange={e => setEditCaptionTop(e.target.value)}
+                        placeholder="Enter top caption..."
+                        className="w-full px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-[var(--muted)] block mb-1">Bottom Text</label>
+                      <input
+                        type="text"
+                        value={editCaptionBottom}
+                        onChange={e => setEditCaptionBottom(e.target.value)}
+                        placeholder="Enter bottom caption..."
+                        className="w-full px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      onClick={() => setEditingCaption(null)}
+                      className="flex-1 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveEditedCaption}
+                      className="flex-1 py-2 rounded-lg bg-[var(--primary)] hover:opacity-90 text-white text-sm font-medium"
+                    >
+                      Save Changes
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {captionedMedia.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <MessageSquare size={48} className="text-[var(--muted)] mb-4" />
@@ -9635,9 +10879,19 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                         </div>
                       )}
                     </div>
+                    {/* Edit button */}
+                    <button
+                      onClick={() => handleEditCaption(c)}
+                      className="absolute top-1 left-1 p-1 rounded-full bg-blue-500/80 opacity-0 group-hover:opacity-100 transition"
+                      title="Edit caption"
+                    >
+                      <Edit2 size={12} />
+                    </button>
+                    {/* Delete button */}
                     <button
                       onClick={() => handleDeleteCaption(c.mediaId)}
                       className="absolute top-1 right-1 p-1 rounded-full bg-red-500/80 opacity-0 group-hover:opacity-100 transition"
+                      title="Delete caption"
                     >
                       <X size={12} />
                     </button>
@@ -9925,12 +11179,14 @@ function FeedPage() {
   }, [currentIndex, playbackSpeed])
 
   // Mouse wheel scrolling — debounced to one video per scroll gesture
+  // Use capture phase to ensure we get the event before any child elements
   const wheelCooldownRef = useRef(false)
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault()
+      e.stopPropagation()
       if (wheelCooldownRef.current) return
       if (Math.abs(e.deltaY) < 30) return // ignore tiny scroll events
       wheelCooldownRef.current = true
@@ -9941,8 +11197,9 @@ function FeedPage() {
       }
       setTimeout(() => { wheelCooldownRef.current = false }, 400)
     }
-    el.addEventListener('wheel', handleWheel, { passive: false })
-    return () => el.removeEventListener('wheel', handleWheel)
+    // Use capture phase to catch events before they reach video elements
+    el.addEventListener('wheel', handleWheel, { passive: false, capture: true })
+    return () => el.removeEventListener('wheel', handleWheel, { capture: true })
   }, [videos.length])
 
   // Touch swipe navigation for mobile/tablet
@@ -11528,29 +12785,35 @@ function PlaylistsPage() {
       <TopBar
         title="Sessions"
         right={
-          <div className="flex items-center gap-2">
-            <Btn onClick={importPlaylist}>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
+            <Btn onClick={importPlaylist} title="Import playlist">
               <ArrowUp size={14} />
-              Import
+              <span className="hidden sm:inline">Import</span>
             </Btn>
             {selectedId && (
               <>
-                <Btn onClick={() => duplicatePlaylist(selectedId)}>Duplicate</Btn>
-                <Btn onClick={() => exportJSON(selectedId)}>
-                  <Download size={14} />
-                  Export
+                <Btn onClick={() => duplicatePlaylist(selectedId)} title="Duplicate playlist">
+                  <span className="hidden sm:inline">Duplicate</span>
+                  <span className="sm:hidden">Copy</span>
                 </Btn>
-                <Btn onClick={() => exportM3U(selectedId)}>M3U</Btn>
-                <Btn tone="danger" onClick={() => deletePlaylist(selectedId)}>Delete</Btn>
+                <Btn onClick={() => exportJSON(selectedId)} title="Export as JSON">
+                  <Download size={14} />
+                  <span className="hidden sm:inline">Export</span>
+                </Btn>
+                <Btn onClick={() => exportM3U(selectedId)} title="Export as M3U">M3U</Btn>
+                <Btn tone="danger" onClick={() => deletePlaylist(selectedId)} title="Delete playlist">
+                  <Trash2 size={14} className="sm:hidden" />
+                  <span className="hidden sm:inline">Delete</span>
+                </Btn>
               </>
             )}
           </div>
         }
       />
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Playlist sidebar */}
-        <div className="w-[280px] shrink-0 border-r border-[var(--border)] bg-[var(--panel2)] overflow-auto">
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* Playlist sidebar - responsive width */}
+        <div className="w-[220px] sm:w-[260px] md:w-[280px] shrink-0 border-r border-[var(--border)] bg-[var(--panel2)] overflow-auto">
           <div className="p-4">
             {/* Create new */}
             <div className="flex gap-2 mb-3">
@@ -11736,32 +12999,35 @@ function PlaylistsPage() {
           {selectedPlaylist ? (
             <div className="p-6">
               {/* Header */}
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold flex items-center gap-2">
-                    {selectedPlaylist.isSmart === 1 && <Zap size={20} className="text-cyan-400" />}
-                    {selectedPlaylist.name}
-                  </h2>
-                  <div className="text-sm text-[var(--muted)] mt-1 flex items-center gap-3">
-                    <span>{items.length} {items.length === 1 ? 'item' : 'items'}</span>
-                    {(() => {
-                      const totalDuration = items.reduce((sum: number, item: any) => {
-                        return sum + (item.media?.durationSec ?? item.durationSec ?? 0)
-                      }, 0)
-                      return totalDuration > 0 ? <span>• {formatDuration(totalDuration)} total</span> : null
-                    })()}
-                    {selectedPlaylist.isSmart === 1 && <span className="text-cyan-400 text-xs">Smart Playlist</span>}
+              <div className="mb-4 flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="min-w-0">
+                    <h2 className="text-xl sm:text-2xl font-bold flex items-center gap-2 truncate">
+                      {selectedPlaylist.isSmart === 1 && <Zap size={20} className="text-cyan-400 shrink-0" />}
+                      <span className="truncate">{selectedPlaylist.name}</span>
+                    </h2>
+                    <div className="text-sm text-[var(--muted)] mt-1 flex items-center gap-3 flex-wrap">
+                      <span>{items.length} {items.length === 1 ? 'item' : 'items'}</span>
+                      {(() => {
+                        const totalDuration = items.reduce((sum: number, item: any) => {
+                          return sum + (item.media?.durationSec ?? item.durationSec ?? 0)
+                        }, 0)
+                        return totalDuration > 0 ? <span>• {formatDuration(totalDuration)} total</span> : null
+                      })()}
+                      {selectedPlaylist.isSmart === 1 && <span className="text-cyan-400 text-xs">Smart Playlist</span>}
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                {/* Filters and actions row - wraps on narrow screens */}
+                <div className="flex items-center gap-2 flex-wrap">
                   {/* Type filter buttons */}
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 shrink-0">
                     {(['all', 'video', 'image', 'gif'] as const).map((t) => (
                       <button
                         key={t}
                         onClick={() => setTypeFilter(t)}
                         className={cn(
-                          'px-2.5 py-1.5 rounded-lg text-xs border transition',
+                          'px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg text-[10px] sm:text-xs border transition',
                           typeFilter === t
                             ? 'bg-white/10 border-white/20 text-white font-medium'
                             : 'border-[var(--border)] text-[var(--muted)] hover:border-white/15 hover:text-white'
@@ -11771,14 +13037,15 @@ function PlaylistsPage() {
                       </button>
                     ))}
                   </div>
+                  <div className="w-px h-4 bg-[var(--border)] hidden sm:block" />
                   {/* Sort buttons */}
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 shrink-0">
                     {(['manual', 'name', 'duration', 'added', 'random'] as PlaylistSortBy[]).map((s) => (
                       <button
                         key={s}
                         onClick={() => setSortBy(s)}
                         className={cn(
-                          'px-2.5 py-1.5 rounded-lg text-xs border transition',
+                          'px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg text-[10px] sm:text-xs border transition',
                           sortBy === s
                             ? 'bg-white/10 border-white/20 text-white font-medium'
                             : 'border-[var(--border)] text-[var(--muted)] hover:border-white/15 hover:text-white'
@@ -11788,6 +13055,7 @@ function PlaylistsPage() {
                       </button>
                     ))}
                   </div>
+                  <div className="flex-1" />
                   {sortedItems.length > 0 && (
                     <>
                       <Btn
@@ -11829,10 +13097,10 @@ function PlaylistsPage() {
                 </div>
               </div>
 
-              {/* Mosaic grid */}
+              {/* Mosaic grid - responsive columns for narrow windows */}
               <div
                 className="grid"
-                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}
+                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(200px, 100%), 1fr))', gap: '12px' }}
               >
                 {sortedItems.map((item: any, idx: number) => {
                   const mediaId = item.media?.id ?? item.mediaId
@@ -11944,22 +13212,22 @@ function PlaylistsPage() {
 
       {/* Add Videos Modal */}
       {showAddMedia && selectedId && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[60]">
-          <div className="w-[700px] max-h-[80vh] rounded-3xl border border-white/10 bg-[var(--panel)] overflow-hidden shadow-2xl flex flex-col">
-            <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between shrink-0">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="w-full max-w-[700px] max-h-[80vh] rounded-3xl border border-white/10 bg-[var(--panel)] overflow-hidden shadow-2xl flex flex-col">
+            <div className="px-4 sm:px-6 py-4 border-b border-[var(--border)] flex items-center justify-between gap-3 shrink-0 flex-wrap">
               <div className="text-sm font-semibold">Add Videos to Playlist</div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3 flex-1 sm:flex-none justify-end">
                 <input
                   value={mediaSearch}
                   onChange={(e) => setMediaSearch(e.target.value)}
                   placeholder="Search..."
-                  className="px-3 py-1.5 rounded-xl bg-black/20 border border-[var(--border)] outline-none focus:border-white/15 text-xs w-48"
+                  className="px-3 py-1.5 rounded-xl bg-black/20 border border-[var(--border)] outline-none focus:border-white/15 text-xs w-32 sm:w-48"
                 />
                 <Btn onClick={() => setShowAddMedia(false)}>Done</Btn>
               </div>
             </div>
-            <div className="flex-1 overflow-auto p-4">
-              <div className="grid grid-cols-3 gap-3">
+            <div className="flex-1 overflow-auto p-3 sm:p-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                 {allMedia
                   .filter((m) => {
                     if (!mediaSearch.trim()) return true
@@ -12011,8 +13279,8 @@ function PlaylistsPage() {
 
       {/* AI Playlist Generator Modal */}
       {showAiGenerator && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[60]">
-          <div className="w-[600px] max-h-[85vh] rounded-3xl border border-purple-500/30 bg-[var(--panel)] overflow-hidden shadow-2xl flex flex-col">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="w-full max-w-[600px] max-h-[85vh] rounded-3xl border border-purple-500/30 bg-[var(--panel)] overflow-hidden shadow-2xl flex flex-col">
             {/* Header */}
             <div className="px-6 py-4 border-b border-[var(--border)] bg-gradient-to-r from-purple-500/10 to-pink-500/10">
               <div className="flex items-center justify-between">
@@ -12193,8 +13461,8 @@ function PlaylistsPage() {
 
       {/* Smart Playlist Creation Modal */}
       {showSmartPlaylistModal && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[60]">
-          <div className="w-[550px] max-h-[85vh] rounded-3xl border border-cyan-500/30 bg-[var(--panel)] overflow-hidden shadow-2xl flex flex-col">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="w-full max-w-[550px] max-h-[85vh] rounded-3xl border border-cyan-500/30 bg-[var(--panel)] overflow-hidden shadow-2xl flex flex-col">
             {/* Header */}
             <div className="px-6 py-4 border-b border-[var(--border)] bg-gradient-to-r from-cyan-500/10 to-blue-500/10">
               <div className="flex items-center justify-between">
@@ -12603,7 +13871,11 @@ function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof useConfet
       confetti?.burst()
       loadDailyChallenges()
     })
-    return () => { unsubStats?.(); unsubAchievement?.(); unsubChallenge?.() }
+    // Subscribe to vault changes to refresh stats when media is added/removed
+    const unsubVault = window.api.events.onVaultChanged?.(() => {
+      loadAllStats()  // Refresh all stats including totalDurationSec
+    })
+    return () => { unsubStats?.(); unsubAchievement?.(); unsubChallenge?.(); unsubVault?.() }
   }, [])
 
   const loadDailyChallenges = async () => {
@@ -12891,7 +14163,9 @@ function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof useConfet
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div>
-                <div className="text-2xl font-bold text-violet-400">{sessionAnalytics.totalSessions}</div>
+                <div className="text-2xl font-bold text-violet-400">
+                  <AnimatedCounter value={sessionAnalytics.totalSessions} />
+                </div>
                 <div className="text-[10px] text-[var(--muted)]">Total Sessions</div>
               </div>
               <div>
@@ -12903,7 +14177,9 @@ function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof useConfet
                 <div className="text-[10px] text-[var(--muted)]">Avg Session</div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-fuchsia-400">{sessionAnalytics.avgMediaPerSession.toFixed(1)}</div>
+                <div className="text-2xl font-bold text-fuchsia-400 count-up">
+                  {sessionAnalytics.avgMediaPerSession.toFixed(1)}
+                </div>
                 <div className="text-[10px] text-[var(--muted)]">Media/Session</div>
               </div>
               <div>
@@ -13277,6 +14553,15 @@ function SettingsPage(props: {
     crtRgbSubpixels: boolean
     crtChromaticAberration: boolean
     crtScreenFlicker: boolean
+    crtGlitchGif: number | null
+    tvBorder: boolean
+    tvBorderGlass: boolean
+    tvBorderGlassOpacity: number
+    tvBorderPadding: number
+    tvBorderStyle: 'classic' | 'modern' | 'retro' | 'minimal'
+    pipBoy: boolean
+    pipBoyColor: 'green' | 'amber' | 'blue' | 'white'
+    pipBoyIntensity: number
     heatLevel: number
     hearts: boolean
     rain: boolean
@@ -13297,6 +14582,15 @@ function SettingsPage(props: {
     setCrtRgbSubpixels: (v: boolean) => void
     setCrtChromaticAberration: (v: boolean) => void
     setCrtScreenFlicker: (v: boolean) => void
+    setCrtGlitchGif: (v: number | null) => void
+    setTvBorder: (v: boolean) => void
+    setTvBorderGlass: (v: boolean) => void
+    setTvBorderGlassOpacity: (v: number) => void
+    setTvBorderPadding: (v: number) => void
+    setTvBorderStyle: (v: 'classic' | 'modern' | 'retro' | 'minimal') => void
+    setPipBoy: (v: boolean) => void
+    setPipBoyColor: (v: 'green' | 'amber' | 'blue' | 'white') => void
+    setPipBoyIntensity: (v: number) => void
     setHeatLevel: (v: number) => void
     setHearts: (v: boolean) => void
     setRain: (v: boolean) => void
@@ -13479,8 +14773,12 @@ function SettingsPage(props: {
                         tone="danger"
                         title="Remove this folder from library scan"
                         onClick={async () => {
-                          const next = await window.api.settings.removeMediaDir(d)
-                          props.patchSettings(next)
+                          try {
+                            const next = await window.api.settings.removeMediaDir(d)
+                            props.patchSettings(next)
+                          } catch (err) {
+                            console.error('[Settings] Failed to remove media dir:', err)
+                          }
                         }}
                       >
                         Remove
@@ -13490,10 +14788,14 @@ function SettingsPage(props: {
                   <Btn
                     title="Add a new folder to scan for media files"
                     onClick={async () => {
-                      const nextDir = await window.api.settings.chooseMediaDir()
-                      if (!nextDir) return
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
+                      try {
+                        const nextDir = await window.api.settings.chooseMediaDir()
+                        if (!nextDir) return
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                      } catch (err) {
+                        console.error('[Settings] Failed to add media dir:', err)
+                      }
                     }}
                   >
                     Add folder
@@ -13508,10 +14810,14 @@ function SettingsPage(props: {
                   <Btn
                     title="Set folder for thumbnails and temporary files"
                     onClick={async () => {
-                      const nextDir = await window.api.settings.chooseCacheDir()
-                      if (!nextDir) return
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
+                      try {
+                        const nextDir = await window.api.settings.chooseCacheDir()
+                        if (!nextDir) return
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                      } catch (err) {
+                        console.error('[Settings] Failed to set cache dir:', err)
+                      }
                     }}
                   >
                     Choose cache folder
@@ -13530,9 +14836,13 @@ function SettingsPage(props: {
                     <select
                       value={s?.library?.thumbnailQuality ?? 'medium'}
                       onChange={async (e) => {
-                        await window.api.settings.library?.update?.({ thumbnailQuality: e.target.value as 'low' | 'medium' | 'high' })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
+                        try {
+                          await window.api.settings.library?.update?.({ thumbnailQuality: e.target.value as 'low' | 'medium' | 'high' })
+                          const next = await window.api.settings.get()
+                          props.patchSettings(next)
+                        } catch (err) {
+                          console.error('[Settings] Failed to update thumbnail quality:', err)
+                        }
                       }}
                       className="px-3 py-1.5 rounded-lg bg-black/30 border border-[var(--border)] text-sm focus:outline-none focus:border-white/20"
                     >
@@ -13563,6 +14873,134 @@ function SettingsPage(props: {
                     >
                       Clear Thumbnail Cache
                     </Btn>
+                  </div>
+                </div>
+              </div>
+
+              {/* Performance Settings for Low-End PCs */}
+              <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5">
+                <div className="text-sm font-semibold mb-4">Performance (Low-End PC Options)</div>
+                <div className="space-y-4">
+                  {/* Video Preview Quality */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">Video Preview Quality</div>
+                      <div className="text-xs text-[var(--muted)]">Lower quality = faster hover preview loading</div>
+                    </div>
+                    <select
+                      value={s?.library?.previewQuality ?? 'medium'}
+                      onChange={async (e) => {
+                        await window.api.settings.library?.update?.({ previewQuality: e.target.value as 'low' | 'medium' | 'high' })
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm"
+                    >
+                      <option value="low">Low (360p, fastest)</option>
+                      <option value="medium">Medium (480p)</option>
+                      <option value="high">High (720p)</option>
+                    </select>
+                  </div>
+
+                  {/* Disable Hover Previews */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">Disable Hover Previews</div>
+                      <div className="text-xs text-[var(--muted)]">Turn off video preview on hover (saves memory)</div>
+                    </div>
+                    <ToggleSwitch
+                      checked={s?.library?.disableHoverPreviews ?? false}
+                      onChange={async (v) => {
+                        await window.api.settings.library?.update?.({ disableHoverPreviews: v })
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                      }}
+                    />
+                  </div>
+
+                  {/* Reduce Animations */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">Reduce Animations</div>
+                      <div className="text-xs text-[var(--muted)]">Disable smooth transitions and effects</div>
+                    </div>
+                    <ToggleSwitch
+                      checked={s?.appearance?.reduceAnimations ?? false}
+                      onChange={async (v) => {
+                        await window.api.settings.appearance?.update?.({ reduceAnimations: v })
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                        // Apply immediately
+                        document.documentElement.setAttribute('data-reduce-motion', v ? 'true' : 'false')
+                      }}
+                    />
+                  </div>
+
+                  {/* Max Concurrent Videos */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">Max Concurrent Videos</div>
+                      <div className="text-xs text-[var(--muted)]">Limit videos playing at once (GoonWall)</div>
+                    </div>
+                    <select
+                      value={s?.library?.maxConcurrentVideos ?? 9}
+                      onChange={async (e) => {
+                        await window.api.settings.library?.update?.({ maxConcurrentVideos: Number(e.target.value) })
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm"
+                    >
+                      <option value="4">4 (low-end PC)</option>
+                      <option value="6">6 (standard)</option>
+                      <option value="9">9 (default)</option>
+                      <option value="12">12 (high-end)</option>
+                      <option value="16">16 (powerful PC)</option>
+                    </select>
+                  </div>
+
+                  {/* Cache Size Limit */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">Memory Cache Size</div>
+                      <div className="text-xs text-[var(--muted)]">URL cache for faster thumbnail loading</div>
+                    </div>
+                    <select
+                      value={s?.library?.memoryCacheSize ?? 2000}
+                      onChange={async (e) => {
+                        await window.api.settings.library?.update?.({ memoryCacheSize: Number(e.target.value) })
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm"
+                    >
+                      <option value="500">500 (low memory)</option>
+                      <option value="1000">1000 (standard)</option>
+                      <option value="2000">2000 (default)</option>
+                      <option value="5000">5000 (high memory)</option>
+                    </select>
+                  </div>
+
+                  {/* Lazy Load Margin */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">Preload Distance</div>
+                      <div className="text-xs text-[var(--muted)]">How far ahead to preload thumbnails (pixels)</div>
+                    </div>
+                    <select
+                      value={s?.library?.preloadMargin ?? 600}
+                      onChange={async (e) => {
+                        await window.api.settings.library?.update?.({ preloadMargin: Number(e.target.value) })
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm"
+                    >
+                      <option value="200">200px (minimal preload)</option>
+                      <option value="400">400px (low)</option>
+                      <option value="600">600px (default)</option>
+                      <option value="1000">1000px (aggressive)</option>
+                    </select>
                   </div>
                 </div>
               </div>
@@ -13698,6 +15136,34 @@ function SettingsPage(props: {
                     <option value="small">Small</option>
                     <option value="medium">Medium</option>
                     <option value="large">Large</option>
+                  </select>
+                </div>
+
+                {/* Font Style */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm">Font Style</div>
+                    <div className="text-xs text-[var(--muted)]">App-wide text style</div>
+                  </div>
+                  <select
+                    value={s?.appearance?.fontStyle ?? 'default'}
+                    onChange={async (e) => {
+                      const style = e.target.value
+                      await window.api.settings.appearance?.update?.({ fontStyle: style })
+                      const next = await window.api.settings.get()
+                      props.patchSettings(next)
+                      // Apply font style to document
+                      document.documentElement.setAttribute('data-font-style', style)
+                    }}
+                    className="bg-black/40 border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm"
+                  >
+                    <option value="default">Default (System)</option>
+                    <option value="degrading">Degrading (Bold Impact)</option>
+                    <option value="80s-hacker">80s Hacker (Terminal)</option>
+                    <option value="perverse">Perverse (Cursive)</option>
+                    <option value="neon">Neon (Modern)</option>
+                    <option value="retro">Retro (Typewriter)</option>
+                    <option value="gothic">Gothic (Blackletter)</option>
                   </select>
                 </div>
 
@@ -13954,6 +15420,148 @@ function SettingsPage(props: {
                       <ToggleSwitch
                         checked={props.visualEffects.crtScreenFlicker}
                         onChange={props.onVisualEffectsChange.setCrtScreenFlicker}
+                      />
+                    </div>
+
+                    {/* CRT Glitch Overlay */}
+                    <div className="flex items-center justify-between pl-4">
+                      <div>
+                        <div className="text-sm text-[var(--muted)]">Glitch Overlay</div>
+                        <div className="text-xs text-[var(--muted)]/70">Animated VHS/CRT glitch effect</div>
+                      </div>
+                      <select
+                        value={props.visualEffects.crtGlitchGif ?? 'none'}
+                        onChange={(e) => {
+                          const val = e.target.value === 'none' ? null : Number(e.target.value)
+                          props.onVisualEffectsChange.setCrtGlitchGif(val)
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm"
+                      >
+                        <option value="none">None</option>
+                        <option value="0">Glitch Style 1</option>
+                        <option value="1">Glitch Style 2</option>
+                        <option value="2">Glitch Style 3</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+
+                {/* TV Border with Glass */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm">📺 TV Border</div>
+                    <div className="text-xs text-[var(--muted)]">Retro TV frame with glass effect</div>
+                  </div>
+                  <ToggleSwitch
+                    checked={props.visualEffects.tvBorder}
+                    onChange={props.onVisualEffectsChange.setTvBorder}
+                  />
+                </div>
+
+                {props.visualEffects.tvBorder && (
+                  <>
+                    {/* TV Border Style */}
+                    <div className="flex items-center justify-between pl-4">
+                      <div>
+                        <div className="text-sm text-[var(--muted)]">Border Style</div>
+                      </div>
+                      <select
+                        value={props.visualEffects.tvBorderStyle}
+                        onChange={(e) => props.onVisualEffectsChange.setTvBorderStyle(e.target.value as any)}
+                        className="px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm"
+                      >
+                        <option value="classic">Classic</option>
+                        <option value="retro">Retro Wood</option>
+                        <option value="modern">Modern Slim</option>
+                        <option value="minimal">Minimal</option>
+                      </select>
+                    </div>
+
+                    {/* Glass Effect Toggle */}
+                    <div className="flex items-center justify-between pl-4">
+                      <div>
+                        <div className="text-sm text-[var(--muted)]">Glass Reflection</div>
+                      </div>
+                      <ToggleSwitch
+                        checked={props.visualEffects.tvBorderGlass}
+                        onChange={props.onVisualEffectsChange.setTvBorderGlass}
+                      />
+                    </div>
+
+                    {/* Glass Opacity */}
+                    {props.visualEffects.tvBorderGlass && (
+                      <div className="flex items-center justify-between pl-4">
+                        <div className="text-sm text-[var(--muted)]">Glass Intensity</div>
+                        <input
+                          type="range"
+                          min={0.05}
+                          max={0.4}
+                          step={0.05}
+                          value={props.visualEffects.tvBorderGlassOpacity}
+                          onChange={(e) => props.onVisualEffectsChange.setTvBorderGlassOpacity(Number(e.target.value))}
+                          className="w-24 h-1 accent-[var(--primary)]"
+                        />
+                      </div>
+                    )}
+
+                    {/* Border Padding */}
+                    <div className="flex items-center justify-between pl-4">
+                      <div className="text-sm text-[var(--muted)]">Border Size</div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={8}
+                        step={0.5}
+                        value={props.visualEffects.tvBorderPadding}
+                        onChange={(e) => props.onVisualEffectsChange.setTvBorderPadding(Number(e.target.value))}
+                        className="w-24 h-1 accent-[var(--primary)]"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Pip-Boy / Fallout Style */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm">☢️ Pip-Boy Mode</div>
+                    <div className="text-xs text-[var(--muted)]">Fallout-style terminal overlay</div>
+                  </div>
+                  <ToggleSwitch
+                    checked={props.visualEffects.pipBoy}
+                    onChange={props.onVisualEffectsChange.setPipBoy}
+                  />
+                </div>
+
+                {props.visualEffects.pipBoy && (
+                  <>
+                    {/* Pip-Boy Color */}
+                    <div className="flex items-center justify-between pl-4">
+                      <div>
+                        <div className="text-sm text-[var(--muted)]">Phosphor Color</div>
+                      </div>
+                      <select
+                        value={props.visualEffects.pipBoyColor}
+                        onChange={(e) => props.onVisualEffectsChange.setPipBoyColor(e.target.value as any)}
+                        className="px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm"
+                      >
+                        <option value="green">Green (Classic)</option>
+                        <option value="amber">Amber (Warm)</option>
+                        <option value="blue">Blue (Cool)</option>
+                        <option value="white">White (Terminal)</option>
+                      </select>
+                    </div>
+
+                    {/* Pip-Boy Intensity */}
+                    <div className="flex items-center justify-between pl-4">
+                      <div className="text-sm text-[var(--muted)]">Intensity</div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={10}
+                        step={1}
+                        value={props.visualEffects.pipBoyIntensity}
+                        onChange={(e) => props.onVisualEffectsChange.setPipBoyIntensity(Number(e.target.value))}
+                        className="w-24 h-1 accent-[var(--primary)]"
                       />
                     </div>
                   </>
@@ -14272,7 +15880,8 @@ function SettingsPage(props: {
                     {/* Font Family */}
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="text-sm">Font</div>
+                        <div className="text-sm">Font Style</div>
+                        <div className="text-xs text-[var(--muted)]">Choose the vibe</div>
                       </div>
                       <select
                         value={s?.visualEffects?.goonWords?.fontFamily ?? 'system-ui'}
@@ -14284,13 +15893,65 @@ function SettingsPage(props: {
                         }}
                         className="bg-black/30 border border-[var(--border)] rounded-lg px-2 py-1 text-sm"
                       >
-                        <option value="system-ui">System</option>
-                        <option value="Arial Black">Arial Black</option>
-                        <option value="Impact">Impact</option>
-                        <option value="Georgia">Georgia</option>
-                        <option value="Courier New">Courier</option>
-                        <option value="Comic Sans MS">Comic Sans</option>
+                        <optgroup label="Bold & Impactful">
+                          <option value="Impact">Impact (Meme Style)</option>
+                          <option value="Arial Black">Arial Black</option>
+                          <option value="system-ui">System Default</option>
+                        </optgroup>
+                        <optgroup label="Sexy & Elegant">
+                          <option value="Georgia">Georgia (Classy)</option>
+                          <option value="Palatino Linotype">Palatino (Elegant)</option>
+                          <option value="Brush Script MT">Brush Script (Feminine)</option>
+                        </optgroup>
+                        <optgroup label="Edgy & Dark">
+                          <option value="Courier New">Courier (Hacker)</option>
+                          <option value="Lucida Console">Console (Digital)</option>
+                          <option value="Trebuchet MS">Trebuchet (Modern)</option>
+                        </optgroup>
+                        <optgroup label="Fun & Playful">
+                          <option value="Comic Sans MS">Comic Sans (Silly)</option>
+                          <option value="Segoe Script">Segoe Script (Handwritten)</option>
+                          <option value="Papyrus">Papyrus (Exotic)</option>
+                        </optgroup>
                       </select>
+                    </div>
+
+                    {/* Color Presets */}
+                    <div className="pt-2">
+                      <div className="text-sm mb-2">Color Presets</div>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { name: 'Hot Pink', text: '#ffffff', glow: '#ff6b9d' },
+                          { name: 'Neon Purple', text: '#e0aaff', glow: '#9d4edd' },
+                          { name: 'Fire', text: '#ffcc00', glow: '#ff5500' },
+                          { name: 'Ice', text: '#ffffff', glow: '#00d4ff' },
+                          { name: 'Blood', text: '#ff0000', glow: '#8b0000' },
+                          { name: 'Matrix', text: '#00ff00', glow: '#003300' },
+                          { name: 'Gold', text: '#ffd700', glow: '#b8860b' },
+                          { name: 'Demon', text: '#ff0066', glow: '#330000' },
+                        ].map(preset => (
+                          <button
+                            key={preset.name}
+                            onClick={async () => {
+                              const current = s?.visualEffects?.goonWords ?? {}
+                              await window.api.settings.visualEffects?.update?.({
+                                goonWords: { ...current, fontColor: preset.text, glowColor: preset.glow }
+                              })
+                              const next = await window.api.settings.get()
+                              props.patchSettings(next)
+                            }}
+                            className="px-2 py-1 rounded text-xs transition hover:scale-105"
+                            style={{
+                              background: `linear-gradient(135deg, ${preset.glow}40, ${preset.glow}20)`,
+                              border: `1px solid ${preset.glow}60`,
+                              color: preset.text,
+                              textShadow: `0 0 8px ${preset.glow}`
+                            }}
+                          >
+                            {preset.name}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     {/* Text Color & Glow Color */}
@@ -14409,6 +16070,41 @@ function SettingsPage(props: {
                         placeholder="Add custom words (one per line)..."
                         className="w-full h-20 px-3 py-2 rounded-lg bg-black/30 border border-[var(--border)] text-sm resize-none"
                       />
+                      {/* Quick-add buttons */}
+                      <div className="mt-2">
+                        <div className="text-xs text-[var(--muted)] mb-1">Quick Add:</div>
+                        <div className="flex flex-wrap gap-1">
+                          {[
+                            'FUCK YES', 'SO HORNY', 'NEED IT', 'DRIPPING', 'ACHING',
+                            'MORE MORE MORE', 'DON\'T STOP', 'RIGHT THERE', 'HARDER', 'DEEPER'
+                          ].map(word => (
+                            <button
+                              key={word}
+                              onClick={async () => {
+                                const goonWords = s?.visualEffects?.goonWords
+                                const customWords = [...(goonWords?.customWords ?? [])]
+                                if (!customWords.includes(word)) {
+                                  customWords.push(word)
+                                  await window.api.settings.visualEffects?.update?.({ goonWords: { ...goonWords, customWords } })
+                                  const next = await window.api.settings.get()
+                                  props.patchSettings(next)
+                                }
+                              }}
+                              className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 hover:bg-white/10 text-[var(--muted)] hover:text-white transition"
+                            >
+                              + {word}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Word Count Info */}
+                    <div className="pt-2 text-xs text-[var(--muted)] border-t border-[var(--border)]">
+                      <div className="flex justify-between">
+                        <span>Active word packs: {(s?.visualEffects?.goonWords?.enabledPacks ?? ['goon', 'kink']).length}</span>
+                        <span>Custom words: {(s?.visualEffects?.goonWords?.customWords ?? []).length}</span>
+                      </div>
                     </div>
                   </>
                 )}
@@ -15166,6 +16862,96 @@ function SettingsPage(props: {
                     Clear Logs
                   </Btn>
                 </div>
+              </div>
+
+              {/* Performance Settings */}
+              <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5 mt-4">
+                <div className="text-sm font-semibold mb-4">Performance</div>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">Memory Limit</div>
+                      <div className="text-xs text-[var(--muted)]">Max RAM for caching (restart required)</div>
+                    </div>
+                    <select
+                      value={s?.performance?.maxMemoryMB ?? 2048}
+                      onChange={async (e) => {
+                        await window.api.settings.update?.({ performance: { ...s?.performance, maxMemoryMB: Number(e.target.value) } })
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                      }}
+                      className="bg-black/40 border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm"
+                    >
+                      <option value={512}>512 MB (Low)</option>
+                      <option value={1024}>1 GB</option>
+                      <option value={2048}>2 GB (Default)</option>
+                      <option value={4096}>4 GB</option>
+                      <option value={8192}>8 GB (High)</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">Thumbnail Cache</div>
+                      <div className="text-xs text-[var(--muted)]">Number of thumbnails to keep in memory</div>
+                    </div>
+                    <select
+                      value={s?.performance?.thumbnailCacheSize ?? 2000}
+                      onChange={async (e) => {
+                        await window.api.settings.update?.({ performance: { ...s?.performance, thumbnailCacheSize: Number(e.target.value) } })
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                      }}
+                      className="bg-black/40 border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm"
+                    >
+                      <option value={500}>500 (Low)</option>
+                      <option value={1000}>1,000</option>
+                      <option value={2000}>2,000 (Default)</option>
+                      <option value={5000}>5,000</option>
+                      <option value={10000}>10,000 (High)</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">Video Concurrency</div>
+                      <div className="text-xs text-[var(--muted)]">Max simultaneous video loads</div>
+                    </div>
+                    <select
+                      value={s?.performance?.videoConcurrency ?? 4}
+                      onChange={async (e) => {
+                        await window.api.settings.update?.({ performance: { ...s?.performance, videoConcurrency: Number(e.target.value) } })
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                      }}
+                      className="bg-black/40 border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm"
+                    >
+                      <option value={1}>1 (Low)</option>
+                      <option value={2}>2</option>
+                      <option value={4}>4 (Default)</option>
+                      <option value={8}>8</option>
+                      <option value={16}>16 (High)</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">Low Memory Mode</div>
+                      <div className="text-xs text-[var(--muted)]">Reduce memory at cost of performance</div>
+                    </div>
+                    <ToggleSwitch
+                      checked={s?.performance?.lowMemoryMode ?? false}
+                      onChange={async (v) => {
+                        await window.api.settings.update?.({ performance: { ...s?.performance, lowMemoryMode: v } })
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                      }}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-[var(--muted)] mt-4">
+                  Higher values use more RAM but improve performance. Restart required for memory limit changes.
+                </p>
               </div>
             </>
           )}

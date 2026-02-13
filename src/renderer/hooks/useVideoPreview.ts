@@ -19,6 +19,7 @@ export function useVideoPreview(options: UseVideoPreviewOptions = {}) {
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const clipTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const clipIndexRef = useRef(0)
+  const canPlayHandlerRef = useRef<(() => void) | null>(null) // Track canplay listener for cleanup
   const [isHovering, setIsHovering] = useState(false)
   const [isWaiting, setIsWaiting] = useState(false) // 2 second intro period
   const [isPlaying, setIsPlaying] = useState(false)
@@ -28,6 +29,11 @@ export function useVideoPreview(options: UseVideoPreviewOptions = {}) {
     return () => {
       if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
       if (clipTimeoutRef.current) clearTimeout(clipTimeoutRef.current)
+      // Clean up canplay listener if still attached
+      if (videoRef.current && canPlayHandlerRef.current) {
+        videoRef.current.removeEventListener('canplay', canPlayHandlerRef.current)
+        canPlayHandlerRef.current = null
+      }
       if (videoRef.current) {
         videoRef.current.pause()
         videoRef.current.src = ''
@@ -78,6 +84,13 @@ export function useVideoPreview(options: UseVideoPreviewOptions = {}) {
     if (!videoRef.current) return
 
     const video = videoRef.current
+
+    // Clean up previous canplay listener if any
+    if (canPlayHandlerRef.current) {
+      video.removeEventListener('canplay', canPlayHandlerRef.current)
+      canPlayHandlerRef.current = null
+    }
+
     video.src = videoUrl
     video.muted = muted
     video.playsInline = true
@@ -89,8 +102,10 @@ export function useVideoPreview(options: UseVideoPreviewOptions = {}) {
       const videoDuration = duration || video.duration || 30
       playNextClip(video, videoDuration)
       video.removeEventListener('canplay', handleCanPlay)
+      canPlayHandlerRef.current = null
     }
 
+    canPlayHandlerRef.current = handleCanPlay
     video.addEventListener('canplay', handleCanPlay)
     video.load()
   }, [playNextClip, muted])
@@ -103,6 +118,11 @@ export function useVideoPreview(options: UseVideoPreviewOptions = {}) {
     if (clipTimeoutRef.current) {
       clearTimeout(clipTimeoutRef.current)
       clipTimeoutRef.current = null
+    }
+    // Clean up canplay listener to prevent memory leak
+    if (videoRef.current && canPlayHandlerRef.current) {
+      videoRef.current.removeEventListener('canplay', canPlayHandlerRef.current)
+      canPlayHandlerRef.current = null
     }
     if (videoRef.current) {
       videoRef.current.pause()

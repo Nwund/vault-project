@@ -269,6 +269,67 @@ Verify ALL sliders, toggles, dropdowns, and buttons function and persist correct
 
 **Build Stats:** 69 modules transformed, main.js 847.82 kB, renderer 1.51 MB
 
+### Latest Session (Feb 12, 2026 - Continued):
+- [x] **Light Mode UI Improvements** - CSS reactive styles for light themes ensuring visibility
+- [x] **Quick Actions Sidebar** - Bottom-left sidebar section with theme cycling, AI tools, hidden features
+- [x] **Keybinds Editor Popup** - Modal showing all keyboard shortcuts grouped by category
+- [x] **Challenges → Stats Navigation** - Challenges button now navigates to Stats page
+- [x] **Video Preview Sizing Fix** - Preview matches thumbnail exactly (object-cover/contain based on layout)
+- [x] **CRT TV Border Overlay** - Custom TV border SVG stays in front of all effects (z-index 99995)
+- [x] **CRT Glitch GIF Overlays** - Animated GIFs render behind TV border (z-index 99975)
+- [x] **Thumbnail Loading GIF** - Animated loading placeholder for unloaded thumbnails
+- [x] **Thumbnail Cache Optimization** - Increased URL cache to 2000 entries, batch preload to 50
+- [x] **Library Mosaic Overflow Fix** - Removed overflow-hidden that caused video clipping
+
+---
+
+## PENDING TASKS (From This Session)
+
+### High Priority - Bugs:
+- [x] **Library Mosaic Layout** - Uses CSS Grid with gridAutoFlow: 'row' for proper ordering
+- [x] **GoonWall Stuttering** - Fixed with requestAnimationFrame instead of setInterval for audio fading
+- [x] **Brainwash Tab Slow/Broken** - Fixed with IntersectionObserver for lazy loading thumbnails
+
+### Medium Priority - Features:
+- [x] **Video Cropping** - Added crop mode (C key), drag handles, presets (5%/10%/15%), CSS clip-path
+- [x] **RAM Allocation Setting** - Added PerformanceSettings with memory limit, thumbnail cache, video concurrency
+- [x] **Ambient Music/Moans Playback** - Created useAmbienceAudio hook with track categories and looping
+- [x] **Windowed Sessions UI Polish** - Responsive sidebar, wrapping controls, responsive modals
+
+### Lower Priority:
+- [x] **AI Tools Pending Review Broken** - Fixed SQL column names (mediaId/tagId instead of media_id/tag_id)
+
+---
+
+## PERFORMANCE & STABILITY (Feb 12-13, 2026 Session)
+
+### Memory Leak Fixes:
+- [x] **Random Climax Timer Leak** - Changed from `let timerId` to `useRef` for proper cleanup of recursive setTimeout
+- [x] **Toast Auto-dismiss Timer Leak** - Added `toastTimersRef` Map to track and cleanup toast timers on manual dismiss
+- [x] **Video Preview canplay Listener Leak** - Added `canPlayHandlerRef` to track listener and cleanup in stopPreview/unmount
+- [x] **useConfetti Timer Leaks** - Added `pendingTimeoutsRef`/`pendingIntervalsRef` Sets with tracked `scheduleTimeout()`/`scheduleInterval()` helpers
+- [x] **useAmbienceAudio Interval Leak** - Fixed unreachable return statement, added `loadCheckIntervalRef` for proper cleanup
+
+### Code Deduplication (Reduced Bloat):
+- [x] **Shared Formatters** - Created `src/renderer/utils/formatters.ts` with consolidated `formatDuration()` and `formatBytes()`
+- [x] **Shared URL Cache** - Created `src/renderer/utils/urlCache.ts` with consolidated `toFileUrlCached()` and cache management
+- [x] **FloatingVideoPlayer** - Removed duplicate urlCache and formatDuration, now uses shared utilities
+- [x] **VirtualizedMediaGrid** - Removed duplicate formatDuration and formatBytes, now uses shared utilities
+- [x] **HomeDashboard** - Removed duplicate thumbCache and formatDuration, now uses shared utilities
+- [x] **App.tsx** - Removed duplicate formatDuration and formatBytes definitions
+
+### Error Handling Improvements:
+- [x] **GIF Maker Video Selection** - Added try-catch for URL loading errors
+- [x] **Settings Folder Handlers** - Added try-catch for add/remove/choose operations
+- [x] **Thumbnail Quality Setting** - Added try-catch for settings update
+- [x] **Like Button** - Added loading state to prevent spam-clicking with rollback on error
+- [x] **AI Analyze** - Added mount checks for async state updates
+- [x] **Context Menu Actions** - Added stopPropagation and error handling
+- [x] **Toast Dismissal** - Added stopPropagation
+- [x] **Protected Tag Handlers** - Added try-catch
+
+**Build Stats:** TypeScript clean, renderer 1.67 MB JS, build time ~5.8s
+
 ---
 
 ## QUICK WINS (Can do in <30 min each)

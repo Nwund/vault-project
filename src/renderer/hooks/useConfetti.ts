@@ -24,9 +24,44 @@ interface ConfettiOptions {
 export function useConfetti() {
   const confettiCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const confettiInstanceRef = useRef<any>(null)
+  const pendingTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
+  const pendingIntervalsRef = useRef<Set<ReturnType<typeof setInterval>>>(new Set())
+  const isUnmountedRef = useRef(false)
+
+  // Helper to schedule timeout with automatic cleanup
+  const scheduleTimeout = useCallback((callback: () => void, delay: number) => {
+    if (isUnmountedRef.current) return
+    const id = setTimeout(() => {
+      pendingTimeoutsRef.current.delete(id)
+      if (!isUnmountedRef.current) callback()
+    }, delay)
+    pendingTimeoutsRef.current.add(id)
+    return id
+  }, [])
+
+  // Helper to schedule interval with automatic cleanup
+  const scheduleInterval = useCallback((callback: () => boolean | void, delay: number) => {
+    if (isUnmountedRef.current) return
+    const id = setInterval(() => {
+      if (isUnmountedRef.current) {
+        clearInterval(id)
+        pendingIntervalsRef.current.delete(id)
+        return
+      }
+      const shouldStop = callback()
+      if (shouldStop) {
+        clearInterval(id)
+        pendingIntervalsRef.current.delete(id)
+      }
+    }, delay)
+    pendingIntervalsRef.current.add(id)
+    return id
+  }, [])
 
   // Initialize confetti canvas
   useEffect(() => {
+    isUnmountedRef.current = false
+
     // Create a dedicated canvas for confetti
     const canvas = document.createElement('canvas')
     canvas.style.cssText = `
@@ -47,6 +82,13 @@ export function useConfetti() {
     })
 
     return () => {
+      isUnmountedRef.current = true
+      // Clear all pending timeouts and intervals
+      pendingTimeoutsRef.current.forEach(id => clearTimeout(id))
+      pendingTimeoutsRef.current.clear()
+      pendingIntervalsRef.current.forEach(id => clearInterval(id))
+      pendingIntervalsRef.current.clear()
+
       if (confettiCanvasRef.current) {
         document.body.removeChild(confettiCanvasRef.current)
       }
@@ -101,15 +143,15 @@ export function useConfetti() {
       origin: { x: 0.5, y: 0.4 }
     })
 
-    // Fire again with delay
-    setTimeout(() => {
+    // Fire again with delay (using tracked timeout for cleanup)
+    scheduleTimeout(() => {
       fire({
         ...defaults,
         particleCount: 30,
         origin: { x: 0.5, y: 0.5 }
       })
     }, 150)
-  }, [fire])
+  }, [fire, scheduleTimeout])
 
   // Side cannons celebration
   const celebration = useCallback(() => {
@@ -166,7 +208,7 @@ export function useConfetti() {
     ]
 
     colors.forEach((color, i) => {
-      setTimeout(() => {
+      scheduleTimeout(() => {
         fire({
           particleCount: 30,
           spread: 60,
@@ -176,7 +218,7 @@ export function useConfetti() {
         })
       }, i * 100)
     })
-  }, [fire])
+  }, [fire, scheduleTimeout])
 
   // Fireworks effect
   const fireworks = useCallback(() => {
@@ -194,11 +236,12 @@ export function useConfetti() {
     const randomInRange = (min: number, max: number) =>
       Math.random() * (max - min) + min
 
-    const interval = setInterval(() => {
+    // Use tracked interval with automatic cleanup
+    scheduleInterval(() => {
       const timeLeft = animationEnd - Date.now()
 
       if (timeLeft <= 0) {
-        return clearInterval(interval)
+        return true // Signal to stop the interval
       }
 
       const particleCount = 50 * (timeLeft / duration)
@@ -214,11 +257,10 @@ export function useConfetti() {
         particleCount,
         origin: { x: randomInRange(0.6, 0.9), y: Math.random() - 0.2 }
       })
-    }, 250)
 
-    // Cleanup interval after duration
-    setTimeout(() => clearInterval(interval), duration + 500)
-  }, [fire])
+      return false // Continue the interval
+    }, 250)
+  }, [fire, scheduleInterval])
 
   // Reset/clear all confetti
   const reset = useCallback(() => {

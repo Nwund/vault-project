@@ -3,6 +3,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Play, Clock, Sparkles, Plus, ChevronRight, RefreshCw, Film, Image, Heart, TrendingUp, Shuffle, Zap, ListVideo, BarChart3, Eye, Timer, Star, Flame, Crown, Target, Gamepad2 } from 'lucide-react'
+import { formatDuration } from '../utils/formatters'
+import { toFileUrlCached } from '../utils/urlCache'
 
 interface MediaItem {
   id: string
@@ -28,23 +30,11 @@ interface RecommendationItem {
 interface HomeDashboardProps {
   onPlayMedia: (mediaId: string) => void
   onNavigateToLibrary: () => void
+  onNavigateToStats?: () => void
 }
 
-// URL cache for thumbnails
-const thumbCache = new Map<string, string>()
-async function getThumbUrl(path: string): Promise<string> {
-  if (thumbCache.has(path)) return thumbCache.get(path)!
-  const url = await window.api.thumbs.getUrl(path)
-  thumbCache.set(path, url)
-  return url
-}
-
-function formatDuration(sec: number | null | undefined): string {
-  if (!sec) return ''
-  const m = Math.floor(sec / 60)
-  const s = Math.floor(sec % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
+// Use shared URL cache
+const getThumbUrl = toFileUrlCached
 
 function formatTimeAgo(timestamp: number): string {
   const now = Date.now()
@@ -125,7 +115,7 @@ function MediaCard({ media, onClick, badge, progress, rank }: {
       <div className="relative aspect-video bg-zinc-800/80 rounded-xl overflow-hidden mb-2 shadow-lg group-hover:shadow-xl group-hover:shadow-[var(--primary)]/20 transition-all duration-300">
         {/* Loading shimmer */}
         {isLoading && (
-          <div className="absolute inset-0 bg-gradient-to-r from-zinc-800 via-zinc-700 to-zinc-800 animate-pulse" />
+          <div className="absolute inset-0 skeleton" />
         )}
 
         {thumbUrl ? (
@@ -301,7 +291,7 @@ function HorizontalSection({ title, icon, items, loading, onRefresh, onSeeAll, c
   )
 }
 
-export function HomeDashboard({ onPlayMedia, onNavigateToLibrary }: HomeDashboardProps) {
+export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToStats }: HomeDashboardProps) {
   const [continueWatching, setContinueWatching] = useState<Array<ContinueWatchingItem & MediaItem>>([])
   const [recommendations, setRecommendations] = useState<Array<RecommendationItem & MediaItem>>([])
   const [recentlyAdded, setRecentlyAdded] = useState<MediaItem[]>([])
@@ -447,7 +437,7 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary }: HomeDashboar
   const loadWatchLater = useCallback(async () => {
     setLoadingWatchLater(true)
     try {
-      const items = await window.api.invoke('watchLater:list', 12) as Array<{ mediaId: string; priority: number }>
+      const items = await window.api.invoke('watchLater:getQueue', { limit: 12 }) as Array<{ mediaId: string; priority: number }>
       // Fetch media details for each
       const withMedia = await Promise.all(
         items.map(async (item) => {
@@ -511,7 +501,7 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary }: HomeDashboar
                  <Crown size={24} />}
               </div>
               <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-white via-white to-zinc-400 bg-clip-text text-transparent">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-white via-white to-zinc-400 bg-clip-text text-transparent text-glow-subtle">
                   {getGreeting()}
                 </h1>
                 <p className="text-zinc-400 mt-0.5">Your personal media experience awaits</p>
@@ -547,7 +537,7 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary }: HomeDashboar
               </button>
             )}
             <button
-              onClick={onNavigateToLibrary}
+              onClick={onNavigateToStats}
               className="flex items-center gap-2 px-4 py-3 bg-zinc-800/50 hover:bg-zinc-700/50 rounded-xl font-medium transition border border-zinc-700/50 hover:border-zinc-600/50 text-zinc-300 hover:text-white"
             >
               <Gamepad2 size={18} />
@@ -557,7 +547,7 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary }: HomeDashboar
 
           {/* Quick Stats Card - Enhanced */}
           {quickStats && quickStats.totalMedia > 0 && (
-            <div className="p-5 bg-zinc-800/40 backdrop-blur-sm rounded-2xl border border-zinc-700/50 shadow-xl">
+            <div className="p-5 bg-zinc-800/40 backdrop-blur-sm rounded-2xl border border-zinc-700/50 shadow-xl card-shine">
               <div className="flex items-center gap-2 mb-4">
                 <BarChart3 size={18} className="text-[var(--primary)]" />
                 <span className="font-semibold text-white">Your Collection</span>
