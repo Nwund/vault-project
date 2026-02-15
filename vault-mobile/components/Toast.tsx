@@ -1,5 +1,5 @@
 // File: vault-mobile/components/Toast.tsx
-// Toast notification component
+// Toast notification component with blur effect
 
 import { useEffect, useRef } from 'react'
 import {
@@ -12,6 +12,8 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { BlurView } from 'expo-blur'
+import * as Haptics from 'expo-haptics'
 
 type ToastType = 'success' | 'error' | 'warning' | 'info'
 
@@ -61,16 +63,28 @@ export function Toast({
 
   useEffect(() => {
     if (visible) {
-      // Slide in
+      // Haptic feedback on show
+      if (Platform.OS === 'ios') {
+        if (type === 'error') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+        } else if (type === 'success') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+        } else {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+        }
+      }
+
+      // Slide in with bounce
       Animated.parallel([
         Animated.spring(slideAnim, {
           toValue: 0,
           useNativeDriver: true,
-          damping: 15,
+          damping: 12,
+          stiffness: 180,
         }),
         Animated.timing(opacityAnim, {
           toValue: 1,
-          duration: 200,
+          duration: 250,
           useNativeDriver: true,
         }),
       ]).start()
@@ -111,27 +125,29 @@ export function Toast({
       style={[
         styles.container,
         {
-          top: insets.top + 16,
+          top: insets.top + 12,
           transform: [{ translateY: slideAnim }],
           opacity: opacityAnim,
         },
       ]}
     >
       <TouchableOpacity
-        style={[styles.toast, { backgroundColor: config.bg }]}
         onPress={dismiss}
-        activeOpacity={0.9}
+        activeOpacity={0.95}
+        style={styles.touchable}
       >
-        <View style={styles.iconContainer}>
-          <Ionicons name={config.icon as any} size={24} color={config.color} />
-        </View>
-        <View style={styles.content}>
-          <Text style={[styles.title, { color: config.color }]}>{title}</Text>
-          {message && <Text style={styles.message}>{message}</Text>}
-        </View>
-        <TouchableOpacity style={styles.closeButton} onPress={dismiss}>
-          <Ionicons name="close" size={18} color="#71717a" />
-        </TouchableOpacity>
+        <BlurView intensity={80} tint="dark" style={styles.blurContainer}>
+          <View style={[styles.toast, { borderColor: config.color }]}>
+            <View style={[styles.iconContainer, { backgroundColor: config.bg }]}>
+              <Ionicons name={config.icon as any} size={22} color={config.color} />
+            </View>
+            <View style={styles.content}>
+              <Text style={styles.title}>{title}</Text>
+              {message && <Text style={styles.message}>{message}</Text>}
+            </View>
+            <View style={[styles.accentBar, { backgroundColor: config.color }]} />
+          </View>
+        </BlurView>
       </TouchableOpacity>
     </Animated.View>
   )
@@ -144,23 +160,30 @@ const styles = StyleSheet.create({
     right: 16,
     zIndex: 9999,
   },
+  touchable: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  blurContainer: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
   toast: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 14,
+    padding: 14,
     gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
+    borderWidth: 1,
+    borderRadius: 16,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    position: 'relative',
+    overflow: 'hidden',
   },
   iconContainer: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -168,6 +191,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   title: {
+    color: '#fff',
     fontSize: 15,
     fontWeight: '600',
   },
@@ -176,11 +200,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
   },
-  closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
+  accentBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
   },
 })

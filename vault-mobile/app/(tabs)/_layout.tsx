@@ -1,13 +1,15 @@
 // File: vault-mobile/app/(tabs)/_layout.tsx
-// Enhanced tab navigation layout with better styling
+// Enhanced tab navigation layout with sleek styling and animations
 
 import { Tabs, router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
-import { View, StyleSheet, Platform, TouchableOpacity } from 'react-native'
+import { View, StyleSheet, Platform, TouchableOpacity, Animated } from 'react-native'
 import { BlurView } from 'expo-blur'
+import { LinearGradient } from 'expo-linear-gradient'
 import * as Haptics from 'expo-haptics'
+import { useRef, useEffect } from 'react'
 
-// Header button component
+// Animated header button with scale effect
 function HeaderButton({
   icon,
   onPress,
@@ -15,16 +17,90 @@ function HeaderButton({
   icon: keyof typeof Ionicons.glyphMap
   onPress: () => void
 }) {
+  const scale = useRef(new Animated.Value(1)).current
+
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.9,
+      useNativeDriver: true,
+    }).start()
+  }
+
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      friction: 3,
+      useNativeDriver: true,
+    }).start()
+  }
+
   return (
     <TouchableOpacity
-      style={styles.headerButton}
       onPress={() => {
         if (Platform.OS === 'ios') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
         onPress()
       }}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      activeOpacity={1}
     >
-      <Ionicons name={icon} size={22} color="#fff" />
+      <Animated.View style={[styles.headerButton, { transform: [{ scale }] }]}>
+        <Ionicons name={icon} size={20} color="#fff" />
+      </Animated.View>
     </TouchableOpacity>
+  )
+}
+
+// Tab icon with glow effect when active
+function TabIcon({
+  name,
+  nameOutline,
+  color,
+  focused,
+}: {
+  name: keyof typeof Ionicons.glyphMap
+  nameOutline: keyof typeof Ionicons.glyphMap
+  color: string
+  focused: boolean
+}) {
+  const scale = useRef(new Animated.Value(focused ? 1.1 : 1)).current
+  const glowOpacity = useRef(new Animated.Value(focused ? 1 : 0)).current
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scale, {
+        toValue: focused ? 1.15 : 1,
+        friction: 5,
+        useNativeDriver: true,
+      }),
+      Animated.timing(glowOpacity, {
+        toValue: focused ? 1 : 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start()
+  }, [focused])
+
+  return (
+    <View style={styles.tabIconContainer}>
+      {/* Glow effect */}
+      <Animated.View
+        style={[
+          styles.tabGlow,
+          {
+            opacity: glowOpacity,
+            backgroundColor: color,
+          },
+        ]}
+      />
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <Ionicons
+          name={focused ? name : nameOutline}
+          size={24}
+          color={color}
+        />
+      </Animated.View>
+    </View>
   )
 }
 
@@ -83,13 +159,7 @@ export default function TabLayout() {
         options={{
           title: 'Library',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused && styles.activeIconContainer}>
-              <Ionicons
-                name={focused ? 'library' : 'library-outline'}
-                size={24}
-                color={color}
-              />
-            </View>
+            <TabIcon name="library" nameOutline="library-outline" color={color} focused={focused} />
           ),
           headerRight: () => (
             <View style={styles.headerRight}>
@@ -106,18 +176,22 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="feed"
+        options={{
+          title: 'Feed',
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="play-circle" nameOutline="play-circle-outline" color={color} focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="wall"
         options={{
           title: 'Wall',
           headerShown: false,
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused && styles.activeIconContainer}>
-              <Ionicons
-                name={focused ? 'grid' : 'grid-outline'}
-                size={24}
-                color={color}
-              />
-            </View>
+            <TabIcon name="grid" nameOutline="grid-outline" color={color} focused={focused} />
           ),
         }}
       />
@@ -126,13 +200,7 @@ export default function TabLayout() {
         options={{
           title: 'Sessions',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused && styles.activeIconContainer}>
-              <Ionicons
-                name={focused ? 'musical-notes' : 'musical-notes-outline'}
-                size={24}
-                color={color}
-              />
-            </View>
+            <TabIcon name="albums" nameOutline="albums-outline" color={color} focused={focused} />
           ),
         }}
       />
@@ -141,28 +209,16 @@ export default function TabLayout() {
         options={{
           title: 'Offline',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused && styles.activeIconContainer}>
-              <Ionicons
-                name={focused ? 'cloud-download' : 'cloud-download-outline'}
-                size={24}
-                color={color}
-              />
-            </View>
+            <TabIcon name="cloud-download" nameOutline="cloud-download-outline" color={color} focused={focused} />
           ),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Settings',
+          title: 'More',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused && styles.activeIconContainer}>
-              <Ionicons
-                name={focused ? 'settings' : 'settings-outline'}
-                size={24}
-                color={color}
-              />
-            </View>
+            <TabIcon name="ellipsis-horizontal-circle" nameOutline="ellipsis-horizontal-circle-outline" color={color} focused={focused} />
           ),
         }}
       />
@@ -171,19 +227,32 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
-  activeIconContainer: {
-    transform: [{ scale: 1.1 }],
+  tabIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 50,
+    height: 30,
+  },
+  tabGlow: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    opacity: 0.3,
+    transform: [{ scale: 1.5 }],
   },
   headerRight: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
     marginRight: 16,
   },
   headerButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#27272a',
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
   },
