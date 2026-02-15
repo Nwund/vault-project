@@ -12,7 +12,8 @@ class VaultAPI {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    timeoutMs: number = 10000
   ): Promise<T> {
     if (!this.baseUrl) {
       throw new Error('API not configured')
@@ -27,17 +28,31 @@ class VaultAPI {
       headers['Authorization'] = `Bearer ${this.token}`
     }
 
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      ...options,
-      headers,
-    })
+    // Add timeout to prevent hanging on unreachable servers
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error.error || `Request failed: ${response.status}`)
+    try {
+      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      })
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.error || `Request failed: ${response.status}`)
+      }
+
+      return response.json()
+    } catch (err: any) {
+      clearTimeout(timeoutId)
+      if (err.name === 'AbortError') {
+        throw new Error('Connection timed out - server unreachable')
+      }
+      throw err
     }
-
-    return response.json()
   }
 
   // Pairing (no auth required)
@@ -55,9 +70,10 @@ class VaultAPI {
     return response.json()
   }
 
-  // Ping server (health check)
+  // Ping server (health check) - uses shorter timeout for quick fail
   async ping(): Promise<{ status: string; version: string }> {
-    return this.request('/api/ping')
+    // Use 5 second timeout for ping to fail fast on unreachable servers
+    return this.request('/api/ping', {}, 5000)
   }
 
   // Library
