@@ -3,7 +3,6 @@
 
 import type { DB } from '../db'
 import { shell } from 'electron'
-import path from 'path'
 import fs from 'fs'
 
 export type ActionTarget = 'single' | 'multiple' | 'both'

@@ -1,7 +1,7 @@
 // File: src/renderer/components/BookmarksPanel.tsx
 // Video bookmarks panel - save and navigate to timestamps
 
-import React, { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Bookmark, Plus, Trash2, Edit2, Check, X, ChevronLeft, ChevronRight, Clock, Download } from 'lucide-react'
 import { formatDuration } from '../utils/formatters'
 

@@ -22,12 +22,10 @@ let allSoundUrls: string[] = []
 let loaded = false
 let loading = false
 let lastClickTime = 0
-let lastHoverTime = 0
 let currentAudio: HTMLAudioElement | null = null
 let fadeInterval: ReturnType<typeof setInterval> | null = null
 
 const CLICK_COOLDOWN = 100 // ms between click sounds
-const HOVER_COOLDOWN = 200 // ms between hover sounds
 const FADE_DURATION = 400 // ms to fade out
 const START_OFFSET = 0.05 // seconds to skip at start (skip silence)
 const MAX_PLAY_DURATION = 1.5 // max seconds to play before fade

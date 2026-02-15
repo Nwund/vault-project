@@ -66,7 +66,6 @@ async function loadAmbienceSounds() {
 
 export function useAmbienceAudio(settings: AmbienceSettings | null) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const trackIndexRef = useRef(0)
   const fadeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Get current tracks for the selected ambience type

@@ -151,6 +151,71 @@ export async function makeImageThumb(params: {
   })
 }
 
+/**
+ * Create thumbnail for GIF files.
+ * GIFs are tricky - they can be processed as videos OR images.
+ * This function tries the video approach first (to get an animated frame),
+ * then falls back to static image approach if that fails.
+ */
+export async function makeGifThumb(params: {
+  mediaId: string
+  filePath: string
+  mtimeMs: number
+  durationSec: number | null
+}): Promise<string | null> {
+  const outDir = thumbsRootDir()
+  const outFile = path.join(outDir, stableThumbName(params.mediaId, params.mtimeMs, 'jpg'))
+
+  if (fs.existsSync(outFile) && isValidThumb(outFile)) return outFile
+
+  // Try video-style frame extraction first (gets a frame from the animation)
+  const dur = params.durationSec
+  const timestamps = dur && dur > 0.5
+    ? [dur * 0.3, dur * 0.1, 0] // Try 30%, then 10%, then first frame
+    : [0.1, 0] // For short GIFs, try 0.1s then first frame
+
+  for (const at of timestamps) {
+    try {
+      await captureScreenshot(params.filePath, outFile, outDir, at)
+      if (isValidThumb(outFile)) {
+        console.log(`[Thumbs] GIF thumb created (video method) for ${params.filePath}`)
+        return outFile
+      }
+      try { fs.unlinkSync(outFile) } catch {}
+    } catch {
+      try { fs.unlinkSync(outFile) } catch {}
+    }
+  }
+
+  // Fallback: Try as static image (extracts first frame)
+  console.log(`[Thumbs] GIF video method failed, trying image method for ${params.filePath}`)
+  const size = getThumbSize()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg(params.filePath)
+        .on('error', (e) => reject(e))
+        .on('end', () => resolve())
+        .outputOptions([
+          '-frames:v 1',
+          '-q:v 3',
+          `-vf scale=${size}:-2:force_original_aspect_ratio=decrease`
+        ])
+        .save(outFile)
+    })
+    if (isValidThumb(outFile)) {
+      console.log(`[Thumbs] GIF thumb created (image method) for ${params.filePath}`)
+      return outFile
+    }
+    try { fs.unlinkSync(outFile) } catch {}
+  } catch (err: any) {
+    console.error(`[Thumbs] GIF image method failed for ${params.filePath}:`, err?.message)
+    try { fs.unlinkSync(outFile) } catch {}
+  }
+
+  console.error(`[Thumbs] GIF thumb failed for ${params.filePath}: all methods exhausted`)
+  return null
+}
+
 export async function regenerateThumb(params: {
   mediaId: string
   filePath: string

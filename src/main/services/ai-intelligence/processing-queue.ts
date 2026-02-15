@@ -70,7 +70,7 @@ export class ProcessingQueue {
   private isPaused = false
   private currentMediaId: string | null = null
   private enableTier2 = false
-  private concurrency = 1
+  private _concurrency = 1 // Reserved for future parallel processing
 
   constructor(
     db: DB,
@@ -195,7 +195,7 @@ export class ProcessingQueue {
     }
 
     this.enableTier2 = options?.enableTier2 ?? false
-    this.concurrency = options?.concurrency ?? 1
+    this._concurrency = options?.concurrency ?? 1
     this.isRunning = true
     this.isPaused = false
 

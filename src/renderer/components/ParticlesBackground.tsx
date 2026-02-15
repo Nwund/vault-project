@@ -2,7 +2,7 @@
 // Pure React particle system - foundation for theme particles
 // No external dependencies, fully integrated with React lifecycle
 
-import React, { useEffect, useRef, useCallback, useState } from 'react'
+import React, { useEffect, useRef, useCallback } from 'react'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PARTICLE CONFIGURATION TYPES

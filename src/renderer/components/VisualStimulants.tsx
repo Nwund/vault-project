@@ -1265,7 +1265,6 @@ export const CRTCurveOverlay: React.FC<{
 
   // Calculate effects based on intensity
   const chromaticOffset = intensity * 0.2
-  const curvatureAmount = intensity * 0.012 // For barrel distortion feel
   const cornerDarkness = 0.3 + intensity * 0.07
 
   return (

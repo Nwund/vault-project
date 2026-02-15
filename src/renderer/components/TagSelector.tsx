@@ -2,7 +2,7 @@
 // Searchable dropdown tag selector per specification
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { X, Plus, Search, Tag, ChevronDown } from 'lucide-react'
+import { X, Plus, Tag, ChevronDown } from 'lucide-react'
 
 interface TagOption {
   id: string

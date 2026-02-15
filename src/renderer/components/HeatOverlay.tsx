@@ -171,14 +171,6 @@ export function useHeatLevel(sessionActive: boolean): number {
 export function useManualHeat(initialLevel = 0): [number, (level: number) => void, () => void] {
   const [heatLevel, setHeatLevel] = useState(initialLevel)
 
-  const incrementHeat = (amount = 0.5) => {
-    setHeatLevel((prev) => Math.min(10, prev + amount))
-  }
-
-  const decrementHeat = (amount = 0.5) => {
-    setHeatLevel((prev) => Math.max(0, prev - amount))
-  }
-
   const resetHeat = () => {
     setHeatLevel(0)
   }

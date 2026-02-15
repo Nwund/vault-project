@@ -57,8 +57,9 @@ function getAllowedRoots(): string[] {
 
 /**
  * Check if a file path is within one of the allowed roots.
+ * NOTE: Reserved for future security validation - not currently integrated
  */
-function isPathAllowed(filePath: string): boolean {
+function _isPathAllowed(filePath: string): boolean {
   const normalizedFile = normalizePath(filePath)
   const roots = getAllowedRoots()
 

@@ -3,7 +3,6 @@
 
 import type { DB } from '../db'
 import path from 'path'
-import fs from 'fs'
 
 export interface MediaCompareItem {
   id: string
@@ -58,7 +57,7 @@ export class MediaCompareService {
    * Compare multiple media items
    */
   async compare(mediaIds: string[], options?: CompareOptions): Promise<ComparisonResult> {
-    const includeMetadata = options?.includeMetadata ?? true
+    const _includeMetadata = options?.includeMetadata ?? true // Reserved for future use
     const includeTags = options?.includeTags ?? true
     const calculateSimilarity = options?.calculateSimilarity ?? true
 

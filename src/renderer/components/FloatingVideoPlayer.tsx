@@ -119,7 +119,6 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const containerRef = useRef<HTMLDivElement>(null)
   const hideControlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const progressRef = useRef<HTMLDivElement>(null)
-  const positionInitialized = useRef(false)
   const aspectRatioSet = useRef(false) // Track if aspect ratio has been set for this video
 
   const MIN_WIDTH = 200

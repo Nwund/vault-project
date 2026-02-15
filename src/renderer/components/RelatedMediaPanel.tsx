@@ -1,7 +1,7 @@
 // File: src/renderer/components/RelatedMediaPanel.tsx
 // Show related media items (sequels, series, etc.)
 
-import React, { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link2, Plus, ChevronRight, Film, Image, Sparkles, Trash2, X } from 'lucide-react'
 
 interface RelatedMedia {

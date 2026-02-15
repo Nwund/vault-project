@@ -4,12 +4,10 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import {
   themes,
-  THEME_LIST,
   DARK_THEME_LIST,
   LIGHT_THEME_LIST,
   applyTheme as applyThemeCSS,
   injectEroticAnimations,
-  isGoonTheme,
   GOON_THEME_LIST,
   type ThemeId
 } from './styles/themes'
@@ -22,7 +20,7 @@ import { ArousalEffects, CumCountdownOverlay, HeartsOverlay, RainOverlay, Glitch
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { shuffleTake } from './utils/shuffle'
 import { formatDuration, formatBytes } from './utils/formatters'
-import { cleanupVideo, useVideoPool, videoPool } from './hooks/useVideoCleanup'
+import { cleanupVideo } from './hooks/useVideoCleanup'
 import { useAnime } from './hooks/useAnime'
 import { useConfetti } from './hooks/useConfetti'
 import { useUiSounds } from './hooks/useUiSounds'
@@ -30,10 +28,10 @@ import { useAmbienceAudio } from './hooks/useAmbienceAudio'
 import { FloatingVideoPlayer } from './components/FloatingVideoPlayer'
 import { WatchLaterPanel } from './components/WatchLaterPanel'
 import { MediaNotesPanel } from './components/MediaNotesPanel'
-import { RelatedMediaPanel } from './components/RelatedMediaPanel'
 import { DuplicatesModal } from './components/DuplicatesModal'
-import { BookmarksPanel } from './components/BookmarksPanel'
 import { HomeDashboard } from './components/HomeDashboard'
+import { TVRemotePanel } from './components/TVRemotePanel'
+import { QRCodeSVG } from 'qrcode.react'
 import {
   Library,
   Home,
@@ -374,6 +372,68 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
       }
     },
     {
+      label: 'Cast to TV',
+      icon: <Tv size={14} />,
+      action: async () => {
+        if (contextMenu.mediaId && contextMenu.mediaData?.type === 'video' && contextMenu.mediaData?.path) {
+          try {
+            // Check if we have devices, start discovery if not
+            const devices = await window.api.dlna?.getDevices?.() || []
+            if (devices.length === 0) {
+              await window.api.dlna?.startDiscovery?.()
+              showToast('info', 'Scanning for TV devices...')
+              // Wait a bit for devices
+              await new Promise(r => setTimeout(r, 3000))
+            }
+            const updatedDevices = await window.api.dlna?.getDevices?.() || []
+            if (updatedDevices.length === 0) {
+              showToast('error', 'No TV devices found. Make sure your TV is on the same network.')
+              return
+            }
+            // Cast to first device (or show picker in future)
+            const device = updatedDevices[0]
+            const result = await window.api.dlna?.cast?.(device.id, contextMenu.mediaData.path, {
+              title: contextMenu.mediaData.filename || 'Vault Video',
+              type: 'video',
+              autoplay: true
+            })
+            if (result?.success) {
+              showToast('success', `Casting to ${device.name}`)
+            } else {
+              showToast('error', result?.error || 'Failed to cast')
+            }
+          } catch (e: any) {
+            showToast('error', e.message || 'Failed to cast')
+          }
+        } else {
+          showToast('info', 'Cast is only available for videos')
+        }
+        hideContextMenu()
+      }
+    },
+    {
+      label: 'Add to TV Queue',
+      icon: <Plus size={14} />,
+      action: async () => {
+        if (contextMenu.mediaId && contextMenu.mediaData?.type === 'video' && contextMenu.mediaData?.path) {
+          try {
+            await window.api.dlna?.addToQueue?.({
+              mediaId: contextMenu.mediaId,
+              path: contextMenu.mediaData.path,
+              title: contextMenu.mediaData.filename || 'Vault Video',
+              duration: contextMenu.mediaData.durationSec || undefined
+            })
+            showToast('success', 'Added to TV queue')
+          } catch (e: any) {
+            showToast('error', e.message || 'Failed to add to queue')
+          }
+        } else {
+          showToast('info', 'TV queue is only available for videos')
+        }
+        hideContextMenu()
+      }
+    },
+    {
       label: 'Quick Bookmark',
       icon: <Bookmark size={14} />,
       action: async () => {
@@ -613,7 +673,6 @@ type MarkerRow = {
 }
 
 type PlaylistRow = { id: string; name: string; createdAt?: number; isSmart?: number }
-type PlaylistItemRow = { id: string; playlistId: string; mediaId: string; pos: number; addedAt?: number }
 
 type MediaStatsRow = {
   mediaId: string
@@ -873,7 +932,6 @@ function cn(...xs: Array<string | false | null | undefined>) {
 // Animated counter component for visual interest
 function AnimatedCounter({ value, duration = 1000, className = '' }: { value: number; duration?: number; className?: string }) {
   const [displayValue, setDisplayValue] = useState(0)
-  const startRef = useRef<number | null>(null)
   const frameRef = useRef<number>(0)
   const prevValueRef = useRef(0)
 
@@ -915,8 +973,6 @@ function AnimatedCounter({ value, duration = 1000, className = '' }: { value: nu
 }
 
 // Use themes from our theme system
-const THEMES = THEME_LIST.map(t => ({ id: t.id, name: t.name }))
-
 const NAV = [
   { id: 'home', name: 'Home', tip: 'Dashboard with continue watching and recommendations' },
   { id: 'library', name: 'Library', tip: 'Browse and manage your media collection' },
@@ -2614,6 +2670,7 @@ export default function App() {
                     } catch { globalShowToast('error', 'Failed to find videos') }
                   }},
                   { id: 'watchLater', icon: Clock, label: 'Open Watch Later', shortcut: 'L', action: () => { window.dispatchEvent(new CustomEvent('vault-open-watch-later')); setShowCommandPalette(false) } },
+                  { id: 'tvRemote', icon: Tv, label: 'Open TV Remote', shortcut: 'T', action: () => { window.dispatchEvent(new CustomEvent('vault-open-tv-remote')); setShowCommandPalette(false) } },
                   { id: 'fullscreen', icon: Maximize2, label: 'Toggle Fullscreen', shortcut: 'F11', action: () => { window.api.window?.toggleFullscreen?.(); setShowCommandPalette(false) } },
                   { id: 'divider3', divider: true },
                   { id: 'addFolder', icon: FolderPlus, label: 'Add Media Folder', action: async () => { await window.api.settings.chooseMediaDir?.(); setShowCommandPalette(false) } },
@@ -3188,6 +3245,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   const [bulkActionLoading, setBulkActionLoading] = useState<string | null>(null) // Track which bulk action is loading
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false) // Duplicate detection modal
   const [showWatchLaterPanel, setShowWatchLaterPanel] = useState(false) // Watch Later queue panel
+  const [showTVRemotePanel, setShowTVRemotePanel] = useState(false) // TV Remote control panel
   const [wallAutoScroll, setWallAutoScroll] = useState(false) // Wall mode autoscroll
   const [wallScrollSpeed, setWallScrollSpeed] = useState(30) // Autoscroll speed (pixels per second)
   const wallScrollRef = useRef<HTMLDivElement>(null)
@@ -3307,13 +3365,18 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
     const handleOpenDuplicates = () => {
       setShowDuplicatesModal(true)
     }
+    const handleOpenTVRemote = () => {
+      setShowTVRemotePanel(true)
+    }
     window.addEventListener('vault-open-video', handleOpenVideo as EventListener)
     window.addEventListener('vault-open-watch-later', handleOpenWatchLater)
     window.addEventListener('vault-open-duplicates', handleOpenDuplicates)
+    window.addEventListener('vault-open-tv-remote', handleOpenTVRemote)
     return () => {
       window.removeEventListener('vault-open-video', handleOpenVideo as EventListener)
       window.removeEventListener('vault-open-watch-later', handleOpenWatchLater)
       window.removeEventListener('vault-open-duplicates', handleOpenDuplicates)
+      window.removeEventListener('vault-open-tv-remote', handleOpenTVRemote)
     }
   }, [addFloatingPlayer])
 
@@ -3452,21 +3515,18 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   const gridRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
-  // Track content area dimensions for responsive layout
+  // Track content area width for responsive layout
   const [contentWidth, setContentWidth] = useState(0)
-  const [contentHeight, setContentHeight] = useState(0)
   useEffect(() => {
     const el = contentRef.current
     if (!el) return
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         setContentWidth(entry.contentRect.width)
-        setContentHeight(entry.contentRect.height)
       }
     })
     ro.observe(el)
     setContentWidth(el.clientWidth)
-    setContentHeight(el.clientHeight)
     return () => ro.disconnect()
   }, [])
 
@@ -4067,6 +4127,17 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
             >
               <AlertCircle size={14} />
               <span className="text-xs hidden sm:inline">Duplicates</span>
+            </Btn>
+
+            {/* TV Remote */}
+            <Btn
+              tone="ghost"
+              onClick={() => setShowTVRemotePanel(true)}
+              className="flex items-center gap-1.5"
+              title="Open TV Remote - Cast media to your TV"
+            >
+              <Tv size={14} />
+              <span className="text-xs hidden sm:inline">TV</span>
             </Btn>
           </div>
         }
@@ -5122,6 +5193,45 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
             <span>Watch Later</span>
           </Btn>
 
+          {/* Cast to TV */}
+          <Btn
+            tone="ghost"
+            title="Cast selected videos to TV"
+            aria-label="Cast selected videos to TV"
+            disabled={!!bulkActionLoading}
+            onClick={async () => {
+              try {
+                setBulkActionLoading('cast')
+                // Get selected media info
+                const selectedMedia = sortedMedia.filter(m => selectedIds.has(m.id) && m.type === 'video')
+                if (selectedMedia.length === 0) {
+                  showToast('info', 'No videos selected. Cast is only available for videos.')
+                  return
+                }
+                // Build queue items
+                const queueItems = selectedMedia.map(m => ({
+                  mediaId: m.id,
+                  path: m.path,
+                  title: m.filename || 'Vault Video',
+                  duration: m.durationSec || undefined
+                }))
+                // Set queue
+                await window.api.dlna?.setQueue?.(queueItems)
+                showToast('success', `Added ${queueItems.length} videos to TV queue. Open TV Remote to start playing.`)
+                setShowTVRemotePanel(true)
+              } catch (err) {
+                console.error('[Library] Failed to cast:', err)
+                showToast('error', 'Failed to add items to TV queue')
+              } finally {
+                setBulkActionLoading(null)
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+          >
+            {bulkActionLoading === 'cast' ? <RefreshCw size={12} className="animate-spin" /> : <Tv size={12} />}
+            <span>Cast to TV</span>
+          </Btn>
+
           {/* AI Analyze selected items */}
           <Btn
             tone="ghost"
@@ -5460,6 +5570,16 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
           setShowWatchLaterPanel(false)
         }}
         selectedMediaIds={selectionMode ? Array.from(selectedIds) : []}
+      />
+
+      {/* TV Remote Control Panel */}
+      <TVRemotePanel
+        isOpen={showTVRemotePanel}
+        onClose={() => setShowTVRemotePanel(false)}
+        onAddMore={() => {
+          // Close TV panel and let user select from library
+          setShowTVRemotePanel(false)
+        }}
       />
     </div>
   )
@@ -7474,8 +7594,9 @@ const GoonTile = React.memo(function GoonTile(props: {
         const progress = Math.min(elapsed / duration, 1)
         const newVolume = startVolume + (targetVolume - startVolume) * progress
 
-        audioVolumeRef.current = newVolume
-        if (video && !muted) video.volume = newVolume
+        const clampedVolume = Math.max(0, Math.min(1, newVolume))
+        audioVolumeRef.current = clampedVolume
+        if (video && !muted) video.volume = clampedVolume
 
         if (progress < 1) {
           fadeAnimationRef.current = requestAnimationFrame(animate)
@@ -12138,7 +12259,7 @@ const FeedItem = React.memo(function FeedItem(props: {
                   setLoading(false)
                   setLoadError('Video format not supported')
                 }
-              }).catch((err) => {
+              }).catch((err: unknown) => {
                 console.error('[Feed] Force transcode failed:', video.id, err)
                 setLoading(false)
                 setLoadError('Failed to transcode video')
@@ -12947,6 +13068,31 @@ function PlaylistsPage() {
                   <span className="hidden sm:inline">Export</span>
                 </Btn>
                 <Btn onClick={() => exportM3U(selectedId)} title="Export as M3U">M3U</Btn>
+                <Btn
+                  onClick={async () => {
+                    // Get video items from current playlist
+                    const videoItems = items
+                      .filter((item: any) => (item.media?.type || item.type) === 'video')
+                      .map((item: any) => ({
+                        mediaId: item.media?.id || item.mediaId || item.id,
+                        path: item.media?.path || item.path,
+                        title: item.media?.filename || item.filename || 'Vault Video',
+                        duration: item.media?.durationSec || item.durationSec
+                      }))
+                    if (videoItems.length === 0) {
+                      showToast('info', 'No videos in this playlist')
+                      return
+                    }
+                    await window.api.dlna?.setQueue?.(videoItems)
+                    showToast('success', `Added ${videoItems.length} videos to TV queue`)
+                    // Open TV Remote panel if available
+                    window.dispatchEvent(new CustomEvent('vault-open-tv-remote'))
+                  }}
+                  title="Cast playlist to TV"
+                >
+                  <Tv size={14} />
+                  <span className="hidden sm:inline">Cast</span>
+                </Btn>
                 <Btn tone="danger" onClick={() => deletePlaylist(selectedId)} title="Delete playlist">
                   <Trash2 size={14} className="sm:hidden" />
                   <span className="hidden sm:inline">Delete</span>
@@ -14815,6 +14961,21 @@ function SettingsPage(props: {
   const [renamingProfileId, setRenamingProfileId] = useState<string | null>(null)
   const [renameProfileName, setRenameProfileName] = useState('')
 
+  // Mobile Sync state
+  const [mobileSyncStatus, setMobileSyncStatus] = useState<{
+    running: boolean
+    port: number
+    addresses: string[]
+    connectedDevices: number
+  } | null>(null)
+  const [mobilePairingCode, setMobilePairingCode] = useState<string | null>(null)
+  const [mobilePairedDevices, setMobilePairedDevices] = useState<Array<{
+    id: string
+    name: string
+    platform: string
+    lastSeen: number
+  }>>([])
+
   // Load profiles on mount
   const loadProfiles = async () => {
     const list = await window.api.profiles?.list?.() ?? []
@@ -14829,7 +14990,63 @@ function SettingsPage(props: {
     window.api.tags?.list?.().then((tags: any) => setAllTags(tags?.map?.((t: any) => t.name || t) || []))
     // Load settings profiles
     loadProfiles()
+    // Load mobile sync status
+    loadMobileSyncStatus()
   }, [])
+
+  // Mobile sync functions
+  const loadMobileSyncStatus = async () => {
+    try {
+      const status = await window.api.mobileSync?.getStatus?.()
+      if (status) {
+        setMobileSyncStatus(status)
+      }
+      const devices = await window.api.mobileSync?.getPairedDevices?.()
+      if (devices) {
+        setMobilePairedDevices(devices)
+      }
+    } catch (e) {
+      // Mobile sync may not be available
+    }
+  }
+
+  const toggleMobileSyncServer = async () => {
+    try {
+      if (mobileSyncStatus?.running) {
+        await window.api.mobileSync?.stop?.()
+      } else {
+        await window.api.mobileSync?.start?.()
+      }
+      await loadMobileSyncStatus()
+    } catch (e) {
+      showToast('error', 'Failed to toggle mobile sync server')
+    }
+  }
+
+  const generateMobilePairingCode = async () => {
+    try {
+      const result = await window.api.mobileSync?.generatePairingCode?.()
+      if (result?.code) {
+        setMobilePairingCode(result.code)
+        // Code expires after 5 minutes
+        setTimeout(() => setMobilePairingCode(null), 5 * 60 * 1000)
+      } else {
+        showToast('error', 'Failed to generate pairing code')
+      }
+    } catch (e) {
+      showToast('error', 'Failed to generate pairing code')
+    }
+  }
+
+  const unpairDevice = async (deviceId: string) => {
+    try {
+      await window.api.mobileSync?.unpairDevice?.(deviceId)
+      await loadMobileSyncStatus()
+      showToast('success', 'Device unpaired')
+    } catch (e) {
+      showToast('error', 'Failed to unpair device')
+    }
+  }
 
   // Define searchable settings for filtering
   const settingsIndex = useMemo(() => [
@@ -14839,6 +15056,7 @@ function SettingsPage(props: {
     { tab: 'playback', keywords: ['video', 'autoplay', 'mute', 'loop', 'volume', 'speed'] },
     { tab: 'sound', keywords: ['audio', 'voice', 'sound', 'mute', 'volume', 'greeting', 'sfx'] },
     { tab: 'data', keywords: ['export', 'import', 'backup', 'restore', 'reset', 'privacy', 'blacklist', 'tag'] },
+    { tab: 'services', keywords: ['mobile', 'sync', 'phone', 'device', 'pair', 'privacy', 'panic', 'incognito', 'blacklist'] },
   ] as const, [])
 
   // Find matching tabs based on search
@@ -14869,6 +15087,7 @@ function SettingsPage(props: {
     { id: 'playback', name: 'Playback', icon: Play },
     { id: 'sound', name: 'Sound', icon: Volume2 },
     { id: 'data', name: 'Data', icon: HardDrive },
+    { id: 'services', name: 'Services', icon: Shield },
   ] as const
 
   return (
@@ -17292,6 +17511,157 @@ function SettingsPage(props: {
                       )}
                     </div>
                   </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Sync Section - under Services */}
+          {activeTab === 'services' && (
+            <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5 mt-4">
+              <div className="text-sm font-semibold mb-4">Mobile Sync</div>
+              <div className="space-y-4">
+                {/* Server Toggle */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm">Sync Server</div>
+                    <div className="text-xs text-[var(--muted)]">
+                      {mobileSyncStatus?.running
+                        ? `Running on port ${mobileSyncStatus.port}`
+                        : 'Start server to connect mobile devices'}
+                    </div>
+                  </div>
+                  <ToggleSwitch
+                    checked={mobileSyncStatus?.running ?? false}
+                    onChange={toggleMobileSyncServer}
+                  />
+                </div>
+
+                {/* Server Status when running */}
+                {mobileSyncStatus?.running && (
+                  <>
+                    {/* Server addresses */}
+                    <div className="bg-black/30 rounded-xl p-3">
+                      <div className="text-xs text-[var(--muted)] mb-2">Connect from your mobile device:</div>
+                      <div className="space-y-1">
+                        {mobileSyncStatus.addresses.map((addr, i) => (
+                          <div key={i} className="text-sm font-mono text-[var(--primary)]">
+                            http://{addr}:{mobileSyncStatus.port}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Pairing Code & QR */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <div className="text-sm">Pairing Code</div>
+                          <div className="text-xs text-[var(--muted)]">
+                            {mobilePairingCode
+                              ? 'Scan QR code or enter code manually'
+                              : 'Generate a code to pair a new device'}
+                          </div>
+                        </div>
+                        {!mobilePairingCode && (
+                          <button
+                            onClick={generateMobilePairingCode}
+                            className="px-4 py-2 rounded-xl bg-[var(--primary)]/20 text-[var(--primary)] hover:bg-[var(--primary)]/30 transition text-sm font-medium"
+                          >
+                            Generate Code
+                          </button>
+                        )}
+                      </div>
+
+                      {mobilePairingCode && mobileSyncStatus?.addresses?.[0] && (
+                        <div className="flex flex-col items-center gap-4 p-4 bg-black/30 rounded-xl">
+                          {/* QR Code */}
+                          <div className="bg-white p-3 rounded-xl">
+                            <QRCodeSVG
+                              value={JSON.stringify({
+                                host: mobileSyncStatus.addresses[0],
+                                port: mobileSyncStatus.port,
+                                code: mobilePairingCode
+                              })}
+                              size={160}
+                              level="M"
+                            />
+                          </div>
+
+                          {/* Manual Code */}
+                          <div className="text-center">
+                            <div className="text-xs text-[var(--muted)] mb-1">Or enter code manually:</div>
+                            <div className="flex items-center justify-center gap-2">
+                              <span className="text-3xl font-mono font-bold tracking-[0.3em] text-[var(--primary)]">
+                                {mobilePairingCode}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Connection Info */}
+                          <div className="text-center">
+                            <div className="text-xs text-[var(--muted)]">Server Address:</div>
+                            <div className="text-sm font-mono text-[var(--primary)]">
+                              {mobileSyncStatus.addresses[0]}:{mobileSyncStatus.port}
+                            </div>
+                          </div>
+
+                          {/* Cancel Button */}
+                          <button
+                            onClick={() => setMobilePairingCode(null)}
+                            className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition text-sm"
+                          >
+                            Cancel
+                          </button>
+
+                          {/* Timer */}
+                          <div className="text-xs text-[var(--muted)]">
+                            Code expires in 5 minutes
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Paired Devices */}
+                    <div className="pt-2">
+                      <div className="text-sm mb-2">Paired Devices</div>
+                      {mobilePairedDevices.length === 0 ? (
+                        <div className="text-xs text-[var(--muted)]">
+                          No devices paired yet
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {mobilePairedDevices.map((device) => (
+                            <div
+                              key={device.id}
+                              className="flex items-center justify-between p-3 bg-black/30 rounded-xl"
+                            >
+                              <div>
+                                <div className="text-sm font-medium">{device.name}</div>
+                                <div className="text-xs text-[var(--muted)]">
+                                  {device.platform} • Last seen {new Date(device.lastSeen).toLocaleDateString()}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => unpairDevice(device.id)}
+                                className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition text-xs"
+                              >
+                                Unpair
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* Info when server is off */}
+                {!mobileSyncStatus?.running && (
+                  <div className="text-xs text-[var(--muted)] bg-black/20 rounded-xl p-3">
+                    Enable the sync server to browse and stream your library from the Vault mobile app.
+                    Both devices must be on the same local network.
+                  </div>
                 )}
               </div>
             </div>

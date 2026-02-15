@@ -3,8 +3,6 @@
 
 import type { DB } from '../db'
 import { nanoid } from 'nanoid'
-import path from 'path'
-import fs from 'fs'
 
 export interface Performer {
   id: string

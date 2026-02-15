@@ -742,7 +742,7 @@ export class Tier1OnnxTagger {
 
     console.log('[Tier1] Pre-computing CLIP text embeddings...')
 
-    for (const [category, texts] of Object.entries(CLIP_TAG_CATEGORIES)) {
+    for (const [_category, texts] of Object.entries(CLIP_TAG_CATEGORIES)) {
       for (const text of texts) {
         try {
           const embedding = await this.getClipTextEmbedding(text)

@@ -2,7 +2,7 @@
 // Watch Later queue panel with drag-to-reorder
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { Clock, Play, Trash2, GripVertical, Shuffle, ChevronUp, ChevronDown, X, Plus, Bell, BellOff } from 'lucide-react'
+import { Clock, Play, Trash2, GripVertical, Shuffle, ChevronUp, X, Plus, Bell } from 'lucide-react'
 import { formatDuration } from '../utils/formatters'
 
 interface WatchLaterItem {

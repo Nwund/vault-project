@@ -1,5 +1,5 @@
 // File: src/renderer/diagnostics/DiagnosticsOverlay.tsx
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 type DiagnosticLevel = 'info' | 'warn' | 'error'
 type DiagnosticEvent = {

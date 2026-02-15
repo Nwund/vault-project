@@ -37,6 +37,22 @@ export interface CastOptions {
   startPosition?: number
 }
 
+// Queue system types
+export interface CastQueueItem {
+  mediaId: string
+  path: string
+  title: string
+  duration?: number
+}
+
+export interface CastQueue {
+  items: CastQueueItem[]
+  currentIndex: number
+  shuffleEnabled: boolean
+  repeatMode: 'none' | 'one' | 'all'
+  originalOrder: CastQueueItem[] // For unshuffle
+}
+
 class DLNAService extends EventEmitter {
   private devices: Map<string, DLNADevice> = new Map()
   private browser: any = null
@@ -47,6 +63,17 @@ class DLNAService extends EventEmitter {
   private currentMediaPath: string | null = null
   private isScanning: boolean = false
   private statusPollInterval: NodeJS.Timeout | null = null
+
+  // Queue system
+  private queue: CastQueue = {
+    items: [],
+    currentIndex: -1,
+    shuffleEnabled: false,
+    repeatMode: 'none',
+    originalOrder: []
+  }
+  private lastPlaybackState: CastStatus['state'] = 'idle'
+  private autoAdvanceEnabled: boolean = true
 
   constructor() {
     super()
@@ -130,6 +157,50 @@ class DLNAService extends EventEmitter {
    */
   getDevices(): DLNADevice[] {
     return Array.from(this.devices.values())
+  }
+
+  /**
+   * Connect to a device by IP address manually
+   */
+  async connectManual(ip: string): Promise<boolean> {
+    console.log('[DLNA] Attempting manual connection to:', ip)
+
+    // Create a manual device entry
+    const manualDevice: DLNADevice = {
+      id: `manual-${ip.replace(/\./g, '-')}`,
+      name: `TV @ ${ip}`,
+      host: ip,
+      xml: '',
+      type: 'dlna',
+      status: 'idle'
+    }
+
+    // Add to devices list
+    this.devices.set(manualDevice.id, manualDevice)
+    this.emit('deviceFound', manualDevice)
+
+    // Try to create a player for this device
+    if (dlnacasts) {
+      try {
+        // Create a synthetic device object that dlnacasts can use
+        const syntheticDevice = {
+          name: manualDevice.name,
+          host: ip,
+          xml: `http://${ip}:8008/ssdp/device-desc.xml` // Common DLNA description URL
+        }
+
+        this.browser = dlnacasts.default ? dlnacasts.default() : dlnacasts()
+
+        // The device is added - actual connection happens when casting
+        console.log('[DLNA] Manual device registered:', manualDevice.name)
+        return true
+      } catch (err) {
+        console.error('[DLNA] Manual connection error:', err)
+        return false
+      }
+    }
+
+    return true
   }
 
   /**
@@ -334,14 +405,20 @@ class DLNAService extends EventEmitter {
   private startStatusPolling(): void {
     this.stopStatusPolling()
 
-    this.statusPollInterval = setInterval(() => {
-      this.getPlaybackStatus()
-        .then((status) => {
-          this.emit('statusUpdate', status)
-        })
-        .catch(() => {
-          // Ignore status errors
-        })
+    this.statusPollInterval = setInterval(async () => {
+      try {
+        const status = await this.getPlaybackStatus()
+        this.emit('statusUpdate', status)
+
+        // Detect playback end for auto-advance
+        if (this.lastPlaybackState === 'playing' && status.state === 'stopped') {
+          // Playback just ended
+          this.handlePlaybackEnded()
+        }
+        this.lastPlaybackState = status.state
+      } catch {
+        // Ignore status errors
+      }
     }, 1000)
   }
 
@@ -525,6 +602,257 @@ class DLNAService extends EventEmitter {
     return this.devices.get(this.activeDeviceId) || null
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // QUEUE MANAGEMENT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Set the entire cast queue
+   */
+  setQueue(items: CastQueueItem[]): void {
+    this.queue = {
+      items: [...items],
+      currentIndex: items.length > 0 ? 0 : -1,
+      shuffleEnabled: false,
+      repeatMode: 'none',
+      originalOrder: [...items]
+    }
+    this.emit('queueUpdated', this.getQueueState())
+    console.log('[DLNA] Queue set with', items.length, 'items')
+  }
+
+  /**
+   * Add a single item to the queue
+   */
+  addToQueue(item: CastQueueItem): void {
+    this.queue.items.push(item)
+    this.queue.originalOrder.push(item)
+    // If queue was empty, set current index to first item
+    if (this.queue.currentIndex === -1) {
+      this.queue.currentIndex = 0
+    }
+    this.emit('queueUpdated', this.getQueueState())
+    console.log('[DLNA] Added to queue:', item.title)
+  }
+
+  /**
+   * Clear the queue
+   */
+  clearQueue(): void {
+    this.queue = {
+      items: [],
+      currentIndex: -1,
+      shuffleEnabled: false,
+      repeatMode: 'none',
+      originalOrder: []
+    }
+    this.emit('queueUpdated', this.getQueueState())
+    console.log('[DLNA] Queue cleared')
+  }
+
+  /**
+   * Get current queue state
+   */
+  getQueueState(): CastQueue & { currentItem: CastQueueItem | null } {
+    return {
+      ...this.queue,
+      currentItem: this.queue.currentIndex >= 0 ? this.queue.items[this.queue.currentIndex] : null
+    }
+  }
+
+  /**
+   * Play the next item in the queue
+   */
+  async playNext(): Promise<boolean> {
+    if (this.queue.items.length === 0) return false
+
+    let nextIndex = this.queue.currentIndex + 1
+
+    // Handle repeat modes
+    if (nextIndex >= this.queue.items.length) {
+      if (this.queue.repeatMode === 'all') {
+        nextIndex = 0
+      } else {
+        // End of queue
+        this.emit('queueEnded')
+        return false
+      }
+    }
+
+    return this.playAtIndex(nextIndex)
+  }
+
+  /**
+   * Play the previous item in the queue
+   */
+  async playPrevious(): Promise<boolean> {
+    if (this.queue.items.length === 0) return false
+
+    let prevIndex = this.queue.currentIndex - 1
+
+    // Handle wrap-around with repeat all
+    if (prevIndex < 0) {
+      if (this.queue.repeatMode === 'all') {
+        prevIndex = this.queue.items.length - 1
+      } else {
+        prevIndex = 0 // Stay at first item
+      }
+    }
+
+    return this.playAtIndex(prevIndex)
+  }
+
+  /**
+   * Play item at specific index in queue
+   */
+  async playAtIndex(index: number): Promise<boolean> {
+    if (index < 0 || index >= this.queue.items.length) return false
+
+    const item = this.queue.items[index]
+    this.queue.currentIndex = index
+
+    try {
+      // Cast to the active device
+      if (!this.activeDeviceId) {
+        console.warn('[DLNA] No active device for queue playback')
+        return false
+      }
+
+      await this.cast(this.activeDeviceId, item.path, {
+        title: item.title,
+        type: 'video',
+        autoplay: true
+      })
+
+      this.emit('queueUpdated', this.getQueueState())
+      return true
+    } catch (err) {
+      console.error('[DLNA] Failed to play queue item:', err)
+      return false
+    }
+  }
+
+  /**
+   * Toggle shuffle mode
+   */
+  setShuffle(enabled: boolean): void {
+    if (enabled && !this.queue.shuffleEnabled) {
+      // Enable shuffle - randomize items except current
+      const currentItem = this.queue.items[this.queue.currentIndex]
+      const otherItems = this.queue.items.filter((_, i) => i !== this.queue.currentIndex)
+
+      // Fisher-Yates shuffle
+      for (let i = otherItems.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[otherItems[i], otherItems[j]] = [otherItems[j], otherItems[i]]
+      }
+
+      // Put current item at start, then shuffled items
+      if (currentItem) {
+        this.queue.items = [currentItem, ...otherItems]
+        this.queue.currentIndex = 0
+      } else {
+        this.queue.items = otherItems
+      }
+    } else if (!enabled && this.queue.shuffleEnabled) {
+      // Disable shuffle - restore original order
+      const currentItem = this.queue.items[this.queue.currentIndex]
+      this.queue.items = [...this.queue.originalOrder]
+
+      // Find current item in restored order
+      if (currentItem) {
+        const newIndex = this.queue.items.findIndex(i => i.mediaId === currentItem.mediaId)
+        this.queue.currentIndex = newIndex >= 0 ? newIndex : 0
+      }
+    }
+
+    this.queue.shuffleEnabled = enabled
+    this.emit('queueUpdated', this.getQueueState())
+    console.log('[DLNA] Shuffle', enabled ? 'enabled' : 'disabled')
+  }
+
+  /**
+   * Set repeat mode
+   */
+  setRepeat(mode: 'none' | 'one' | 'all'): void {
+    this.queue.repeatMode = mode
+    this.emit('queueUpdated', this.getQueueState())
+    console.log('[DLNA] Repeat mode set to:', mode)
+  }
+
+  /**
+   * Reorder queue items (drag and drop)
+   */
+  reorderQueue(fromIndex: number, toIndex: number): void {
+    if (fromIndex < 0 || fromIndex >= this.queue.items.length) return
+    if (toIndex < 0 || toIndex >= this.queue.items.length) return
+
+    const [item] = this.queue.items.splice(fromIndex, 1)
+    this.queue.items.splice(toIndex, 0, item)
+
+    // Update current index if affected
+    if (this.queue.currentIndex === fromIndex) {
+      this.queue.currentIndex = toIndex
+    } else if (fromIndex < this.queue.currentIndex && toIndex >= this.queue.currentIndex) {
+      this.queue.currentIndex--
+    } else if (fromIndex > this.queue.currentIndex && toIndex <= this.queue.currentIndex) {
+      this.queue.currentIndex++
+    }
+
+    this.emit('queueUpdated', this.getQueueState())
+    console.log('[DLNA] Queue reordered')
+  }
+
+  /**
+   * Remove item from queue by index
+   */
+  removeFromQueue(index: number): void {
+    if (index < 0 || index >= this.queue.items.length) return
+
+    this.queue.items.splice(index, 1)
+
+    // Update current index
+    if (index < this.queue.currentIndex) {
+      this.queue.currentIndex--
+    } else if (index === this.queue.currentIndex) {
+      // Current item removed - stay at same index (which is now next item)
+      if (this.queue.currentIndex >= this.queue.items.length) {
+        this.queue.currentIndex = this.queue.items.length - 1
+      }
+    }
+
+    if (this.queue.items.length === 0) {
+      this.queue.currentIndex = -1
+    }
+
+    this.emit('queueUpdated', this.getQueueState())
+    console.log('[DLNA] Removed item from queue')
+  }
+
+  /**
+   * Handle auto-advance when playback ends
+   * Called by status polling when state changes to stopped
+   */
+  private async handlePlaybackEnded(): Promise<void> {
+    if (!this.autoAdvanceEnabled) return
+    if (this.queue.items.length === 0) return
+
+    console.log('[DLNA] Playback ended, checking for next item...')
+
+    // Handle repeat one mode
+    if (this.queue.repeatMode === 'one') {
+      await this.playAtIndex(this.queue.currentIndex)
+      return
+    }
+
+    // Try to play next item
+    const hasNext = await this.playNext()
+    if (!hasNext) {
+      console.log('[DLNA] Queue finished')
+      this.emit('queueEnded')
+    }
+  }
+
   /**
    * Cleanup resources
    */
@@ -532,6 +860,7 @@ class DLNAService extends EventEmitter {
     this.stopStatusPolling()
     this.stopDiscovery()
     this.stopMediaServer()
+    this.clearQueue()
     this.removeAllListeners()
   }
 }

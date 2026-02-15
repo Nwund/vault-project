@@ -6567,7 +6567,8 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
         thumbPath = await makeGifThumb({
           mediaId,
           filePath: media.path,
-          mtimeMs: media.mtimeMs
+          mtimeMs: media.mtimeMs,
+          durationSec: null
         })
       } else if (media.type === 'image') {
         thumbPath = await makeImageThumb({

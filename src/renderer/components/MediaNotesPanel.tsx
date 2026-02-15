@@ -1,8 +1,8 @@
 // File: src/renderer/components/MediaNotesPanel.tsx
 // Personal notes panel for media items
 
-import React, { useState, useEffect, useCallback } from 'react'
-import { StickyNote, Plus, Trash2, Edit2, Check, X, Pin, PinOff, Search } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { StickyNote, Plus, Trash2, Edit2, Check, X, Pin, PinOff } from 'lucide-react'
 
 interface MediaNote {
   id: string

@@ -1,7 +1,7 @@
 // File: src/renderer/components/DuplicatesModal.tsx
 // Find and manage duplicate media files
 
-import React, { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Copy, Trash2, Check, X, HardDrive, FileText, Hash, Loader2, ChevronDown, ChevronRight, FolderOpen, Eye } from 'lucide-react'
 import { formatBytes } from '../utils/formatters'
 

@@ -2,7 +2,7 @@
 // Home dashboard with Continue Watching, Recommendations, Recently Added, Favorites, and Most Watched
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Play, Clock, Sparkles, Plus, ChevronRight, RefreshCw, Film, Image, Heart, TrendingUp, Shuffle, Zap, ListVideo, BarChart3, Eye, Timer, Star, Flame, Crown, Target, Gamepad2 } from 'lucide-react'
+import { Play, Clock, Sparkles, Plus, ChevronRight, RefreshCw, Film, Image, Heart, TrendingUp, Shuffle, Zap, ListVideo, BarChart3, Eye, Timer, Star, Flame, Crown, Gamepad2 } from 'lucide-react'
 import { formatDuration } from '../utils/formatters'
 import { toFileUrlCached } from '../hooks/usePerformance'
 
@@ -188,7 +188,7 @@ const MediaCard = React.memo(function MediaCard({ media, onClick, badge, progres
          prev.rank === next.rank
 })
 
-function HorizontalSection({ title, icon, items, loading, onRefresh, onSeeAll, children, gradient }: {
+const HorizontalSection = React.memo(function HorizontalSection({ title, icon, items, loading, onRefresh, onSeeAll, children, gradient }: {
   title: string
   icon: React.ReactNode
   items: number
@@ -297,7 +297,7 @@ function HorizontalSection({ title, icon, items, loading, onRefresh, onSeeAll, c
       </div>
     </div>
   )
-}
+})
 
 export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToStats }: HomeDashboardProps) {
   const [continueWatching, setContinueWatching] = useState<Array<ContinueWatchingItem & MediaItem>>([])

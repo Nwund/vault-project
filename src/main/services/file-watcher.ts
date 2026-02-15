@@ -218,11 +218,9 @@ export class FileWatcherService extends EventEmitter {
     const events = [...this.eventQueue]
     this.eventQueue = []
 
-    // Deduplicate events for the same file
+    // Deduplicate events for the same file (keep most recent)
     const uniqueEvents = new Map<string, FileEvent>()
     for (const event of events) {
-      const key = `${event.path}:${event.type}`
-      // Keep the most recent event for each file+type combo
       if (!uniqueEvents.has(event.path) ||
           uniqueEvents.get(event.path)!.timestamp < event.timestamp) {
         uniqueEvents.set(event.path, event)

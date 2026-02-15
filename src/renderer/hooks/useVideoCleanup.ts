@@ -112,7 +112,7 @@ class VideoDecoderPool {
    * Force cleanup of all videos (emergency)
    */
   releaseAll() {
-    for (const [id, video] of this.activeVideos) {
+    for (const [_id, video] of this.activeVideos) {
       cleanupVideo(video)
     }
     this.activeVideos.clear()

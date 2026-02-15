@@ -277,7 +277,7 @@ export async function analyzeVideo(
   existingTags: string[] = [],
   onProgress?: (progress: AnalysisProgress) => void
 ): Promise<VideoAnalysis> {
-  const startTime = Date.now()
+  const _startTime = Date.now() // Reserved for timing metrics
 
   // Stage 1: Extract frames
   onProgress?.({ stage: 'extracting', current: 0, total: 1, message: 'Extracting frames...' })

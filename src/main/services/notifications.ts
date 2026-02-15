@@ -1,7 +1,7 @@
 // File: src/main/services/notifications.ts
 // System notifications service
 
-import { Notification, app, nativeImage, BrowserWindow } from 'electron'
+import { Notification, app, BrowserWindow } from 'electron'
 import path from 'path'
 import { EventEmitter } from 'events'
 

@@ -13,7 +13,7 @@ import { startWatcher } from './watcher'
 import { startJobRunner } from './jobs'
 import { broadcastToggle, logMain, registerDiagnosticsIpc } from './diagnostics'
 import { registerVaultProtocol } from './vaultProtocol'
-import { makeImageThumb, makeVideoThumb, probeVideoDurationSec, probeMediaDimensions } from './thumbs'
+import { makeImageThumb, makeVideoThumb, makeGifThumb, probeVideoDurationSec, probeMediaDimensions } from './thumbs'
 
 import { analyzeLoudness } from './services/loudness'
 import { initializeAiIntelligence } from './services/ai-intelligence'
@@ -142,7 +142,7 @@ async function main() {
         const p = payload as {
           mediaId: string
           path: string
-          type: 'video' | 'image'
+          type: 'video' | 'image' | 'gif'
           mtimeMs: number
           size: number
         }
@@ -185,7 +185,32 @@ async function main() {
           } catch (e: any) {
             console.warn(`[Loudness] Analysis failed for ${p.path}:`, e?.message)
           }
+        } else if (p.type === 'gif') {
+          // GIFs: Use dedicated handler with video-then-image fallback
+          const durationSec = await probeVideoDurationSec(p.path)
+          const dimensions = await probeMediaDimensions(p.path)
+          const thumbPath = await makeGifThumb({
+            mediaId: p.mediaId,
+            filePath: p.path,
+            mtimeMs: p.mtimeMs,
+            durationSec
+          })
+
+          // Save dimensions/duration even if thumb fails
+          db2.upsertMedia({
+            ...cur,
+            durationSec: durationSec ?? cur.durationSec ?? null,
+            thumbPath: thumbPath ?? cur.thumbPath ?? null,
+            width: dimensions?.width ?? cur.width ?? null,
+            height: dimensions?.height ?? cur.height ?? null
+          })
+
+          if (!thumbPath && !cur.thumbPath) {
+            console.warn(`[Thumbs] GIF thumb returned null for ${p.path}`)
+            throw new Error(`Thumbnail generation failed for GIF: ${p.path}`)
+          }
         } else {
+          // Images: standard static image handling
           const dimensions = await probeMediaDimensions(p.path)
           const thumbPath = await makeImageThumb({
             mediaId: p.mediaId,
