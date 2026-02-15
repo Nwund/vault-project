@@ -1,5 +1,5 @@
 // File: vault-mobile/app/connect.tsx
-// Connection screen - Enhanced with animations and better UX
+// Connection screen - Enhanced with animations, QR scanning, and better UX
 
 import { useState, useEffect, useRef } from 'react'
 import {
@@ -15,6 +15,7 @@ import {
   Animated,
   Easing,
   Keyboard,
+  Dimensions,
 } from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -22,16 +23,51 @@ import { getErrorMessage } from '@/utils'
 import * as Haptics from 'expo-haptics'
 import { useConnectionStore } from '@/stores/connection'
 import { api } from '@/services/api'
+import { CameraView, useCameraPermissions } from 'expo-camera'
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window')
+const SCAN_AREA_SIZE = SCREEN_WIDTH * 0.7
 
 export default function ConnectScreen() {
   const { connect, isConnecting, connectionError, serverUrl: lastServerUrl } = useConnectionStore()
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions()
 
-  const [mode, setMode] = useState<'auto' | 'manual'>('auto')
+  const [mode, setMode] = useState<'auto' | 'manual' | 'scan'>('auto')
   const [serverAddress, setServerAddress] = useState('')
   const [pairingCode, setPairingCode] = useState('')
   const [deviceName, setDeviceName] = useState('My Phone')
   const [discoveredServers, setDiscoveredServers] = useState<string[]>([])
   const [isScanning, setIsScanning] = useState(false)
+  const [qrScanned, setQrScanned] = useState(false)
+
+  // Handle QR code scan
+  const handleQRCodeScanned = async ({ data }: { data: string }) => {
+    if (qrScanned || isConnecting) return
+    setQrScanned(true)
+
+    try {
+      if (Platform.OS === 'ios') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+
+      // Parse QR data - expected format: { host, port, code }
+      const qrData = JSON.parse(data)
+
+      if (!qrData.host || !qrData.port || !qrData.code) {
+        throw new Error('Invalid QR code format')
+      }
+
+      const serverUrl = `http://${qrData.host}:${qrData.port}`
+
+      // Auto-connect with QR data
+      await connect(serverUrl, qrData.code, deviceName)
+      if (Platform.OS === 'ios') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      router.back()
+    } catch (err) {
+      if (Platform.OS === 'ios') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      Alert.alert('QR Scan Failed', getErrorMessage(err), [
+        { text: 'Try Again', onPress: () => setQrScanned(false) }
+      ])
+    }
+  }
 
   // Animation refs
   const scanRotation = useRef(new Animated.Value(0)).current
@@ -264,9 +300,16 @@ export default function ConnectScreen() {
     setServerAddress(address)
   }
 
-  const handleModeChange = (newMode: 'auto' | 'manual') => {
+  const handleModeChange = (newMode: 'auto' | 'manual' | 'scan') => {
     if (Platform.OS === 'ios') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     setMode(newMode)
+    if (newMode === 'scan') {
+      setQrScanned(false)
+      // Request camera permission if needed
+      if (!cameraPermission?.granted) {
+        requestCameraPermission()
+      }
+    }
   }
 
   const spinInterpolate = scanRotation.interpolate({
@@ -297,6 +340,19 @@ export default function ConnectScreen() {
       {/* Mode Toggle */}
       <View style={styles.modeToggle}>
         <TouchableOpacity
+          style={[styles.modeButton, styles.modeButtonSmall, mode === 'scan' && styles.modeButtonActive]}
+          onPress={() => handleModeChange('scan')}
+        >
+          <Ionicons
+            name="qr-code"
+            size={18}
+            color={mode === 'scan' ? '#fff' : '#71717a'}
+          />
+          <Text style={[styles.modeText, mode === 'scan' && styles.modeTextActive]}>
+            QR
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={[styles.modeButton, mode === 'auto' && styles.modeButtonActive]}
           onPress={() => handleModeChange('auto')}
         >
@@ -306,7 +362,7 @@ export default function ConnectScreen() {
             color={mode === 'auto' ? '#fff' : '#71717a'}
           />
           <Text style={[styles.modeText, mode === 'auto' && styles.modeTextActive]}>
-            Auto Discover
+            Auto
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -324,33 +380,88 @@ export default function ConnectScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Instructions */}
-      <View style={styles.instructions}>
-        <View style={styles.instructionStep}>
-          <View style={styles.stepNumber}>
-            <Text style={styles.stepNumberText}>1</Text>
-          </View>
-          <Text style={styles.instructionText}>
-            Open Vault on your desktop
-          </Text>
+      {/* QR Scanner Mode */}
+      {mode === 'scan' && (
+        <View style={styles.scannerSection}>
+          {!cameraPermission?.granted ? (
+            <View style={styles.permissionContainer}>
+              <View style={styles.permissionIcon}>
+                <Ionicons name="camera" size={48} color="#3b82f6" />
+              </View>
+              <Text style={styles.permissionTitle}>Camera Access Required</Text>
+              <Text style={styles.permissionText}>
+                Allow camera access to scan the QR code from your desktop Vault
+              </Text>
+              <TouchableOpacity
+                style={styles.permissionButton}
+                onPress={requestCameraPermission}
+              >
+                <Text style={styles.permissionButtonText}>Grant Permission</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.cameraContainer}>
+              <CameraView
+                style={styles.camera}
+                facing="back"
+                barcodeScannerSettings={{
+                  barcodeTypes: ['qr'],
+                }}
+                onBarcodeScanned={qrScanned ? undefined : handleQRCodeScanned}
+              >
+                {/* Scan overlay */}
+                <View style={styles.scanOverlay}>
+                  <View style={styles.scanAreaContainer}>
+                    <View style={styles.scanArea}>
+                      {/* Corner brackets */}
+                      <View style={[styles.corner, styles.cornerTL]} />
+                      <View style={[styles.corner, styles.cornerTR]} />
+                      <View style={[styles.corner, styles.cornerBL]} />
+                      <View style={[styles.corner, styles.cornerBR]} />
+                    </View>
+                  </View>
+                  <Text style={styles.scanText}>
+                    {qrScanned ? 'Connecting...' : 'Point at the QR code on your desktop'}
+                  </Text>
+                  {isConnecting && (
+                    <ActivityIndicator size="large" color="#3b82f6" style={{ marginTop: 16 }} />
+                  )}
+                </View>
+              </CameraView>
+            </View>
+          )}
         </View>
-        <View style={styles.instructionStep}>
-          <View style={styles.stepNumber}>
-            <Text style={styles.stepNumberText}>2</Text>
+      )}
+
+      {/* Instructions - only show for non-scan modes */}
+      {mode !== 'scan' && (
+        <View style={styles.instructions}>
+          <View style={styles.instructionStep}>
+            <View style={styles.stepNumber}>
+              <Text style={styles.stepNumberText}>1</Text>
+            </View>
+            <Text style={styles.instructionText}>
+              Open Vault on your desktop
+            </Text>
           </View>
-          <Text style={styles.instructionText}>
-            Go to Settings → Mobile Sync
-          </Text>
-        </View>
-        <View style={styles.instructionStep}>
-          <View style={styles.stepNumber}>
-            <Text style={styles.stepNumberText}>3</Text>
+          <View style={styles.instructionStep}>
+            <View style={styles.stepNumber}>
+              <Text style={styles.stepNumberText}>2</Text>
+            </View>
+            <Text style={styles.instructionText}>
+              Go to Settings → Mobile Sync
+            </Text>
           </View>
-          <Text style={styles.instructionText}>
-            Click "Generate Pairing Code"
-          </Text>
+          <View style={styles.instructionStep}>
+            <View style={styles.stepNumber}>
+              <Text style={styles.stepNumberText}>3</Text>
+            </View>
+            <Text style={styles.instructionText}>
+              Click "Generate Pairing Code"
+            </Text>
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Auto Discovery */}
       {mode === 'auto' && (
@@ -595,6 +706,9 @@ const styles = StyleSheet.create({
   },
   modeButtonActive: {
     backgroundColor: '#3b82f6',
+  },
+  modeButtonSmall: {
+    flex: 0.7,
   },
   modeText: {
     color: '#71717a',
@@ -877,5 +991,118 @@ const styles = StyleSheet.create({
   helpLinkText: {
     color: '#71717a',
     fontSize: 14,
+  },
+  // QR Scanner styles
+  scannerSection: {
+    marginBottom: 24,
+  },
+  permissionContainer: {
+    alignItems: 'center',
+    padding: 40,
+    backgroundColor: '#18181b',
+    borderRadius: 16,
+  },
+  permissionIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  permissionTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  permissionText: {
+    color: '#71717a',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+    paddingHorizontal: 20,
+  },
+  permissionButton: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  permissionButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  cameraContainer: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    height: SCREEN_WIDTH * 0.9,
+  },
+  camera: {
+    flex: 1,
+  },
+  scanOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scanAreaContainer: {
+    width: SCAN_AREA_SIZE,
+    height: SCAN_AREA_SIZE,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scanArea: {
+    width: SCAN_AREA_SIZE,
+    height: SCAN_AREA_SIZE,
+    borderRadius: 20,
+    backgroundColor: 'transparent',
+    position: 'relative',
+  },
+  corner: {
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    borderColor: '#3b82f6',
+  },
+  cornerTL: {
+    top: 0,
+    left: 0,
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+    borderTopLeftRadius: 12,
+  },
+  cornerTR: {
+    top: 0,
+    right: 0,
+    borderTopWidth: 4,
+    borderRightWidth: 4,
+    borderTopRightRadius: 12,
+  },
+  cornerBL: {
+    bottom: 0,
+    left: 0,
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
+    borderBottomLeftRadius: 12,
+  },
+  cornerBR: {
+    bottom: 0,
+    right: 0,
+    borderBottomWidth: 4,
+    borderRightWidth: 4,
+    borderBottomRightRadius: 12,
+  },
+  scanText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '500',
+    marginTop: 24,
+    textAlign: 'center',
+    paddingHorizontal: 40,
   },
 })
