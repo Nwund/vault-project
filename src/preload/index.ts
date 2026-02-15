@@ -710,6 +710,9 @@ const api = {
       status: 'idle' | 'playing' | 'paused' | 'buffering'
     }>>('dlna:getDevices'),
 
+    // Manual connection by IP
+    connectManual: (ip: string) => invoke<boolean>('dlna:connectManual', ip),
+
     // Casting
     cast: (deviceId: string, mediaPath: string, options?: {
       title?: string
@@ -744,11 +747,52 @@ const api = {
       status: 'idle' | 'playing' | 'paused' | 'buffering'
     } | null>('dlna:getActiveDevice'),
 
+    // Queue management
+    setQueue: (items: Array<{
+      mediaId: string
+      path: string
+      title: string
+      duration?: number
+    }>) => invoke<{ success: boolean; error?: string }>('dlna:setQueue', items),
+    addToQueue: (item: {
+      mediaId: string
+      path: string
+      title: string
+      duration?: number
+    }) => invoke<{ success: boolean; error?: string }>('dlna:addToQueue', item),
+    clearQueue: () => invoke<{ success: boolean; error?: string }>('dlna:clearQueue'),
+    getQueue: () => invoke<{
+      items: Array<{
+        mediaId: string
+        path: string
+        title: string
+        duration?: number
+      }>
+      currentIndex: number
+      shuffleEnabled: boolean
+      repeatMode: 'none' | 'one' | 'all'
+      currentItem: {
+        mediaId: string
+        path: string
+        title: string
+        duration?: number
+      } | null
+    }>('dlna:getQueue'),
+    playNext: () => invoke<{ success: boolean; error?: string }>('dlna:playNext'),
+    playPrevious: () => invoke<{ success: boolean; error?: string }>('dlna:playPrevious'),
+    playAtIndex: (index: number) => invoke<{ success: boolean; error?: string }>('dlna:playAtIndex', index),
+    setShuffle: (enabled: boolean) => invoke<{ success: boolean; error?: string }>('dlna:setShuffle', enabled),
+    setRepeat: (mode: 'none' | 'one' | 'all') => invoke<{ success: boolean; error?: string }>('dlna:setRepeat', mode),
+    reorderQueue: (fromIndex: number, toIndex: number) => invoke<{ success: boolean; error?: string }>('dlna:reorderQueue', fromIndex, toIndex),
+    removeFromQueue: (index: number) => invoke<{ success: boolean; error?: string }>('dlna:removeFromQueue', index),
+
     // Event subscriptions
     onDeviceFound: (cb: (device: any) => void) => on('dlna:deviceFound', cb),
     onStatusUpdate: (cb: (status: any) => void) => on('dlna:statusUpdate', cb),
     onDiscoveryStarted: (cb: () => void) => on('dlna:discoveryStarted', cb),
     onDiscoveryStopped: (cb: () => void) => on('dlna:discoveryStopped', cb),
+    onQueueUpdated: (cb: (queue: any) => void) => on('dlna:queueUpdated', cb),
+    onQueueEnded: (cb: () => void) => on('dlna:queueEnded', cb),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -787,6 +831,48 @@ const api = {
     openExternal: (url: string) => shell.openExternal(url),
     openPath: (p: string) => invoke('shell:openPath', p),
     showItemInFolder: (p: string) => invoke('shell:showItemInFolder', p),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MOBILE SYNC SERVICE
+  // ═══════════════════════════════════════════════════════════════════════════
+  mobileSync: {
+    // Server control
+    start: (port?: number) => invoke<{
+      success: boolean
+      port?: number
+      addresses?: string[]
+      error?: string
+    }>('mobileSync:start', port),
+    stop: () => invoke<{ success: boolean; error?: string }>('mobileSync:stop'),
+    getStatus: () => invoke<{
+      running: boolean
+      port: number
+      addresses: string[]
+      pairedDevices: number
+    }>('mobileSync:getStatus'),
+
+    // Device pairing
+    generatePairingCode: () => invoke<{
+      code: string
+      expiresAt: number
+      qrData: string
+      error?: string
+    }>('mobileSync:generatePairingCode'),
+    getPairedDevices: () => invoke<Array<{
+      id: string
+      name: string
+      platform: 'ios' | 'android'
+      pairedAt: number
+      lastSeen: number
+    }>>('mobileSync:getPairedDevices'),
+    unpairDevice: (deviceId: string) => invoke<{ success: boolean }>('mobileSync:unpairDevice', deviceId),
+
+    // Event subscriptions
+    onStarted: (cb: (data: { port: number; addresses: string[] }) => void) => on('mobileSync:started', cb),
+    onStopped: (cb: () => void) => on('mobileSync:stopped', cb),
+    onDevicePaired: (cb: (device: any) => void) => on('mobileSync:devicePaired', cb),
+    onDeviceUnpaired: (cb: (device: any) => void) => on('mobileSync:deviceUnpaired', cb),
   },
 }
 

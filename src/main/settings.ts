@@ -419,6 +419,12 @@ export interface VisualEffectsSettings {
   confetti: boolean
 }
 
+// Mobile Sync Settings
+export interface MobileSyncSettings {
+  serverEnabled: boolean  // Auto-start sync server on app launch
+  port: number            // Server port (default 8765)
+}
+
 export interface VaultSettings {
   library: LibrarySettings
   playback: PlaybackSettings
@@ -434,6 +440,7 @@ export interface VaultSettings {
   activeSessionMode: SessionModeId
   ai: AISettings  // AI Intelligence settings (Venice API, protected tags, etc.)
   performance: PerformanceSettings  // Memory and performance tuning
+  mobileSync: MobileSyncSettings  // Mobile sync server settings
   hasSeenWelcome: boolean  // First-time welcome tutorial completed
   // Legacy support
   mediaDirs?: string[]
@@ -948,6 +955,10 @@ const DEFAULTS: VaultSettings = {
     thumbnailCacheSize: 2000,
     videoConcurrency: 4,
     lowMemoryMode: false
+  },
+  mobileSync: {
+    serverEnabled: false,  // Don't auto-start by default
+    port: 8765
   }
 }
 
@@ -1123,6 +1134,15 @@ export function getAISettings(): AISettings {
 
 export function updateVisualEffectsSettings(patch: Partial<VisualEffectsSettings>): VaultSettings {
   return updateSettings({ visualEffects: { ...getSettings().visualEffects, ...patch } })
+}
+
+export function updateMobileSyncSettings(patch: Partial<MobileSyncSettings>): VaultSettings {
+  return updateSettings({ mobileSync: { ...getSettings().mobileSync, ...patch } })
+}
+
+export function getMobileSyncSettings(): MobileSyncSettings {
+  const s = getSettings()
+  return s.mobileSync ?? { serverEnabled: false, port: 8765 }
 }
 
 export function setHasSeenWelcome(seen: boolean): VaultSettings {

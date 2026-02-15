@@ -14,6 +14,7 @@ import { getHybridTagger } from './services/tagging/hybrid-tagger'
 import { analyzeVideo, isAnalyzerAvailable } from './services/ai/video-analyzer'
 import { aiCleanupTags, aiGenerateTags, aiSuggestFilename, aiBatchRename, isOllamaAvailable } from './services/ai/ai-library-tools'
 import { getDLNAService } from './services/dlna-service'
+import { getMobileSyncService } from './services/mobile-sync-service'
 import { getSmartPlaylistService, SMART_PLAYLIST_PRESETS } from './services/smart-playlists'
 import { getBatchOperationsService } from './services/batch-operations'
 import { getGlobalSearchService, type SearchOptions } from './services/global-search'
@@ -73,6 +74,8 @@ import {
   importCaptionPresets,
   updateDataSettings,
   updateVisualEffectsSettings,
+  updateMobileSyncSettings,
+  getMobileSyncSettings,
   addMediaDir,
   removeMediaDir,
   setTheme,
@@ -126,8 +129,8 @@ import { toVaultUrl } from './vaultProtocol'
 import { getAICacheService } from './services/ai-cache-service'
 import { getLicenseService, type TierLimits } from './services/license-service'
 import { errorLogger } from './services/error-logger'
-import { needsTranscode, transcodeToMp4, getTranscodedPath, transcodeLowRes, detectHardwareEncoders, getEncoders, getPreferredEncoder, setPreferredEncoder, type HardwareEncoder, type EncoderInfo } from './services/transcode'
-import { makeVideoThumb, makeImageThumb, probeVideoDurationSec } from './thumbs'
+import { needsTranscode, transcodeToMp4, getTranscodedPath, transcodeLowRes, detectHardwareEncoders, getEncoders, getPreferredEncoder, setPreferredEncoder, type HardwareEncoder } from './services/transcode'
+import { makeVideoThumb, makeImageThumb, makeGifThumb, probeVideoDurationSec } from './thumbs'
 import ffmpeg from 'fluent-ffmpeg'
 import { ffmpegBin, ffprobeBin } from './ffpaths'
 
@@ -906,9 +909,18 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
         return media.thumbPath // Already has valid thumb
       }
       let thumbPath: string | null = null
-      if (media.type === 'video' || media.type === 'gif') {
+      if (media.type === 'video') {
         const dur = media.durationSec ?? await probeVideoDurationSec(media.path)
         thumbPath = await makeVideoThumb({
+          mediaId: media.id,
+          filePath: media.path,
+          mtimeMs: media.mtimeMs,
+          durationSec: dur
+        })
+      } else if (media.type === 'gif') {
+        // Use dedicated GIF handler with fallback
+        const dur = media.durationSec ?? await probeVideoDurationSec(media.path)
+        thumbPath = await makeGifThumb({
           mediaId: media.id,
           filePath: media.path,
           mtimeMs: media.mtimeMs,
@@ -1129,7 +1141,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     quality?: 'low' | 'medium' | 'high'
   }): Promise<{ success: boolean; gifPath?: string; error?: string }> => {
     try {
-      const { mediaId, startTime, endTime, fps = 15, width = 480, quality = 'medium' } = options
+      const { mediaId, startTime, endTime, fps: _fps = 15, width: _width = 480, quality = 'medium' } = options
 
       // Get media from database
       const media = db.getMedia(mediaId)
@@ -4520,6 +4532,17 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // Connect to device manually by IP
+  ipcMain.handle('dlna:connectManual', async (_ev, ip: string) => {
+    try {
+      const dlna = getDLNAService()
+      return await dlna.connectManual(ip)
+    } catch (e: any) {
+      console.error('[DLNA] Manual connect error:', e)
+      return false
+    }
+  })
+
   // Cast media to device
   ipcMain.handle('dlna:cast', async (_ev, deviceId: string, mediaPath: string, options?: {
     title?: string
@@ -4626,6 +4649,149 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DLNA QUEUE MANAGEMENT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Set entire queue
+  ipcMain.handle('dlna:setQueue', async (_ev, items: Array<{
+    mediaId: string
+    path: string
+    title: string
+    duration?: number
+  }>) => {
+    try {
+      const dlna = getDLNAService()
+      dlna.setQueue(items)
+      return { success: true }
+    } catch (e: any) {
+      console.error('[DLNA] Set queue error:', e)
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Add item to queue
+  ipcMain.handle('dlna:addToQueue', async (_ev, item: {
+    mediaId: string
+    path: string
+    title: string
+    duration?: number
+  }) => {
+    try {
+      const dlna = getDLNAService()
+      dlna.addToQueue(item)
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Clear queue
+  ipcMain.handle('dlna:clearQueue', async () => {
+    try {
+      const dlna = getDLNAService()
+      dlna.clearQueue()
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Get queue state
+  ipcMain.handle('dlna:getQueue', async () => {
+    try {
+      const dlna = getDLNAService()
+      return dlna.getQueueState()
+    } catch (e: any) {
+      console.error('[DLNA] Get queue error:', e)
+      return {
+        items: [],
+        currentIndex: -1,
+        shuffleEnabled: false,
+        repeatMode: 'none',
+        originalOrder: [],
+        currentItem: null
+      }
+    }
+  })
+
+  // Play next item
+  ipcMain.handle('dlna:playNext', async () => {
+    try {
+      const dlna = getDLNAService()
+      const success = await dlna.playNext()
+      return { success }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Play previous item
+  ipcMain.handle('dlna:playPrevious', async () => {
+    try {
+      const dlna = getDLNAService()
+      const success = await dlna.playPrevious()
+      return { success }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Play at specific index
+  ipcMain.handle('dlna:playAtIndex', async (_ev, index: number) => {
+    try {
+      const dlna = getDLNAService()
+      const success = await dlna.playAtIndex(index)
+      return { success }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Toggle shuffle
+  ipcMain.handle('dlna:setShuffle', async (_ev, enabled: boolean) => {
+    try {
+      const dlna = getDLNAService()
+      dlna.setShuffle(enabled)
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Set repeat mode
+  ipcMain.handle('dlna:setRepeat', async (_ev, mode: 'none' | 'one' | 'all') => {
+    try {
+      const dlna = getDLNAService()
+      dlna.setRepeat(mode)
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Reorder queue
+  ipcMain.handle('dlna:reorderQueue', async (_ev, fromIndex: number, toIndex: number) => {
+    try {
+      const dlna = getDLNAService()
+      dlna.reorderQueue(fromIndex, toIndex)
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Remove from queue
+  ipcMain.handle('dlna:removeFromQueue', async (_ev, index: number) => {
+    try {
+      const dlna = getDLNAService()
+      dlna.removeFromQueue(index)
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
   // Set up DLNA event forwarding to renderer
   try {
     const dlnaService = getDLNAService()
@@ -4640,6 +4806,12 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     })
     dlnaService.on('discoveryStopped', () => {
       broadcast('dlna:discoveryStopped')
+    })
+    dlnaService.on('queueUpdated', (queue: any) => {
+      broadcast('dlna:queueUpdated', queue)
+    })
+    dlnaService.on('queueEnded', () => {
+      broadcast('dlna:queueEnded')
     })
   } catch (e) {
     console.warn('[DLNA] Failed to set up event listeners:', e)
@@ -6289,7 +6461,214 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return service.findSimilarTo(mediaId)
   })
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MOBILE SYNC SERVICE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Initialize mobile sync service dependencies
+  const mobileSyncService = getMobileSyncService()
+  mobileSyncService.getMediaList = async (opts) => {
+    // Build sort clause
+    let orderBy = 'addedAt DESC'
+    switch (opts?.sort) {
+      case 'oldest': orderBy = 'addedAt ASC'; break
+      case 'name': orderBy = 'filename ASC'; break
+      case 'size': orderBy = 'size DESC'; break
+      case 'duration': orderBy = 'durationSec DESC NULLS LAST'; break
+      case 'random': orderBy = 'RANDOM()'; break
+      default: orderBy = 'addedAt DESC'
+    }
+
+    // Mobile-compatible formats - expanded for Android support
+    // iOS: mp4, mov, m4v, webm (partial), heic
+    // Android: mp4, mov, m4v, webm, mkv, avi (with codecs)
+    // Build WHERE clause
+    const conditions: string[] = []
+    // Check file extension - most common playable video and image formats
+    conditions.push(`(
+      LOWER(SUBSTR(filename, -4)) IN ('.mp4', '.mov', '.m4v', '.mkv', '.avi', '.jpg', '.png', '.gif', '.bmp') OR
+      LOWER(SUBSTR(filename, -5)) IN ('.jpeg', '.webp', '.heic', '.webm', '.avif') OR
+      LOWER(SUBSTR(filename, -6)) IN ('.heics')
+    )`)
+    if (opts?.type) {
+      conditions.push('type = @type')
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE (${conditions.join(') AND (')})` : ''
+
+    const rows = db.raw.prepare(`
+      SELECT id, path, filename, type, durationSec, size as sizeBytes, width, height, addedAt, thumbPath
+      FROM media
+      ${whereClause}
+      ORDER BY ${orderBy}
+      ${opts?.limit ? 'LIMIT @limit' : ''}
+      ${opts?.offset ? 'OFFSET @offset' : ''}
+    `).all(opts || {}) as any[]
+    return rows
+  }
+  mobileSyncService.getMediaCount = async () => {
+    // Count mobile-compatible media files
+    const result = db.raw.prepare(`
+      SELECT COUNT(*) as count FROM media
+      WHERE (
+        LOWER(SUBSTR(filename, -4)) IN ('.mp4', '.mov', '.m4v', '.mkv', '.avi', '.jpg', '.png', '.gif', '.bmp') OR
+        LOWER(SUBSTR(filename, -5)) IN ('.jpeg', '.webp', '.heic', '.webm', '.avif') OR
+        LOWER(SUBSTR(filename, -6)) IN ('.heics')
+      )
+    `).get() as { count: number }
+    return result?.count || 0
+  }
+  mobileSyncService.getMediaById = async (id) => {
+    return db.raw.prepare('SELECT * FROM media WHERE id = ?').get(id) as any
+  }
+  mobileSyncService.getPlaylists = async () => {
+    return db.raw.prepare('SELECT * FROM playlists ORDER BY createdAt DESC').all() as any[]
+  }
+  mobileSyncService.getPlaylistItems = async (id) => {
+    return db.raw.prepare(`
+      SELECT m.id, m.filename, m.type, m.durationSec, m.thumbPath
+      FROM playlist_items pi
+      JOIN media m ON pi.mediaId = m.id
+      WHERE pi.playlistId = ?
+      ORDER BY pi.position ASC
+    `).all(id) as any[]
+  }
+  mobileSyncService.addPlaylistItems = async (playlistId, mediaIds) => {
+    db.playlistAddItems(playlistId, mediaIds)
+    broadcast('vault:changed')
+  }
+  mobileSyncService.getTags = async () => {
+    const rows = db.raw.prepare('SELECT name FROM tags ORDER BY name').all() as any[]
+    return rows.map((r: any) => r.name)
+  }
+  mobileSyncService.getThumbPath = async (mediaPath) => {
+    const row = db.raw.prepare('SELECT thumbPath FROM media WHERE path = ?').get(mediaPath) as any
+    return row?.thumbPath || null
+  }
+
+  // Generate thumbnail on-demand for mobile
+  mobileSyncService.generateThumb = async (mediaId) => {
+    try {
+      const media = db.getMedia(mediaId)
+      if (!media) return null
+      if (media.thumbPath && fs.existsSync(media.thumbPath)) {
+        return media.thumbPath
+      }
+      let thumbPath: string | null = null
+      if (media.type === 'video') {
+        const dur = media.durationSec ?? await probeVideoDurationSec(media.path)
+        thumbPath = await makeVideoThumb({
+          mediaId,
+          filePath: media.path,
+          mtimeMs: media.mtimeMs,
+          durationSec: dur
+        })
+      } else if (media.type === 'gif') {
+        thumbPath = await makeGifThumb({
+          mediaId,
+          filePath: media.path,
+          mtimeMs: media.mtimeMs
+        })
+      } else if (media.type === 'image') {
+        thumbPath = await makeImageThumb({
+          mediaId,
+          filePath: media.path,
+          mtimeMs: media.mtimeMs
+        })
+      }
+      if (thumbPath) {
+        db.raw.prepare('UPDATE media SET thumbPath=? WHERE id=?').run(thumbPath, mediaId)
+      }
+      return thumbPath
+    } catch (err: any) {
+      console.error('[MobileSync] generateThumb failed:', mediaId, err?.message)
+      return null
+    }
+  }
+
+  // Start mobile sync server
+  ipcMain.handle('mobileSync:start', async (_ev, port?: number) => {
+    try {
+      const syncSettings = getMobileSyncSettings()
+      const serverPort = port || syncSettings.port || 8765
+      const result = await mobileSyncService.start(serverPort)
+      if (result.success) {
+        // Remember that sync server should be enabled on next app launch
+        updateMobileSyncSettings({ serverEnabled: true, port: serverPort })
+      }
+      return result
+    } catch (e: any) {
+      console.error('[MobileSync] Start error:', e)
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Stop mobile sync server
+  ipcMain.handle('mobileSync:stop', async () => {
+    try {
+      await mobileSyncService.stop()
+      // Remember that sync server should be disabled on next app launch
+      updateMobileSyncSettings({ serverEnabled: false })
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Get server status
+  ipcMain.handle('mobileSync:getStatus', async () => {
+    return mobileSyncService.getStatus()
+  })
+
+  // Generate pairing code
+  ipcMain.handle('mobileSync:generatePairingCode', async () => {
+    try {
+      return mobileSyncService.generatePairingCode()
+    } catch (e: any) {
+      return { code: '', expiresAt: 0, qrData: '', error: e.message }
+    }
+  })
+
+  // Get paired devices
+  ipcMain.handle('mobileSync:getPairedDevices', async () => {
+    return mobileSyncService.getPairedDevices()
+  })
+
+  // Unpair a device
+  ipcMain.handle('mobileSync:unpairDevice', async (_ev, deviceId: string) => {
+    return { success: mobileSyncService.unpairDevice(deviceId) }
+  })
+
+  // Set up mobile sync event forwarding
+  mobileSyncService.on('started', (data: any) => {
+    broadcast('mobileSync:started', data)
+  })
+  mobileSyncService.on('stopped', () => {
+    broadcast('mobileSync:stopped')
+  })
+  mobileSyncService.on('devicePaired', (device: any) => {
+    broadcast('mobileSync:devicePaired', device)
+  })
+  mobileSyncService.on('deviceUnpaired', (device: any) => {
+    broadcast('mobileSync:deviceUnpaired', device)
+  })
+
   // Auto-organize NSFW Soundpack on startup
   void autoOrganizeSoundpack()
+
+  // Auto-start mobile sync server if enabled in settings
+  const mobileSyncSettings = getMobileSyncSettings()
+  if (mobileSyncSettings.serverEnabled) {
+    console.log('[MobileSync] Auto-starting server (was enabled in previous session)')
+    mobileSyncService.start(mobileSyncSettings.port).then(result => {
+      if (result.success) {
+        console.log('[MobileSync] Auto-start successful on port', result.port)
+      } else {
+        console.warn('[MobileSync] Auto-start failed:', result.error)
+      }
+    }).catch(err => {
+      console.error('[MobileSync] Auto-start error:', err)
+    })
+  }
 }
 
