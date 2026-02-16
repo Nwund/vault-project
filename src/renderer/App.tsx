@@ -31,6 +31,7 @@ import { MediaNotesPanel } from './components/MediaNotesPanel'
 import { DuplicatesModal } from './components/DuplicatesModal'
 import { HomeDashboard } from './components/HomeDashboard'
 import { TVRemotePanel } from './components/TVRemotePanel'
+import { PmvEditorPage } from './components/PmvEditor'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   Library,
@@ -106,7 +107,8 @@ import {
   Ban,
   Dice5,
   Tv,
-  AlertTriangle
+  AlertTriangle,
+  Clapperboard
 } from 'lucide-react'
 import { playClimaxForType } from './utils/soundPlayer'
 import vaultLogo from './assets/vault-logo.png'
@@ -978,6 +980,7 @@ const NAV = [
   { id: 'library', name: 'Library', tip: 'Browse and manage your media collection' },
   { id: 'goonwall', name: 'Goon Wall', tip: 'Multi-tile video wall with immersive features' },
   { id: 'captions', name: 'Brainwash', tip: 'Add captions and filters to images' },
+  { id: 'pmv', name: 'PMV Editor', tip: 'Create music video compilations with beat sync' },
   { id: 'ai', name: 'AI Tools', tip: 'AI-powered tagging and analysis' },
   { id: 'feed', name: 'Feed', tip: 'Endless scrolling feed of your media' },
   { id: 'playlists', name: 'Sessions', tip: 'Create and manage playlists' },
@@ -994,6 +997,7 @@ const NavIcon: React.FC<{ id: string; active?: boolean }> = ({ id, active }) => 
     case 'library': return <Library {...iconProps} />
     case 'goonwall': return <LayoutGrid {...iconProps} />
     case 'captions': return <MessageSquare {...iconProps} />
+    case 'pmv': return <Clapperboard {...iconProps} />
     case 'ai': return <Brain {...iconProps} />
     case 'feed': return <Flame {...iconProps} />
     case 'playlists': return <ListMusic {...iconProps} />
@@ -2204,6 +2208,10 @@ export default function App() {
           ) : page === 'captions' ? (
             <ErrorBoundary pageName="Brainwash">
               <CaptionsPage settings={settings} />
+            </ErrorBoundary>
+          ) : page === 'pmv' ? (
+            <ErrorBoundary pageName="PMV Editor">
+              <PmvEditorPage />
             </ErrorBoundary>
           ) : page === 'ai' ? (
             <ErrorBoundary pageName="AI Tools">

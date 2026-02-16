@@ -874,6 +874,17 @@ const api = {
     onDevicePaired: (cb: (device: any) => void) => on('mobileSync:devicePaired', cb),
     onDeviceUnpaired: (cb: (device: any) => void) => on('mobileSync:deviceUnpaired', cb),
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PMV EDITOR - Music video compilation tools
+  // ═══════════════════════════════════════════════════════════════════════════
+  pmv: {
+    selectMusic: () => invoke<string | null>('pmv:selectMusic'),
+    selectVideos: () => invoke<string[]>('pmv:selectVideos'),
+    getVideoInfo: (path: string) => invoke<{ duration: number; width: number; height: number }>('pmv:getVideoInfo', path),
+    getVideoThumb: (path: string) => invoke<string | null>('pmv:getVideoThumb', path),
+    getAudioInfo: (path: string) => invoke<{ duration: number }>('pmv:getAudioInfo', path),
+  },
 }
 
 // Expose API to renderer

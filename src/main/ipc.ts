@@ -1794,6 +1794,108 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // PMV EDITOR - Music video compilation tools
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Select music file for PMV project
+  ipcMain.handle('pmv:selectMusic', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Select Music Track',
+      filters: [
+        { name: 'Audio Files', extensions: ['mp3', 'wav', 'flac', 'm4a', 'ogg', 'aac', 'wma'] }
+      ],
+      properties: ['openFile']
+    })
+    return result.filePaths[0] || null
+  })
+
+  // Select video files for PMV project (multiple)
+  ipcMain.handle('pmv:selectVideos', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Select Videos for PMV',
+      filters: [
+        { name: 'Video Files', extensions: ['mp4', 'mkv', 'avi', 'mov', 'webm', 'wmv', 'flv', 'm4v'] }
+      ],
+      properties: ['openFile', 'multiSelections']
+    })
+    return result.filePaths || []
+  })
+
+  // Get video metadata (duration, resolution)
+  ipcMain.handle('pmv:getVideoInfo', async (_ev, filePath: string) => {
+    try {
+      const duration = await probeVideoDurationSec(filePath)
+      // Get dimensions using ffprobe
+      return new Promise<{ duration: number; width: number; height: number }>((resolve, reject) => {
+        ffmpeg.ffprobe(filePath, (err, metadata) => {
+          if (err) {
+            reject(err)
+            return
+          }
+          const videoStream = metadata.streams.find(s => s.codec_type === 'video')
+          resolve({
+            duration: duration ?? metadata.format.duration ?? 0,
+            width: videoStream?.width ?? 0,
+            height: videoStream?.height ?? 0
+          })
+        })
+      })
+    } catch (err: any) {
+      console.error('[PMV] getVideoInfo failed:', filePath, err?.message)
+      return { duration: 0, width: 0, height: 0 }
+    }
+  })
+
+  // Generate video thumbnail for PMV
+  ipcMain.handle('pmv:getVideoThumb', async (_ev, filePath: string) => {
+    try {
+      const duration = await probeVideoDurationSec(filePath)
+      // Generate a temp thumbnail
+      const tempDir = app.getPath('temp')
+      const thumbName = `pmv-thumb-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+      const thumbPath = path.join(tempDir, thumbName)
+
+      return new Promise<string | null>((resolve) => {
+        const seekTime = Math.min(duration ? duration * 0.1 : 1, 5) // 10% in or 5s max
+        ffmpeg(filePath)
+          .seekInput(seekTime)
+          .frames(1)
+          .outputOptions(['-vf', 'scale=320:-1'])
+          .output(thumbPath)
+          .on('end', () => resolve(thumbPath))
+          .on('error', (err) => {
+            console.error('[PMV] getVideoThumb failed:', err?.message)
+            resolve(null)
+          })
+          .run()
+      })
+    } catch (err: any) {
+      console.error('[PMV] getVideoThumb error:', err?.message)
+      return null
+    }
+  })
+
+  // Get audio file info (duration)
+  ipcMain.handle('pmv:getAudioInfo', async (_ev, filePath: string) => {
+    try {
+      return new Promise<{ duration: number }>((resolve, reject) => {
+        ffmpeg.ffprobe(filePath, (err, metadata) => {
+          if (err) {
+            reject(err)
+            return
+          }
+          resolve({
+            duration: metadata.format.duration ?? 0
+          })
+        })
+      })
+    } catch (err: any) {
+      console.error('[PMV] getAudioInfo failed:', filePath, err?.message)
+      return { duration: 0 }
+    }
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // AI - Deprecated Diabella handlers (return disabled status)
   // ═══════════════════════════════════════════════════════════════════════════
   ipcMain.handle('ai:chat', async () => {
