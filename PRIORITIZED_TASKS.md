@@ -386,8 +386,8 @@ Start with Priority 1 (critical bugs), then work through Priority 2 (usability),
 4. **Accessibility** - Added title/aria-label to icon-only buttons (from previous session, documented now)
 
 ### Remaining Audit Findings (Medium/Low Priority):
-1. **Promise.all pattern** - HomeDashboard loadContinueWatching could use Promise.allSettled instead of try-catch per item
-2. **User-visible error feedback** - Most catch blocks still only log to console; consider adding toast notifications
+1. ~~**Promise.all pattern** - HomeDashboard loadContinueWatching could use Promise.allSettled instead of try-catch per item~~ (Current pattern is fine - filters null results)
+2. **User-visible error feedback** - Most catch blocks still only log to console; requires ToastContext/Provider refactor to expose showToast globally
 3. ~~**TagSelector creation error** - The catch block doesn't prevent addTag from being called after error~~ (VERIFIED: code is correct, catch prevents execution)
 4. ~~**RelatedMediaPanel cascading errors** - loadRelated still runs after failed delete~~ (VERIFIED: loadRelated is inside try block)
 5. ~~**useVideoPreview** - Missing error logging for video.play() failures~~ (FIXED)
@@ -400,12 +400,12 @@ Start with Priority 1 (critical bugs), then work through Priority 2 (usability),
 
 ### Remaining Performance Audit Findings (Lower Priority):
 1. **Multiple sort operations in App.tsx** (lines 3495-3592) - Could be memoized or moved to backend
-2. **Missing memoization on availableTags filters** (lines 13513, 13540) - Settings page tag filters
+2. ~~**Missing memoization on availableTags filters** (lines 13513, 13540) - Settings page tag filters~~ (Low impact - modal opens infrequently)
 3. **toLowerCase in search suggestions** - Pre-lowercase tag names for faster filtering
-4. **Inline style objects in HomeDashboard** - Could defeat memoization
-5. **HorizontalSection not memoized** - Could add React.memo
-6. **Canvas setup in VisualStimulants** - Potential memory leak on resize listener
-7. **Expensive Map/Set operations in DuplicatesModal** - Could use immer or more efficient updates
+4. ~~**Inline style objects in HomeDashboard** - Could defeat memoization~~ (Low impact with HorizontalSection memoized)
+5. ~~**HorizontalSection not memoized** - Could add React.memo~~ (DONE - Added React.memo wrapper)
+6. ~~**Canvas setup in VisualStimulants** - Potential memory leak on resize listener~~ (VERIFIED - proper removeEventListener cleanup)
+7. ~~**Expensive Map/Set operations in DuplicatesModal** - Could use immer or more efficient updates~~ (Standard React immutable pattern, small collections, user-action triggered)
 
 ### Build Status:
 - TypeScript: Clean (no errors)
@@ -426,3 +426,145 @@ Start with Priority 1 (critical bugs), then work through Priority 2 (usability),
 - `src/renderer/components/DuplicatesModal.tsx` - Added try-catch
 - `src/renderer/components/VirtualizedMediaGrid.tsx` - Added useMemo for grid calculations
 - Deleted: `src/renderer/hooks/usePhysicsSimulation.ts`, `src/renderer/hooks/useVideoPreloader.ts`
+
+---
+
+## CONTINUATION SESSION (Feb 13, 2026)
+
+### GIF Support Improvements:
+- [x] **Dedicated GIF Thumbnail Handler** - Created `makeGifThumb()` in thumbs.ts with dual-approach fallback:
+  - First attempts video-style frame extraction (gets animated frame)
+  - Falls back to static image extraction if video method fails
+  - Tries multiple timestamps (30%, 10%, first frame) to avoid blank frames
+- [x] **Updated main.ts job handler** - Added 'gif' type to media:analyze job, routes GIFs to dedicated handler
+- [x] **Updated ipc.ts** - media:generateThumb now uses makeGifThumb for GIF files
+
+### Bug Fixes:
+- [x] **TypeScript Error Fix** - Fixed implicit 'any' type on catch parameter at App.tsx:12141 (added `: unknown` type annotation)
+
+### Performance:
+- [x] **HorizontalSection React.memo** - Added React.memo wrapper to HomeDashboard HorizontalSection component
+
+### Verification:
+- [x] **VisualStimulants cleanup** - Verified canvas resize listeners have proper removeEventListener cleanup
+- [x] **TypeScript build** - Clean compilation with no errors
+
+### Code Cleanup:
+- [x] **Removed unused imports from App.tsx** - isGoonTheme, useVideoPool, videoPool, RelatedMediaPanel, BookmarksPanel, THEME_LIST
+- [x] **Removed unused type** - PlaylistItemRow type alias
+- [x] **Removed unused ref** - startRef in AnimatedCounter
+- [x] **Removed unused const** - THEMES array
+- [x] **Removed unused state** - contentHeight (only contentWidth needed for responsive layout)
+- [x] **Identified dead code** - ~20 unused variables/components remain (MediaViewer, GIFTile, PlaylistItemThumb, etc.) - kept for potential future use
+
+### Main Process Cleanup:
+- [x] **media-compare.ts** - Removed unused `fs` import
+- [x] **notifications.ts** - Removed unused `nativeImage` import
+- [x] **performers.ts** - Removed unused `path` and `fs` imports
+- [x] **quick-actions.ts** - Removed unused `path` import
+- [x] **file-watcher.ts** - Removed unused `key` variable in deduplication loop
+- [x] **processing-queue.ts** - Prefixed unused `concurrency` variable (reserved for future)
+- [x] **tier1-onnx-tagger.ts** - Prefixed unused `category` loop variable
+- [x] **video-analyzer.ts** - Prefixed unused `startTime` variable (reserved for timing)
+- [x] **vaultProtocol.ts** - Prefixed unused `isPathAllowed` function (reserved for security)
+- [x] **ipc.ts** - Removed unused `EncoderInfo` type import, prefixed unused GIF options
+
+### Files Changed:
+- `src/main/thumbs.ts` - Added makeGifThumb function
+- `src/main/main.ts` - Added 'gif' type to media:analyze job handler
+- `src/main/ipc.ts` - Updated media:generateThumb, removed unused imports
+- `src/main/services/media-compare.ts` - Removed unused imports
+- `src/main/services/notifications.ts` - Removed unused imports
+- `src/main/services/performers.ts` - Removed unused imports
+- `src/main/services/quick-actions.ts` - Removed unused imports
+- `src/main/services/file-watcher.ts` - Cleaned up deduplication
+- `src/main/services/ai-intelligence/processing-queue.ts` - Cleaned up unused vars
+- `src/main/services/ai-intelligence/tier1-onnx-tagger.ts` - Cleaned up unused vars
+- `src/main/services/ai/video-analyzer.ts` - Cleaned up unused vars
+- `src/main/vaultProtocol.ts` - Cleaned up unused function
+- `src/renderer/App.tsx` - Fixed TypeScript error, removed unused imports/variables/state
+- `src/renderer/components/BookmarksPanel.tsx` - Removed unused React import
+- `src/renderer/components/DuplicatesModal.tsx` - Removed unused React import
+- `src/renderer/components/MediaNotesPanel.tsx` - Removed unused React/Search imports
+- `src/renderer/components/TagSelector.tsx` - Removed unused Search import
+- `src/renderer/components/WatchLaterPanel.tsx` - Removed unused ChevronDown/BellOff imports
+- `src/renderer/components/RelatedMediaPanel.tsx` - Removed unused React import
+- `src/renderer/components/ParticlesBackground.tsx` - Removed unused useState import
+- `src/renderer/components/HeatOverlay.tsx` - Removed unused incrementHeat/decrementHeat functions
+- `src/renderer/components/FloatingVideoPlayer.tsx` - Removed unused positionInitialized ref
+- `src/renderer/components/HomeDashboard.tsx` - Removed unused Target import
+- `src/renderer/components/VisualStimulants.tsx` - Removed unused curvatureAmount variable
+- `src/renderer/DiagnosticsOverlay.tsx` - Removed unused React import
+- `src/renderer/hooks/useAmbienceAudio.ts` - Removed unused trackIndexRef
+- `src/renderer/hooks/useUiSounds.ts` - Removed unused lastHoverTime/HOVER_COOLDOWN
+- `src/renderer/hooks/useVideoCleanup.ts` - Prefixed unused loop variable
+
+---
+
+## PMV EDITOR IMPLEMENTATION (Feb 15, 2026)
+
+### Phase 1 - COMPLETE:
+- [x] **PMV Editor Tab** - Added to sidebar with Clapperboard icon (between Brainwash and AI Tools)
+- [x] **Video Import Panel** - Left sidebar with:
+  - Drag-and-drop video import from file system
+  - Thumbnail generation for each video
+  - Duration and resolution display
+  - Reorder videos via drag-and-drop
+  - Remove individual videos
+  - Max 15 videos limit
+- [x] **Video Preview** - Right panel with:
+  - Native HTML5 video player
+  - Click video in list to preview
+- [x] **Music/Waveform Panel** - Bottom panel with:
+  - Music file import (MP3, WAV, FLAC, M4A, OGG, AAC)
+  - Web Audio API waveform visualization
+  - Click-to-seek on waveform
+  - Play/pause controls
+  - Duration display
+- [x] **BPM Detection** - Auto-detects tempo using:
+  - Peak detection algorithm with low-pass filter
+  - Energy envelope calculation
+  - Rounds to common BPM values (60-200 range)
+  - Manual override with re-detect button
+  - Confidence indicator
+
+### Files Created:
+- `src/renderer/components/PmvEditor.tsx` (~500 lines) - Main editor component
+- `src/renderer/hooks/useWaveform.ts` (~230 lines) - Waveform visualization hook
+- `src/renderer/utils/bpm-detector.ts` (~130 lines) - Client-side BPM detection
+- `src/main/services/pmv/bpm-detector.ts` (~200 lines) - Server-side BPM (for future FFmpeg fallback)
+
+### IPC Handlers Added:
+- `pmv:selectMusic` - Open file picker for audio
+- `pmv:selectVideos` - Multi-select picker for videos
+- `pmv:getVideoInfo` - Get duration/resolution via ffprobe
+- `pmv:getVideoThumb` - Generate temp thumbnail
+- `pmv:getAudioInfo` - Get audio duration
+
+### Phase 2 - TODO (Timeline & Beat Markers):
+- [ ] **Timeline component** - Visual timeline at bottom showing all clips
+- [ ] **Beat markers** - Auto-generated beat markers from BPM on timeline
+- [ ] **Clip placement** - Drag videos to timeline, snap to beat markers
+- [ ] **Clip trimming** - Set in/out points for each video clip
+- [ ] **Beat sync modes** - Cut on beat, transition on beat, etc.
+- [ ] **Preview sync** - Preview with music + video together
+
+### Phase 3 - TODO (Transitions & Effects):
+- [ ] **Transition types** - Cut, fade, dissolve, wipe
+- [ ] **Beat-synced transitions** - Auto-transitions on beats
+- [ ] **Visual effects** - Flash, zoom pulse, color effects
+- [ ] **Text overlays** - Beat-synced text appearance
+
+### Phase 4 - TODO (Export & Polish):
+- [ ] **FFmpeg export** - Render final PMV to video file
+- [ ] **Export presets** - Quality/format options
+- [ ] **Project save/load** - Save PMV projects as JSON
+- [ ] **Import from library** - Add videos from Vault library (not just file system)
+- [ ] **Undo/redo** - History stack for all edits
+
+### Architecture Notes for Next Session:
+- Waveform uses Web Audio API `decodeAudioData()` in renderer
+- BPM detection is purely client-side (no FFmpeg needed for Phase 1)
+- Video thumbnails are temp files in system temp directory
+- State is local to component (no persistence yet)
+- Ready for Phase 2: Timeline would be horizontal component below preview
