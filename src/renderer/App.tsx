@@ -7712,78 +7712,9 @@ const GoonTile = React.memo(function GoonTile(props: {
 
   // Playback recovery - handle browser pausing/stalling videos due to resource limits
   // Use refs to avoid re-renders and prevent recovery loops
-  const playbackRecoveryRef = useRef<NodeJS.Timeout | null>(null)
-  const recoveryAttemptsRef = useRef(0)
-  const lastPlayTimeRef = useRef(0)
-  const isRecoveringRef = useRef(false)
 
-  const attemptPlaybackRecovery = useCallback(() => {
-    const video = videoRef.current
-    if (!video || !url || !ready || isRecoveringRef.current) return
-
-    // Limit recovery attempts to prevent infinite loops
-    if (recoveryAttemptsRef.current >= 3) {
-      console.log('[GoonTile] Max recovery attempts reached, giving up')
-      return
-    }
-
-    // Don't recover if we just started playing recently (within 5 seconds)
-    const timeSincePlay = Date.now() - lastPlayTimeRef.current
-    if (timeSincePlay < 5000) return
-
-    // Only recover if video should be playing but isn't
-    if (video.paused && !video.ended && video.readyState >= 2) {
-      isRecoveringRef.current = true
-      recoveryAttemptsRef.current++
-
-      video.play().then(() => {
-        lastPlayTimeRef.current = Date.now()
-        isRecoveringRef.current = false
-      }).catch(() => {
-        isRecoveringRef.current = false
-        // Browser is limiting resources - this is OK, don't keep retrying
-      })
-    }
-  }, [url, ready])
-
-  // Handle stall/waiting - video is buffering (only recover after longer delay)
-  const handleWaiting = useCallback(() => {
-    // Don't schedule recovery if already pending or too many attempts
-    if (playbackRecoveryRef.current || recoveryAttemptsRef.current >= 3) return
-    playbackRecoveryRef.current = setTimeout(() => {
-      playbackRecoveryRef.current = null
-      attemptPlaybackRecovery()
-    }, 8000) // Wait 8 seconds - browser may resolve on its own
-  }, [attemptPlaybackRecovery])
-
-  // Handle pause - only recover after significant delay to avoid fighting browser
-  const handlePause = useCallback(() => {
-    // Don't schedule recovery if already pending or too many attempts
-    if (playbackRecoveryRef.current || recoveryAttemptsRef.current >= 3) return
-    playbackRecoveryRef.current = setTimeout(() => {
-      playbackRecoveryRef.current = null
-      attemptPlaybackRecovery()
-    }, 10000) // Wait 10 seconds - let browser manage resources
-  }, [attemptPlaybackRecovery])
-
-  // Reset recovery attempts when video actually plays successfully
-  const handlePlay = useCallback(() => {
-    recoveryAttemptsRef.current = 0
-    lastPlayTimeRef.current = Date.now()
-    isRecoveringRef.current = false
-  }, [])
-
-  // No periodic check - let browser manage resources naturally
-  // The stall/pause handlers above will catch actual problems
-
-  // Cleanup playback recovery timer on unmount
-  useEffect(() => {
-    return () => {
-      if (playbackRecoveryRef.current) {
-        clearTimeout(playbackRecoveryRef.current)
-      }
-    }
-  }, [])
+  // Let browser manage video playback naturally - no automatic recovery
+  // This prevents fighting with browser resource management which causes stuttering
 
   // Poster thumbnail URL
   const [poster, setPoster] = useState('')
@@ -7866,11 +7797,7 @@ const GoonTile = React.memo(function GoonTile(props: {
           style={{ opacity: ready ? 1 : 0 }}
           onLoadedMetadata={handleLoadedMetadata}
           onCanPlay={() => setReady(true)}
-          onPlay={handlePlay}
           onError={handleError}
-          onWaiting={handleWaiting}
-          onPause={handlePause}
-          onStalled={handleWaiting}
         />
       )}
 
