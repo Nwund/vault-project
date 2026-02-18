@@ -1899,6 +1899,59 @@ Session 1 Stats:
 - Build: SUCCESS
 - URL Downloader now has full quality control and auto-import feature
 
+--------------------------------------------------------------------------------
+
+[2026-02-18 Session 2]
+Downloads Page, GoonWall Stabilization, Feed Mousewheel Fix:
+
+1. COMPLETED: Full Downloads Page (not just side panel)
+   - Added 'downloads' to NAV array as full tab
+   - Created DownloadsPage component with:
+     * Quality selector (Best, 1080p, 720p, 480p, Audio Only)
+     * Auto-import toggle
+     * Download progress with thumbnails
+     * Status icons and action buttons (Open, Import, Cancel, Remove)
+     * Clear completed button
+   - Added Download icon to NavIcon
+   - Added page routing in main render
+
+2. FIXED: yt-dlp Detection
+   - yt-dlp not found because PATH not updated in current shell
+   - Added WinGet Links directory to search paths in url-downloader-service.ts
+   - Also checks Scoop and Chocolatey installation paths
+   - yt-dlp now properly detected at WinGet install location
+
+3. ATTEMPTED FIX: GoonWall Video Stuttering
+   - Removed autoPlay attribute from video element (was fighting with browser)
+   - Added manual play() call in handleLoadedMetadata
+   - Added playback slot limiter (GOON_MAX_VIDEOS = 4)
+   - Only 4 videos play simultaneously to prevent Chrome resource conflicts
+   - Videos without slots show thumbnail instead of trying to play
+
+4. ATTEMPTED FIX: Feed Mousewheel Scroll
+   - Added scroll accumulator for better trackpad support
+   - Added inline onWheel handler to container element
+   - Moved useCallback before early returns (fixed hooks error)
+   - Reduced cooldown for snappier response
+
+5. FIXED: React Hooks Error
+   - handleWheelDirect useCallback was after early returns
+   - Moved to before conditional returns to maintain hook order
+
+Files Modified:
+- src/renderer/App.tsx (Downloads page, GoonTile slot system, Feed wheel handler)
+- src/main/services/url-downloader-service.ts (WinGet path detection)
+- src/main/ipc.ts (url downloader import fix)
+
+Session 2 Stats:
+- Build: SUCCESS (after hooks fix)
+- Downloads tab now full page instead of side panel
+- yt-dlp properly detected from WinGet installation
+
+KNOWN REMAINING ISSUES:
+- [ ] GoonWall stuttering may still occur - needs further investigation
+- [ ] Feed mousewheel may need window-level handler as fallback
+
 ================================================================================
                               END OF DOCUMENT
 ================================================================================

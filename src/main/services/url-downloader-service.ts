@@ -69,30 +69,45 @@ class UrlDownloaderService extends EventEmitter {
   }
 
   /**
-   * Find yt-dlp binary - check bundled location first, then PATH
+   * Find yt-dlp binary - check bundled location first, then common install locations, then PATH
    */
   private findYtDlp(): void {
-    // Check for bundled yt-dlp in app resources
-    const bundledPaths = [
+    const isWin = os.platform() === 'win32'
+    const exe = isWin ? 'yt-dlp.exe' : 'yt-dlp'
+
+    // Build list of paths to check
+    const searchPaths = [
       // In production (packaged app)
-      path.join(process.resourcesPath || '', 'bin', os.platform() === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'),
+      path.join(process.resourcesPath || '', 'bin', exe),
       // In development
-      path.join(app.getAppPath(), 'resources', 'bin', os.platform() === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'),
-      path.join(app.getAppPath(), '..', 'bin', os.platform() === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'),
+      path.join(app.getAppPath(), 'resources', 'bin', exe),
+      path.join(app.getAppPath(), '..', 'bin', exe),
     ]
 
-    for (const p of bundledPaths) {
+    // Add Windows-specific install locations
+    if (isWin) {
+      const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local')
+      searchPaths.push(
+        // WinGet Links directory
+        path.join(localAppData, 'Microsoft', 'WinGet', 'Links', 'yt-dlp.exe'),
+        // Scoop
+        path.join(os.homedir(), 'scoop', 'shims', 'yt-dlp.exe'),
+        // Chocolatey
+        path.join(process.env.ChocolateyInstall || 'C:\\ProgramData\\chocolatey', 'bin', 'yt-dlp.exe'),
+      )
+    }
+
+    for (const p of searchPaths) {
       if (fs.existsSync(p)) {
         this.ytdlpPath = p
-        console.log('[UrlDownloader] Found bundled yt-dlp at:', p)
+        console.log('[UrlDownloader] Found yt-dlp at:', p)
         return
       }
     }
 
-    // Check if yt-dlp is in PATH
-    const systemPath = os.platform() === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
-    this.ytdlpPath = systemPath
-    console.log('[UrlDownloader] Using system yt-dlp:', systemPath)
+    // Fallback to PATH
+    this.ytdlpPath = exe
+    console.log('[UrlDownloader] Using system yt-dlp:', exe)
   }
 
   /**
