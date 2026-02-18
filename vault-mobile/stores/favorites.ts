@@ -11,6 +11,7 @@ export interface FavoriteItem {
   type: 'video' | 'image' | 'gif'
   durationSec?: number
   hasThumb: boolean
+  tags?: string[]
   addedAt: number
 }
 

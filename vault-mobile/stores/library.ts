@@ -4,6 +4,7 @@
 import { create } from 'zustand'
 import { api } from '@/services/api'
 import { getErrorMessage } from '@/utils'
+import { useBrokenMediaStore, isFormatSupported } from './broken-media'
 
 interface MediaItem {
   id: string
@@ -15,7 +16,7 @@ interface MediaItem {
   tags?: string[]
 }
 
-type SortOption = 'newest' | 'oldest' | 'name' | 'size' | 'duration' | 'random'
+type SortOption = 'newest' | 'oldest' | 'name' | 'size' | 'duration' | 'random' | 'liked'
 
 interface LibraryState {
   items: MediaItem[]
@@ -62,16 +63,31 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({ isLoading: true, error: null })
 
     try {
+      // For 'liked' sort, use 'newest' server-side (client handles liked sorting)
+      const serverSort = sortBy === 'liked' ? 'newest' : sortBy
+
       const result = await api.getLibrary({
         page,
         limit: 50,
         search: searchQuery || undefined,
         type: typeFilter !== 'all' ? typeFilter : undefined,
         tags: tagFilter.length > 0 ? tagFilter : undefined,
-        sort: sortBy,
+        sort: serverSort,
       })
 
-      const newItems = result.items || []
+      // Filter out broken media and unsupported formats
+      const brokenStore = useBrokenMediaStore.getState()
+      const newItems = (result.items || []).filter(item => {
+        // Skip items marked as broken
+        if (brokenStore.isBroken(item.id)) {
+          return false
+        }
+        // Skip unsupported formats (MKV, AVI, etc.)
+        if (!isFormatSupported(item.filename, item.type)) {
+          return false
+        }
+        return true
+      })
 
       set({
         items: page === 1 ? newItems : [...items, ...newItems],

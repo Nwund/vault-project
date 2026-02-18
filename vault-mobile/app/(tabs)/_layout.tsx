@@ -186,6 +186,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="liked"
+        options={{
+          title: 'Liked',
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name="heart" nameOutline="heart-outline" color={color} focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="wall"
         options={{
           title: 'Wall',

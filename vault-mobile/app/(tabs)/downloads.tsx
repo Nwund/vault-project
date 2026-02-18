@@ -1,7 +1,7 @@
 // File: vault-mobile/app/(tabs)/downloads.tsx
 // Downloads tab - Enhanced with thumbnails, animations, and haptics
 
-import { useState, useCallback, useRef, memo } from 'react'
+import { useState, useCallback, useRef, memo, useEffect } from 'react'
 import {
   View,
   Text,
@@ -19,6 +19,8 @@ import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import * as Haptics from 'expo-haptics'
 import { useDownloadStore, DownloadedMedia } from '@/stores/downloads'
+import { useToast } from '@/contexts/toast'
+import { CardSkeleton, StatsSkeleton } from '@/components/SkeletonLoader'
 import { api } from '@/services/api'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
@@ -94,23 +96,13 @@ const DownloadItem = memo(({
         onPressOut={handlePressOut}
         activeOpacity={0.9}
       >
-        {/* Thumbnail */}
+        {/* Thumbnail - use item.id for server-generated thumbnails */}
         <View style={styles.thumbContainer}>
-          {item.thumbId ? (
-            <Image
-              source={{ uri: api.getThumbUrl(item.thumbId) }}
-              style={styles.thumbnail}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.placeholderThumb}>
-              <Ionicons
-                name={item.type === 'video' ? 'videocam' : 'image'}
-                size={24}
-                color="#3b82f6"
-              />
-            </View>
-          )}
+          <Image
+            source={{ uri: api.getThumbUrl(item.id) }}
+            style={styles.thumbnail}
+            resizeMode="cover"
+          />
           {item.type === 'video' && item.durationSec && (
             <View style={styles.durationBadge}>
               <Text style={styles.durationText}>{formatDuration(item.durationSec)}</Text>
@@ -159,7 +151,7 @@ const DownloadItem = memo(({
 })
 
 // Queue item with animated progress
-const QueueItem = memo(({ item }: { item: { id: string; filename: string; progress: number; thumbId?: string } }) => {
+const QueueItem = memo(({ item }: { item: { id: string; filename: string; progress: number } }) => {
   const progressAnim = useRef(new Animated.Value(item.progress)).current
 
   // Animate progress changes
@@ -177,17 +169,11 @@ const QueueItem = memo(({ item }: { item: { id: string; filename: string; progre
   return (
     <View style={styles.queueItem}>
       <View style={styles.queueThumbContainer}>
-        {item.thumbId ? (
-          <Image
-            source={{ uri: api.getThumbUrl(item.thumbId) }}
-            style={styles.queueThumb}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={styles.queuePlaceholder}>
-            <Ionicons name="cloud-download" size={20} color="#3b82f6" />
-          </View>
-        )}
+        <Image
+          source={{ uri: api.getThumbUrl(item.id) }}
+          style={styles.queueThumb}
+          resizeMode="cover"
+        />
         {/* Spinning download indicator */}
         <View style={styles.downloadingIndicator}>
           <Ionicons name="arrow-down-circle" size={16} color="#3b82f6" />
@@ -209,9 +195,15 @@ const QueueItem = memo(({ item }: { item: { id: string; filename: string; progre
 })
 
 export default function DownloadsScreen() {
-  const { downloads, downloadQueue, removeDownload, clearCompleted, initialize } = useDownloadStore()
+  const { downloads, downloadQueue, removeDownload, clearCompleted, initialize, isInitialized } = useDownloadStore()
+  const toast = useToast()
   const [editMode, setEditMode] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+
+  // Initialize downloads on mount
+  useEffect(() => {
+    initialize()
+  }, [initialize])
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true)
@@ -253,11 +245,12 @@ export default function DownloadsScreen() {
           onPress: () => {
             if (Platform.OS === 'ios') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
             removeDownload(item.id)
+            toast.success('Download deleted', `Freed ${formatSize(item.sizeBytes)}`)
           },
         },
       ]
     )
-  }, [removeDownload])
+  }, [removeDownload, toast])
 
   const handleToggleEditMode = useCallback(() => {
     if (Platform.OS === 'ios') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -266,6 +259,8 @@ export default function DownloadsScreen() {
 
   const handleClearAll = useCallback(() => {
     if (Platform.OS === 'ios') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)
+    const count = downloads.length
+    const size = downloads.reduce((sum, d) => sum + (d.sizeBytes || 0), 0)
     Alert.alert(
       'Clear All Downloads',
       'Are you sure you want to delete all downloaded media? This cannot be undone.',
@@ -277,11 +272,12 @@ export default function DownloadsScreen() {
           onPress: () => {
             clearCompleted()
             setEditMode(false)
+            toast.success(`Cleared ${count} downloads`, `Freed ${formatSize(size)}`)
           },
         },
       ]
     )
-  }, [clearCompleted])
+  }, [clearCompleted, downloads, toast])
 
   const totalSize = downloads.reduce((sum, d) => sum + (d.sizeBytes || 0), 0)
   const videoCount = downloads.filter(d => d.type === 'video').length
@@ -299,6 +295,16 @@ export default function DownloadsScreen() {
   const renderQueueItem = useCallback(({ item }: { item: { id: string; filename: string; progress: number } }) => (
     <QueueItem item={item} />
   ), [])
+
+  // Show skeleton while initializing
+  if (!isInitialized) {
+    return (
+      <View style={styles.container}>
+        <StatsSkeleton />
+        <CardSkeleton count={4} />
+      </View>
+    )
+  }
 
   return (
     <View style={styles.container}>

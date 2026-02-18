@@ -11,6 +11,7 @@ import * as Network from 'expo-network'
 import { Ionicons } from '@expo/vector-icons'
 import { useConnectionStore } from '@/stores/connection'
 import { ToastProvider } from '@/contexts/toast'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync()
@@ -42,6 +43,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <ErrorBoundary>
       <ToastProvider>
         <StatusBar style="light" />
 
@@ -134,6 +136,7 @@ export default function RootLayout() {
         />
       </Stack>
       </ToastProvider>
+      </ErrorBoundary>
     </GestureHandlerRootView>
   )
 }

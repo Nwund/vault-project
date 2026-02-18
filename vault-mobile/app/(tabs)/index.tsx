@@ -1,7 +1,7 @@
 // File: vault-mobile/app/(tabs)/index.tsx
 // Library tab - Enhanced media grid with better UX
 
-import { useState, useEffect, useCallback, useMemo, memo } from 'react'
+import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react'
 import {
   View,
   Text,
@@ -24,6 +24,7 @@ import {
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useConnectionStore } from '@/stores/connection'
 import { useLibraryStore } from '@/stores/library'
 import { useFavoritesStore } from '@/stores/favorites'
@@ -33,6 +34,9 @@ import { useToast } from '@/contexts/toast'
 import { api } from '@/services/api'
 import { shareService } from '@/services/share'
 import { cacheService } from '@/services/cache'
+import { QuickPlayModal } from '@/components/QuickPlayModal'
+import { GridSkeleton, ContinueWatchingSkeleton } from '@/components/SkeletonLoader'
+import { useBrokenMediaStore, isFormatSupported } from '@/stores/broken-media'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
 
@@ -53,12 +57,13 @@ interface MediaItem {
   tags?: string[]
 }
 
-type SortOption = 'newest' | 'oldest' | 'name' | 'size' | 'duration' | 'random'
+type SortOption = 'newest' | 'oldest' | 'name' | 'size' | 'duration' | 'random' | 'liked'
 type TypeFilter = 'all' | 'video' | 'image' | 'gif'
 
 const SORT_OPTIONS: { value: SortOption; label: string; icon: string }[] = [
   { value: 'newest', label: 'Newest', icon: 'time' },
   { value: 'oldest', label: 'Oldest', icon: 'hourglass' },
+  { value: 'liked', label: 'Liked', icon: 'heart' },
   { value: 'name', label: 'Name', icon: 'text' },
   { value: 'size', label: 'Size', icon: 'server' },
   { value: 'duration', label: 'Duration', icon: 'timer' },
@@ -71,17 +76,28 @@ const GridItem = memo(({
   itemWidth,
   onPress,
   onLongPress,
+  onLoadError,
+  onDownload,
+  isDownloaded,
 }: {
   item: MediaItem
   itemWidth: number
   onPress: () => void
   onLongPress: () => void
+  onLoadError?: (id: string) => void
+  onDownload?: () => void
+  isDownloaded?: boolean
 }) => {
   const [loaded, setLoaded] = useState(false)
   const [thumbUri, setThumbUri] = useState<string | null>(null)
+  const [hasError, setHasError] = useState(false)
   const opacity = useState(new Animated.Value(0))[0]
 
-  const remoteThumbUrl = item.hasThumb ? api.getThumbUrl(item.id) : null
+  // Check if format is supported
+  const formatSupported = isFormatSupported(item.filename, item.type)
+
+  // Always try to fetch thumbnail - server generates on demand if needed
+  const remoteThumbUrl = api.getThumbUrl(item.id)
 
   // Load cached thumbnail or use remote URL
   useEffect(() => {
@@ -109,11 +125,18 @@ const GridItem = memo(({
 
   const handleLoad = () => {
     setLoaded(true)
+    setHasError(false)
     Animated.timing(opacity, {
       toValue: 1,
       duration: 200,
       useNativeDriver: true,
     }).start()
+  }
+
+  const handleError = () => {
+    setHasError(true)
+    // Report error but don't hide item - show placeholder instead
+    onLoadError?.(item.id)
   }
 
   const formatDuration = (seconds?: number) => {
@@ -123,9 +146,16 @@ const GridItem = memo(({
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
+  // Show unsupported format indicator instead of hiding
+  const showUnsupportedWarning = !formatSupported && item.type === 'video'
+
   return (
     <TouchableOpacity
-      style={[styles.gridItem, { width: itemWidth, height: itemWidth * 0.75 }]}
+      style={[
+        styles.gridItem,
+        { width: itemWidth, height: itemWidth * 0.75 },
+        showUnsupportedWarning && styles.gridItemUnsupported,
+      ]}
       onPress={onPress}
       onLongPress={onLongPress}
       activeOpacity={0.8}
@@ -133,7 +163,7 @@ const GridItem = memo(({
     >
       <View style={styles.thumbContainer}>
         {/* Placeholder */}
-        {!loaded && (
+        {(!loaded || hasError) && (
           <View style={[styles.thumbnail, styles.placeholder]}>
             <Ionicons
               name={item.type === 'video' ? 'videocam' : 'image'}
@@ -144,17 +174,18 @@ const GridItem = memo(({
         )}
 
         {/* Thumbnail */}
-        {thumbUri && (
+        {thumbUri && !hasError && (
           <Animated.Image
             source={{ uri: thumbUri }}
             style={[styles.thumbnail, { opacity }]}
             resizeMode="cover"
             onLoad={handleLoad}
+            onError={handleError}
           />
         )}
 
         {/* Fallback for no thumb */}
-        {!thumbUri && !loaded && (
+        {!thumbUri && !loaded && !hasError && (
           <View style={[styles.thumbnail, styles.noThumb]}>
             <Ionicons
               name={item.type === 'video' ? 'videocam' : 'image'}
@@ -164,16 +195,21 @@ const GridItem = memo(({
           </View>
         )}
 
-        {/* Type indicator overlay */}
+        {/* Type indicator overlay - bright colored badges */}
         <View style={styles.overlay}>
           {item.type === 'video' && (
             <View style={styles.playIndicator}>
-              <Ionicons name="play" size={10} color="#fff" />
+              <Ionicons name="play" size={12} color="#fff" />
             </View>
           )}
           {item.type === 'gif' && (
             <View style={styles.gifBadge}>
               <Text style={styles.gifText}>GIF</Text>
+            </View>
+          )}
+          {item.type === 'image' && (
+            <View style={styles.imageIndicator}>
+              <Ionicons name="image" size={12} color="#fff" />
             </View>
           )}
         </View>
@@ -184,6 +220,30 @@ const GridItem = memo(({
             <Text style={styles.durationText}>
               {formatDuration(item.durationSec)}
             </Text>
+          </View>
+        )}
+
+        {/* Unsupported format warning */}
+        {showUnsupportedWarning && (
+          <View style={styles.unsupportedBadge}>
+            <Ionicons name="warning" size={12} color="#f59e0b" />
+          </View>
+        )}
+
+        {/* Download button */}
+        {onDownload && !isDownloaded && (
+          <TouchableOpacity
+            style={styles.downloadButton}
+            onPress={onDownload}
+          >
+            <Ionicons name="cloud-download-outline" size={18} color="#fff" />
+          </TouchableOpacity>
+        )}
+
+        {/* Downloaded indicator */}
+        {isDownloaded && (
+          <View style={styles.downloadedBadge}>
+            <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
           </View>
         )}
       </View>
@@ -201,7 +261,8 @@ interface Playlist {
 export default function LibraryScreen() {
   const { isConnected } = useConnectionStore()
   const { items, isLoading, hasMore, page, sortBy, totalCount, fetchLibrary, refreshLibrary, setSortBy } = useLibraryStore()
-  const { isFavorite, toggleFavorite } = useFavoritesStore()
+  const { markThumbFailed, isBroken, isThumbFailed, brokenIds } = useBrokenMediaStore()
+  const { items: favoriteItems, isFavorite, toggleFavorite } = useFavoritesStore()
   const { items: historyItems, addToHistory } = useHistoryStore()
   const { addToQueue, startDownload, downloadQueue, downloads } = useDownloadStore()
   const toast = useToast()
@@ -224,6 +285,11 @@ export default function LibraryScreen() {
   const [loadingPlaylists, setLoadingPlaylists] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
+  const [showQuickPlay, setShowQuickPlay] = useState(false)
+
+  // FAB animation
+  const fabScale = useRef(new Animated.Value(1)).current
+  const fabRotate = useRef(new Animated.Value(0)).current
 
   const columnCount = getColumnCount()
   const itemWidth = (SCREEN_WIDTH - 8) / columnCount - 4
@@ -244,7 +310,40 @@ export default function LibraryScreen() {
 
   // Filter items locally
   const filteredItems = useMemo(() => {
+    // When sorting by liked - use favorites store items directly
+    if (sortBy === 'liked') {
+      let result: MediaItem[] = favoriteItems.map(fav => ({
+        id: fav.id,
+        filename: fav.filename,
+        type: fav.type,
+        durationSec: fav.durationSec,
+        hasThumb: fav.hasThumb,
+      }))
+
+      // Filter by type
+      if (typeFilter !== 'all') {
+        result = result.filter(item => item.type === typeFilter)
+      }
+
+      // Filter by search query
+      if (debouncedSearch) {
+        const query = debouncedSearch.toLowerCase()
+        result = result.filter(item => item.filename.toLowerCase().includes(query))
+      }
+
+      return result
+    }
+
     let result = items
+
+    // Filter out broken media and unsupported formats
+    result = result.filter(item => {
+      // Skip items marked as broken (failed to play previously)
+      if (isBroken(item.id)) return false
+      // Skip videos with unsupported formats (MKV, AVI, WMV, FLV)
+      if (item.type === 'video' && !isFormatSupported(item.filename, 'video')) return false
+      return true
+    })
 
     // Filter by type
     if (typeFilter !== 'all') {
@@ -261,7 +360,7 @@ export default function LibraryScreen() {
     }
 
     return result
-  }, [items, typeFilter, debouncedSearch])
+  }, [items, favoriteItems, typeFilter, debouncedSearch, brokenIds, sortBy])
 
   const handleRefresh = useCallback(() => {
     if (Platform.OS === 'ios') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -316,6 +415,20 @@ export default function LibraryScreen() {
       router.push(`/player/${filteredItems[randomIndex].id}`)
     }
   }, [filteredItems])
+
+  const handleShowQuickPlay = useCallback(() => {
+    if (Platform.OS === 'ios') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    // Animate FAB
+    Animated.sequence([
+      Animated.parallel([
+        Animated.spring(fabScale, { toValue: 0.9, useNativeDriver: true }),
+        Animated.timing(fabRotate, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]),
+      Animated.spring(fabScale, { toValue: 1, useNativeDriver: true }),
+    ]).start()
+    fabRotate.setValue(0)
+    setShowQuickPlay(true)
+  }, [])
 
   // Handle download for offline
   const handleDownload = useCallback(async (item: MediaItem) => {
@@ -409,14 +522,21 @@ export default function LibraryScreen() {
     }
   }, [selectedItem, toast])
 
+  const handleThumbLoadError = useCallback((id: string) => {
+    markThumbFailed(id)
+  }, [markThumbFailed])
+
   const renderItem = useCallback(({ item }: { item: MediaItem }) => (
     <GridItem
       item={item}
       itemWidth={itemWidth}
       onPress={() => handleItemPress(item)}
       onLongPress={() => handleItemLongPress(item)}
+      onLoadError={handleThumbLoadError}
+      onDownload={() => handleDownload(item)}
+      isDownloaded={downloads.some(d => d.id === item.id)}
     />
-  ), [itemWidth, handleItemPress, handleItemLongPress])
+  ), [itemWidth, handleItemPress, handleItemLongPress, handleThumbLoadError, handleDownload, downloads])
 
   const keyExtractor = useCallback((item: MediaItem) => item.id, [])
 
@@ -537,13 +657,11 @@ export default function LibraryScreen() {
                 }}
                 activeOpacity={0.8}
               >
-                {item.hasThumb && (
-                  <Image
-                    source={{ uri: api.getThumbUrl(item.id) }}
-                    style={styles.continueThumb}
-                    resizeMode="cover"
-                  />
-                )}
+                <Image
+                source={{ uri: api.getThumbUrl(item.id) }}
+                style={styles.continueThumb}
+                resizeMode="cover"
+              />
                 <View style={styles.continueProgress}>
                   <View style={[styles.continueProgressFill, { width: `${(item.progress || 0) * 100}%` }]} />
                 </View>
@@ -589,16 +707,26 @@ export default function LibraryScreen() {
           />
         }
         onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
+        onEndReachedThreshold={0.3}
         ListFooterComponent={
-          isLoading && page > 1 ? (
-            <View style={styles.loadingFooter}>
-              <ActivityIndicator size="small" color="#3b82f6" />
-            </View>
-          ) : <View style={styles.bottomPadding} />
+          <>
+            {isLoading && page > 1 && (
+              <View style={styles.loadingFooter}>
+                <ActivityIndicator size="small" color="#3b82f6" />
+              </View>
+            )}
+            {!isLoading && hasMore && filteredItems.length > 0 && (
+              <TouchableOpacity style={styles.loadMoreButton} onPress={handleLoadMore}>
+                <Text style={styles.loadMoreButtonText}>Load More</Text>
+              </TouchableOpacity>
+            )}
+            <View style={styles.bottomPadding} />
+          </>
         }
         ListEmptyComponent={
-          !isLoading ? (
+          isLoading ? (
+            <GridSkeleton columns={columnCount} rows={4} />
+          ) : (
             <View style={styles.emptyContainer}>
               <View style={styles.emptyIconContainer}>
                 <Ionicons name="images" size={48} color="#3b82f6" />
@@ -610,7 +738,7 @@ export default function LibraryScreen() {
                   : 'Your library is empty or no items match your filters'}
               </Text>
             </View>
-          ) : null
+          )
         }
       />
 
@@ -874,6 +1002,45 @@ export default function LibraryScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      {/* Floating Action Button for Quick Play */}
+      {filteredItems.length > 0 && (
+        <Animated.View
+          style={[
+            styles.fabContainer,
+            {
+              transform: [
+                { scale: fabScale },
+                { rotate: fabRotate.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['0deg', '45deg'],
+                }) },
+              ],
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.fab}
+            onPress={handleShowQuickPlay}
+            activeOpacity={0.9}
+          >
+            <LinearGradient
+              colors={['#3b82f6', '#8b5cf6']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.fabGradient}
+            >
+              <Ionicons name="flash" size={26} color="#fff" />
+            </LinearGradient>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      {/* Quick Play Modal */}
+      <QuickPlayModal
+        visible={showQuickPlay}
+        onClose={() => setShowQuickPlay(false)}
+      />
     </View>
   )
 }
@@ -917,18 +1084,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 12,
     paddingBottom: 4,
+    gap: 8,
   },
   typeFilters: {
     flexDirection: 'row',
-    gap: 8,
-    flex: 1,
+    gap: 6,
+    flexShrink: 1,
   },
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
     backgroundColor: '#1f1f23',
   },
   filterChipActive: {
@@ -1033,6 +1201,52 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: '#18181b',
   },
+  gridItemUnsupported: {
+    opacity: 0.7,
+  },
+  unsupportedBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(245, 158, 11, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  downloadButton: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#3b82f6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  downloadedBadge: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#22c55e',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 4,
+  },
   thumbContainer: {
     flex: 1,
     position: 'relative',
@@ -1060,22 +1274,45 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   playIndicator: {
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    borderRadius: 10,
-    width: 20,
-    height: 20,
+    backgroundColor: '#3b82f6',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  imageIndicator: {
+    backgroundColor: '#22c55e',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 4,
   },
   gifBadge: {
     backgroundColor: '#a855f7',
-    borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 4,
   },
   gifText: {
     color: '#fff',
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '800',
   },
   durationBadge: {
@@ -1141,6 +1378,19 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 100,
+  },
+  loadMoreButton: {
+    backgroundColor: '#3b82f6',
+    marginHorizontal: 16,
+    marginVertical: 12,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  loadMoreButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
@@ -1346,5 +1596,27 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+  },
+  fabContainer: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 110 : 80,
+    right: 20,
+    shadowColor: '#3b82f6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  fab: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    overflow: 'hidden',
+  },
+  fabGradient: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 })

@@ -55,19 +55,36 @@ class VaultAPI {
     }
   }
 
-  // Pairing (no auth required)
+  // Pairing (no auth required) - with timeout
   async pair(
     serverUrl: string,
     code: string,
     deviceName: string
   ): Promise<{ success: boolean; deviceId?: string; token?: string; error?: string }> {
-    const response = await fetch(`${serverUrl}/api/pair`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, deviceName, platform: 'mobile' }),
-    })
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout for pairing
 
-    return response.json()
+    try {
+      const response = await fetch(`${serverUrl}/api/pair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, deviceName, platform: 'mobile' }),
+        signal: controller.signal,
+      })
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        return { success: false, error: `Server error: ${response.status}` }
+      }
+
+      return response.json()
+    } catch (err: any) {
+      clearTimeout(timeoutId)
+      if (err.name === 'AbortError') {
+        return { success: false, error: 'Connection timed out - check server address' }
+      }
+      return { success: false, error: err.message || 'Failed to connect' }
+    }
   }
 
   // Ping server (health check) - uses shorter timeout for quick fail
@@ -192,6 +209,31 @@ class VaultAPI {
     serverVersion: string
   }> {
     return this.request('/api/sync/status')
+  }
+
+  // Get recommendations based on favorite tags
+  async getRecommendations(favoriteTags: string[], limit: number = 4): Promise<{
+    items: Array<{
+      id: string
+      filename: string
+      type: 'video' | 'image' | 'gif'
+      durationSec?: number
+      hasThumb: boolean
+      tags?: string[]
+    }>
+  }> {
+    // If we have favorite tags, try to find similar content
+    if (favoriteTags.length > 0) {
+      // Pick random subset of tags to search
+      const searchTags = favoriteTags
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 3)
+
+      return this.request(`/api/library?limit=${limit}&tags=${searchTags.join(',')}&sort=random`)
+    }
+
+    // Fallback to random
+    return this.request(`/api/library?limit=${limit}&type=video&sort=random`)
   }
 }
 

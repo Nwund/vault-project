@@ -11,7 +11,6 @@ import {
   Dimensions,
   StatusBar,
   ActivityIndicator,
-  PanResponder,
   GestureResponderEvent,
   Animated,
   Platform,
@@ -20,33 +19,51 @@ import {
 import { useLocalSearchParams, router } from 'expo-router'
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av'
 import * as ScreenOrientation from 'expo-screen-orientation'
-import * as Brightness from 'expo-brightness'
 import * as Haptics from 'expo-haptics'
 import { Ionicons } from '@expo/vector-icons'
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
+import ReAnimated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS } from 'react-native-reanimated'
 import { useConnectionStore } from '@/stores/connection'
 import { useLibraryStore } from '@/stores/library'
 import { useHistoryStore } from '@/stores/history'
 import { useDownloadStore } from '@/stores/downloads'
+import { useBrokenMediaStore } from '@/stores/broken-media'
+import { useFavoritesStore } from '@/stores/favorites'
+import { useToast } from '@/contexts/toast'
 import { api } from '@/services/api'
 import { getErrorMessage } from '@/utils'
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
-const GESTURE_THRESHOLD = 10
+const { width: SCREEN_WIDTH } = Dimensions.get('window')
 
 const PLAYBACK_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
 
 export default function PlayerScreen() {
-  const { id, offline } = useLocalSearchParams<{ id: string; offline?: string }>()
+  const { id: routeId, offline } = useLocalSearchParams<{ id: string; offline?: string }>()
   const { serverUrl, token } = useConnectionStore()
   const { getAdjacentItems } = useLibraryStore()
   const { addToHistory, updateProgress } = useHistoryStore()
-  const { downloads, getLocalPath } = useDownloadStore()
+  const { downloads, getLocalPath, addToQueue, startDownload, isDownloaded } = useDownloadStore()
+  const { markBroken } = useBrokenMediaStore()
+  const { isFavorite, toggleFavorite } = useFavoritesStore()
+  const toast = useToast()
+
+  // Current media ID - can change via swipe without leaving player
+  const [currentId, setCurrentId] = useState(routeId!)
 
   const videoRef = useRef<Video>(null)
+  const isMountedRef = useRef(true)
+  const hasErrorRef = useRef(false) // Ref for immediate error state access in closures
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const swipeAnim = useRef(new Animated.Value(0)).current
   const controlsOpacity = useRef(new Animated.Value(1)).current
-  const seekIndicatorOpacity = useRef(new Animated.Value(0)).current
+
+  // Track mounted state to prevent invalid view errors
+  useEffect(() => {
+    isMountedRef.current = true
+    hasErrorRef.current = false // Reset error ref on mount
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -65,126 +82,75 @@ export default function PlayerScreen() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isLocked, setIsLocked] = useState(false)
   const [showSpeedModal, setShowSpeedModal] = useState(false)
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
 
-  // Gesture state
-  const [gestureType, setGestureType] = useState<'none' | 'volume' | 'brightness' | 'seek' | 'swipe'>('none')
-  const [gestureValue, setGestureValue] = useState(0)
-  const [brightness, setBrightness] = useState(0.5)
+  // Check if current video is liked/downloaded
+  const isLiked = useMemo(() => isFavorite(currentId), [currentId, isFavorite])
+  const isVideoDownloaded = useMemo(() => isDownloaded(currentId), [currentId, isDownloaded])
+
+  // Gesture state - simplified to just swipe for navigation
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null)
-  const [seekDelta, setSeekDelta] = useState(0)
-  const gestureStartValue = useRef(0)
-  const gestureStartTime = useRef(0)
+  const [isSwipeActive, setIsSwipeActive] = useState(false)
   const lastTapTime = useRef(0)
   const lastTapX = useRef(0)
+  const translateX = useSharedValue(0)
 
-  // Adjacent items for navigation
-  const adjacentItems = useMemo(() => getAdjacentItems(id!), [id, getAdjacentItems])
+  // Adjacent items for navigation - based on currentId
+  const adjacentItems = useMemo(() => getAdjacentItems(currentId), [currentId, getAdjacentItems])
 
-  const navigateToVideo = useCallback((direction: 'prev' | 'next') => {
+  // Switch to new video without leaving player
+  const switchToVideo = useCallback((direction: 'prev' | 'next') => {
     const targetItem = direction === 'prev' ? adjacentItems.prev : adjacentItems.next
     if (targetItem) {
       if (Platform.OS === 'ios') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-      router.replace(`/player/${targetItem.id}`)
+      // Reset state for new video
+      setIsLoading(true)
+      setError(null)
+      hasErrorRef.current = false // Reset error ref for new video
+      setCurrentTime(0)
+      setDuration(0)
+      // Switch to new video - stays in player
+      setCurrentId(targetItem.id)
     }
   }, [adjacentItems])
 
-  // Initialize brightness
-  useEffect(() => {
-    Brightness.getBrightnessAsync().then((b: number) => setBrightness(b)).catch(() => {})
-  }, [])
+  // Fast swipe - navigate immediately on threshold, no slow animation
+  const swipeGesture = Gesture.Pan()
+    .enabled(!isLocked)
+    .activeOffsetX([-10, 10])
+    .failOffsetY([-50, 50])
+    .onStart(() => {
+      runOnJS(setIsSwipeActive)(true)
+    })
+    .onUpdate((event) => {
+      // 1:1 finger tracking
+      translateX.value = event.translationX
+      runOnJS(setSwipeDirection)(event.translationX > 0 ? 'right' : 'left')
+    })
+    .onEnd((event) => {
+      // Navigate immediately when threshold met - no slow animation
+      const threshold = SCREEN_WIDTH * 0.15
+      const shouldNavigate = Math.abs(event.translationX) > threshold || Math.abs(event.velocityX) > 400
 
-  // Pan responder for gestures
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => !isLocked,
-    onMoveShouldSetPanResponder: (_, gestureState) => {
-      if (isLocked) return false
-      return Math.abs(gestureState.dy) > GESTURE_THRESHOLD || Math.abs(gestureState.dx) > GESTURE_THRESHOLD
-    },
-    onPanResponderGrant: (evt, gestureState) => {
-      const touchX = evt.nativeEvent.pageX
-      const touchY = evt.nativeEvent.pageY
-
-      // If touch is in bottom third, it's a seek gesture
-      if (touchY > SCREEN_HEIGHT * 0.7) {
-        setGestureType('seek')
-        gestureStartTime.current = currentTime
-        seekIndicatorOpacity.setValue(1)
-      } else if (touchX < SCREEN_WIDTH / 2) {
-        setGestureType('brightness')
-        gestureStartValue.current = brightness
-      } else {
-        setGestureType('volume')
-        gestureStartValue.current = volume
-      }
-    },
-    onPanResponderMove: (evt, gestureState) => {
-      const { dx, dy } = gestureState
-
-      // Horizontal swipe for seek (bottom area) or navigation
-      if (gestureType === 'seek') {
-        const seekSeconds = (dx / SCREEN_WIDTH) * duration * 0.5
-        setSeekDelta(seekSeconds)
-        return
+      if (shouldNavigate && event.translationX > 0 && adjacentItems.prev) {
+        // Switch video immediately - no navigation
+        runOnJS(switchToVideo)('prev')
+      } else if (shouldNavigate && event.translationX < 0 && adjacentItems.next) {
+        // Switch video immediately - no navigation
+        runOnJS(switchToVideo)('next')
       }
 
-      // Check if horizontal swipe is dominant for navigation
-      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 30) {
-        setGestureType('swipe')
-        setSwipeDirection(dx > 0 ? 'right' : 'left')
-        swipeAnim.setValue(dx)
-        return
-      }
+      // Always snap back quickly
+      translateX.value = withSpring(0, { damping: 30, stiffness: 400 })
+      runOnJS(setSwipeDirection)(null)
+      runOnJS(setIsSwipeActive)(false)
+    })
 
-      // Vertical gestures for volume/brightness
-      const change = -(dy / (SCREEN_HEIGHT * 0.5))
-      const newValue = Math.max(0, Math.min(1, gestureStartValue.current + change))
-
-      if (gestureType === 'brightness') {
-        setBrightness(newValue)
-        setGestureValue(newValue)
-        Brightness.setBrightnessAsync(newValue).catch(() => {})
-      } else if (gestureType === 'volume') {
-        setVolume(newValue)
-        setGestureValue(newValue)
-        videoRef.current?.setVolumeAsync(newValue).catch(() => {})
-      }
-    },
-    onPanResponderRelease: (_, gestureState) => {
-      const { dx } = gestureState
-
-      // Handle seek completion
-      if (gestureType === 'seek' && seekDelta !== 0) {
-        const newTime = Math.max(0, Math.min(duration, gestureStartTime.current + seekDelta))
-        handleSeek(newTime)
-        if (Platform.OS === 'ios') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-        setSeekDelta(0)
-        Animated.timing(seekIndicatorOpacity, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }).start()
-      }
-
-      // Handle swipe navigation
-      if (gestureType === 'swipe' && Math.abs(dx) > SCREEN_WIDTH * 0.25) {
-        if (dx > 0 && adjacentItems.prev) {
-          navigateToVideo('prev')
-        } else if (dx < 0 && adjacentItems.next) {
-          navigateToVideo('next')
-        }
-      }
-
-      Animated.spring(swipeAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-      }).start()
-
-      setTimeout(() => {
-        setGestureType('none')
-        setSwipeDirection(null)
-      }, 300)
-    },
-  }), [brightness, volume, gestureType, adjacentItems, navigateToVideo, swipeAnim, isLocked, duration, currentTime, seekDelta])
+  // 1:1 finger tracking for iOS Photos-like feel
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }))
 
   // Handle tap and double-tap
   const handleTap = (evt: GestureResponderEvent) => {
@@ -214,14 +180,14 @@ export default function PlayerScreen() {
     const loadMedia = async () => {
       try {
         // Check for offline playback - either explicitly requested or no connection
-        const localPath = getLocalPath(id!)
+        const localPath = getLocalPath(currentId)
         const isOfflineMode = offline === 'true' || !serverUrl
 
         if (isOfflineMode && localPath) {
           // Use downloaded local file
           setMediaUrl(localPath)
           // Get metadata from downloads store
-          const downloadedMedia = downloads.find(d => d.id === id)
+          const downloadedMedia = downloads.find(d => d.id === currentId)
           setMediaTitle(downloadedMedia?.filename || 'Downloaded Media')
 
           // Add to watch history with offline info
@@ -239,9 +205,9 @@ export default function PlayerScreen() {
           setError('This media is not available offline. Please download it first.')
         } else {
           // Online streaming mode
-          const url = api.getStreamUrl(id!)
+          const url = api.getStreamUrl(currentId)
           setMediaUrl(url)
-          const info = await api.getMediaById(id!)
+          const info = await api.getMediaById(currentId)
           setMediaTitle(info?.filename || 'Unknown')
 
           // Add to watch history
@@ -260,8 +226,8 @@ export default function PlayerScreen() {
       }
     }
 
-    if (id) loadMedia()
-  }, [id, offline, serverUrl, downloads])
+    if (currentId) loadMedia()
+  }, [currentId, offline, serverUrl, downloads])
 
   // Lock orientation for fullscreen
   useEffect(() => {
@@ -305,7 +271,16 @@ export default function PlayerScreen() {
   const handlePlaybackStatusUpdate = useCallback((status: AVPlaybackStatus) => {
     if (!status.isLoaded) {
       setIsLoading(true)
-      if (status.error) setError(status.error)
+      if (status.error) {
+        hasErrorRef.current = true // Set ref immediately for sync access
+        // Provide more helpful error message
+        const errorMsg = status.error.includes('-11829')
+          ? 'Video format not supported on iOS. Try a different video.'
+          : status.error
+        setError(errorMsg)
+        // Mark as broken so it won't show in library
+        if (currentId) markBroken(currentId)
+      }
       return
     }
 
@@ -317,38 +292,48 @@ export default function PlayerScreen() {
     setDuration(totalDur)
 
     // Update progress in history every 10 seconds
-    if (id && totalDur > 0 && currentPos - lastProgressUpdate.current > 10) {
+    if (currentId && totalDur > 0 && currentPos - lastProgressUpdate.current > 10) {
       lastProgressUpdate.current = currentPos
-      updateProgress(id, currentPos / totalDur)
+      updateProgress(currentId, currentPos / totalDur)
     }
 
     if (status.didJustFinish) {
       // Mark as fully watched
-      if (id) updateProgress(id, 1)
+      if (currentId) updateProgress(currentId, 1)
       // Auto-play next or go back
       if (adjacentItems.next) {
-        navigateToVideo('next')
+        switchToVideo('next')
       } else {
         router.back()
       }
     }
-  }, [adjacentItems, navigateToVideo, id, updateProgress])
+  }, [adjacentItems, switchToVideo, currentId, updateProgress, markBroken])
 
   // Controls
   const togglePlayPause = async () => {
-    if (!videoRef.current) return
+    // Don't try to control video if it has errored out (use ref for immediate access)
+    if (!videoRef.current || !isMountedRef.current || hasErrorRef.current) return
     if (Platform.OS === 'ios') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
 
-    if (isPlaying) {
-      await videoRef.current.pauseAsync()
-    } else {
-      await videoRef.current.playAsync()
+    try {
+      if (isPlaying) {
+        await videoRef.current.pauseAsync()
+      } else {
+        await videoRef.current.playAsync()
+      }
+    } catch {
+      // Ignore errors from unmounted component
     }
   }
 
   const handleSeek = async (position: number) => {
-    if (!videoRef.current) return
-    await videoRef.current.setPositionAsync(position * 1000)
+    // Don't try to seek if video has errored out (use ref for immediate access)
+    if (!videoRef.current || !isMountedRef.current || hasErrorRef.current) return
+    try {
+      await videoRef.current.setPositionAsync(position * 1000)
+    } catch {
+      // Ignore errors from unmounted component
+    }
   }
 
   const handleDoubleTap = (x: number) => {
@@ -393,8 +378,59 @@ export default function PlayerScreen() {
     if (Platform.OS === 'ios') Haptics.selectionAsync()
     setPlaybackSpeed(speed)
     setShowSpeedModal(false)
-    await videoRef.current?.setRateAsync(speed, true)
+    // Don't try to set rate if video has errored out (use ref for immediate access)
+    if (videoRef.current && isMountedRef.current && !hasErrorRef.current) {
+      try {
+        await videoRef.current.setRateAsync(speed, true)
+      } catch {
+        // Ignore errors from unmounted component
+      }
+    }
   }
+
+  // Handle like/favorite
+  const handleToggleLike = useCallback(() => {
+    if (Platform.OS === 'ios') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    const wasAdded = toggleFavorite({
+      id: currentId,
+      filename: mediaTitle,
+      type: 'video',
+      durationSec: duration,
+      hasThumb: true,
+    })
+    if (wasAdded) {
+      toast.success('Added to Favorites')
+    } else {
+      toast.info('Removed from Favorites')
+    }
+  }, [currentId, mediaTitle, duration, toggleFavorite, toast])
+
+  // Handle download
+  const handleDownload = useCallback(async () => {
+    if (isVideoDownloaded || isDownloading) return
+
+    if (Platform.OS === 'ios') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    setIsDownloading(true)
+    toast.info('Download started', 'Check Downloads tab for progress')
+
+    try {
+      const streamUrl = api.getStreamUrl(currentId)
+      addToQueue({
+        id: currentId,
+        filename: mediaTitle,
+        remoteUrl: streamUrl,
+        type: 'video',
+        durationSec: duration,
+      })
+      await startDownload(currentId)
+      toast.success('Download complete')
+    } catch (err) {
+      console.error('Download failed:', err)
+      toast.error('Download failed', getErrorMessage(err))
+    } finally {
+      setIsDownloading(false)
+    }
+  }, [currentId, mediaTitle, duration, isVideoDownloaded, isDownloading, addToQueue, startDownload, toast])
 
   // Format time
   const formatTime = (seconds: number) => {
@@ -410,141 +446,134 @@ export default function PlayerScreen() {
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
   return (
-    <View style={styles.container}>
+    <GestureHandlerRootView style={styles.container}>
       <StatusBar hidden={isFullscreen} />
 
-      {/* Video with gesture handling */}
-      <View style={styles.videoContainer} {...panResponder.panHandlers}>
-        <TouchableWithoutFeedback onPress={handleTap}>
-          <View style={styles.videoWrapper}>
-            {mediaUrl && (
-              <Video
-                ref={videoRef}
-                source={{
-                  uri: mediaUrl,
-                  headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-                }}
-                style={styles.video}
-                resizeMode={ResizeMode.CONTAIN}
-                shouldPlay={true}
-                isLooping={false}
-                volume={volume}
-                rate={playbackSpeed}
-                onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
-                onLoad={() => setIsLoading(false)}
-                onError={(err) => setError(err)}
-              />
-            )}
+      {/* Gesture detector covers entire screen for swipe from anywhere */}
+      <GestureDetector gesture={swipeGesture}>
+        <ReAnimated.View style={[styles.fullScreen, animatedStyle]}>
+          {/* Video layer */}
+          <TouchableWithoutFeedback onPress={handleTap}>
+            <View style={styles.videoContainer}>
+              {mediaUrl && (
+                <Video
+                  ref={videoRef}
+                  source={{
+                    uri: mediaUrl,
+                    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                  }}
+                  style={styles.video}
+                  resizeMode={ResizeMode.CONTAIN}
+                  shouldPlay={true}
+                  isLooping={false}
+                  volume={volume}
+                  rate={playbackSpeed}
+                  onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+                  onLoad={() => setIsLoading(false)}
+                  onError={(err) => {
+                    const errorMsg = typeof err === 'string' && err.includes('-11829')
+                      ? 'Video format not supported on iOS'
+                      : getErrorMessage(err)
+                    setError(errorMsg)
+                    // Mark as broken so it won't show in library
+                    if (currentId) markBroken(currentId)
+                  }}
+                />
+              )}
 
-            {/* Loading indicator */}
-            {isLoading && (
-              <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="large" color="#3b82f6" />
-              </View>
-            )}
+              {/* Loading indicator */}
+              {isLoading && (
+                <View style={styles.loadingOverlay}>
+                  <ActivityIndicator size="large" color="#3b82f6" />
+                </View>
+              )}
 
-            {/* Error display */}
-            {error && (
-              <View style={styles.errorOverlay}>
-                <Ionicons name="alert-circle" size={48} color="#ef4444" />
-                <Text style={styles.errorText}>{error}</Text>
-                <TouchableOpacity style={styles.errorButton} onPress={handleClose}>
-                  <Text style={styles.errorButtonText}>Go Back</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        </TouchableWithoutFeedback>
-
-        {/* Gesture Indicators */}
-        {gestureType === 'volume' && (
-          <View style={styles.gestureIndicator}>
-            <Ionicons
-              name={gestureValue === 0 ? 'volume-mute' : gestureValue < 0.5 ? 'volume-low' : 'volume-high'}
-              size={32}
-              color="#fff"
-            />
-            <View style={styles.gestureBar}>
-              <View style={[styles.gestureBarFill, { height: `${gestureValue * 100}%` }]} />
-            </View>
-            <Text style={styles.gestureText}>{Math.round(gestureValue * 100)}%</Text>
-          </View>
-        )}
-
-        {gestureType === 'brightness' && (
-          <View style={styles.gestureIndicator}>
-            <Ionicons name="sunny" size={32} color="#fff" />
-            <View style={styles.gestureBar}>
-              <View style={[styles.gestureBarFill, { height: `${gestureValue * 100}%` }]} />
-            </View>
-            <Text style={styles.gestureText}>{Math.round(gestureValue * 100)}%</Text>
-          </View>
-        )}
-
-        {/* Seek indicator */}
-        {gestureType === 'seek' && (
-          <Animated.View style={[styles.seekIndicator, { opacity: seekIndicatorOpacity }]}>
-            <Ionicons
-              name={seekDelta >= 0 ? 'play-forward' : 'play-back'}
-              size={28}
-              color="#fff"
-            />
-            <Text style={styles.seekDeltaText}>
-              {seekDelta >= 0 ? '+' : ''}{formatTime(Math.abs(seekDelta))}
-            </Text>
-            <Text style={styles.seekTargetText}>
-              {formatTime(Math.max(0, Math.min(duration, gestureStartTime.current + seekDelta)))}
-            </Text>
-          </Animated.View>
-        )}
-      </View>
-
-      {/* Controls Overlay */}
-      {showControls && !error && (
-        <Animated.View style={[styles.controlsOverlay, { opacity: controlsOpacity }]}>
-          {/* Lock overlay */}
-          {isLocked ? (
-            <View style={styles.lockOverlay}>
-              <TouchableOpacity style={styles.unlockButton} onPress={toggleLock}>
-                <Ionicons name="lock-closed" size={28} color="#fff" />
-                <Text style={styles.unlockText}>Tap to unlock</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              {/* Top Bar */}
-              <View style={styles.topBar}>
-                <TouchableOpacity style={styles.iconButton} onPress={handleClose}>
-                  <Ionicons name="chevron-down" size={28} color="#fff" />
-                </TouchableOpacity>
-                <Text style={styles.title} numberOfLines={1}>
-                  {mediaTitle}
-                </Text>
-                <View style={styles.topBarRight}>
-                  <TouchableOpacity style={styles.iconButton} onPress={toggleLock}>
-                    <Ionicons name="lock-open" size={22} color="#fff" />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.iconButton} onPress={toggleFullscreen}>
-                    <Ionicons
-                      name={isFullscreen ? 'contract' : 'expand'}
-                      size={24}
-                      color="#fff"
-                    />
+              {/* Error display */}
+              {error && (
+                <View style={styles.errorOverlay}>
+                  <Ionicons name="alert-circle" size={48} color="#ef4444" />
+                  <Text style={styles.errorText}>{error}</Text>
+                  <TouchableOpacity style={styles.errorButton} onPress={handleClose}>
+                    <Text style={styles.errorButtonText}>Go Back</Text>
                   </TouchableOpacity>
                 </View>
-              </View>
+              )}
+            </View>
+          </TouchableWithoutFeedback>
 
-              {/* Center Controls */}
+          {/* Swipe indicator */}
+          {isSwipeActive && swipeDirection && (
+            <View style={styles.swipeIndicator} pointerEvents="none">
+              <Ionicons
+                name={swipeDirection === 'right' ? 'chevron-back' : 'chevron-forward'}
+                size={48}
+                color="#fff"
+              />
+              <Text style={styles.swipeText}>
+                {swipeDirection === 'right' ? 'Previous' : 'Next'}
+              </Text>
+            </View>
+          )}
+
+          {/* Controls Overlay - inside gesture area */}
+          {showControls && !error && (
+            <Animated.View style={[styles.controlsOverlay, { opacity: controlsOpacity }]}>
+              {/* Lock overlay */}
+              {isLocked ? (
+                <View style={styles.lockOverlay}>
+                  <TouchableOpacity style={styles.unlockButton} onPress={toggleLock}>
+                    <Ionicons name="lock-closed" size={28} color="#fff" />
+                    <Text style={styles.unlockText}>Tap to unlock</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  {/* Top Bar */}
+                  <View style={styles.topBar}>
+                    <TouchableOpacity style={styles.iconButton} onPress={handleClose}>
+                      <Ionicons name="chevron-down" size={28} color="#fff" />
+                    </TouchableOpacity>
+                    <Text style={styles.title} numberOfLines={1}>
+                      {mediaTitle}
+                    </Text>
+                    <View style={styles.topBarRight}>
+                      {/* Like button */}
+                      <TouchableOpacity style={styles.iconButton} onPress={handleToggleLike}>
+                        <Ionicons
+                          name={isLiked ? 'heart' : 'heart-outline'}
+                          size={24}
+                          color={isLiked ? '#ef4444' : '#fff'}
+                        />
+                      </TouchableOpacity>
+                      {/* Download button */}
+                      <TouchableOpacity
+                        style={styles.iconButton}
+                        onPress={handleDownload}
+                        disabled={isVideoDownloaded || isDownloading}
+                      >
+                        <Ionicons
+                          name={isVideoDownloaded ? 'checkmark-circle' : isDownloading ? 'cloud-download' : 'cloud-download-outline'}
+                          size={24}
+                          color={isVideoDownloaded ? '#22c55e' : '#fff'}
+                        />
+                      </TouchableOpacity>
+                      {/* Lock button */}
+                      <TouchableOpacity style={styles.iconButton} onPress={toggleLock}>
+                        <Ionicons name="lock-open" size={22} color="#fff" />
+                      </TouchableOpacity>
+                      {/* Fullscreen button */}
+                      <TouchableOpacity style={styles.iconButton} onPress={toggleFullscreen}>
+                        <Ionicons
+                          name={isFullscreen ? 'contract' : 'expand'}
+                          size={24}
+                          color="#fff"
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+              {/* Center Controls - Swipe left/right for prev/next video */}
               <View style={styles.centerControls}>
-                {/* Previous Video */}
-                <TouchableOpacity
-                  style={[styles.navButton, !adjacentItems.prev && styles.navButtonDisabled]}
-                  onPress={() => adjacentItems.prev && navigateToVideo('prev')}
-                  disabled={!adjacentItems.prev}
-                >
-                  <Ionicons name="play-skip-back" size={28} color={adjacentItems.prev ? '#fff' : '#52525b'} />
-                </TouchableOpacity>
-
                 <TouchableOpacity
                   style={styles.seekButton}
                   onPress={() => handleSeek(Math.max(0, currentTime - 10))}
@@ -571,30 +600,7 @@ export default function PlayerScreen() {
                   <Ionicons name="play-forward" size={32} color="#fff" />
                   <Text style={styles.seekText}>10</Text>
                 </TouchableOpacity>
-
-                {/* Next Video */}
-                <TouchableOpacity
-                  style={[styles.navButton, !adjacentItems.next && styles.navButtonDisabled]}
-                  onPress={() => adjacentItems.next && navigateToVideo('next')}
-                  disabled={!adjacentItems.next}
-                >
-                  <Ionicons name="play-skip-forward" size={28} color={adjacentItems.next ? '#fff' : '#52525b'} />
-                </TouchableOpacity>
               </View>
-
-              {/* Swipe Indicator */}
-              {gestureType === 'swipe' && (
-                <View style={styles.swipeIndicator}>
-                  <Ionicons
-                    name={swipeDirection === 'right' ? 'chevron-back' : 'chevron-forward'}
-                    size={48}
-                    color="#fff"
-                  />
-                  <Text style={styles.swipeText}>
-                    {swipeDirection === 'right' ? 'Previous' : 'Next'}
-                  </Text>
-                </View>
-              )}
 
               {/* Bottom Bar */}
               <View style={styles.bottomBar}>
@@ -636,8 +642,10 @@ export default function PlayerScreen() {
               </View>
             </>
           )}
-        </Animated.View>
-      )}
+          </Animated.View>
+          )}
+        </ReAnimated.View>
+      </GestureDetector>
 
       {/* Speed Modal */}
       <Modal
@@ -675,7 +683,7 @@ export default function PlayerScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
-    </View>
+    </GestureHandlerRootView>
   )
 }
 
@@ -684,76 +692,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
-  videoContainer: {
+  fullScreen: {
     flex: 1,
+  },
+  videoContainer: {
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  videoWrapper: {
-    width: '100%',
-    height: '100%',
   },
   video: {
     width: '100%',
     height: '100%',
-  },
-  gestureIndicator: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    marginLeft: -45,
-    marginTop: -85,
-    width: 90,
-    height: 170,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-  },
-  gestureBar: {
-    width: 6,
-    height: 80,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    borderRadius: 3,
-    marginVertical: 10,
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-  },
-  gestureBarFill: {
-    width: '100%',
-    backgroundColor: '#3b82f6',
-    borderRadius: 3,
-  },
-  gestureText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  seekIndicator: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    marginLeft: -60,
-    marginTop: -50,
-    width: 120,
-    height: 100,
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-  },
-  seekDeltaText: {
-    color: '#3b82f6',
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 6,
-  },
-  seekTargetText: {
-    color: '#71717a',
-    fontSize: 13,
-    marginTop: 4,
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -914,17 +863,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
-  },
-  navButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  navButtonDisabled: {
-    opacity: 0.3,
   },
   swipeIndicator: {
     position: 'absolute',

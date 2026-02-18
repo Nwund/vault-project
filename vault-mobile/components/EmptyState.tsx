@@ -40,6 +40,85 @@ export function EmptyState({
   )
 }
 
+// Pre-configured empty states for common scenarios
+export function NotConnectedState({ onConnect }: { onConnect?: () => void }) {
+  return (
+    <EmptyState
+      icon="cloud-offline"
+      iconColor="#f59e0b"
+      title="Not Connected"
+      subtitle="Connect to your desktop Vault to browse your library"
+      actionLabel="Connect Now"
+      onAction={onConnect}
+    />
+  )
+}
+
+export function NoVideosState({ onRefresh }: { onRefresh?: () => void }) {
+  return (
+    <EmptyState
+      icon="videocam-off"
+      iconColor="#52525b"
+      title="No Videos Found"
+      subtitle="Videos in supported formats (MP4, MOV) will appear here"
+      actionLabel="Refresh"
+      onAction={onRefresh}
+    />
+  )
+}
+
+export function NoFavoritesState({ onBrowse }: { onBrowse?: () => void }) {
+  return (
+    <EmptyState
+      icon="heart-outline"
+      iconColor="#ef4444"
+      title="No Favorites Yet"
+      subtitle="Double-tap videos or tap the heart icon to add favorites"
+      actionLabel="Browse Library"
+      onAction={onBrowse}
+    />
+  )
+}
+
+export function NoDownloadsState({ onBrowse }: { onBrowse?: () => void }) {
+  return (
+    <EmptyState
+      icon="cloud-download-outline"
+      iconColor="#3b82f6"
+      title="No Downloads"
+      subtitle="Download videos to watch offline when not connected"
+      actionLabel="Browse Library"
+      onAction={onBrowse}
+    />
+  )
+}
+
+export function NoHistoryState({ onBrowse }: { onBrowse?: () => void }) {
+  return (
+    <EmptyState
+      icon="time-outline"
+      iconColor="#8b5cf6"
+      title="No Watch History"
+      subtitle="Videos you watch will appear here"
+      actionLabel="Start Watching"
+      onAction={onBrowse}
+    />
+  )
+}
+
+export function NetworkErrorState({ onRetry }: { onRetry?: () => void }) {
+  return (
+    <EmptyState
+      icon="wifi-outline"
+      iconColor="#ef4444"
+      title="Connection Error"
+      subtitle="Unable to reach your Vault server. Check your connection and try again."
+      actionLabel="Retry"
+      onAction={onRetry}
+    />
+  )
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
