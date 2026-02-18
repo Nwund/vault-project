@@ -2525,3 +2525,119 @@ button:focus-visible,
   color: white;
   animation: badgePop 300ms ease-out;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PMV EDITOR - Overlay Effects
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Scanlines overlay */
+.pmv-overlay-scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.3) 2px,
+    rgba(0, 0, 0, 0.3) 4px
+  );
+  z-index: 10;
+}
+
+/* CRT screen effect */
+.pmv-overlay-crt::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 0%,
+    rgba(0, 0, 0, 0.15) 70%,
+    rgba(0, 0, 0, 0.4) 100%
+  );
+  z-index: 9;
+}
+
+.pmv-overlay-crt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 1px,
+    rgba(0, 0, 0, 0.15) 1px,
+    rgba(0, 0, 0, 0.15) 2px
+  );
+  z-index: 10;
+}
+
+/* VHS tape effect */
+.pmv-overlay-vhs {
+  position: relative;
+}
+
+.pmv-overlay-vhs::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(255, 0, 100, 0.03) 25%,
+    transparent 50%,
+    rgba(0, 255, 200, 0.03) 75%,
+    transparent 100%
+  );
+  animation: vhsWobble 8s ease-in-out infinite;
+  z-index: 9;
+}
+
+.pmv-overlay-vhs::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.1) 2px,
+    rgba(0, 0, 0, 0.1) 4px
+  );
+  z-index: 10;
+}
+
+@keyframes vhsWobble {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-1px);
+  }
+  50% {
+    transform: translateX(1px);
+  }
+  75% {
+    transform: translateX(-0.5px);
+  }
+}
+
+/* Beat flash effect (applied dynamically via JS) */
+.pmv-beat-flash {
+  animation: pmvBeatFlash 100ms ease-out;
+}
+
+@keyframes pmvBeatFlash {
+  0% {
+    filter: brightness(3);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}

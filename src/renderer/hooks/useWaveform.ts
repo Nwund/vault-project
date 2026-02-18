@@ -203,6 +203,13 @@ export function useWaveform(audioPath: string | null, options: UseWaveformOption
     }
   }, [duration, seek])
 
+  // Set volume (0-1)
+  const setVolume = useCallback((volume: number) => {
+    if (audioElementRef.current) {
+      audioElementRef.current.volume = Math.max(0, Math.min(1, volume))
+    }
+  }, [])
+
   // Load audio when path changes
   useEffect(() => {
     if (audioPath) {
@@ -271,6 +278,7 @@ export function useWaveform(audioPath: string | null, options: UseWaveformOption
     togglePlayPause,
     seek,
     seekPercent,
+    setVolume,
     handleCanvasClick
   }
 }
