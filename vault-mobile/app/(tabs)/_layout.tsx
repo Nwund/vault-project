@@ -164,6 +164,10 @@ export default function TabLayout() {
           headerRight: () => (
             <View style={styles.headerRight}>
               <HeaderButton
+                icon="link"
+                onPress={() => router.push('/url-download')}
+              />
+              <HeaderButton
                 icon="pricetags-outline"
                 onPress={() => router.push('/tags')}
               />
