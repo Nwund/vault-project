@@ -19,6 +19,7 @@ import {
   Import
 } from 'lucide-react'
 import { formatDuration } from '../utils/formatters'
+import { useToast } from '../App'
 
 interface DownloadItem {
   id: string
@@ -43,6 +44,7 @@ interface UrlDownloaderPanelProps {
 }
 
 export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps) {
+  const { showToast } = useToast()
   const [downloads, setDownloads] = useState<DownloadItem[]>([])
   const [urlInput, setUrlInput] = useState('')
   const [isAvailable, setIsAvailable] = useState<boolean | null>(null)
@@ -74,13 +76,23 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
     }
   }, [])
 
-  // Initialize
+  // Initialize and handle Escape key
   useEffect(() => {
     if (isOpen) {
       checkAvailability()
       loadDownloads()
+      inputRef.current?.focus()
+
+      // Close on Escape
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          onClose()
+        }
+      }
+      window.addEventListener('keydown', handleKeyDown)
+      return () => window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [isOpen, checkAvailability, loadDownloads])
+  }, [isOpen, checkAvailability, loadDownloads, onClose])
 
   // Subscribe to events
   useEffect(() => {
@@ -117,7 +129,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
     try {
       new URL(url)
     } catch {
-      alert('Please enter a valid URL')
+      showToast('error', 'Please enter a valid URL')
       return
     }
 
@@ -126,11 +138,12 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
       const result = await window.api.urlDownloader.addDownload(url)
       if (result.success) {
         setUrlInput('')
+        showToast('success', 'Download added to queue')
       } else {
-        alert(`Failed to add download: ${result.error}`)
+        showToast('error', `Failed: ${result.error}`)
       }
     } catch (e: any) {
-      alert(`Error: ${e.message}`)
+      showToast('error', e.message || 'Failed to add download')
     } finally {
       setAdding(false)
     }
@@ -143,9 +156,10 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
       if (text) {
         setUrlInput(text.trim())
         inputRef.current?.focus()
+        showToast('info', 'Pasted from clipboard')
       }
     } catch {
-      // Clipboard access denied
+      showToast('error', 'Clipboard access denied')
     }
   }
 
@@ -169,9 +183,9 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
   const handleImport = async (id: string) => {
     const result = await window.api.urlDownloader.importToLibrary(id)
     if (result.success) {
-      alert('Imported to library successfully!')
+      showToast('success', 'Imported to library')
     } else {
-      alert(`Import failed: ${result.error}`)
+      showToast('error', `Import failed: ${result.error}`)
     }
   }
 
