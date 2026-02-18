@@ -22,7 +22,9 @@ import { useDownloadStore } from '@/stores/downloads'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useHistoryStore } from '@/stores/history'
 import { useSettingsStore } from '@/stores/settings'
+import { useSyncStore } from '@/stores/sync'
 import { cacheService } from '@/services/cache'
+import { useToast } from '@/contexts/toast'
 
 export default function SettingsScreen() {
   const {
@@ -47,6 +49,16 @@ export default function SettingsScreen() {
     autoPlay,
     setAutoPlay,
   } = useSettingsStore()
+  const {
+    lastFullSync,
+    pendingWatches,
+    pendingFavoriteChanges,
+    isSyncing,
+    syncAll,
+    setAutoSync: setSyncAutoSync,
+    autoSyncEnabled,
+  } = useSyncStore()
+  const toast = useToast()
 
   const [cacheSize, setCacheSize] = useState<number>(0)
   const [isClearingCache, setIsClearingCache] = useState(false)
@@ -153,6 +165,32 @@ export default function SettingsScreen() {
   }
 
   const totalDownloadSize = downloads.reduce((sum, d) => sum + (d.sizeBytes || 0), 0)
+  const pendingChangesCount = pendingWatches.length + pendingFavoriteChanges.length
+
+  const handleManualSync = async () => {
+    if (!isConnected) {
+      toast.error('Not connected to desktop')
+      return
+    }
+    if (isSyncing) return
+
+    if (Platform.OS === 'ios' && hapticEnabled) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    }
+
+    try {
+      const result = await syncAll()
+      if (Platform.OS === 'ios' && hapticEnabled) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      }
+      toast.success(
+        'Sync complete',
+        `Favorites: ${result.favorites.pulled + result.favorites.pushed}, History: ${result.history.pulled + result.history.pushed}`
+      )
+    } catch (err: any) {
+      toast.error('Sync failed', err.message)
+    }
+  }
 
   const handleSwitchChange = useCallback((setter: (value: boolean) => void) => (value: boolean) => {
     if (Platform.OS === 'ios' && hapticEnabled) {
@@ -309,15 +347,43 @@ export default function SettingsScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Sync & Downloads</Text>
         <View style={styles.card}>
+          {/* Manual Sync Button */}
+          <TouchableOpacity
+            style={styles.syncButton}
+            onPress={handleManualSync}
+            disabled={!isConnected || isSyncing}
+            activeOpacity={0.7}
+          >
+            <View style={styles.syncButtonContent}>
+              {isSyncing ? (
+                <ActivityIndicator size="small" color="#3b82f6" />
+              ) : (
+                <Ionicons name="sync" size={22} color={isConnected ? '#3b82f6' : '#52525b'} />
+              )}
+              <View style={styles.syncButtonText}>
+                <Text style={[styles.syncButtonLabel, !isConnected && styles.syncButtonLabelDisabled]}>
+                  {isSyncing ? 'Syncing...' : 'Sync Now'}
+                </Text>
+                <Text style={styles.syncButtonSubtext}>
+                  {lastFullSync ? `Last: ${formatDate(lastFullSync)}` : 'Never synced'}
+                  {pendingChangesCount > 0 && ` • ${pendingChangesCount} pending`}
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#3f3f46" />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
           <SettingRow
             icon="sync"
             iconColor="#3b82f6"
             label="Auto Sync"
-            description="Keep library metadata in sync"
+            description="Sync favorites & history automatically"
             right={
               <Switch
-                value={autoSync}
-                onValueChange={handleSwitchChange(setAutoSync)}
+                value={autoSyncEnabled}
+                onValueChange={handleSwitchChange(setSyncAutoSync)}
                 trackColor={{ false: '#27272a', true: '#3b82f6' }}
                 thumbColor="#fff"
               />
@@ -340,6 +406,29 @@ export default function SettingsScreen() {
               />
             }
           />
+
+          <View style={styles.divider} />
+
+          {/* URL Downloader Link */}
+          <TouchableOpacity
+            style={styles.syncButton}
+            onPress={() => router.push('/url-download')}
+            disabled={!isConnected}
+            activeOpacity={0.7}
+          >
+            <View style={styles.syncButtonContent}>
+              <Ionicons name="link" size={22} color={isConnected ? '#22c55e' : '#52525b'} />
+              <View style={styles.syncButtonText}>
+                <Text style={[styles.syncButtonLabel, !isConnected && styles.syncButtonLabelDisabled]}>
+                  Download from URL
+                </Text>
+                <Text style={styles.syncButtonSubtext}>
+                  Send video URLs to desktop for download
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#3f3f46" />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -628,6 +717,33 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     fontSize: 15,
     fontWeight: '600',
+  },
+  syncButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  syncButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  syncButtonText: {
+    gap: 2,
+  },
+  syncButtonLabel: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  syncButtonLabelDisabled: {
+    color: '#52525b',
+  },
+  syncButtonSubtext: {
+    color: '#71717a',
+    fontSize: 13,
   },
   connectCard: {
     flexDirection: 'row',

@@ -876,6 +876,54 @@ const api = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // URL DOWNLOADER - Download videos from URLs (yt-dlp)
+  // ═══════════════════════════════════════════════════════════════════════════
+  urlDownloader: {
+    checkAvailability: () => invoke<{ available: boolean; version?: string; error?: string }>('urlDownloader:checkAvailability'),
+    addDownload: (url: string, options?: { quality?: string; audioOnly?: boolean }) => invoke<{
+      success: boolean
+      item?: {
+        id: string
+        url: string
+        title: string
+        status: string
+      }
+      error?: string
+    }>('urlDownloader:addDownload', url, options),
+    getDownloads: () => invoke<Array<{
+      id: string
+      url: string
+      title: string
+      status: 'queued' | 'downloading' | 'processing' | 'completed' | 'error'
+      progress: number
+      speed: string
+      eta: string
+      outputPath: string | null
+      error: string | null
+      thumbnailUrl: string | null
+      fileSize: string | null
+      duration: string | null
+      createdAt: number
+      source: 'desktop' | 'mobile'
+    }>>('urlDownloader:getDownloads'),
+    cancelDownload: (id: string) => invoke<{ success: boolean }>('urlDownloader:cancelDownload', id),
+    removeDownload: (id: string) => invoke<{ success: boolean }>('urlDownloader:removeDownload', id),
+    clearCompleted: () => invoke<{ cleared: number }>('urlDownloader:clearCompleted'),
+    getDownloadDir: () => invoke<string>('urlDownloader:getDownloadDir'),
+    setDownloadDir: (dir: string) => invoke<{ success: boolean }>('urlDownloader:setDownloadDir', dir),
+    openDownload: (id: string) => invoke<{ success: boolean; error?: string }>('urlDownloader:openDownload', id),
+    importToLibrary: (id: string) => invoke<{ success: boolean; mediaId?: string; error?: string }>('urlDownloader:importToLibrary', id),
+
+    // Event subscriptions
+    onAdded: (cb: (item: any) => void) => on('urlDownloader:added', cb),
+    onStarted: (cb: (item: any) => void) => on('urlDownloader:started', cb),
+    onProgress: (cb: (item: any) => void) => on('urlDownloader:progress', cb),
+    onCompleted: (cb: (item: any) => void) => on('urlDownloader:completed', cb),
+    onError: (cb: (item: any) => void) => on('urlDownloader:error', cb),
+    onCancelled: (cb: (item: any) => void) => on('urlDownloader:cancelled', cb),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // PMV EDITOR - Music video compilation tools
   // ═══════════════════════════════════════════════════════════════════════════
   pmv: {
@@ -884,6 +932,47 @@ const api = {
     getVideoInfo: (path: string) => invoke<{ duration: number; width: number; height: number }>('pmv:getVideoInfo', path),
     getVideoThumb: (path: string) => invoke<string | null>('pmv:getVideoThumb', path),
     getAudioInfo: (path: string) => invoke<{ duration: number }>('pmv:getAudioInfo', path),
+    export: (projectData: {
+      videos: Array<{ id: string; path: string; filename: string; duration: number; width: number; height: number }>
+      music: { path: string; filename: string; duration: number }
+      clips: Array<{
+        id: string
+        videoId: string
+        videoIndex: number
+        startTime: number
+        endTime: number
+        duration: number
+      }>
+      effects: {
+        transitionType: string
+        transitionDuration: number
+        videoEffect: string
+        effectIntensity: number
+        colorGrade: string
+      }
+      audio: {
+        musicVolume: number
+        keepOriginalAudio: boolean
+        originalAudioVolume: number
+        mixMode: 'music' | 'video' | 'mix'
+        fadeInDuration: number
+        fadeOutDuration: number
+      }
+      export: {
+        format: 'mp4' | 'webm' | 'gif'
+        quality: 'draft' | 'standard' | 'high' | '4k'
+        destination: 'file' | 'library' | 'playlist'
+        filename: string
+      }
+    }) => invoke<{ success: boolean; outputPath?: string; error?: string }>('pmv:export', projectData),
+    cancelExport: () => invoke<{ success: boolean; error?: string }>('pmv:cancelExport'),
+    onExportProgress: (cb: (progress: {
+      status: 'idle' | 'preparing' | 'encoding' | 'finalizing' | 'complete' | 'error'
+      progress: number
+      currentStep?: string
+      error?: string
+      outputPath?: string
+    }) => void) => on('pmv:exportProgress', cb),
   },
 }
 

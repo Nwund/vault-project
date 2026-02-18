@@ -64,6 +64,27 @@ class MobileSyncService extends EventEmitter {
   public getThumbPath: ((mediaPath: string) => Promise<string | null>) | null = null
   public generateThumb: ((mediaId: string) => Promise<string | null>) | null = null
 
+  // Stats & ratings
+  public setRating: ((mediaId: string, rating: number) => Promise<any>) | null = null
+  public recordView: ((mediaId: string) => Promise<any>) | null = null
+  public getStats: ((mediaId: string) => Promise<any>) | null = null
+  public getAllRatings: (() => Promise<Array<{ mediaId: string; rating: number; views: number }>>) | null = null
+  public bulkRecordViews: ((views: Array<{ mediaId: string; viewedAt: number }>) => Promise<number>) | null = null
+
+  // Markers/bookmarks
+  public getMarkers: ((mediaId: string) => Promise<any[]>) | null = null
+  public addMarker: ((mediaId: string, timeSec: number, title: string) => Promise<any>) | null = null
+
+  // URL downloader
+  public addDownloadFromUrl: ((url: string, source?: 'desktop' | 'mobile') => Promise<any>) | null = null
+
+  // Bidirectional sync
+  public getFavorites: (() => Promise<Array<{ mediaId: string; rating: number }>>) | null = null
+  public syncFavorites: ((items: Array<{ mediaId: string; isFavorite: boolean; timestamp: number }>) => Promise<{ synced: number }>) | null = null
+  public getWatchHistory: ((since?: number) => Promise<Array<{ mediaId: string; views: number; lastViewedAt: number }>>) | null = null
+  public syncWatchHistory: ((items: Array<{ mediaId: string; viewedAt: number }>) => Promise<{ synced: number }>) | null = null
+  public getSyncState: (() => Promise<{ lastSync: number; mediaCount: number; favoritesCount: number }>) | null = null
+
   constructor() {
     super()
     this.loadPairedDevices()
@@ -224,6 +245,86 @@ class MobileSyncService extends EventEmitter {
       if (pathname.startsWith('/api/media/') && pathname.endsWith('/thumb')) {
         const mediaId = pathname.replace('/api/media/', '').replace('/thumb', '')
         return this.handleMediaThumb(res, mediaId)
+      }
+
+      // POST /api/media/:id/rate - Set rating
+      if (pathname.startsWith('/api/media/') && pathname.endsWith('/rate') && req.method === 'POST') {
+        const mediaId = pathname.replace('/api/media/', '').replace('/rate', '')
+        return this.handleSetRating(req, res, mediaId)
+      }
+
+      // POST /api/media/:id/view - Record a view
+      if (pathname.startsWith('/api/media/') && pathname.endsWith('/view') && req.method === 'POST') {
+        const mediaId = pathname.replace('/api/media/', '').replace('/view', '')
+        return this.handleRecordView(res, mediaId)
+      }
+
+      // GET /api/media/:id/stats - Get stats for a media item
+      if (pathname.startsWith('/api/media/') && pathname.endsWith('/stats')) {
+        const mediaId = pathname.replace('/api/media/', '').replace('/stats', '')
+        return this.handleGetStats(res, mediaId)
+      }
+
+      // GET /api/media/:id/markers - Get markers/bookmarks for a media item
+      if (pathname.startsWith('/api/media/') && pathname.endsWith('/markers') && req.method === 'GET') {
+        const mediaId = pathname.replace('/api/media/', '').replace('/markers', '')
+        return this.handleGetMarkers(res, mediaId)
+      }
+
+      // POST /api/media/:id/markers - Add a marker/bookmark
+      if (pathname.startsWith('/api/media/') && pathname.endsWith('/markers') && req.method === 'POST') {
+        const mediaId = pathname.replace('/api/media/', '').replace('/markers', '')
+        return this.handleAddMarker(req, res, mediaId)
+      }
+
+      // GET /api/sync/ratings - Get all ratings for sync
+      if (pathname === '/api/sync/ratings' && req.method === 'GET') {
+        return this.handleGetAllRatings(res)
+      }
+
+      // POST /api/sync/watches - Bulk sync watch history
+      if (pathname === '/api/sync/watches' && req.method === 'POST') {
+        return this.handleBulkRecordViews(req, res)
+      }
+
+      // POST /api/download - Add URL to download queue
+      if (pathname === '/api/download' && req.method === 'POST') {
+        return this.handleAddDownload(req, res)
+      }
+
+      // GET /api/downloads - Get all downloads
+      if (pathname === '/api/downloads' && req.method === 'GET') {
+        return this.handleGetDownloads(res)
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // BIDIRECTIONAL SYNC ENDPOINTS
+      // ─────────────────────────────────────────────────────────────────────────
+
+      // GET /api/sync/favorites - Get all favorites from desktop
+      if (pathname === '/api/sync/favorites' && req.method === 'GET') {
+        return this.handleGetFavorites(res)
+      }
+
+      // POST /api/sync/favorites - Push favorites from mobile
+      if (pathname === '/api/sync/favorites' && req.method === 'POST') {
+        return this.handleSyncFavorites(req, res)
+      }
+
+      // GET /api/sync/history - Get watch history from desktop
+      if (pathname === '/api/sync/history' && req.method === 'GET') {
+        const since = url.searchParams.get('since')
+        return this.handleGetWatchHistory(res, since ? parseInt(since, 10) : undefined)
+      }
+
+      // POST /api/sync/history - Push watch history from mobile
+      if (pathname === '/api/sync/history' && req.method === 'POST') {
+        return this.handleSyncWatchHistory(req, res)
+      }
+
+      // GET /api/sync/state - Get current sync state
+      if (pathname === '/api/sync/state' && req.method === 'GET') {
+        return this.handleGetSyncState(res)
       }
 
       if (pathname === '/api/playlists') {
@@ -714,6 +815,327 @@ class MobileSyncService extends EventEmitter {
         lastSeen: d.lastSeen
       }))
     })
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RATINGS & STATS HANDLERS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private async handleSetRating(req: http.IncomingMessage, res: http.ServerResponse, mediaId: string): Promise<void> {
+    if (!this.setRating) {
+      return this.sendError(res, 500, 'Rating service not available')
+    }
+
+    try {
+      const body = await this.parseJsonBody(req)
+      const { rating } = body
+
+      if (typeof rating !== 'number' || rating < 0 || rating > 5) {
+        return this.sendError(res, 400, 'Rating must be a number between 0 and 5')
+      }
+
+      const stats = await this.setRating(mediaId, rating)
+      console.log('[MobileSync] Set rating for', mediaId, 'to', rating)
+
+      return this.sendJson(res, {
+        success: true,
+        mediaId,
+        rating: stats.rating,
+        views: stats.views
+      })
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleRecordView(res: http.ServerResponse, mediaId: string): Promise<void> {
+    if (!this.recordView) {
+      return this.sendError(res, 500, 'View recording service not available')
+    }
+
+    try {
+      const stats = await this.recordView(mediaId)
+      console.log('[MobileSync] Recorded view for', mediaId, '- total:', stats.views)
+
+      return this.sendJson(res, {
+        success: true,
+        mediaId,
+        views: stats.views,
+        lastViewedAt: stats.lastViewedAt
+      })
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleGetStats(res: http.ServerResponse, mediaId: string): Promise<void> {
+    if (!this.getStats) {
+      return this.sendError(res, 500, 'Stats service not available')
+    }
+
+    try {
+      const stats = await this.getStats(mediaId)
+
+      return this.sendJson(res, {
+        mediaId,
+        rating: stats?.rating ?? 0,
+        views: stats?.views ?? 0,
+        oCount: stats?.oCount ?? 0,
+        lastViewedAt: stats?.lastViewedAt ?? null
+      })
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleGetAllRatings(res: http.ServerResponse): Promise<void> {
+    if (!this.getAllRatings) {
+      return this.sendError(res, 500, 'Ratings service not available')
+    }
+
+    try {
+      const ratings = await this.getAllRatings()
+
+      return this.sendJson(res, {
+        items: ratings,
+        count: ratings.length
+      })
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleBulkRecordViews(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (!this.bulkRecordViews) {
+      return this.sendError(res, 500, 'Bulk view service not available')
+    }
+
+    try {
+      const body = await this.parseJsonBody(req)
+      const { views } = body
+
+      if (!Array.isArray(views)) {
+        return this.sendError(res, 400, 'views must be an array')
+      }
+
+      const recorded = await this.bulkRecordViews(views)
+      console.log('[MobileSync] Bulk recorded', recorded, 'views from mobile')
+
+      return this.sendJson(res, {
+        success: true,
+        recorded
+      })
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MARKERS/BOOKMARKS HANDLERS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private async handleGetMarkers(res: http.ServerResponse, mediaId: string): Promise<void> {
+    if (!this.getMarkers) {
+      return this.sendError(res, 500, 'Markers service not available')
+    }
+
+    try {
+      const markers = await this.getMarkers(mediaId)
+
+      return this.sendJson(res, {
+        mediaId,
+        markers: markers.map((m: any) => ({
+          id: m.id,
+          timeSec: m.timeSec,
+          title: m.title,
+          createdAt: m.createdAt
+        }))
+      })
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleAddMarker(req: http.IncomingMessage, res: http.ServerResponse, mediaId: string): Promise<void> {
+    if (!this.addMarker) {
+      return this.sendError(res, 500, 'Markers service not available')
+    }
+
+    try {
+      const body = await this.parseJsonBody(req)
+      const { timeSec, title } = body
+
+      if (typeof timeSec !== 'number' || timeSec < 0) {
+        return this.sendError(res, 400, 'timeSec must be a positive number')
+      }
+
+      const marker = await this.addMarker(mediaId, timeSec, title || '')
+      console.log('[MobileSync] Added marker for', mediaId, 'at', timeSec)
+
+      return this.sendJson(res, {
+        success: true,
+        marker: {
+          id: marker.id,
+          mediaId: marker.mediaId,
+          timeSec: marker.timeSec,
+          title: marker.title,
+          createdAt: marker.createdAt
+        }
+      })
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // URL DOWNLOAD HANDLERS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private async handleAddDownload(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (!this.addDownloadFromUrl) {
+      return this.sendError(res, 500, 'Download service not available')
+    }
+
+    try {
+      const body = await this.parseJsonBody(req)
+      const { url } = body
+
+      if (!url || typeof url !== 'string') {
+        return this.sendError(res, 400, 'URL is required')
+      }
+
+      // Basic URL validation
+      try {
+        new URL(url)
+      } catch {
+        return this.sendError(res, 400, 'Invalid URL format')
+      }
+
+      const item = await this.addDownloadFromUrl(url, 'mobile')
+      console.log('[MobileSync] Download queued from mobile:', url)
+
+      return this.sendJson(res, {
+        success: true,
+        download: {
+          id: item.id,
+          url: item.url,
+          title: item.title,
+          status: item.status
+        }
+      })
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private handleGetDownloads(res: http.ServerResponse): void {
+    // This would require injecting the download list getter
+    // For now, return a simple response
+    return this.sendJson(res, {
+      message: 'Check desktop app for download status',
+      note: 'Real-time progress is shown on desktop'
+    })
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // BIDIRECTIONAL SYNC HANDLERS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private async handleGetFavorites(res: http.ServerResponse): Promise<void> {
+    if (!this.getFavorites) {
+      return this.sendError(res, 500, 'Favorites service not available')
+    }
+
+    try {
+      const favorites = await this.getFavorites()
+      return this.sendJson(res, {
+        items: favorites,
+        count: favorites.length,
+        timestamp: Date.now()
+      })
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleSyncFavorites(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (!this.syncFavorites) {
+      return this.sendError(res, 500, 'Favorites sync service not available')
+    }
+
+    try {
+      const body = await this.parseJsonBody(req)
+      const { items } = body
+
+      if (!Array.isArray(items)) {
+        return this.sendError(res, 400, 'items must be an array')
+      }
+
+      const result = await this.syncFavorites(items)
+      console.log('[MobileSync] Synced', result.synced, 'favorites from mobile')
+
+      return this.sendJson(res, {
+        success: true,
+        synced: result.synced
+      })
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleGetWatchHistory(res: http.ServerResponse, since?: number): Promise<void> {
+    if (!this.getWatchHistory) {
+      return this.sendError(res, 500, 'Watch history service not available')
+    }
+
+    try {
+      const history = await this.getWatchHistory(since)
+      return this.sendJson(res, {
+        items: history,
+        count: history.length,
+        timestamp: Date.now()
+      })
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleSyncWatchHistory(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (!this.syncWatchHistory) {
+      return this.sendError(res, 500, 'Watch history sync service not available')
+    }
+
+    try {
+      const body = await this.parseJsonBody(req)
+      const { items } = body
+
+      if (!Array.isArray(items)) {
+        return this.sendError(res, 400, 'items must be an array')
+      }
+
+      const result = await this.syncWatchHistory(items)
+      console.log('[MobileSync] Synced', result.synced, 'watch history items from mobile')
+
+      return this.sendJson(res, {
+        success: true,
+        synced: result.synced
+      })
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleGetSyncState(res: http.ServerResponse): Promise<void> {
+    if (!this.getSyncState) {
+      return this.sendError(res, 500, 'Sync state service not available')
+    }
+
+    try {
+      const state = await this.getSyncState()
+      return this.sendJson(res, state)
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────

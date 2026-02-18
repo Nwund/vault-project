@@ -10,6 +10,7 @@ import * as SplashScreen from 'expo-splash-screen'
 import * as Network from 'expo-network'
 import { Ionicons } from '@expo/vector-icons'
 import { useConnectionStore } from '@/stores/connection'
+import { startAutoSync, stopAutoSync } from '@/stores/sync'
 import { ToastProvider } from '@/contexts/toast'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
@@ -26,6 +27,9 @@ export default function RootLayout() {
       SplashScreen.hideAsync()
     })
 
+    // Start auto-sync service
+    startAutoSync()
+
     // Check network status
     const checkNetwork = async () => {
       try {
@@ -38,7 +42,10 @@ export default function RootLayout() {
 
     checkNetwork()
     const interval = setInterval(checkNetwork, 10000)
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      stopAutoSync()
+    }
   }, [])
 
   return (
@@ -130,6 +137,14 @@ export default function RootLayout() {
           name="search"
           options={{
             title: 'Search',
+            presentation: 'modal',
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="url-download"
+          options={{
+            title: 'Download from URL',
             presentation: 'modal',
             headerShown: false,
           }}

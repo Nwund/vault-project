@@ -29,6 +29,7 @@ import { useHistoryStore } from '@/stores/history'
 import { useDownloadStore } from '@/stores/downloads'
 import { useBrokenMediaStore } from '@/stores/broken-media'
 import { useFavoritesStore } from '@/stores/favorites'
+import { useSyncStore } from '@/stores/sync'
 import { useToast } from '@/contexts/toast'
 import { api } from '@/services/api'
 import { getErrorMessage } from '@/utils'
@@ -45,6 +46,7 @@ export default function PlayerScreen() {
   const { downloads, getLocalPath, addToQueue, startDownload, isDownloaded } = useDownloadStore()
   const { markBroken } = useBrokenMediaStore()
   const { isFavorite, toggleFavorite } = useFavoritesStore()
+  const { recordWatch, recordFavoriteChange } = useSyncStore()
   const toast = useToast()
 
   // Current media ID - can change via swipe without leaving player
@@ -199,6 +201,8 @@ export default function PlayerScreen() {
               durationSec: downloadedMedia.durationSec,
               hasThumb: false,
             })
+            // Record for sync
+            recordWatch(downloadedMedia.id)
           }
         } else if (isOfflineMode && !localPath) {
           // Offline mode but media not downloaded
@@ -219,6 +223,10 @@ export default function PlayerScreen() {
               durationSec: info.durationSec,
               hasThumb: info.hasThumb,
             })
+            // Record for sync
+            recordWatch(info.id)
+            // Also sync to desktop immediately
+            api.recordView(info.id).catch(() => {})
           }
         }
       } catch (err) {
@@ -398,12 +406,15 @@ export default function PlayerScreen() {
       durationSec: duration,
       hasThumb: true,
     })
+    // Record for sync and sync to desktop
+    recordFavoriteChange(currentId, wasAdded)
+    api.setRating(currentId, wasAdded ? 5 : 0).catch(() => {})
     if (wasAdded) {
       toast.success('Added to Favorites')
     } else {
       toast.info('Removed from Favorites')
     }
-  }, [currentId, mediaTitle, duration, toggleFavorite, toast])
+  }, [currentId, mediaTitle, duration, toggleFavorite, recordFavoriteChange, toast])
 
   // Handle download
   const handleDownload = useCallback(async () => {

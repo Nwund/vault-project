@@ -1895,6 +1895,313 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // PMV export progress event
+  let pmvExportAbortController: AbortController | null = null
+
+  // Export PMV project to video file
+  ipcMain.handle('pmv:export', async (
+    _ev,
+    projectData: {
+      videos: Array<{ id: string; path: string; filename: string; duration: number; width: number; height: number }>
+      music: { path: string; filename: string; duration: number }
+      clips: Array<{
+        id: string
+        videoId: string
+        videoIndex: number
+        startTime: number
+        endTime: number
+        duration: number
+      }>
+      effects: {
+        transitionType: string
+        transitionDuration: number
+        videoEffect: string
+        effectIntensity: number
+        colorGrade: string
+      }
+      audio: {
+        musicVolume: number
+        keepOriginalAudio: boolean
+        originalAudioVolume: number
+        mixMode: 'music' | 'video' | 'mix'
+        fadeInDuration: number
+        fadeOutDuration: number
+      }
+      export: {
+        format: 'mp4' | 'webm' | 'gif'
+        quality: 'draft' | 'standard' | 'high' | '4k'
+        destination: 'file' | 'library' | 'playlist'
+        filename: string
+      }
+    }
+  ): Promise<{ success: boolean; outputPath?: string; error?: string }> => {
+    const { videos, music, clips, effects, audio, export: exportSettings } = projectData
+
+    try {
+      console.log('[PMV Export] Starting export:', {
+        clipCount: clips.length,
+        musicDuration: music.duration,
+        format: exportSettings.format,
+        quality: exportSettings.quality
+      })
+
+      // Create abort controller for cancellation
+      pmvExportAbortController = new AbortController()
+      const signal = pmvExportAbortController.signal
+
+      // Quality settings
+      const qualityPresets: Record<string, { width: number; bitrate: string; audioBitrate: string }> = {
+        draft: { width: 720, bitrate: '2M', audioBitrate: '128k' },
+        standard: { width: 1080, bitrate: '5M', audioBitrate: '192k' },
+        high: { width: 1080, bitrate: '10M', audioBitrate: '320k' },
+        '4k': { width: 2160, bitrate: '25M', audioBitrate: '320k' }
+      }
+      const quality = qualityPresets[exportSettings.quality]
+
+      // Output path
+      const tempDir = app.getPath('temp')
+      const outputExt = exportSettings.format === 'gif' ? '.gif' : exportSettings.format === 'webm' ? '.webm' : '.mp4'
+      const outputFilename = `${exportSettings.filename.replace(/[<>:"/\\|?*]/g, '_')}${outputExt}`
+      let outputPath: string
+
+      if (exportSettings.destination === 'file') {
+        // Ask user where to save
+        const result = await dialog.showSaveDialog({
+          title: 'Save PMV',
+          defaultPath: outputFilename,
+          filters: [
+            exportSettings.format === 'gif'
+              ? { name: 'GIF', extensions: ['gif'] }
+              : exportSettings.format === 'webm'
+              ? { name: 'WebM Video', extensions: ['webm'] }
+              : { name: 'MP4 Video', extensions: ['mp4'] }
+          ]
+        })
+        if (result.canceled || !result.filePath) {
+          return { success: false, error: 'Export cancelled' }
+        }
+        outputPath = result.filePath
+      } else if (exportSettings.destination === 'library') {
+        // Save to first media directory
+        const mediaDirs = getMediaDirs()
+        if (mediaDirs.length === 0) {
+          return { success: false, error: 'No media directories configured' }
+        }
+        outputPath = path.join(mediaDirs[0], outputFilename)
+      } else {
+        // Temp path for playlist destination - will be copied later
+        outputPath = path.join(tempDir, outputFilename)
+      }
+
+      // Send initial progress
+      broadcast('pmv:exportProgress', { status: 'preparing', progress: 5, currentStep: 'Preparing clips...' })
+
+      // Create clip list file for FFmpeg concat
+      const clipListPath = path.join(tempDir, `pmv-clips-${Date.now()}.txt`)
+      const clipSegments: string[] = []
+
+      // First, extract each clip segment to temp files
+      broadcast('pmv:exportProgress', { status: 'preparing', progress: 10, currentStep: 'Extracting clip segments...' })
+
+      const segmentPaths: string[] = []
+      for (let i = 0; i < clips.length; i++) {
+        if (signal.aborted) {
+          // Cleanup temp files
+          segmentPaths.forEach(p => { try { fs.unlinkSync(p) } catch {} })
+          return { success: false, error: 'Export cancelled' }
+        }
+
+        const clip = clips[i]
+        const video = videos[clip.videoIndex]
+        const segmentPath = path.join(tempDir, `pmv-segment-${Date.now()}-${i}.ts`)
+        segmentPaths.push(segmentPath)
+
+        // Extract segment from source video
+        await new Promise<void>((resolve, reject) => {
+          ffmpeg(video.path)
+            .setStartTime(clip.startTime)
+            .setDuration(clip.duration)
+            .outputOptions([
+              '-c:v', 'libx264',
+              '-preset', 'ultrafast',
+              '-crf', '18',
+              '-an', // No audio for intermediate segments
+              '-vf', `scale=${quality.width}:-2:flags=lanczos`,
+              '-f', 'mpegts'
+            ])
+            .output(segmentPath)
+            .on('end', () => resolve())
+            .on('error', (err) => reject(err))
+            .run()
+        })
+
+        clipSegments.push(`file '${segmentPath.replace(/\\/g, '/')}'`)
+
+        // Update progress (10-50% during clip extraction)
+        const extractProgress = 10 + (40 * (i + 1) / clips.length)
+        broadcast('pmv:exportProgress', {
+          status: 'encoding',
+          progress: Math.round(extractProgress),
+          currentStep: `Extracting clip ${i + 1} of ${clips.length}...`
+        })
+      }
+
+      // Write concat file
+      fs.writeFileSync(clipListPath, clipSegments.join('\n'))
+
+      broadcast('pmv:exportProgress', { status: 'encoding', progress: 55, currentStep: 'Concatenating clips...' })
+
+      // Concatenate all segments
+      const concatPath = path.join(tempDir, `pmv-concat-${Date.now()}.mp4`)
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg()
+          .input(clipListPath)
+          .inputOptions(['-f', 'concat', '-safe', '0'])
+          .outputOptions([
+            '-c:v', 'libx264',
+            '-preset', 'medium',
+            '-crf', exportSettings.quality === 'draft' ? '23' : exportSettings.quality === '4k' ? '15' : '18',
+            '-pix_fmt', 'yuv420p'
+          ])
+          .output(concatPath)
+          .on('end', () => resolve())
+          .on('error', (err) => reject(err))
+          .run()
+      })
+
+      // Clean up segment files
+      segmentPaths.forEach(p => { try { fs.unlinkSync(p) } catch {} })
+      try { fs.unlinkSync(clipListPath) } catch {}
+
+      if (signal.aborted) {
+        try { fs.unlinkSync(concatPath) } catch {}
+        return { success: false, error: 'Export cancelled' }
+      }
+
+      broadcast('pmv:exportProgress', { status: 'encoding', progress: 70, currentStep: 'Adding music track...' })
+
+      // Add music track
+      const finalPath = exportSettings.format === 'gif' ? concatPath : outputPath
+
+      if (exportSettings.format !== 'gif') {
+        // Combine video with music
+        await new Promise<void>((resolve, reject) => {
+          const cmd = ffmpeg()
+            .input(concatPath)
+            .input(music.path)
+            .outputOptions([
+              '-c:v', 'copy',
+              '-c:a', 'aac',
+              '-b:a', quality.audioBitrate,
+              '-map', '0:v:0',
+              '-map', '1:a:0',
+              '-shortest'
+            ])
+
+          // Apply music volume
+          if (audio.musicVolume !== 1) {
+            cmd.audioFilters(`volume=${audio.musicVolume}`)
+          }
+
+          // Apply fade in/out
+          const filters: string[] = []
+          if (audio.fadeInDuration > 0) {
+            filters.push(`afade=t=in:st=0:d=${audio.fadeInDuration / 1000}`)
+          }
+          if (audio.fadeOutDuration > 0) {
+            const fadeOutStart = music.duration - (audio.fadeOutDuration / 1000)
+            filters.push(`afade=t=out:st=${fadeOutStart}:d=${audio.fadeOutDuration / 1000}`)
+          }
+          if (filters.length > 0) {
+            cmd.audioFilters(filters.join(','))
+          }
+
+          cmd.output(outputPath)
+            .on('end', () => resolve())
+            .on('error', (err) => reject(err))
+            .run()
+        })
+
+        // Clean up concat file
+        try { fs.unlinkSync(concatPath) } catch {}
+      } else {
+        // For GIF, generate from concat video with palette
+        broadcast('pmv:exportProgress', { status: 'encoding', progress: 80, currentStep: 'Generating GIF...' })
+
+        const palettePath = path.join(tempDir, `pmv-palette-${Date.now()}.png`)
+        const gifScale = quality.width > 480 ? 480 : quality.width
+
+        // Generate palette
+        await new Promise<void>((resolve, reject) => {
+          ffmpeg(concatPath)
+            .outputOptions(['-vf', `fps=15,scale=${gifScale}:-1:flags=lanczos,palettegen=stats_mode=diff`])
+            .output(palettePath)
+            .on('end', () => resolve())
+            .on('error', (err) => reject(err))
+            .run()
+        })
+
+        // Create GIF with palette
+        await new Promise<void>((resolve, reject) => {
+          ffmpeg(concatPath)
+            .input(palettePath)
+            .complexFilter([
+              `[0:v]fps=15,scale=${gifScale}:-1:flags=lanczos[x]`,
+              `[x][1:v]paletteuse=dither=floyd_steinberg`
+            ])
+            .outputOptions(['-loop', '0'])
+            .output(outputPath)
+            .on('end', () => resolve())
+            .on('error', (err) => reject(err))
+            .run()
+        })
+
+        // Cleanup
+        try { fs.unlinkSync(palettePath) } catch {}
+        try { fs.unlinkSync(concatPath) } catch {}
+      }
+
+      broadcast('pmv:exportProgress', { status: 'finalizing', progress: 95, currentStep: 'Finalizing...' })
+
+      // If destination is library, trigger rescan
+      if (exportSettings.destination === 'library') {
+        broadcast('vault:changed')
+      }
+
+      broadcast('pmv:exportProgress', {
+        status: 'complete',
+        progress: 100,
+        currentStep: 'Export complete!',
+        outputPath
+      })
+
+      console.log('[PMV Export] Complete:', outputPath)
+      pmvExportAbortController = null
+
+      return { success: true, outputPath }
+    } catch (err: any) {
+      console.error('[PMV Export] Error:', err?.message)
+      broadcast('pmv:exportProgress', {
+        status: 'error',
+        progress: 0,
+        error: err?.message || 'Export failed'
+      })
+      pmvExportAbortController = null
+      return { success: false, error: err?.message || 'Export failed' }
+    }
+  })
+
+  // Cancel ongoing PMV export
+  ipcMain.handle('pmv:cancelExport', async () => {
+    if (pmvExportAbortController) {
+      pmvExportAbortController.abort()
+      pmvExportAbortController = null
+      broadcast('pmv:exportProgress', { status: 'idle', progress: 0 })
+      return { success: true }
+    }
+    return { success: false, error: 'No export in progress' }
+  })
+
   // ═══════════════════════════════════════════════════════════════════════════
   // AI - Deprecated Diabella handlers (return disabled status)
   // ═══════════════════════════════════════════════════════════════════════════
@@ -6689,6 +6996,62 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   }
 
+  // Stats & ratings for mobile
+  mobileSyncService.setRating = async (mediaId, rating) => {
+    const stats = db.statsSetRating(mediaId, rating)
+    broadcast('vault:changed')
+    return stats
+  }
+
+  mobileSyncService.recordView = async (mediaId) => {
+    const stats = db.statsRecordView(mediaId)
+    broadcast('vault:changed')
+    return stats
+  }
+
+  mobileSyncService.getStats = async (mediaId) => {
+    return db.statsGet(mediaId)
+  }
+
+  mobileSyncService.getAllRatings = async () => {
+    // Get all media stats with rating > 0 or views > 0
+    const rows = db.raw.prepare(`
+      SELECT mediaId, rating, views
+      FROM media_stats
+      WHERE rating > 0 OR views > 0
+      ORDER BY rating DESC, views DESC
+    `).all() as Array<{ mediaId: string; rating: number; views: number }>
+    return rows
+  }
+
+  mobileSyncService.bulkRecordViews = async (views) => {
+    // Bulk record views from mobile
+    let recorded = 0
+    db.raw.transaction(() => {
+      for (const v of views) {
+        if (v.mediaId) {
+          db.statsRecordView(v.mediaId)
+          recorded++
+        }
+      }
+    })()
+    if (recorded > 0) {
+      broadcast('vault:changed')
+    }
+    return recorded
+  }
+
+  // Markers/bookmarks for mobile
+  mobileSyncService.getMarkers = async (mediaId) => {
+    return db.listMarkers(mediaId)
+  }
+
+  mobileSyncService.addMarker = async (mediaId, timeSec, title) => {
+    const marker = db.addMarker(mediaId, timeSec, title)
+    broadcast('vault:changed')
+    return marker
+  }
+
   // Start mobile sync server
   ipcMain.handle('mobileSync:start', async (_ev, port?: number) => {
     try {
@@ -6755,6 +7118,218 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   mobileSyncService.on('deviceUnpaired', (device: any) => {
     broadcast('mobileSync:deviceUnpaired', device)
   })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // URL DOWNLOADER SERVICE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Use require for sync import since registerIpc is not async
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { getUrlDownloaderService } = require('./services/url-downloader-service')
+  const urlDownloader = getUrlDownloaderService()
+
+  // Check if yt-dlp is available
+  ipcMain.handle('urlDownloader:checkAvailability', async () => {
+    return urlDownloader.checkAvailability()
+  })
+
+  // Add a URL to download queue
+  ipcMain.handle('urlDownloader:addDownload', async (_ev, url: string, options?: any) => {
+    try {
+      const item = await urlDownloader.addDownload(url, options, 'desktop')
+      return { success: true, item }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
+  // Get all downloads
+  ipcMain.handle('urlDownloader:getDownloads', async () => {
+    return urlDownloader.getDownloads()
+  })
+
+  // Cancel a download
+  ipcMain.handle('urlDownloader:cancelDownload', async (_ev, id: string) => {
+    return { success: urlDownloader.cancelDownload(id) }
+  })
+
+  // Remove a download from history
+  ipcMain.handle('urlDownloader:removeDownload', async (_ev, id: string) => {
+    return { success: urlDownloader.removeDownload(id) }
+  })
+
+  // Clear completed downloads
+  ipcMain.handle('urlDownloader:clearCompleted', async () => {
+    return { cleared: urlDownloader.clearCompleted() }
+  })
+
+  // Get/set download directory
+  ipcMain.handle('urlDownloader:getDownloadDir', async () => {
+    return urlDownloader.getDownloadDir()
+  })
+
+  ipcMain.handle('urlDownloader:setDownloadDir', async (_ev, dir: string) => {
+    urlDownloader.setDownloadDir(dir)
+    return { success: true }
+  })
+
+  // Open download in file explorer
+  ipcMain.handle('urlDownloader:openDownload', async (_ev, id: string) => {
+    const item = urlDownloader.getDownload(id)
+    if (item?.outputPath && fs.existsSync(item.outputPath)) {
+      const { shell } = await import('electron')
+      shell.showItemInFolder(item.outputPath)
+      return { success: true }
+    }
+    return { success: false, error: 'File not found' }
+  })
+
+  // Import completed download to library
+  ipcMain.handle('urlDownloader:importToLibrary', async (_ev, id: string) => {
+    const item = urlDownloader.getDownload(id)
+    if (!item?.outputPath || !fs.existsSync(item.outputPath)) {
+      return { success: false, error: 'File not found' }
+    }
+
+    try {
+      // Import the downloaded file to library
+      const fileStat = fs.statSync(item.outputPath)
+      const media = db.upsertMedia({
+        type: 'video',
+        path: item.outputPath,
+        filename: path.basename(item.outputPath),
+        ext: path.extname(item.outputPath).toLowerCase().slice(1),
+        size: fileStat.size,
+        mtimeMs: fileStat.mtimeMs,
+        durationSec: null,
+        thumbPath: null,
+        width: null,
+        height: null,
+        hashSha256: null,
+        phash: null
+      })
+
+      // Queue for analysis (thumbnail, duration, etc.)
+      db.enqueueJob('media:analyze', { mediaId: media.id }, 5)
+
+      broadcast('vault:changed')
+      return { success: true, mediaId: media.id }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
+  // Forward URL downloader events to renderer
+  urlDownloader.on('download:added', (item: any) => {
+    broadcast('urlDownloader:added', item)
+  })
+  urlDownloader.on('download:started', (item: any) => {
+    broadcast('urlDownloader:started', item)
+  })
+  urlDownloader.on('download:progress', (item: any) => {
+    broadcast('urlDownloader:progress', item)
+  })
+  urlDownloader.on('download:completed', (item: any) => {
+    broadcast('urlDownloader:completed', item)
+  })
+  urlDownloader.on('download:error', (item: any) => {
+    broadcast('urlDownloader:error', item)
+  })
+  urlDownloader.on('download:cancelled', (item: any) => {
+    broadcast('urlDownloader:cancelled', item)
+  })
+
+  // Add REST API endpoint for mobile to trigger downloads
+  mobileSyncService.addDownloadFromUrl = async (url: string, source: 'desktop' | 'mobile' = 'mobile') => {
+    const item = await urlDownloader.addDownload(url, undefined, source)
+    return item
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // BIDIRECTIONAL SYNC DEPENDENCIES
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Get all favorites (items with rating >= 4 or rating = 5 specifically)
+  mobileSyncService.getFavorites = async () => {
+    const rows = db.raw.prepare(`
+      SELECT ms.mediaId, ms.rating
+      FROM media_stats ms
+      WHERE ms.rating >= 4
+      ORDER BY ms.rating DESC, ms.updatedAt DESC
+    `).all() as Array<{ mediaId: string; rating: number }>
+    return rows
+  }
+
+  // Sync favorites from mobile (rating 5 = favorite, rating < 5 = unfavorited)
+  mobileSyncService.syncFavorites = async (items) => {
+    let synced = 0
+    db.raw.transaction(() => {
+      for (const item of items) {
+        if (item.isFavorite) {
+          // Set rating to 5 (favorite)
+          db.statsSetRating(item.mediaId, 5)
+        } else {
+          // If currently 5, set to 0 (unfavorite)
+          const current = db.statsGet(item.mediaId)
+          if (current?.rating === 5) {
+            db.statsSetRating(item.mediaId, 0)
+          }
+        }
+        synced++
+      }
+    })()
+    if (synced > 0) {
+      broadcast('vault:changed')
+    }
+    return { synced }
+  }
+
+  // Get watch history since a timestamp
+  mobileSyncService.getWatchHistory = async (since?: number) => {
+    let query = `
+      SELECT ms.mediaId, ms.views, ms.lastViewedAt
+      FROM media_stats ms
+      WHERE ms.lastViewedAt IS NOT NULL
+    `
+    if (since) {
+      query += ` AND ms.lastViewedAt > ${since}`
+    }
+    query += ` ORDER BY ms.lastViewedAt DESC LIMIT 1000`
+
+    const rows = db.raw.prepare(query).all() as Array<{ mediaId: string; views: number; lastViewedAt: number }>
+    return rows
+  }
+
+  // Sync watch history from mobile
+  mobileSyncService.syncWatchHistory = async (items) => {
+    let synced = 0
+    db.raw.transaction(() => {
+      for (const item of items) {
+        if (item.mediaId && item.viewedAt) {
+          db.statsRecordView(item.mediaId)
+          synced++
+        }
+      }
+    })()
+    if (synced > 0) {
+      broadcast('vault:changed')
+    }
+    return { synced }
+  }
+
+  // Get sync state
+  mobileSyncService.getSyncState = async () => {
+    const mediaCount = db.countMedia({})
+    const favoritesResult = db.raw.prepare(`
+      SELECT COUNT(*) as count FROM media_stats WHERE rating >= 4
+    `).get() as { count: number }
+
+    return {
+      lastSync: Date.now(),
+      mediaCount,
+      favoritesCount: favoritesResult?.count || 0
+    }
+  }
 
   // Auto-organize NSFW Soundpack on startup
   void autoOrganizeSoundpack()

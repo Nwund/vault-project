@@ -235,6 +235,174 @@ class VaultAPI {
     // Fallback to random
     return this.request(`/api/library?limit=${limit}&type=video&sort=random`)
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RATINGS & STATS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Set rating for a media item (0-5)
+  async setRating(mediaId: string, rating: number): Promise<{
+    success: boolean
+    mediaId: string
+    rating: number
+    views: number
+  }> {
+    return this.request(`/api/media/${mediaId}/rate`, {
+      method: 'POST',
+      body: JSON.stringify({ rating }),
+    })
+  }
+
+  // Record a view for a media item
+  async recordView(mediaId: string): Promise<{
+    success: boolean
+    mediaId: string
+    views: number
+    lastViewedAt: number
+  }> {
+    return this.request(`/api/media/${mediaId}/view`, {
+      method: 'POST',
+    })
+  }
+
+  // Get stats for a media item
+  async getStats(mediaId: string): Promise<{
+    mediaId: string
+    rating: number
+    views: number
+    oCount: number
+    lastViewedAt: number | null
+  }> {
+    return this.request(`/api/media/${mediaId}/stats`)
+  }
+
+  // Get all ratings for sync
+  async getAllRatings(): Promise<{
+    items: Array<{ mediaId: string; rating: number; views: number }>
+    count: number
+  }> {
+    return this.request('/api/sync/ratings')
+  }
+
+  // Bulk sync watch history from mobile
+  async bulkSyncWatches(views: Array<{ mediaId: string; viewedAt: number }>): Promise<{
+    success: boolean
+    recorded: number
+  }> {
+    return this.request('/api/sync/watches', {
+      method: 'POST',
+      body: JSON.stringify({ views }),
+    })
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MARKERS/BOOKMARKS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Get markers/bookmarks for a media item
+  async getMarkers(mediaId: string): Promise<{
+    mediaId: string
+    markers: Array<{
+      id: string
+      timeSec: number
+      title: string
+      createdAt: number
+    }>
+  }> {
+    return this.request(`/api/media/${mediaId}/markers`)
+  }
+
+  // Add a marker/bookmark
+  async addMarker(mediaId: string, timeSec: number, title?: string): Promise<{
+    success: boolean
+    marker: {
+      id: string
+      mediaId: string
+      timeSec: number
+      title: string
+      createdAt: number
+    }
+  }> {
+    return this.request(`/api/media/${mediaId}/markers`, {
+      method: 'POST',
+      body: JSON.stringify({ timeSec, title }),
+    })
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // URL DOWNLOADER (sends to desktop)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Send a URL to desktop for download
+  async sendDownloadUrl(url: string): Promise<{
+    success: boolean
+    download?: {
+      id: string
+      url: string
+      title: string
+      status: string
+    }
+    error?: string
+  }> {
+    return this.request('/api/download', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    })
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // BIDIRECTIONAL SYNC
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Get favorites from desktop
+  async getDesktopFavorites(): Promise<{
+    items: Array<{ mediaId: string; rating: number }>
+    count: number
+    timestamp: number
+  }> {
+    return this.request('/api/sync/favorites')
+  }
+
+  // Push favorites to desktop
+  async syncFavoritesToDesktop(items: Array<{ mediaId: string; isFavorite: boolean; timestamp: number }>): Promise<{
+    success: boolean
+    synced: number
+  }> {
+    return this.request('/api/sync/favorites', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    })
+  }
+
+  // Get watch history from desktop
+  async getDesktopWatchHistory(since?: number): Promise<{
+    items: Array<{ mediaId: string; views: number; lastViewedAt: number }>
+    count: number
+    timestamp: number
+  }> {
+    const params = since ? `?since=${since}` : ''
+    return this.request(`/api/sync/history${params}`)
+  }
+
+  // Push watch history to desktop
+  async syncWatchHistoryToDesktop(items: Array<{ mediaId: string; viewedAt: number }>): Promise<{
+    success: boolean
+    synced: number
+  }> {
+    return this.request('/api/sync/history', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    })
+  }
+
+  // Get sync state from desktop
+  async getSyncState(): Promise<{
+    lastSync: number
+    mediaCount: number
+    favoritesCount: number
+  }> {
+    return this.request('/api/sync/state')
+  }
 }
 
 export const api = new VaultAPI()
