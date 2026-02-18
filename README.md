@@ -11,9 +11,9 @@
 <p align="center">
   <img src="https://img.shields.io/badge/version-2.1.5-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Platform">
-  <img src="https://img.shields.io/badge/electron-28.0.0-47848F.svg" alt="Electron">
-  <img src="https://img.shields.io/badge/react-18.2.0-61DAFB.svg" alt="React">
-  <img src="https://img.shields.io/badge/typescript-5.0-3178C6.svg" alt="TypeScript">
+  <img src="https://img.shields.io/badge/electron-32.0.0-47848F.svg" alt="Electron">
+  <img src="https://img.shields.io/badge/react-18.3.1-61DAFB.svg" alt="React">
+  <img src="https://img.shields.io/badge/typescript-5.7-3178C6.svg" alt="TypeScript">
   <img src="https://img.shields.io/badge/license-Private-red.svg" alt="License">
 </p>
 
@@ -31,11 +31,12 @@
 
 ### Key Highlights
 
-- **Massive Library Support** - Handles 10,000+ files effortlessly
-- **AI-Powered Tagging** - Automatic content analysis and categorization
+- **Massive Library Support** - Handles 10,000+ files effortlessly with virtual scrolling
+- **AI-Powered Tagging** - 3-tier AI system for automatic content analysis
 - **Immersive Visual Effects** - 20+ overlays including CRT, film grain, particles
 - **Multiple View Modes** - Library, Feed, Goon Wall, Brainwash, Sessions
 - **DLNA Streaming** - Cast to smart TVs and devices
+- **Mobile Sync** - Control and browse from your phone
 - **Complete Privacy** - All data stays local, panic key support
 
 ---
@@ -47,44 +48,58 @@
 | Feature | Description |
 |---------|-------------|
 | **Smart Scanning** | Auto-imports videos, images, GIFs from watched folders |
-| **AI Auto-Tagger** | Venice AI analyzes content and generates relevant tags |
+| **AI Auto-Tagger** | Venice AI + ONNX models analyze and categorize content |
 | **Tag Categories** | Hierarchical organization (People, Actions, Style, etc.) |
 | **Tag Aliases** | Synonyms automatically resolve to canonical tags |
 | **Custom Filters** | Save complex filter combinations for quick access |
 | **Duplicate Finder** | Detect exact/similar duplicates by hash, size, or name |
 | **Batch Operations** | Bulk tag, rate, delete, or organize media |
 | **Watch Later Queue** | Priority-ordered queue with reminders |
+| **Smart Playlists** | Auto-updating playlists based on custom rules |
 
 ### Viewing Experience
 
 | Feature | Description |
 |---------|-------------|
-| **Feed Mode** | Full-screen swipe navigation (keyboard + mouse + touch) |
-| **Goon Wall** | Multi-video grid with sync and cascade shuffle |
-| **Brainwash Mode** | Hypnotic slideshow with subliminal effects |
-| **Sessions** | Curated playlists with templates |
+| **Feed Mode** | TikTok-style full-screen swipe navigation (keyboard + mouse + touch) |
+| **Goon Wall** | Multi-video grid with sync, cascade shuffle, and transitions |
+| **Brainwash Mode** | Caption editor with AI generation, filters, and cropping |
+| **Sessions** | Curated playlists with templates and smart rules |
 | **Video Bookmarks** | Save timestamps, export as FFmpeg chapters |
 | **Scene Markers** | Right-click timeline to mark key moments |
 | **Image Zoom** | Scroll wheel zoom with click-drag pan |
+| **Floating Player** | Resizable picture-in-picture video player |
+
+### Downloads & Import
+
+| Feature | Description |
+|---------|-------------|
+| **URL Downloader** | Download from 1000+ sites via yt-dlp integration |
+| **Quality Selection** | Choose Best, 1080p, 720p, 480p, or Audio Only |
+| **Auto-Import** | Automatically add downloads to library |
+| **Drag & Drop** | Drop files directly into library to import |
+| **Progress Tracking** | Real-time download progress with thumbnails |
 
 ### Visual Effects & Themes
 
 | Category | Options |
 |----------|---------|
-| **Overlays** | Film Grain, CRT, Bokeh, Sparkles, Hearts, Rain, Matrix, Aurora, Fire, Neon Drip, and 15+ more |
+| **Overlays** | Film Grain, CRT, Bokeh, Sparkles, Hearts, Rain, Matrix, Aurora, Fire, Neon Drip, TV Border, Glitch, and 15+ more |
 | **Dark Themes** | Obsidian, Neon Dreams, Ember, Velvet, Sapphire, Midnight Purple |
 | **Light Themes** | Arctic, Linen, Mint Cream, Peach Blossom, Sky Blue, Lavender, Coral |
 | **Goon Themes** | Submissive, Dominant, Latex, Bimbo, Hypno |
 | **GoonWords** | Floating text with customizable fonts, colors, presets |
+| **Accessibility** | Color blind modes, reduced motion, font scaling |
 
 ### AI Intelligence (3-Tier System)
 
 ```
 +-----------------------------------------------------------+
 |  TIER 3: Cloud AI (Venice API)                            |
-|  - Advanced video analysis                                |
+|  - Advanced video analysis with qwen3-vl-235b             |
 |  - Multi-frame scene understanding                        |
 |  - Intelligent tag generation                             |
+|  - AI caption generation for Brainwash                    |
 +-----------------------------------------------------------+
 |  TIER 2: Local LLM (Ollama)                               |
 |  - Privacy-first processing                               |
@@ -92,11 +107,43 @@
 |  - Filename suggestions                                   |
 +-----------------------------------------------------------+
 |  TIER 1: ONNX Models (Offline)                            |
-|  - NSFW detection                                         |
-|  - Content classification                                 |
+|  - NSFWJS detection                                       |
+|  - WD Tagger classification                               |
 |  - Works without internet                                 |
 +-----------------------------------------------------------+
 ```
+
+### Brainwash / Caption Editor
+
+| Feature | Description |
+|---------|-------------|
+| **17 Text Presets** | Pre-configured caption styles |
+| **AI Captions** | Venice AI generates captions in 5 styles |
+| **Image Filters** | Pixelate, low quality, saturation, contrast |
+| **Cropping** | Canvas-based image cropping |
+| **Video Frame Capture** | Capture video frames for captioning |
+| **Caption Bars** | Black/white bars with size control |
+| **Drag Text** | Position text anywhere on image |
+| **Export** | Save as new file or add to library |
+
+### Mobile Sync
+
+| Feature | Description |
+|---------|-------------|
+| **QR Pairing** | Scan QR code to connect mobile device |
+| **Remote Browse** | Browse library from phone browser |
+| **Remote Control** | Control playback from mobile |
+| **Auto-Discovery** | Devices automatically find server on LAN |
+
+### Gamification
+
+| Feature | Description |
+|---------|-------------|
+| **50 Achievements** | Unlock achievements for various activities |
+| **Daily Challenges** | Complete tasks for XP rewards |
+| **Personal Records** | Track your best streaks and stats |
+| **Weekly Stats** | Sessions, videos watched, time spent |
+| **Streak Protection** | Warnings when streaks are at risk |
 
 ### Backend Services (40+)
 
@@ -108,6 +155,7 @@
 - `scanner.ts` - Media file discovery and import
 - `thumbs.ts` - Thumbnail generation with FFmpeg
 - `settings.ts` - Persistent configuration
+- `transcode.ts` - Video transcoding with queue system
 
 #### Media Services
 - `video-bookmarks.ts` - Timestamp bookmarks
@@ -145,6 +193,7 @@
 - `quick-actions.ts` - Keyboard shortcuts
 - `keyboard-shortcuts.ts` - Custom bindings
 - `notifications.ts` - System alerts
+- `error-logger.ts` - Persistent error logging
 
 #### Media Processing
 - `export-service.ts` - Media export
@@ -152,9 +201,11 @@
 - `backup-restore.ts` - Data backup
 - `batch-operations.ts` - Bulk actions
 - `media-compare.ts` - Side-by-side view
+- `url-downloader-service.ts` - yt-dlp integration
 
 #### Integration Services
 - `dlna-service.ts` - TV streaming
+- `mobile-sync.ts` - Phone connectivity
 - `file-watcher.ts` - Auto-scan folders
 - `scheduled-tasks.ts` - Background jobs
 
@@ -179,6 +230,7 @@
 - **Node.js** 18+
 - **npm** 9+
 - **FFmpeg** (auto-downloaded or system install)
+- **yt-dlp** (optional, for URL downloads)
 - **Windows 10+** / **macOS 11+** / **Linux** (Ubuntu 20.04+)
 
 ### Development Setup
@@ -199,9 +251,9 @@ npm run build
 ```
 
 ### Build Outputs
-- **Windows**: `dist/vault-setup.exe` (NSIS installer)
-- **macOS**: `dist/vault.dmg`
-- **Linux**: `dist/vault.AppImage`
+- **Windows**: `release/vault-setup.exe` (NSIS installer)
+- **macOS**: `release/vault.dmg`
+- **Linux**: `release/vault.AppImage`
 
 ---
 
@@ -221,19 +273,29 @@ Add folders in **Settings > Library > Media Directories**. Vault watches these f
 2. Pull a vision model: `ollama pull llava`
 3. Enable in **Settings > AI > Use Ollama**
 
+### URL Downloader Setup
+1. Install yt-dlp via your package manager:
+   - Windows: `winget install yt-dlp`
+   - macOS: `brew install yt-dlp`
+   - Linux: `pip install yt-dlp`
+2. Vault auto-detects yt-dlp from common install locations
+
 ### Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
 | `Space` | Play/Pause |
-| `Left/Right` | Previous/Next |
-| `Up/Down` | Volume |
+| `Left/Right` | Previous/Next or Seek |
+| `Up/Down` | Volume or Navigate |
 | `F` | Fullscreen |
 | `M` | Mute |
 | `L` | Like/Favorite |
 | `B` | Add Bookmark |
 | `H` | Hide UI |
+| `D` | URL Downloader |
+| `?` | Show All Shortcuts |
 | `Ctrl+K` | Command Palette |
+| `Ctrl+Z` | Undo Delete |
 | `Escape` | Panic Key (instant hide) |
 
 ---
@@ -245,13 +307,13 @@ vault/
 ├── src/
 │   ├── main/           # Electron main process
 │   │   ├── services/   # 40+ backend services
-│   │   ├── ipc.ts      # IPC handlers (~6000 lines)
+│   │   ├── ipc.ts      # IPC handlers (~6500 lines)
 │   │   ├── db.ts       # SQLite database
 │   │   └── index.ts    # Main entry
 │   ├── renderer/       # React frontend
 │   │   ├── components/ # UI components
 │   │   ├── hooks/      # Custom hooks
-│   │   └── App.tsx     # Main app
+│   │   └── App.tsx     # Main app (~18000 lines)
 │   └── preload/        # Preload scripts
 ├── electron.vite.config.ts
 └── package.json
@@ -261,13 +323,14 @@ vault/
 
 | Layer | Technology |
 |-------|------------|
-| **Framework** | Electron 28 |
-| **Frontend** | React 18 + TypeScript |
-| **Styling** | Tailwind CSS |
+| **Framework** | Electron 32 |
+| **Frontend** | React 18.3 + TypeScript 5.7 |
+| **Styling** | Tailwind CSS 3.4 |
 | **Database** | SQLite (better-sqlite3) |
-| **Build** | electron-vite |
+| **Build** | electron-vite 5.0 |
 | **Media** | FFmpeg + FFprobe |
 | **AI** | ONNX Runtime + Venice API + Ollama |
+| **Downloads** | yt-dlp |
 
 ---
 
@@ -280,7 +343,7 @@ vault/
 - `media` - Main media items
 - `tags` - Tag definitions
 - `media_tags` - Media-tag relationships
-- `playlists` - Playlist definitions
+- `playlists` - Playlist definitions (with smart playlist support)
 - `playlist_items` - Playlist contents
 
 ### Stats & History
@@ -305,37 +368,64 @@ vault/
 - `favorite_folders` - Quick access
 - `smart_playlists` - Dynamic lists
 - `scheduled_tasks` - Background jobs
+- `caption_templates` - Brainwash presets
 
 ### AI & Processing
 - `media_hashes` - Perceptual hashes
 - `ai_cache` - Analysis cache
+- `ai_analysis_results` - AI tagging results
+- `ai_review_queue` - Pending reviews
 
 </details>
 
 ---
 
+## Recent Updates (v2.1.5)
+
+### New Features
+- **Downloads Page** - Full navigation tab for URL downloads
+- **Smart Playlists** - Auto-updating playlists with custom rules
+- **Venice AI Captions** - AI-generated captions in Brainwash
+- **Welcome Tutorial** - 5-step guided tour for new users
+- **Video Frame Capture** - Capture frames from videos in Brainwash
+- **Image Cropping** - Canvas-based crop tool in Brainwash
+- **Drag-Drop Text** - Position caption text anywhere on image
+- **Settings Search** - Find settings by keyword
+- **Streak Protection** - Warnings when losing your streak
+- **Personal Records** - Track your best stats
+
+### Improvements
+- **Feed Mousewheel** - Smooth scroll navigation with trackpad support
+- **GoonWall Stability** - Playback slot limiter prevents stuttering
+- **Startup Performance** - Deferred loading for faster window display
+- **Error Logging** - Persistent logs in userData/logs
+- **Thumbnail Cache** - Configurable memory cache size (500-10000)
+- **Light Mode** - Improved UI for light themes
+- **Accessibility** - Color blind modes, screen reader support
+
+### Bug Fixes
+- Fixed React hooks order error in Feed page
+- Fixed yt-dlp detection for WinGet/Scoop/Chocolatey
+- Fixed GPU cache access errors on startup
+- Fixed duplicate caption template prevention
+- Fixed dev server port conflicts
+
+---
+
 ## Roadmap
 
-### v2.1.5 (Current)
-- [x] 11 new backend services
-- [x] AI Intelligence 3-tier system
-- [x] 20+ visual overlays
-- [x] DLNA streaming
-- [x] Command palette
-- [x] Touch/swipe support
-
 ### v2.2.0 (Next)
-- [ ] Frontend UI for new services
-- [ ] Watch Later page
-- [ ] Bookmarks panel in player
-- [ ] Duplicates manager modal
-- [ ] Performance optimizations
+- [ ] GIF Creation from video clips
+- [ ] PMV/HMV Editor with BPM sync
+- [ ] Video cropping feature
+- [ ] AI scene detection
+- [ ] Enhanced mobile companion
 
 ### v3.0.0 (Future)
-- [ ] Mobile app (React Native)
-- [ ] Cloud sync (encrypted)
+- [ ] Cloud sync (encrypted metadata)
 - [ ] Plugin system
-- [ ] Community presets
+- [ ] Watch parties (synchronized viewing)
+- [ ] Multi-language support
 
 ---
 
@@ -346,6 +436,7 @@ vault/
 - **Panic Key** - Instant hide with Escape
 - **Incognito Mode** - No history recording
 - **Encrypted Backup** - Secure data export
+- **Context Isolation** - Secure Electron configuration
 
 ---
 
@@ -353,13 +444,15 @@ vault/
 
 ```
 Version:     2.1.5
-Modules:     69
-Bundle:      846 KB
+Modules:     71
+Bundle:      952 KB
 Services:    40+
-IPC Lines:   ~6000
+IPC Lines:   ~6500
+App.tsx:     ~18000 lines
 DB Tables:   25+
 Themes:      15+
 Overlays:    20+
+Achievements: 50
 ```
 
 ---
@@ -381,5 +474,5 @@ Private and proprietary. All rights reserved.
 </p>
 
 <p align="center">
-  <sub>Vault v2.1.5 | 69 modules | 846 KB bundle | 40+ services</sub>
+  <sub>Vault v2.1.5 | 71 modules | 952 KB bundle | 40+ services</sub>
 </p>
