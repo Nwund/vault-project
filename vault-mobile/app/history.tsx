@@ -56,23 +56,13 @@ const HistoryCard = memo(({
       onPress={onPress}
       activeOpacity={0.8}
     >
-      {/* Thumbnail with progress */}
+      {/* Thumbnail with progress - always try to load, server generates on demand */}
       <View style={styles.thumbContainer}>
-        {item.hasThumb ? (
-          <Image
-            source={{ uri: api.getThumbUrl(item.id) }}
-            style={styles.thumbnail}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={[styles.thumbnail, styles.noThumb]}>
-            <Ionicons
-              name={item.type === 'video' ? 'videocam' : 'image'}
-              size={28}
-              color="#52525b"
-            />
-          </View>
-        )}
+        <Image
+          source={{ uri: api.getThumbUrl(item.id) }}
+          style={styles.thumbnail}
+          resizeMode="cover"
+        />
 
         {/* Progress bar */}
         {item.type === 'video' && item.progress !== undefined && (

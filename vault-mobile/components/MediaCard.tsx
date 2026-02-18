@@ -48,7 +48,8 @@ export const MediaCard = memo(function MediaCard({
   const opacity = useRef(new Animated.Value(0)).current
   const scale = useRef(new Animated.Value(1)).current
 
-  const thumbUrl = hasThumb ? api.getThumbUrl(id) : null
+  // Always try to fetch thumbnail - server generates on demand
+  const thumbUrl = api.getThumbUrl(id)
 
   const handleLoad = () => {
     setLoaded(true)

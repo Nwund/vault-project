@@ -57,23 +57,13 @@ const SearchResultItem = memo(({
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {/* Thumbnail */}
+      {/* Thumbnail - always try to load, server generates on demand */}
       <View style={styles.resultThumb}>
-        {item.hasThumb ? (
-          <Image
-            source={{ uri: api.getThumbUrl(item.id) }}
-            style={styles.resultImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={styles.resultPlaceholder}>
-            <Ionicons
-              name={item.type === 'video' ? 'videocam' : 'image'}
-              size={24}
-              color="#3f3f46"
-            />
-          </View>
-        )}
+        <Image
+          source={{ uri: api.getThumbUrl(item.id) }}
+          style={styles.resultImage}
+          resizeMode="cover"
+        />
         {item.type === 'video' && item.durationSec && (
           <View style={styles.durationBadge}>
             <Text style={styles.durationText}>{formatDuration(item.durationSec)}</Text>

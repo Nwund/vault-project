@@ -58,7 +58,8 @@ export function MediaThumbnail({
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  const thumbUrl = hasThumb ? api.getThumbUrl(id) : null
+  // Always try to fetch thumbnail - server generates on demand
+  const thumbUrl = api.getThumbUrl(id)
 
   return (
     <TouchableOpacity

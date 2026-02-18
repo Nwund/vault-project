@@ -2,7 +2,7 @@
 // Wall Mode - Multiple videos playing simultaneously in a grid
 // Pinch to zoom changes tile count, swipe to shuffle
 
-import { useState, useEffect, useCallback, useRef, memo } from 'react'
+import { useState, useEffect, useCallback, useRef, memo, useLayoutEffect } from 'react'
 import {
   View,
   Text,
@@ -18,7 +18,9 @@ import { Ionicons } from '@expo/vector-icons'
 import * as ScreenOrientation from 'expo-screen-orientation'
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS } from 'react-native-reanimated'
+import { useIsFocused, useNavigation } from '@react-navigation/native'
 import { useConnectionStore } from '@/stores/connection'
+import { useBrokenMediaStore, isFormatSupported } from '@/stores/broken-media'
 import { api } from '@/services/api'
 
 interface MediaItem {
@@ -29,40 +31,51 @@ interface MediaItem {
   hasThumb: boolean
 }
 
-// More tile options (1 to 25)
-const TILE_COUNTS = [1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16, 20, 25]
+// More tile options (1 to 80)
+const TILE_COUNTS = [1, 2, 4, 6, 9, 12, 16, 20, 25, 30, 36, 42, 49, 56, 64, 72, 80]
 
-// Calculate grid dimensions for a given tile count
-const getGridConfig = (count: number) => {
+// Calculate grid dimensions for a given tile count - prefer square-ish in portrait
+const getGridConfig = (count: number, isPortrait: boolean) => {
   if (count === 1) return { cols: 1, rows: 1 }
-  if (count === 2) return { cols: 2, rows: 1 }
-  if (count === 3) return { cols: 3, rows: 1 }
+  if (count === 2) return isPortrait ? { cols: 1, rows: 2 } : { cols: 2, rows: 1 }
   if (count === 4) return { cols: 2, rows: 2 }
-  if (count === 5) return { cols: 3, rows: 2 }
-  if (count === 6) return { cols: 3, rows: 2 }
-  if (count === 8) return { cols: 4, rows: 2 }
+  if (count === 6) return isPortrait ? { cols: 2, rows: 3 } : { cols: 3, rows: 2 }
   if (count === 9) return { cols: 3, rows: 3 }
-  if (count === 10) return { cols: 5, rows: 2 }
-  if (count === 12) return { cols: 4, rows: 3 }
-  if (count === 15) return { cols: 5, rows: 3 }
+  if (count === 12) return isPortrait ? { cols: 3, rows: 4 } : { cols: 4, rows: 3 }
   if (count === 16) return { cols: 4, rows: 4 }
-  if (count === 20) return { cols: 5, rows: 4 }
+  if (count === 20) return isPortrait ? { cols: 4, rows: 5 } : { cols: 5, rows: 4 }
   if (count === 25) return { cols: 5, rows: 5 }
-  // Default: try to make it roughly square
-  const cols = Math.ceil(Math.sqrt(count * 1.5))
-  const rows = Math.ceil(count / cols)
-  return { cols, rows }
+  if (count === 30) return isPortrait ? { cols: 5, rows: 6 } : { cols: 6, rows: 5 }
+  if (count === 36) return { cols: 6, rows: 6 }
+  if (count === 42) return isPortrait ? { cols: 6, rows: 7 } : { cols: 7, rows: 6 }
+  if (count === 49) return { cols: 7, rows: 7 }
+  if (count === 56) return isPortrait ? { cols: 7, rows: 8 } : { cols: 8, rows: 7 }
+  if (count === 64) return { cols: 8, rows: 8 }
+  if (count === 72) return isPortrait ? { cols: 8, rows: 9 } : { cols: 9, rows: 8 }
+  if (count === 80) return isPortrait ? { cols: 8, rows: 10 } : { cols: 10, rows: 8 }
+  // Default: prefer more rows in portrait, more cols in landscape
+  if (isPortrait) {
+    const cols = Math.ceil(Math.sqrt(count * 0.75))
+    const rows = Math.ceil(count / cols)
+    return { cols, rows }
+  } else {
+    const cols = Math.ceil(Math.sqrt(count * 1.5))
+    const rows = Math.ceil(count / cols)
+    return { cols, rows }
+  }
 }
 
 // Memoized video tile component
 const VideoTile = memo(({
   item,
   muted,
+  shouldPlay,
   onError,
   style,
 }: {
   item: MediaItem
   muted: boolean
+  shouldPlay: boolean
   onError: (id: string) => void
   style: any
 }) => {
@@ -75,7 +88,7 @@ const VideoTile = memo(({
         source={{ uri: api.getStreamUrl(item.id) }}
         style={styles.tileVideo}
         resizeMode={ResizeMode.COVER}
-        shouldPlay={true}
+        shouldPlay={shouldPlay}
         isLooping={true}
         isMuted={muted}
         onError={() => onError(item.id)}
@@ -86,11 +99,14 @@ const VideoTile = memo(({
 
 export default function WallScreen() {
   const { isConnected } = useConnectionStore()
+  const { markBroken: persistBroken } = useBrokenMediaStore()
+  const isFocused = useIsFocused() // Pause videos when tab not focused
+  const navigation = useNavigation()
 
   const [tiles, setTiles] = useState<MediaItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [muted, setMuted] = useState(false)
-  const [showControls, setShowControls] = useState(true)
+  const [showControls, setShowControls] = useState(false) // Start hidden
   const [tileCountIndex, setTileCountIndex] = useState(3) // Start with 4 tiles
   const [brokenIds, setBrokenIds] = useState<Set<string>>(new Set())
   const [dimensions, setDimensions] = useState(Dimensions.get('window'))
@@ -105,10 +121,17 @@ export default function WallScreen() {
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pinchFeedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tileCount = TILE_COUNTS[tileCountIndex]
-  const gridConfig = getGridConfig(tileCount)
+  const gridConfig = getGridConfig(tileCount, !isLandscape)
 
   // Shared value for pinch scale feedback
   const pinchScale = useSharedValue(1)
+
+  // Hide/show tab bar based on controls visibility
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      tabBarStyle: showControls ? undefined : { display: 'none' },
+    })
+  }, [navigation, showControls])
 
   // Handle orientation changes
   useEffect(() => {
@@ -164,14 +187,21 @@ export default function WallScreen() {
     setIsLoading(true)
     try {
       const result = await api.getLibrary({
-        limit: tileCount * 3,
+        limit: tileCount * 5, // Load more to account for filtering
         type: 'video',
         sort: 'random',
         tags: selectedTags.length > 0 ? selectedTags : undefined,
       })
 
+      // Filter out broken and unsupported format videos
       const validVideos = (result.items || []).filter(
-        (item: MediaItem) => !brokenIds.has(item.id)
+        (item: MediaItem) => {
+          // Skip broken videos
+          if (brokenIds.has(item.id)) return false
+          // Skip unsupported formats
+          if (!isFormatSupported(item.filename, 'video')) return false
+          return true
+        }
       )
 
       setTiles(validVideos.slice(0, tileCount))
@@ -202,12 +232,12 @@ export default function WallScreen() {
     }
   }, [isConnected, tileCount])
 
-  // Auto-hide controls
+  // Auto-hide controls after 5 seconds
   useEffect(() => {
-    if (showControls && !showTileMenu) {
+    if (showControls && !showTileMenu && !showTagMenu) {
       controlsTimeoutRef.current = setTimeout(() => {
         setShowControls(false)
-      }, 4000)
+      }, 5000)
     }
 
     return () => {
@@ -215,12 +245,14 @@ export default function WallScreen() {
         clearTimeout(controlsTimeoutRef.current)
       }
     }
-  }, [showControls, showTileMenu])
+  }, [showControls, showTileMenu, showTagMenu])
 
   const handleError = useCallback((id: string) => {
+    // Persist broken status across sessions
+    persistBroken(id)
     setBrokenIds(prev => new Set(prev).add(id))
     setTiles(prev => prev.filter(t => t.id !== id))
-  }, [])
+  }, [persistBroken])
 
   const shuffle = useCallback(() => {
     setShowTileMenu(false)
@@ -391,6 +423,7 @@ export default function WallScreen() {
                   key={item.id}
                   item={item}
                   muted={muted}
+                  shouldPlay={isFocused}
                   onError={handleError}
                   style={{ width: tileWidth, height: tileHeight }}
                 />
