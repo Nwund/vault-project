@@ -568,3 +568,42 @@ Start with Priority 1 (critical bugs), then work through Priority 2 (usability),
 - Video thumbnails are temp files in system temp directory
 - State is local to component (no persistence yet)
 - Ready for Phase 2: Timeline would be horizontal component below preview
+
+---
+
+## LATEST SESSION (Feb 17, 2026)
+
+### Native Notifications:
+- [x] **Download Complete Notifications** - Native OS notifications when URL downloads finish
+  - Added `downloadComplete` setting to NotificationsService
+  - Added `downloadComplete()` and `downloadFailed()` methods
+  - Notification shows source (desktop/mobile) and video title
+  - Clicking notification opens URL Downloader panel
+- [x] **Notification Click Actions** - IPC handler for `openUrlDownloader` action callback
+
+### URL Downloader UX Improvements:
+- [x] **Toast Notifications** - Replaced all alert() calls with toast notifications
+- [x] **Escape Key** - Press Escape to close downloader panel
+- [x] **Auto-focus** - URL input auto-focuses when panel opens
+
+### Desktop Wall Mode Fix (GoonWall):
+- [x] **Video Slot Limiting** - MAX_WALL_VIDEOS = 6 simultaneous videos to prevent memory overload
+- [x] **Continuous Playback** - Changed from clip cycling to continuous looped playback (no stuttering from constant seeking)
+- [x] **Staggered Loading** - Videos load with random 0-500ms delays to prevent bandwidth spikes
+- [x] **Pause/Resume** - Videos pause when offscreen and resume when visible (not restart)
+- [x] **Queue System** - Videos queue up and start when slots become available
+
+### Mobile Wall Mode Fix (vault-mobile):
+- [x] **Video Limit** - MAX_MOBILE_VIDEOS = 4 simultaneous videos (mobile devices have less resources)
+- [x] **Staggered Loading** - Each tile waits 150ms longer than previous (0ms, 150ms, 300ms...)
+- [x] **Load Before Play** - Videos wait for `onLoad` event before starting playback
+- [x] **Placeholder UI** - Shows loading spinner while waiting to load
+
+### Files Changed:
+- `src/main/services/notifications.ts` - Added download notification methods
+- `src/main/ipc.ts` - Added notification triggers and action handlers
+- `src/preload/index.ts` - Added onOpenRequested subscription
+- `src/renderer/App.tsx` - Added IPC subscription for notification clicks
+- `src/renderer/components/UrlDownloaderPanel.tsx` - Toast notifications, escape key, auto-focus
+- `src/renderer/hooks/useVideoPreview.ts` - Wall mode with slot limiting, continuous playback
+- `vault-mobile/app/(tabs)/wall.tsx` - Mobile video limiting and staggered loading
