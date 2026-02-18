@@ -28,6 +28,7 @@ import { useAmbienceAudio } from './hooks/useAmbienceAudio'
 import { FloatingVideoPlayer } from './components/FloatingVideoPlayer'
 import { WatchLaterPanel } from './components/WatchLaterPanel'
 import { MediaNotesPanel } from './components/MediaNotesPanel'
+import { UrlDownloaderPanel } from './components/UrlDownloaderPanel'
 import { DuplicatesModal } from './components/DuplicatesModal'
 import { HomeDashboard } from './components/HomeDashboard'
 import { TVRemotePanel } from './components/TVRemotePanel'
@@ -2679,6 +2680,7 @@ export default function App() {
                   }},
                   { id: 'watchLater', icon: Clock, label: 'Open Watch Later', shortcut: 'L', action: () => { window.dispatchEvent(new CustomEvent('vault-open-watch-later')); setShowCommandPalette(false) } },
                   { id: 'tvRemote', icon: Tv, label: 'Open TV Remote', shortcut: 'T', action: () => { window.dispatchEvent(new CustomEvent('vault-open-tv-remote')); setShowCommandPalette(false) } },
+                  { id: 'urlDownloader', icon: Download, label: 'Download from URL', shortcut: 'D', action: () => { window.dispatchEvent(new CustomEvent('vault-open-url-downloader')); setShowCommandPalette(false) } },
                   { id: 'fullscreen', icon: Maximize2, label: 'Toggle Fullscreen', shortcut: 'F11', action: () => { window.api.window?.toggleFullscreen?.(); setShowCommandPalette(false) } },
                   { id: 'divider3', divider: true },
                   { id: 'addFolder', icon: FolderPlus, label: 'Add Media Folder', action: async () => { await window.api.settings.chooseMediaDir?.(); setShowCommandPalette(false) } },
@@ -3254,6 +3256,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false) // Duplicate detection modal
   const [showWatchLaterPanel, setShowWatchLaterPanel] = useState(false) // Watch Later queue panel
   const [showTVRemotePanel, setShowTVRemotePanel] = useState(false) // TV Remote control panel
+  const [showUrlDownloaderPanel, setShowUrlDownloaderPanel] = useState(false) // URL Downloader panel
   const [wallAutoScroll, setWallAutoScroll] = useState(false) // Wall mode autoscroll
   const [wallScrollSpeed, setWallScrollSpeed] = useState(30) // Autoscroll speed (pixels per second)
   const wallScrollRef = useRef<HTMLDivElement>(null)
@@ -3376,15 +3379,20 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
     const handleOpenTVRemote = () => {
       setShowTVRemotePanel(true)
     }
+    const handleOpenUrlDownloader = () => {
+      setShowUrlDownloaderPanel(true)
+    }
     window.addEventListener('vault-open-video', handleOpenVideo as EventListener)
     window.addEventListener('vault-open-watch-later', handleOpenWatchLater)
     window.addEventListener('vault-open-duplicates', handleOpenDuplicates)
     window.addEventListener('vault-open-tv-remote', handleOpenTVRemote)
+    window.addEventListener('vault-open-url-downloader', handleOpenUrlDownloader)
     return () => {
       window.removeEventListener('vault-open-video', handleOpenVideo as EventListener)
       window.removeEventListener('vault-open-watch-later', handleOpenWatchLater)
       window.removeEventListener('vault-open-duplicates', handleOpenDuplicates)
       window.removeEventListener('vault-open-tv-remote', handleOpenTVRemote)
+      window.removeEventListener('vault-open-url-downloader', handleOpenUrlDownloader)
     }
   }, [addFloatingPlayer])
 
@@ -4146,6 +4154,17 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
             >
               <Tv size={14} />
               <span className="text-xs hidden sm:inline">TV</span>
+            </Btn>
+
+            {/* URL Downloader */}
+            <Btn
+              tone="ghost"
+              onClick={() => setShowUrlDownloaderPanel(true)}
+              className="flex items-center gap-1.5"
+              title="Download videos from URLs"
+            >
+              <Download size={14} />
+              <span className="text-xs hidden sm:inline">Download</span>
             </Btn>
           </div>
         }
@@ -5588,6 +5607,12 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
           // Close TV panel and let user select from library
           setShowTVRemotePanel(false)
         }}
+      />
+
+      {/* URL Downloader Panel */}
+      <UrlDownloaderPanel
+        isOpen={showUrlDownloaderPanel}
+        onClose={() => setShowUrlDownloaderPanel(false)}
       />
     </div>
   )
