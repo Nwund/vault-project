@@ -16,10 +16,16 @@ import {
   Clock,
   Smartphone,
   Monitor,
-  Import
+  Import,
+  Settings,
+  ChevronDown,
+  Clipboard,
+  Music
 } from 'lucide-react'
 import { formatDuration } from '../utils/formatters'
 import { useToast } from '../App'
+
+type VideoQuality = 'best' | '1080p' | '720p' | '480p' | 'audio'
 
 interface DownloadItem {
   id: string
@@ -51,6 +57,9 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
   const [ytdlpVersion, setYtdlpVersion] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [quality, setQuality] = useState<VideoQuality>('best')
+  const [autoImport, setAutoImport] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Check yt-dlp availability
@@ -94,6 +103,10 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
     }
   }, [isOpen, checkAvailability, loadDownloads, onClose])
 
+  // Auto-import ref to use latest value in callback
+  const autoImportRef = useRef(autoImport)
+  useEffect(() => { autoImportRef.current = autoImport }, [autoImport])
+
   // Subscribe to events
   useEffect(() => {
     const unsubs = [
@@ -106,8 +119,19 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
       window.api.urlDownloader.onProgress((item: DownloadItem) => {
         setDownloads(prev => prev.map(d => d.id === item.id ? item : d))
       }),
-      window.api.urlDownloader.onCompleted((item: DownloadItem) => {
+      window.api.urlDownloader.onCompleted(async (item: DownloadItem) => {
         setDownloads(prev => prev.map(d => d.id === item.id ? item : d))
+        // Auto-import if enabled
+        if (autoImportRef.current) {
+          try {
+            const result = await window.api.urlDownloader.importToLibrary(item.id)
+            if (result.success) {
+              showToast('success', `Auto-imported: ${item.title}`)
+            }
+          } catch (e) {
+            console.error('Auto-import failed:', e)
+          }
+        }
       }),
       window.api.urlDownloader.onError((item: DownloadItem) => {
         setDownloads(prev => prev.map(d => d.id === item.id ? item : d))
@@ -135,7 +159,10 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
 
     setAdding(true)
     try {
-      const result = await window.api.urlDownloader.addDownload(url)
+      const result = await window.api.urlDownloader.addDownload(url, {
+        quality: quality === 'audio' ? 'best' : quality,
+        audioOnly: quality === 'audio'
+      })
       if (result.success) {
         setUrlInput('')
         showToast('success', 'Download added to queue')
@@ -240,9 +267,55 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
         </div>
       )}
 
-      {ytdlpVersion && (
-        <div className="px-4 pt-2 text-xs text-gray-500">
-          yt-dlp {ytdlpVersion}
+      {/* Version & Settings Toggle */}
+      <div className="px-4 pt-2 flex items-center justify-between">
+        {ytdlpVersion && (
+          <span className="text-xs text-gray-500">yt-dlp {ytdlpVersion}</span>
+        )}
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          className={`p-1.5 rounded-lg transition-colors ${showSettings ? 'bg-blue-600/20 text-blue-400' : 'hover:bg-zinc-800 text-gray-400'}`}
+          title="Download settings"
+        >
+          <Settings className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="mx-4 mt-2 p-3 bg-zinc-800/50 border border-zinc-700 rounded-lg space-y-3">
+          {/* Quality Selector */}
+          <div className="flex items-center justify-between">
+            <label className="text-xs text-gray-400">Quality</label>
+            <div className="relative">
+              <select
+                value={quality}
+                onChange={(e) => setQuality(e.target.value as VideoQuality)}
+                className="appearance-none bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-1.5 pr-8 text-sm text-white focus:outline-none focus:border-blue-500 cursor-pointer"
+              >
+                <option value="best">Best Available</option>
+                <option value="1080p">1080p</option>
+                <option value="720p">720p</option>
+                <option value="480p">480p</option>
+                <option value="audio">Audio Only</option>
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Auto-Import Toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-xs text-gray-400">Auto-import to library</label>
+              <p className="text-[10px] text-gray-500">Add to library when complete</p>
+            </div>
+            <button
+              onClick={() => setAutoImport(!autoImport)}
+              className={`w-10 h-5 rounded-full transition-colors relative ${autoImport ? 'bg-blue-600' : 'bg-zinc-600'}`}
+            >
+              <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${autoImport ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
         </div>
       )}
 
@@ -267,7 +340,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
             className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-gray-400 hover:text-white transition-colors"
             title="Paste from clipboard"
           >
-            <Plus className="w-4 h-4" />
+            <Clipboard className="w-4 h-4" />
           </button>
           <button
             onClick={handleAddDownload}
@@ -276,14 +349,21 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
           >
             {adding ? (
               <Loader2 className="w-4 h-4 animate-spin" />
+            ) : quality === 'audio' ? (
+              <Music className="w-4 h-4" />
             ) : (
               <Download className="w-4 h-4" />
             )}
           </button>
         </div>
-        <p className="mt-2 text-xs text-gray-500">
-          Supports 1000+ sites including Twitter/X, PH, xv, xh, and more
-        </p>
+        <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+          <span>Supports 1000+ sites</span>
+          {quality !== 'best' && (
+            <span className="px-2 py-0.5 bg-zinc-800 rounded text-[10px] text-gray-400">
+              {quality === 'audio' ? '🎵 Audio' : quality}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Downloads List */}

@@ -1141,6 +1141,11 @@ export default function App() {
         e.preventDefault()
         setZenMode(prev => !prev)
       }
+      // D key opens URL Downloader (without Ctrl)
+      if ((e.key === 'd' || e.key === 'D') && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault()
+        setShowUrlDownloaderPanel(prev => !prev)
+      }
       // Ctrl+Z for undo delete
       if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault()
@@ -1161,7 +1166,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handleGlobalKeys)
     return () => window.removeEventListener('keydown', handleGlobalKeys)
-  }, [showShortcutsHelp, showCommandPalette, zenMode, globalShowToast])
+  }, [showShortcutsHelp, showCommandPalette, zenMode, globalShowToast, setShowUrlDownloaderPanel])
 
   // Zen mode edge detection - show UI when mouse near edges (throttled)
   useEffect(() => {
@@ -2101,6 +2106,16 @@ export default function App() {
                   <span>Find Duplicates</span>
                 </button>
 
+                {/* URL Downloader */}
+                <button
+                  onClick={() => setShowUrlDownloaderPanel(true)}
+                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
+                >
+                  <Download size={14} />
+                  <span>Download from URL</span>
+                  <span className="ml-auto text-[10px] opacity-50">D</span>
+                </button>
+
                 {/* Command Palette */}
                 <button
                   onClick={() => setShowCommandPalette(true)}
@@ -2604,6 +2619,10 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     <kbd className="px-2 py-1 bg-black/30 rounded text-xs">Z</kbd>
                     <span className="text-white/70">Zen Mode</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">D</kbd>
+                    <span className="text-white/70">URL Downloader</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <kbd className="px-2 py-1 bg-black/30 rounded text-xs">Ctrl+Z</kbd>

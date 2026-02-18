@@ -113,17 +113,43 @@ export function useVideoPreview(options: UseVideoPreviewOptions = {}) {
     }
   }, [muted])
 
+  // Track if video has been initialized in wall mode
+  const hasInitializedRef = useRef(false)
+  const wasPlayingRef = useRef(false)
+
   // Auto-play when enabled and URL is available
   useEffect(() => {
-    if (autoPlay && autoPlayUrl) {
-      startPreview(autoPlayUrl, autoPlayDuration)
-    }
-    return () => {
-      if (autoPlay) {
-        stopPreview()
+    if (!wallMode) {
+      // Normal hover mode - start/stop based on autoPlay
+      if (autoPlay && autoPlayUrl) {
+        startPreview(autoPlayUrl, autoPlayDuration)
       }
+      return () => {
+        if (autoPlay) {
+          stopPreview()
+        }
+      }
+    } else {
+      // Wall mode - initialize once, then pause/resume
+      if (autoPlay && autoPlayUrl && !hasInitializedRef.current) {
+        // First time becoming visible - start the video
+        hasInitializedRef.current = true
+        startPreview(autoPlayUrl, autoPlayDuration)
+      } else if (autoPlay && hasInitializedRef.current && videoRef.current) {
+        // Coming back into view - resume playback
+        if (wasPlayingRef.current) {
+          videoRef.current.play().catch(() => {})
+          setIsPlaying(true)
+        }
+      } else if (!autoPlay && hasInitializedRef.current && videoRef.current) {
+        // Going out of view - pause but don't reset
+        wasPlayingRef.current = !videoRef.current.paused
+        videoRef.current.pause()
+        setIsPlaying(false)
+      }
+      // Don't return cleanup for wall mode - keep video element alive
     }
-  }, [autoPlay, autoPlayUrl, autoPlayDuration]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoPlay, autoPlayUrl, autoPlayDuration, wallMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const startPreview = useCallback((videoUrl: string, duration?: number) => {
     if (!videoRef.current) return
