@@ -48,6 +48,7 @@ import { getTagAliasesService } from './services/tag-aliases'
 import { getRatingHistoryService } from './services/rating-history'
 import { getCustomFiltersService, type FilterCondition } from './services/custom-filters'
 import { getSessionHistoryService, type SessionAction } from './services/session-history'
+import { getUrlDownloaderService } from './services/url-downloader-service'
 import { getFavoriteFoldersService } from './services/favorite-folders'
 import { getDuplicatesFinderService, type DuplicateResolution } from './services/duplicates-finder'
 
@@ -7140,9 +7141,6 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   // URL DOWNLOADER SERVICE
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // Use require for sync import since registerIpc is not async
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { getUrlDownloaderService } = require('./services/url-downloader-service')
   const urlDownloader = getUrlDownloaderService()
 
   // Check if yt-dlp is available
