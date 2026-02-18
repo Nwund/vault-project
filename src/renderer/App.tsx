@@ -5665,7 +5665,8 @@ const MediaTile = React.memo(function MediaTile(props: {
     muted: isWallMode ? true : previewMuted, // Wall mode always muted until clicked
     autoPlay: isWallMode && isVideo && isVisible && !!videoUrl, // Auto-play in wall mode when visible
     autoPlayUrl: isWallMode ? videoUrl : undefined,
-    autoPlayDuration: media.durationSec ?? undefined
+    autoPlayDuration: media.durationSec ?? undefined,
+    wallMode: isWallMode // Use continuous playback with slot limiting in wall mode
   })
 
   // Show HUD when: not hovering OR hovering but still in 2 second intro

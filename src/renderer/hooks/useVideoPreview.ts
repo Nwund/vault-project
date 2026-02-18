@@ -11,15 +11,50 @@ interface UseVideoPreviewOptions {
   autoPlay?: boolean // whether to start preview immediately when visible (wall mode)
   autoPlayUrl?: string // URL to use for autoPlay
   autoPlayDuration?: number // duration for autoPlay
+  wallMode?: boolean // whether to use wall mode (continuous playback, no clip cycling)
+}
+
+// Global limiter for wall mode - only allow N videos to play simultaneously
+let activeWallVideos = 0
+const MAX_WALL_VIDEOS = 6
+const wallVideoQueue: Array<() => void> = []
+
+function requestWallSlot(onSlotAvailable: () => void): () => void {
+  if (activeWallVideos < MAX_WALL_VIDEOS) {
+    activeWallVideos++
+    onSlotAvailable()
+    return () => {
+      activeWallVideos--
+      // Process queue
+      if (wallVideoQueue.length > 0) {
+        const next = wallVideoQueue.shift()
+        next?.()
+      }
+    }
+  } else {
+    wallVideoQueue.push(onSlotAvailable)
+    return () => {
+      const idx = wallVideoQueue.indexOf(onSlotAvailable)
+      if (idx !== -1) wallVideoQueue.splice(idx, 1)
+      else {
+        activeWallVideos--
+        if (wallVideoQueue.length > 0) {
+          const next = wallVideoQueue.shift()
+          next?.()
+        }
+      }
+    }
+  }
 }
 
 export function useVideoPreview(options: UseVideoPreviewOptions = {}) {
-  const { clipDuration = 1.5, clipCount = 4, hoverDelay = 2000, muted = true, autoPlay = false, autoPlayUrl, autoPlayDuration } = options
+  const { clipDuration = 1.5, clipCount = 4, hoverDelay = 2000, muted = true, autoPlay = false, autoPlayUrl, autoPlayDuration, wallMode = false } = options
   const videoRef = useRef<HTMLVideoElement>(null)
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const clipTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const clipIndexRef = useRef(0)
   const canPlayHandlerRef = useRef<(() => void) | null>(null) // Track canplay listener for cleanup
+  const releaseSlotRef = useRef<(() => void) | null>(null) // Track wall slot for cleanup
   const [isHovering, setIsHovering] = useState(false)
   const [isWaiting, setIsWaiting] = useState(false) // 2 second intro period
   const [isPlaying, setIsPlaying] = useState(false)
@@ -33,6 +68,11 @@ export function useVideoPreview(options: UseVideoPreviewOptions = {}) {
       if (videoRef.current && canPlayHandlerRef.current) {
         videoRef.current.removeEventListener('canplay', canPlayHandlerRef.current)
         canPlayHandlerRef.current = null
+      }
+      // Release wall slot if held
+      if (releaseSlotRef.current) {
+        releaseSlotRef.current()
+        releaseSlotRef.current = null
       }
       if (videoRef.current) {
         videoRef.current.pause()
@@ -96,36 +136,67 @@ export function useVideoPreview(options: UseVideoPreviewOptions = {}) {
       canPlayHandlerRef.current = null
     }
 
-    video.src = videoUrl
-    video.muted = muted
-    video.playsInline = true
-    video.playbackRate = 1.0 // Normal speed
-    clipIndexRef.current = 0
+    const doStart = () => {
+      video.src = videoUrl
+      video.muted = muted
+      video.playsInline = true
+      video.playbackRate = 1.0 // Normal speed
+      clipIndexRef.current = 0
 
-    const handleCanPlay = () => {
-      setIsPlaying(true)
-      const videoDuration = duration || video.duration || 30
-      playNextClip(video, videoDuration)
-      video.removeEventListener('canplay', handleCanPlay)
-      canPlayHandlerRef.current = null
-    }
+      const handleCanPlay = () => {
+        setIsPlaying(true)
+        const videoDuration = duration || video.duration || 30
 
-    const handleError = () => {
-      console.warn('[VideoPreview] Video load error:', videoUrl)
-      setIsPlaying(false)
-      setIsWaiting(false)
-      // Minimal cleanup without calling stopPreview to avoid circular ref
-      if (canPlayHandlerRef.current) {
-        video.removeEventListener('canplay', canPlayHandlerRef.current)
+        if (wallMode) {
+          // Wall mode: start from random position, play continuously, loop
+          const startPos = Math.random() * videoDuration * 0.7 // Start in first 70%
+          video.currentTime = startPos
+          video.loop = true
+          video.play().catch(err => {
+            if (err.name !== 'NotAllowedError' && err.name !== 'AbortError') {
+              console.warn('[VideoPreview] Wall play failed:', err.name)
+            }
+          })
+        } else {
+          // Normal mode: cycle through clips
+          playNextClip(video, videoDuration)
+        }
+        video.removeEventListener('canplay', handleCanPlay)
         canPlayHandlerRef.current = null
       }
+
+      const handleError = () => {
+        console.warn('[VideoPreview] Video load error:', videoUrl)
+        setIsPlaying(false)
+        setIsWaiting(false)
+        // Minimal cleanup without calling stopPreview to avoid circular ref
+        if (canPlayHandlerRef.current) {
+          video.removeEventListener('canplay', canPlayHandlerRef.current)
+          canPlayHandlerRef.current = null
+        }
+        // Release slot on error
+        if (wallMode && releaseSlotRef.current) {
+          releaseSlotRef.current()
+          releaseSlotRef.current = null
+        }
+      }
+
+      canPlayHandlerRef.current = handleCanPlay
+      video.addEventListener('canplay', handleCanPlay)
+      video.addEventListener('error', handleError, { once: true })
+      video.load()
     }
 
-    canPlayHandlerRef.current = handleCanPlay
-    video.addEventListener('canplay', handleCanPlay)
-    video.addEventListener('error', handleError, { once: true })
-    video.load()
-  }, [playNextClip, muted])
+    if (wallMode) {
+      // Request a slot before starting in wall mode
+      releaseSlotRef.current = requestWallSlot(() => {
+        // Add stagger delay for smoother loading
+        setTimeout(doStart, Math.random() * 500)
+      })
+    } else {
+      doStart()
+    }
+  }, [playNextClip, muted, wallMode])
 
   const stopPreview = useCallback(() => {
     if (hoverTimeoutRef.current) {
@@ -141,9 +212,15 @@ export function useVideoPreview(options: UseVideoPreviewOptions = {}) {
       videoRef.current.removeEventListener('canplay', canPlayHandlerRef.current)
       canPlayHandlerRef.current = null
     }
+    // Release wall slot
+    if (releaseSlotRef.current) {
+      releaseSlotRef.current()
+      releaseSlotRef.current = null
+    }
     if (videoRef.current) {
       videoRef.current.pause()
       videoRef.current.src = ''
+      videoRef.current.loop = false
     }
     setIsPlaying(false)
     setIsWaiting(false)
