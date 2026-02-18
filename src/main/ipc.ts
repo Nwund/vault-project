@@ -5956,6 +5956,23 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return service.isSupported()
   })
 
+  // Handle notification action clicks
+  const notificationsService = getNotificationsService()
+  notificationsService.on('actionTriggered', ({ action, data }) => {
+    switch (action) {
+      case 'openUrlDownloader':
+        broadcast('vault-open-url-downloader')
+        break
+      case 'openExportFolder':
+        if (data?.path) {
+          import('electron').then(({ shell }) => {
+            shell.openPath(data.path)
+          })
+        }
+        break
+    }
+  })
+
   // ═══════════════════════════════════════════════════════════════════════════
   // ANALYTICS - Internal usage tracking
   // ═══════════════════════════════════════════════════════════════════════════
@@ -7231,9 +7248,15 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
   urlDownloader.on('download:completed', (item: any) => {
     broadcast('urlDownloader:completed', item)
+    // Show native notification
+    const notifications = getNotificationsService()
+    notifications.downloadComplete(item.title || 'Video', item.source)
   })
   urlDownloader.on('download:error', (item: any) => {
     broadcast('urlDownloader:error', item)
+    // Show native notification for errors
+    const notifications = getNotificationsService()
+    notifications.downloadFailed(item.title || 'Video', item.error || 'Unknown error')
   })
   urlDownloader.on('download:cancelled', (item: any) => {
     broadcast('urlDownloader:cancelled', item)

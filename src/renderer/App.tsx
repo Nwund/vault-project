@@ -3387,12 +3387,17 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
     window.addEventListener('vault-open-duplicates', handleOpenDuplicates)
     window.addEventListener('vault-open-tv-remote', handleOpenTVRemote)
     window.addEventListener('vault-open-url-downloader', handleOpenUrlDownloader)
+    // Also listen for IPC event from notification clicks
+    const unsubUrlDownloader = window.api.urlDownloader?.onOpenRequested?.(() => {
+      handleOpenUrlDownloader()
+    })
     return () => {
       window.removeEventListener('vault-open-video', handleOpenVideo as EventListener)
       window.removeEventListener('vault-open-watch-later', handleOpenWatchLater)
       window.removeEventListener('vault-open-duplicates', handleOpenDuplicates)
       window.removeEventListener('vault-open-tv-remote', handleOpenTVRemote)
       window.removeEventListener('vault-open-url-downloader', handleOpenUrlDownloader)
+      unsubUrlDownloader?.()
     }
   }, [addFloatingPlayer])
 

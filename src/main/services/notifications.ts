@@ -29,6 +29,7 @@ export interface NotificationSettings {
   scanComplete: boolean
   exportComplete: boolean
   backupComplete: boolean
+  downloadComplete: boolean
   achievementUnlocked: boolean
   errorAlerts: boolean
   dailyReminder: boolean
@@ -42,6 +43,7 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   scanComplete: true,
   exportComplete: true,
   backupComplete: true,
+  downloadComplete: true,
   achievementUnlocked: true,
   errorAlerts: true,
   dailyReminder: false
@@ -238,6 +240,36 @@ export class NotificationsService extends EventEmitter {
       title: 'Backup Complete',
       body: `Created backup: ${filename}`,
       type: 'success'
+    })
+  }
+
+  /**
+   * Notify download complete
+   */
+  downloadComplete(title: string, source: 'desktop' | 'mobile' = 'desktop'): string {
+    if (!this.settings.downloadComplete) return ''
+    const sourceLabel = source === 'mobile' ? ' (from mobile)' : ''
+    return this.show({
+      title: 'Download Complete',
+      body: `${title}${sourceLabel}`,
+      type: 'success',
+      action: {
+        label: 'View Downloads',
+        callback: 'openUrlDownloader',
+        data: {}
+      }
+    })
+  }
+
+  /**
+   * Notify download failed
+   */
+  downloadFailed(title: string, error: string): string {
+    if (!this.settings.errorAlerts) return ''
+    return this.show({
+      title: 'Download Failed',
+      body: `${title}: ${error}`,
+      type: 'error'
     })
   }
 

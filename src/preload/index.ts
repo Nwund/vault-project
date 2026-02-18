@@ -921,6 +921,8 @@ const api = {
     onCompleted: (cb: (item: any) => void) => on('urlDownloader:completed', cb),
     onError: (cb: (item: any) => void) => on('urlDownloader:error', cb),
     onCancelled: (cb: (item: any) => void) => on('urlDownloader:cancelled', cb),
+    // Called when notification action clicked to open URL downloader
+    onOpenRequested: (cb: () => void) => on('vault-open-url-downloader', cb),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
