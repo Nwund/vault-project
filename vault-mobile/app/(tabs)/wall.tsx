@@ -65,6 +65,9 @@ const getGridConfig = (count: number, isPortrait: boolean) => {
   }
 }
 
+// Maximum videos playing at once on mobile to prevent stuttering
+const MAX_MOBILE_VIDEOS = 4
+
 // Memoized video tile component
 const VideoTile = memo(({
   item,
@@ -72,27 +75,49 @@ const VideoTile = memo(({
   shouldPlay,
   onError,
   style,
+  loadDelay,
 }: {
   item: MediaItem
   muted: boolean
   shouldPlay: boolean
   onError: (id: string) => void
   style: any
+  loadDelay?: number
 }) => {
   const videoRef = useRef<Video>(null)
+  const [isReady, setIsReady] = useState(false)
+  const [hasLoaded, setHasLoaded] = useState(false)
+
+  // Stagger video loading to prevent overwhelming the device
+  useEffect(() => {
+    if (loadDelay && loadDelay > 0) {
+      const timer = setTimeout(() => setIsReady(true), loadDelay)
+      return () => clearTimeout(timer)
+    } else {
+      setIsReady(true)
+    }
+  }, [loadDelay])
 
   return (
     <View style={[styles.tile, style]}>
-      <Video
-        ref={videoRef}
-        source={{ uri: api.getStreamUrl(item.id) }}
-        style={styles.tileVideo}
-        resizeMode={ResizeMode.COVER}
-        shouldPlay={shouldPlay}
-        isLooping={true}
-        isMuted={muted}
-        onError={() => onError(item.id)}
-      />
+      {isReady ? (
+        <Video
+          ref={videoRef}
+          source={{ uri: api.getStreamUrl(item.id) }}
+          style={styles.tileVideo}
+          resizeMode={ResizeMode.COVER}
+          shouldPlay={shouldPlay && hasLoaded}
+          isLooping={true}
+          isMuted={muted}
+          onError={() => onError(item.id)}
+          onLoad={() => setHasLoaded(true)}
+          progressUpdateIntervalMillis={1000}
+        />
+      ) : (
+        <View style={[styles.tileVideo, styles.tilePlaceholder]}>
+          <ActivityIndicator size="small" color="#3b82f6" />
+        </View>
+      )}
     </View>
   )
 })
@@ -418,14 +443,15 @@ export default function WallScreen() {
         <GestureDetector gesture={composedGesture}>
           <Animated.View style={[styles.gridContainer, animatedStyle]}>
             <View style={styles.grid}>
-              {tiles.slice(0, tileCount).map((item) => (
+              {tiles.slice(0, tileCount).map((item, index) => (
                 <VideoTile
                   key={item.id}
                   item={item}
                   muted={muted}
-                  shouldPlay={isFocused}
+                  shouldPlay={isFocused && index < MAX_MOBILE_VIDEOS}
                   onError={handleError}
                   style={{ width: tileWidth, height: tileHeight }}
+                  loadDelay={index * 150}
                 />
               ))}
             </View>
@@ -662,6 +688,11 @@ const styles = StyleSheet.create({
   tileVideo: {
     width: '100%',
     height: '100%',
+  },
+  tilePlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#18181b',
   },
   pinchFeedback: {
     position: 'absolute',
