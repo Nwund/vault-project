@@ -1353,6 +1353,25 @@ export default function App() {
   // Smooth page navigation with transition
   const navigateTo = useCallback((newPage: NavId) => {
     if (newPage === page) return
+
+    // If leaving GoonWall, immediately stop all video audio
+    if (page === 'goonwall') {
+      // Force stop all videos immediately
+      document.querySelectorAll('video').forEach(v => {
+        try {
+          v.pause()
+          v.muted = true
+          v.src = ''
+          v.load()
+        } catch (e) {
+          // Ignore
+        }
+      })
+      // Reset global state
+      videoPool.releaseAll()
+      resetGoonSlots()
+    }
+
     setPrevPage(page)
     setPageTransition('exit')
     setTimeout(() => {
