@@ -5093,6 +5093,28 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
 
           <div className="w-full min-w-0">
             <div ref={gridRef} className="w-full min-w-0" style={getGridStyle()}>
+              {/* Loading skeleton grid */}
+              {isLoading && sortedMedia.length === 0 && (
+                Array.from({ length: effectivePageSize }).map((_, i) => (
+                  <div
+                    key={`skeleton-${i}`}
+                    className={cn(
+                      'animate-fadeInUp',
+                      (layout === 'mosaic' || layout === 'wall') && 'break-inside-avoid',
+                      layout === 'wall' ? 'mb-0' : layout === 'mosaic' ? 'mb-2' : ''
+                    )}
+                    style={{ animationDelay: `${Math.min(i * 30, 500)}ms`, animationFillMode: 'backwards' }}
+                  >
+                    <div className="relative group rounded-xl overflow-hidden bg-[var(--card)] border border-white/5">
+                      <div className="aspect-video bg-white/5 sexy-shimmer" />
+                      <div className="p-2 space-y-2">
+                        <div className="h-3 bg-white/5 rounded sexy-shimmer w-4/5" />
+                        <div className="h-2.5 bg-white/5 rounded sexy-shimmer w-3/5" />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
               {sortedMedia.slice((currentPage - 1) * effectivePageSize, currentPage * effectivePageSize).map((m, index) => {
               const isPlaying = openIds.includes(m.id)
               const canAddMore = openIds.length < MAX_FLOATING_PLAYERS

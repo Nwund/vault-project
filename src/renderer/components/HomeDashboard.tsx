@@ -188,7 +188,20 @@ const MediaCard = React.memo(function MediaCard({ media, onClick, badge, progres
          prev.rank === next.rank
 })
 
-const HorizontalSection = React.memo(function HorizontalSection({ title, icon, items, loading, onRefresh, onSeeAll, children, gradient }: {
+// Skeleton card for loading state
+const MediaCardSkeleton: React.FC = () => (
+  <div className="flex-shrink-0 w-48">
+    <div className="relative aspect-video bg-zinc-800/80 rounded-xl overflow-hidden mb-2">
+      <div className="absolute inset-0 sexy-shimmer" />
+    </div>
+    <div className="space-y-1.5 px-1">
+      <div className="h-4 bg-zinc-800/80 rounded sexy-shimmer w-4/5" />
+      <div className="h-3 bg-zinc-800/60 rounded sexy-shimmer w-3/5" />
+    </div>
+  </div>
+)
+
+const HorizontalSection = React.memo(function HorizontalSection({ title, icon, items, loading, onRefresh, onSeeAll, children, gradient, showSkeletons = true }: {
   title: string
   icon: React.ReactNode
   items: number
@@ -197,6 +210,7 @@ const HorizontalSection = React.memo(function HorizontalSection({ title, icon, i
   onSeeAll?: () => void
   children: React.ReactNode
   gradient?: string
+  showSkeletons?: boolean
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
@@ -231,7 +245,11 @@ const HorizontalSection = React.memo(function HorizontalSection({ title, icon, i
           </div>
           <div>
             <span className="font-bold text-white text-lg">{title}</span>
-            <span className="ml-2 text-xs text-zinc-500 bg-zinc-800/50 px-2 py-0.5 rounded-full">{items}</span>
+            {loading ? (
+              <span className="ml-2 inline-block w-6 h-4 bg-zinc-800/50 rounded-full sexy-shimmer" />
+            ) : (
+              <span className="ml-2 text-xs text-zinc-500 bg-zinc-800/50 px-2 py-0.5 rounded-full">{items}</span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -292,7 +310,12 @@ const HorizontalSection = React.memo(function HorizontalSection({ title, icon, i
           ref={scrollRef}
           className="flex gap-4 overflow-x-auto pb-3 px-1 scrollbar-hidden scroll-smooth"
         >
-          {children}
+          {loading && showSkeletons && items === 0 ? (
+            // Show skeleton cards while loading
+            Array.from({ length: 6 }).map((_, i) => <MediaCardSkeleton key={i} />)
+          ) : (
+            children
+          )}
         </div>
       </div>
     </div>

@@ -214,7 +214,20 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
 
       {/* Related Media List */}
       <div className="max-h-48 overflow-y-auto">
-        {related.length === 0 ? (
+        {loading ? (
+          /* Loading skeleton */
+          <div className="p-2 space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-2 p-1.5">
+                <div className="w-12 h-8 bg-zinc-700 rounded sexy-shimmer" />
+                <div className="flex-1 space-y-1">
+                  <div className="h-3 bg-zinc-700 rounded sexy-shimmer w-4/5" />
+                  <div className="h-2 bg-zinc-700 rounded sexy-shimmer w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : related.length === 0 ? (
           <div className="p-4 text-center text-zinc-500">
             <Link2 className="w-8 h-8 mx-auto mb-2 opacity-30" />
             <p className="text-xs">No related media</p>

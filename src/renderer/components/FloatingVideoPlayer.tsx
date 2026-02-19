@@ -3,7 +3,7 @@
 
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2, RectangleHorizontal, Crop, Minus, Square } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2, RectangleHorizontal, Crop, Minus, Square, Scissors, Check, Download, Library } from 'lucide-react'
 import { RelatedMediaPanel } from './RelatedMediaPanel'
 import { MediaNotesPanel } from './MediaNotesPanel'
 import { BookmarksPanel } from './BookmarksPanel'
@@ -109,6 +109,12 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [isMiniMode, setIsMiniMode] = useState(false)
   const miniModeSize = { width: 180, height: 100 }
   const normalSizeRef = useRef({ width: 480, height: 270, x: 0, y: 0 })
+  // Video trimming state
+  const [showTrimModal, setShowTrimModal] = useState(false)
+  const [trimStart, setTrimStart] = useState<number>(0)
+  const [trimEnd, setTrimEnd] = useState<number>(0)
+  const [isTrimming, setIsTrimming] = useState(false)
+  const [trimResult, setTrimResult] = useState<{ success: boolean; message: string; outputPath?: string } | null>(null)
   // Progress bar hover tooltip
   const [progressHover, setProgressHover] = useState<{ x: number; time: number } | null>(null)
   const imageContainerRef = useRef<HTMLDivElement>(null)
@@ -1159,6 +1165,78 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     }
   }
 
+  // Open trim modal with current A-B loop points or full video
+  const handleOpenTrimModal = useCallback(() => {
+    if (loopStart !== null && loopEnd !== null) {
+      // Use A-B loop points if set
+      setTrimStart(loopStart)
+      setTrimEnd(loopEnd)
+    } else {
+      // Use current position as start, end of video as end
+      setTrimStart(currentTime)
+      setTrimEnd(duration)
+    }
+    setTrimResult(null)
+    setShowTrimModal(true)
+  }, [loopStart, loopEnd, currentTime, duration])
+
+  // Execute video trim
+  const handleTrimVideo = useCallback(async () => {
+    if (trimEnd <= trimStart) {
+      setTrimResult({ success: false, message: 'End time must be after start time' })
+      return
+    }
+    setIsTrimming(true)
+    setTrimResult(null)
+    try {
+      const result = await window.api.media.trimVideo?.({
+        mediaId: media.id,
+        startTime: trimStart,
+        endTime: trimEnd
+      })
+      if (result?.success && result.outputPath) {
+        setTrimResult({ success: true, message: 'Video trimmed successfully!', outputPath: result.outputPath })
+      } else {
+        setTrimResult({ success: false, message: result?.error || 'Trim failed' })
+      }
+    } catch (err: any) {
+      setTrimResult({ success: false, message: err.message || 'Trim failed' })
+    } finally {
+      setIsTrimming(false)
+    }
+  }, [media.id, trimStart, trimEnd])
+
+  // Save trimmed video to user-selected location
+  const handleSaveTrimmedVideo = useCallback(async () => {
+    if (!trimResult?.outputPath) return
+    try {
+      const result = await window.api.media.saveTrimmedVideo?.(trimResult.outputPath)
+      if (result?.success) {
+        setBookmarkFeedback(`Saved to ${result.savedPath}`)
+        setTimeout(() => setBookmarkFeedback(null), 3000)
+      }
+    } catch (err: any) {
+      setBookmarkFeedback('Failed to save')
+      setTimeout(() => setBookmarkFeedback(null), 2000)
+    }
+  }, [trimResult?.outputPath])
+
+  // Add trimmed video to library
+  const handleAddTrimmedToLibrary = useCallback(async () => {
+    if (!trimResult?.outputPath) return
+    try {
+      const result = await window.api.media.addTrimmedToLibrary?.(trimResult.outputPath)
+      if (result?.success) {
+        setBookmarkFeedback('Added to library!')
+        setTimeout(() => setBookmarkFeedback(null), 2000)
+        setShowTrimModal(false)
+      }
+    } catch (err: any) {
+      setBookmarkFeedback('Failed to add to library')
+      setTimeout(() => setBookmarkFeedback(null), 2000)
+    }
+  }, [trimResult?.outputPath])
+
   const filename = media.filename || media.path.split(/[/\\]/).pop() || 'Unknown'
 
   // Container styles
@@ -1978,6 +2056,17 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               </div>
             )}
 
+            {/* Trim button */}
+            {media.type === 'video' && (
+              <button
+                onClick={handleOpenTrimModal}
+                className={`p-2 rounded-lg transition ${(loopStart !== null && loopEnd !== null) ? 'bg-green-500/80 text-white' : 'bg-white/10 hover:bg-green-500/60'}`}
+                title={loopStart !== null && loopEnd !== null ? `Trim ${formatDuration(loopStart)} - ${formatDuration(loopEnd)}` : 'Trim Video'}
+              >
+                <Scissors size={16} />
+              </button>
+            )}
+
             <button
               onClick={handleToggleLike}
               disabled={isLikeLoading}
@@ -2344,6 +2433,173 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
             <div className="px-4 py-3 border-t border-white/10 bg-white/5">
               <div className="text-[10px] text-white/40 text-center">
                 Supports DLNA/UPnP compatible TVs and devices
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Video Trim Modal */}
+      {showTrimModal && media.type === 'video' && (
+        <div
+          className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center"
+          onClick={() => !isTrimming && setShowTrimModal(false)}
+        >
+          <div
+            className="bg-zinc-900 rounded-2xl border border-white/20 shadow-2xl w-[90%] max-w-[400px] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Scissors size={18} className="text-green-400" />
+                <span className="font-medium">Trim Video</span>
+              </div>
+              <button
+                onClick={() => !isTrimming && setShowTrimModal(false)}
+                className="p-1 hover:bg-white/10 rounded-lg transition"
+                disabled={isTrimming}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-4 space-y-4">
+              {/* Trim preview info */}
+              <div className="bg-white/5 rounded-xl p-3">
+                <div className="text-xs text-white/50 mb-2">Clip Duration</div>
+                <div className="text-lg font-medium text-green-400">
+                  {formatDuration(trimEnd - trimStart)}
+                </div>
+                <div className="text-xs text-white/40 mt-1">
+                  {formatDuration(trimStart)} → {formatDuration(trimEnd)}
+                </div>
+              </div>
+
+              {/* Time inputs */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-white/50 block mb-1">Start Time</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={duration}
+                      step={0.1}
+                      value={trimStart.toFixed(1)}
+                      onChange={(e) => setTrimStart(Math.max(0, Math.min(trimEnd - 0.1, parseFloat(e.target.value) || 0)))}
+                      className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-sm outline-none focus:border-green-500/50"
+                      disabled={isTrimming}
+                    />
+                    <button
+                      onClick={() => setTrimStart(currentTime)}
+                      className="px-2 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition text-xs"
+                      title="Use current time"
+                      disabled={isTrimming}
+                    >
+                      Now
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-white/50 block mb-1">End Time</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={duration}
+                      step={0.1}
+                      value={trimEnd.toFixed(1)}
+                      onChange={(e) => setTrimEnd(Math.max(trimStart + 0.1, Math.min(duration, parseFloat(e.target.value) || duration)))}
+                      className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-sm outline-none focus:border-green-500/50"
+                      disabled={isTrimming}
+                    />
+                    <button
+                      onClick={() => setTrimEnd(currentTime)}
+                      className="px-2 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition text-xs"
+                      title="Use current time"
+                      disabled={isTrimming}
+                    >
+                      Now
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick actions */}
+              <div className="flex gap-2">
+                {loopStart !== null && loopEnd !== null && (
+                  <button
+                    onClick={() => { setTrimStart(loopStart); setTrimEnd(loopEnd) }}
+                    className="flex-1 px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-xs transition"
+                    disabled={isTrimming}
+                  >
+                    Use A-B Loop
+                  </button>
+                )}
+                <button
+                  onClick={() => { setTrimStart(0); setTrimEnd(duration) }}
+                  className="flex-1 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition"
+                  disabled={isTrimming}
+                >
+                  Full Video
+                </button>
+              </div>
+
+              {/* Result message */}
+              {trimResult && (
+                <div className={`p-3 rounded-xl text-sm ${trimResult.success ? 'bg-green-500/20 border border-green-500/30 text-green-300' : 'bg-red-500/20 border border-red-500/30 text-red-300'}`}>
+                  <div className="flex items-center gap-2">
+                    {trimResult.success ? <Check size={16} /> : <X size={16} />}
+                    {trimResult.message}
+                  </div>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              {!trimResult?.success ? (
+                <button
+                  onClick={handleTrimVideo}
+                  disabled={isTrimming || trimEnd <= trimStart}
+                  className="w-full py-3 bg-green-500/80 hover:bg-green-500 disabled:bg-white/10 disabled:cursor-not-allowed rounded-xl font-medium transition flex items-center justify-center gap-2"
+                >
+                  {isTrimming ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      Trimming...
+                    </>
+                  ) : (
+                    <>
+                      <Scissors size={18} />
+                      Trim Video
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveTrimmedVideo}
+                    className="flex-1 py-3 bg-blue-500/80 hover:bg-blue-500 rounded-xl font-medium transition flex items-center justify-center gap-2"
+                  >
+                    <Download size={18} />
+                    Save As...
+                  </button>
+                  <button
+                    onClick={handleAddTrimmedToLibrary}
+                    className="flex-1 py-3 bg-purple-500/80 hover:bg-purple-500 rounded-xl font-medium transition flex items-center justify-center gap-2"
+                  >
+                    <Library size={18} />
+                    Add to Library
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-4 py-3 border-t border-white/10 bg-white/5">
+              <div className="text-[10px] text-white/40 text-center">
+                Tip: Set A-B loop points (press A twice) for quick trim selection
               </div>
             </div>
           </div>

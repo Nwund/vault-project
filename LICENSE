@@ -1,0 +1,43 @@
+MIT License
+
+Copyright (c) 2024-2025 Vault Project Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+ADDITIONAL TERMS FOR VAULT
+
+This software is intended for use by adults (18+ or the legal age of majority
+in your jurisdiction) for managing personal, legally-obtained media files.
+
+The developers and contributors of this software:
+- Do not host, distribute, or provide any media content
+- Are not responsible for how users utilize this software
+- Are not responsible for the content managed using this software
+- Make no warranties about fitness for any particular purpose
+
+Users are solely responsible for:
+- Ensuring they have legal rights to all media they manage
+- Complying with all applicable laws in their jurisdiction
+- Verifying they meet age requirements for adult content
+- The security and privacy of their own data
+
+This software processes all data locally on the user's device.
+No data is transmitted to external servers without explicit user action.
