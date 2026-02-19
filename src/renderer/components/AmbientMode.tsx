@@ -376,9 +376,14 @@ export function AmbientMode({
                 type="range"
                 min={10}
                 max={100}
+                step={1}
                 value={settings.intensity}
                 onChange={(e) => updateSetting('intensity', parseInt(e.target.value))}
                 className="w-full accent-[var(--primary)]"
+                aria-label="Ambient Intensity"
+                aria-valuemin={10}
+                aria-valuemax={100}
+                aria-valuenow={settings.intensity}
               />
             </div>
 
@@ -392,9 +397,14 @@ export function AmbientMode({
                 type="range"
                 min={20}
                 max={100}
+                step={1}
                 value={settings.blur}
                 onChange={(e) => updateSetting('blur', parseInt(e.target.value))}
                 className="w-full accent-[var(--primary)]"
+                aria-label="Ambient Blur"
+                aria-valuemin={20}
+                aria-valuemax={100}
+                aria-valuenow={settings.blur}
               />
             </div>
 
@@ -408,9 +418,14 @@ export function AmbientMode({
                 type="range"
                 min={20}
                 max={100}
+                step={1}
                 value={settings.spread}
                 onChange={(e) => updateSetting('spread', parseInt(e.target.value))}
                 className="w-full accent-[var(--primary)]"
+                aria-label="Ambient Spread"
+                aria-valuemin={20}
+                aria-valuemax={100}
+                aria-valuenow={settings.spread}
               />
             </div>
 
@@ -424,9 +439,14 @@ export function AmbientMode({
                 type="range"
                 min={50}
                 max={200}
+                step={1}
                 value={settings.saturation}
                 onChange={(e) => updateSetting('saturation', parseInt(e.target.value))}
                 className="w-full accent-[var(--primary)]"
+                aria-label="Ambient Saturation"
+                aria-valuemin={50}
+                aria-valuemax={200}
+                aria-valuenow={settings.saturation}
               />
             </div>
 

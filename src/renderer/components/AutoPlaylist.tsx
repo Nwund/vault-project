@@ -273,8 +273,12 @@ export function AutoPlaylist({ onPlay, onSave, className = '' }: AutoPlaylistPro
           })
           const allMedia = extractItems(result)
 
-          // Shuffle and take random selection
-          const shuffled = [...allMedia].sort(() => Math.random() - 0.5)
+          // Fisher-Yates shuffle for unbiased random selection
+          const shuffled = [...allMedia]
+          for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1))
+            ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+          }
           items = shuffled.slice(0, limit).map((m: any) => ({
             id: m.id,
             title: m.filename || 'Unknown',

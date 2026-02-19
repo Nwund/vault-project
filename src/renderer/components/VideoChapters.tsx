@@ -42,7 +42,7 @@ export function VideoChapters({
   const [editTitle, setEditTitle] = useState('')
   const [generating, setGenerating] = useState(false)
 
-  // Fetch chapters from backend
+  // Fetch chapters from backend (using markers API)
   useEffect(() => {
     if (propChapters) {
       setChapters(propChapters)
@@ -52,25 +52,15 @@ export function VideoChapters({
     const fetchChapters = async () => {
       setLoading(true)
       try {
-        // Try dedicated chapters API
-        let result = await window.api.invoke('chapters:getForMedia', mediaId)
+        // Use markers API which stores chapters/markers
+        const markers = await window.api.invoke('markers:listForMedia', mediaId)
 
-        if (!result || !Array.isArray(result) || result.length === 0) {
-          // Fallback: try to get from media metadata
-          const media = await window.api.invoke('media:getById', mediaId)
-          if (media?.chapters) {
-            result = typeof media.chapters === 'string'
-              ? JSON.parse(media.chapters)
-              : media.chapters
-          }
-        }
-
-        if (result && Array.isArray(result)) {
-          setChapters(result.map((c: any, i: number) => ({
-            id: c.id || `ch-${i}-${Date.now()}`,
-            time: c.time || c.startTime || 0,
-            title: c.title || c.name || `Chapter ${i + 1}`,
-            color: c.color || CHAPTER_COLORS[i % CHAPTER_COLORS.length]
+        if (markers && Array.isArray(markers) && markers.length > 0) {
+          setChapters(markers.map((m: any, i: number) => ({
+            id: m.id,
+            time: m.timeSec || 0,
+            title: m.title || `Chapter ${i + 1}`,
+            color: CHAPTER_COLORS[i % CHAPTER_COLORS.length]
           })))
         }
       } catch (e) {
@@ -82,24 +72,27 @@ export function VideoChapters({
     fetchChapters()
   }, [mediaId, propChapters])
 
-  // Save chapters to backend
+  // Save chapters to backend (using markers API)
   const saveChapters = useCallback(async (updatedChapters: Chapter[]) => {
     setChapters(updatedChapters)
     onChaptersChange?.(updatedChapters)
 
     setSaving(true)
     try {
-      // Try dedicated chapters API
-      await window.api.invoke('chapters:saveForMedia', mediaId, updatedChapters)
-    } catch {
-      // Fallback: save to media metadata
-      try {
-        await window.api.invoke('media:updateMetadata', mediaId, {
-          chapters: JSON.stringify(updatedChapters)
+      // Clear existing markers for this media then add new ones
+      await window.api.invoke('markers:clearForMedia', mediaId)
+
+      // Add each chapter as a marker
+      for (const ch of updatedChapters) {
+        await window.api.invoke('markers:upsert', {
+          id: ch.id,
+          mediaId,
+          timeSec: ch.time,
+          title: ch.title
         })
-      } catch (e) {
-        console.error('Failed to save chapters:', e)
       }
+    } catch (e) {
+      console.error('Failed to save chapters:', e)
     }
     setSaving(false)
   }, [mediaId, onChaptersChange])
@@ -130,8 +123,15 @@ export function VideoChapters({
 
   const deleteChapter = useCallback(async (id: string) => {
     const updatedChapters = chapters.filter(c => c.id !== id)
-    await saveChapters(updatedChapters)
-  }, [chapters, saveChapters])
+    setChapters(updatedChapters)
+    onChaptersChange?.(updatedChapters)
+
+    try {
+      await window.api.invoke('markers:delete', id)
+    } catch (e) {
+      console.error('Failed to delete chapter:', e)
+    }
+  }, [chapters, onChaptersChange])
 
   // Auto-generate chapters based on scene detection
   const generateChapters = useCallback(async () => {

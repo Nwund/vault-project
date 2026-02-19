@@ -325,9 +325,14 @@ export function VolumeNormalizer({
                 type="range"
                 min={-24}
                 max={-14}
+                step={1}
                 value={settings.targetLoudness}
                 onChange={(e) => updateSettings({ targetLoudness: parseInt(e.target.value) })}
                 className="w-full accent-[var(--primary)]"
+                aria-label="Target Loudness"
+                aria-valuemin={-24}
+                aria-valuemax={-14}
+                aria-valuenow={settings.targetLoudness}
               />
             </div>
 
@@ -345,6 +350,10 @@ export function VolumeNormalizer({
                 value={settings.maxPeak}
                 onChange={(e) => updateSettings({ maxPeak: parseFloat(e.target.value) })}
                 className="w-full accent-[var(--primary)]"
+                aria-label="Peak Limit"
+                aria-valuemin={-6}
+                aria-valuemax={0}
+                aria-valuenow={settings.maxPeak}
               />
             </div>
 
@@ -375,9 +384,14 @@ export function VolumeNormalizer({
                       type="range"
                       min={-40}
                       max={0}
+                      step={1}
                       value={settings.compressorThreshold}
                       onChange={(e) => updateSettings({ compressorThreshold: parseInt(e.target.value) })}
                       className="w-full accent-[var(--primary)] h-1"
+                      aria-label="Compressor Threshold"
+                      aria-valuemin={-40}
+                      aria-valuemax={0}
+                      aria-valuenow={settings.compressorThreshold}
                     />
                   </div>
                   <div>
@@ -389,9 +403,14 @@ export function VolumeNormalizer({
                       type="range"
                       min={1}
                       max={20}
+                      step={1}
                       value={settings.compressorRatio}
                       onChange={(e) => updateSettings({ compressorRatio: parseInt(e.target.value) })}
                       className="w-full accent-[var(--primary)] h-1"
+                      aria-label="Compressor Ratio"
+                      aria-valuemin={1}
+                      aria-valuemax={20}
+                      aria-valuenow={settings.compressorRatio}
                     />
                   </div>
                 </div>
@@ -426,9 +445,14 @@ export function VolumeNormalizer({
                     type="range"
                     min={-20}
                     max={0}
+                    step={1}
                     value={settings.nightModeReduction}
                     onChange={(e) => updateSettings({ nightModeReduction: parseInt(e.target.value) })}
                     className="w-full accent-[var(--primary)]"
+                    aria-label="Night Mode Volume Reduction"
+                    aria-valuemin={-20}
+                    aria-valuemax={0}
+                    aria-valuenow={settings.nightModeReduction}
                   />
                 </div>
               )}
@@ -484,6 +508,10 @@ export function VolumeControl({
           value={muted ? 0 : volume}
           onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
           className="w-full accent-[var(--primary)]"
+          aria-label="Volume"
+          aria-valuemin={0}
+          aria-valuemax={1}
+          aria-valuenow={muted ? 0 : volume}
         />
       </div>
 

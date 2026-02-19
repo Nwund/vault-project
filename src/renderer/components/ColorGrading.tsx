@@ -24,7 +24,7 @@ export function ColorGrading({ settings, onChange, onSavePreset, className = '' 
 
   const Slider = ({ label, icon: Icon, value, min, max, onChange: oc }: { label: string; icon: React.ElementType; value: number; min: number; max: number; onChange: (v: number) => void }) => (
     <div className="space-y-1"><div className="flex items-center justify-between text-xs"><span className="flex items-center gap-1 text-zinc-400"><Icon size={10} />{label}</span><span className="text-zinc-500">{value}{label === 'Hue' ? '°' : '%'}</span></div>
-    <input type="range" min={min} max={max} value={value} onChange={e => oc(parseInt(e.target.value))} className="w-full h-1 accent-[var(--primary)]" /></div>
+    <input type="range" min={min} max={max} step={1} value={value} onChange={e => oc(parseInt(e.target.value))} className="w-full h-1 accent-[var(--primary)]" aria-label={label} aria-valuemin={min} aria-valuemax={max} aria-valuenow={value} /></div>
   )
 
   return (

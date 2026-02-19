@@ -130,11 +130,11 @@ export function RelatedMedia({
         } catch {}
       }
 
-      // 3. Try to get AI recommendations if available
+      // 3. Try to get recommendations from watch history
       try {
-        const aiRecommendations = await window.api.invoke('ai:getRecommendations', currentMediaId)
-        if (aiRecommendations && Array.isArray(aiRecommendations)) {
-          for (const rec of aiRecommendations.slice(0, 10)) {
+        const recommendations = await window.api.invoke('watch:get-recommendations', 20)
+        if (recommendations && Array.isArray(recommendations)) {
+          for (const rec of recommendations.slice(0, 10)) {
             const id = rec.id || rec.mediaId
             if (!seenIds.has(id)) {
               seenIds.add(id)
@@ -148,7 +148,7 @@ export function RelatedMedia({
                   duration: media.durationSec,
                   rating: media.rating,
                   relationTypes: ['ai_recommended'],
-                  score: rec.score || 0.8
+                  score: rec.score ? rec.score / 100 : 0.8
                 })
               }
             }

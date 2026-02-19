@@ -35,7 +35,12 @@ import {
   X,
   ArrowUp,
   ArrowDown,
-  CornerDownLeft
+  CornerDownLeft,
+  BookOpen,
+  StickyNote,
+  Link2,
+  ListOrdered,
+  Layers
 } from 'lucide-react'
 
 interface CommandAction {
@@ -106,6 +111,14 @@ export function CommandPalette({
     { id: 'restore-backup', title: 'Restore Backup', subtitle: 'Restore from backup file', icon: Download, category: 'tools', keywords: ['restore', 'recover', 'import', 'backup'], action: () => { onAction?.('restore') } },
     { id: 'open-folder', title: 'Open Library Folder', subtitle: 'Open in file explorer', icon: FolderOpen, category: 'tools', keywords: ['folder', 'explorer', 'files', 'open'], action: () => { onAction?.('open-folder') } },
     { id: 'pmv-editor', title: 'PMV Editor', subtitle: 'Create music video compilations', icon: Music, category: 'tools', keywords: ['pmv', 'editor', 'music', 'video', 'compilation'], action: () => onNavigate('/pmv') },
+    { id: 'video-chapters', title: 'Video Chapters', subtitle: 'Manage chapters for current video', icon: BookOpen, category: 'tools', keywords: ['chapters', 'markers', 'navigation', 'scenes', 'timeline'], action: () => { onAction?.('video-chapters') } },
+    { id: 'quick-note', title: 'Quick Note', subtitle: 'Add notes to current media', icon: StickyNote, category: 'tools', keywords: ['notes', 'note', 'annotate', 'comment', 'memo'], action: () => { onAction?.('quick-note') } },
+    { id: 'related-media', title: 'Related Media', subtitle: 'Find similar content', icon: Link2, category: 'tools', keywords: ['related', 'similar', 'suggestions', 'recommendations'], action: () => { onAction?.('related-media') } },
+
+    // Media Queue & Playlists
+    { id: 'media-queue', title: 'Media Queue', subtitle: 'View and manage playback queue', icon: ListOrdered, category: 'media', keywords: ['queue', 'playlist', 'up next', 'order', 'list'], action: () => { onAction?.('media-queue') } },
+    { id: 'auto-playlists', title: 'Auto Playlists', subtitle: 'AI-generated playlist suggestions', icon: Sparkles, category: 'media', keywords: ['auto', 'playlists', 'generated', 'smart', 'curated'], action: () => { onAction?.('auto-playlists') } },
+    { id: 'media-timeline', title: 'Media Timeline', subtitle: 'Browse by date added', icon: Calendar, category: 'navigation', keywords: ['timeline', 'calendar', 'date', 'chronological', 'history'], action: () => { onAction?.('media-timeline') } },
 
     // Settings shortcuts
     { id: 'toggle-dark-mode', title: 'Toggle Dark Mode', icon: EyeOff, category: 'settings', keywords: ['dark', 'light', 'theme', 'mode'], action: () => { onAction?.('toggle-theme') } },

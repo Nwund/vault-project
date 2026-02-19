@@ -375,7 +375,7 @@ export function MediaQueue({
 
             return (
               <div
-                key={`${item.id}-${index}`}
+                key={item.id}
                 draggable
                 onDragStart={() => handleDragStart(index)}
                 onDragOver={(e) => { e.preventDefault(); handleDragOver(index) }}

@@ -62,7 +62,7 @@ export function QuickNote({ mediaId, notes: propNotes, onChange, className = '' 
             id: n.id || `note-${Date.now()}-${Math.random()}`,
             content: n.content || n.text || '',
             color: n.color || COLORS[0],
-            pinned: n.pinned || false,
+            pinned: n.isPinned || n.pinned || false,
             createdAt: n.createdAt || n.created_at || Date.now(),
             updatedAt: n.updatedAt || n.updated_at || Date.now()
           })))
@@ -76,27 +76,11 @@ export function QuickNote({ mediaId, notes: propNotes, onChange, className = '' 
     fetchNotes()
   }, [mediaId, propNotes])
 
-  // Save notes to backend
-  const saveNotes = useCallback(async (updatedNotes: Note[]) => {
+  // Update local state only - individual operations handle backend
+  const updateLocalNotes = useCallback((updatedNotes: Note[]) => {
     setNotes(updatedNotes)
     onChange?.(updatedNotes)
-
-    setSaving(true)
-    try {
-      // Try dedicated notes API
-      await window.api.invoke('notes:saveForMedia', mediaId, updatedNotes)
-    } catch {
-      // Fallback: save to media metadata
-      try {
-        await window.api.invoke('media:updateMetadata', mediaId, {
-          notes: JSON.stringify(updatedNotes)
-        })
-      } catch (e) {
-        console.error('Failed to save notes:', e)
-      }
-    }
-    setSaving(false)
-  }, [mediaId, onChange])
+  }, [onChange])
 
   const sorted = [...notes].sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
@@ -105,53 +89,66 @@ export function QuickNote({ mediaId, notes: propNotes, onChange, className = '' 
 
   const addNote = useCallback(async () => {
     if (!newContent.trim()) return
-    const note: Note = {
-      id: `note-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      content: newContent.trim(),
-      color: newColor,
-      pinned: false,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    }
-
-    const updatedNotes = [...notes, note]
-    await saveNotes(updatedNotes)
-
-    // Also try individual note creation API
+    setSaving(true)
     try {
-      await window.api.invoke('notes:create', {
-        mediaId,
-        ...note
+      // Use notes:add API - returns the created note
+      const created = await window.api.invoke('notes:add', mediaId, newContent.trim(), {
+        isPinned: false,
+        color: newColor
       })
-    } catch {}
 
+      if (created) {
+        const note: Note = {
+          id: created.id,
+          content: created.content,
+          color: created.color || newColor,
+          pinned: created.isPinned || false,
+          createdAt: created.createdAt || Date.now(),
+          updatedAt: created.updatedAt || Date.now()
+        }
+        updateLocalNotes([...notes, note])
+      }
+    } catch (e) {
+      console.error('Failed to add note:', e)
+    }
+    setSaving(false)
     setNewContent('')
     setShowAdd(false)
-  }, [newContent, newColor, notes, saveNotes, mediaId])
+  }, [newContent, newColor, notes, updateLocalNotes, mediaId])
 
   const updateNote = useCallback(async (id: string, updates: Partial<Note>) => {
-    const updatedNotes = notes.map(n =>
-      n.id === id ? { ...n, ...updates, updatedAt: Date.now() } : n
-    )
-    await saveNotes(updatedNotes)
-
-    // Also try individual note update API
+    setSaving(true)
     try {
-      await window.api.invoke('notes:update', id, updates)
-    } catch {}
+      // Map local Note fields to backend MediaNote fields
+      const backendUpdates: any = {}
+      if (updates.content !== undefined) backendUpdates.content = updates.content
+      if (updates.pinned !== undefined) backendUpdates.isPinned = updates.pinned
+      if (updates.color !== undefined) backendUpdates.color = updates.color
 
+      await window.api.invoke('notes:update', id, backendUpdates)
+
+      const updatedNotes = notes.map(n =>
+        n.id === id ? { ...n, ...updates, updatedAt: Date.now() } : n
+      )
+      updateLocalNotes(updatedNotes)
+    } catch (e) {
+      console.error('Failed to update note:', e)
+    }
+    setSaving(false)
     setEditing(null)
-  }, [notes, saveNotes])
+  }, [notes, updateLocalNotes])
 
   const deleteNote = useCallback(async (id: string) => {
-    const updatedNotes = notes.filter(n => n.id !== id)
-    await saveNotes(updatedNotes)
-
-    // Also try individual note delete API
+    setSaving(true)
     try {
       await window.api.invoke('notes:delete', id)
-    } catch {}
-  }, [notes, saveNotes])
+      const updatedNotes = notes.filter(n => n.id !== id)
+      updateLocalNotes(updatedNotes)
+    } catch (e) {
+      console.error('Failed to delete note:', e)
+    }
+    setSaving(false)
+  }, [notes, updateLocalNotes])
 
   const togglePin = useCallback(async (id: string) => {
     const note = notes.find(n => n.id === id)
@@ -175,7 +172,7 @@ export function QuickNote({ mediaId, notes: propNotes, onChange, className = '' 
           id: n.id || `note-${Date.now()}-${Math.random()}`,
           content: n.content || n.text || '',
           color: n.color || COLORS[0],
-          pinned: n.pinned || false,
+          pinned: n.isPinned || n.pinned || false,
           createdAt: n.createdAt || n.created_at || Date.now(),
           updatedAt: n.updatedAt || n.updated_at || Date.now()
         })))

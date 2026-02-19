@@ -4637,8 +4637,8 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       const type = options?.type || 'video'
       // Get all media IDs that have watch history
       const watchedIds = db.raw.prepare(`
-        SELECT DISTINCT media_id FROM watch_history
-      `).all().map((r: any) => r.media_id)
+        SELECT DISTINCT mediaId FROM watch_sessions
+      `).all().map((r: any) => r.mediaId)
 
       // Get media that hasn't been watched
       const query = type
@@ -4691,10 +4691,10 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000)
 
       const rows = db.raw.prepare(`
-        SELECT media_id as id, COUNT(*) as recentViews
-        FROM watch_history
-        WHERE last_watched > ?
-        GROUP BY media_id
+        SELECT mediaId as id, COUNT(*) as recentViews
+        FROM watch_sessions
+        WHERE startedAt > ?
+        GROUP BY mediaId
         ORDER BY recentViews DESC
         LIMIT ?
       `).all(cutoff, limit)

@@ -40,7 +40,7 @@ export function VideoFilters({ onFilterChange, currentFilter = 'none', customPre
   }, [customFilter, onSavePreset])
 
   const Slider = ({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (v: number) => void }) => (
-    <div className="flex items-center gap-2"><span className="w-20 text-xs text-zinc-500">{label}</span><input type="range" min={min} max={max} value={value} onChange={e => { onChange(parseInt(e.target.value)); applyCustom() }} className="flex-1 h-1 accent-[var(--primary)]" /><span className="w-10 text-xs text-zinc-500 text-right">{value}{label === 'Hue' ? '°' : '%'}</span></div>
+    <div className="flex items-center gap-2"><span className="w-20 text-xs text-zinc-500">{label}</span><input type="range" min={min} max={max} step={1} value={value} onChange={e => { onChange(parseInt(e.target.value)); applyCustom() }} className="flex-1 h-1 accent-[var(--primary)]" aria-label={label} aria-valuemin={min} aria-valuemax={max} aria-valuenow={value} /><span className="w-10 text-xs text-zinc-500 text-right">{value}{label === 'Hue' ? '°' : '%'}</span></div>
   )
 
   return (
