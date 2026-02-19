@@ -2113,7 +2113,7 @@ export default function App() {
 
                 {/* URL Downloader */}
                 <button
-                  onClick={() => setShowUrlDownloaderPanel(true)}
+                  onClick={() => window.dispatchEvent(new CustomEvent('vault-open-url-downloader'))}
                   className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
                 >
                   <Download size={14} />
