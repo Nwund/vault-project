@@ -43,7 +43,9 @@ import {
   ListPlus,
   FileVideo,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  // Audio Burner
+  Flame
 } from 'lucide-react'
 import { useWaveform } from '../hooks/useWaveform'
 import { formatDuration } from '../utils/formatters'
@@ -690,6 +692,7 @@ export function PmvEditorPage() {
   const [isLoadingMusic, setIsLoadingMusic] = useState(false)
   const [isDetectingBpm, setIsDetectingBpm] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isExtractingAudio, setIsExtractingAudio] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [showTemplateMenu, setShowTemplateMenu] = useState(false)
@@ -960,6 +963,48 @@ export function PmvEditorPage() {
 
     setIsDetectingBpm(false)
   }, [])
+
+  // Audio Burner - extract audio from video and import
+  const handleAudioBurner = useCallback(async () => {
+    // Select video file
+    const videoPath = await window.api.pmv.selectVideoForAudio()
+    if (!videoPath) return
+
+    setIsExtractingAudio(true)
+
+    try {
+      // Extract audio from video
+      const result = await window.api.pmv.extractAudio(videoPath)
+
+      if (!result.success || !result.path) {
+        console.error('[PmvEditor] Audio extraction failed:', result.error)
+        alert(`Audio extraction failed: ${result.error || 'Unknown error'}`)
+        setIsExtractingAudio(false)
+        return
+      }
+
+      const filename = result.path.split(/[/\\]/).pop() || 'extracted_audio.mp3'
+
+      // Set the extracted audio as music
+      setProject(prev => ({
+        ...prev,
+        music: {
+          path: result.path!,
+          filename,
+          duration: result.duration || 0
+        },
+        bpmManualOverride: false
+      }))
+
+      // Auto-detect BPM
+      detectBpm(result.path)
+    } catch (err) {
+      console.error('[PmvEditor] Audio burner failed:', err)
+      alert('Failed to extract audio from video')
+    }
+
+    setIsExtractingAudio(false)
+  }, [detectBpm])
 
   const handleBpmChange = useCallback((value: number) => {
     setProject(prev => ({
@@ -1738,19 +1783,41 @@ export function PmvEditorPage() {
                   </div>
                 </>
               ) : (
-                <div
-                  onClick={handleSelectMusic}
-                  className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-zinc-700 rounded-lg cursor-pointer hover:border-purple-500/50 hover:bg-zinc-800/30 transition"
-                >
-                  {isLoadingMusic ? (
-                    <Loader2 size={24} className="animate-spin text-purple-500" />
-                  ) : (
-                    <>
-                      <Music size={24} className="text-zinc-500 mb-2" />
-                      <div className="text-sm font-medium text-zinc-300">Add Music Track</div>
-                      <div className="text-xs text-zinc-500">MP3, WAV, FLAC, M4A, OGG, AAC</div>
-                    </>
-                  )}
+                <div className="flex-1 flex gap-3 p-2">
+                  {/* Add Music Track */}
+                  <div
+                    onClick={handleSelectMusic}
+                    className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-zinc-700 rounded-lg cursor-pointer hover:border-purple-500/50 hover:bg-zinc-800/30 transition"
+                  >
+                    {isLoadingMusic ? (
+                      <Loader2 size={24} className="animate-spin text-purple-500" />
+                    ) : (
+                      <>
+                        <Music size={24} className="text-zinc-500 mb-2" />
+                        <div className="text-sm font-medium text-zinc-300">Add Music Track</div>
+                        <div className="text-xs text-zinc-500">MP3, WAV, FLAC, etc.</div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Audio Burner - extract from video */}
+                  <div
+                    onClick={handleAudioBurner}
+                    className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-orange-700/50 rounded-lg cursor-pointer hover:border-orange-500/70 hover:bg-orange-900/20 transition"
+                  >
+                    {isExtractingAudio ? (
+                      <>
+                        <Loader2 size={24} className="animate-spin text-orange-500 mb-2" />
+                        <div className="text-sm font-medium text-orange-300">Extracting...</div>
+                      </>
+                    ) : (
+                      <>
+                        <Flame size={24} className="text-orange-500 mb-2" />
+                        <div className="text-sm font-medium text-orange-300">Audio Burner</div>
+                        <div className="text-xs text-zinc-500">Extract from video</div>
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

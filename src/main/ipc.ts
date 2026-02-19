@@ -1897,6 +1897,73 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // Extract audio from video file (Audio Burner)
+  ipcMain.handle('pmv:extractAudio', async (_ev, videoPath: string) => {
+    try {
+      const fs = await import('fs')
+      const path = await import('path')
+      const os = await import('os')
+
+      // Create output path in temp directory
+      const tempDir = path.join(os.tmpdir(), 'vault-pmv-audio')
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true })
+      }
+
+      const basename = path.basename(videoPath, path.extname(videoPath))
+      const outputPath = path.join(tempDir, `${basename}_${Date.now()}.mp3`)
+
+      if (!ffmpegBin || !ffprobeBin) {
+        return { success: false, error: 'FFmpeg not found' }
+      }
+
+      // Capture after null check for TypeScript
+      const ffmpegPath = ffmpegBin
+      const ffprobePath = ffprobeBin
+
+      return new Promise<{ success: boolean; path?: string; duration?: number; error?: string }>((resolve, reject) => {
+        ffmpeg(videoPath)
+          .setFfmpegPath(ffmpegPath)
+          .setFfprobePath(ffprobePath)
+          .noVideo()
+          .audioCodec('libmp3lame')
+          .audioBitrate('192k')
+          .output(outputPath)
+          .on('end', () => {
+            // Get audio duration
+            ffmpeg.ffprobe(outputPath, (err, metadata) => {
+              if (err) {
+                resolve({ success: true, path: outputPath, duration: 0 })
+                return
+              }
+              const duration = metadata.format?.duration || 0
+              resolve({ success: true, path: outputPath, duration })
+            })
+          })
+          .on('error', (err) => {
+            console.error('[PMV] Audio extraction failed:', err.message)
+            resolve({ success: false, error: err.message })
+          })
+          .run()
+      })
+    } catch (err: any) {
+      console.error('[PMV] extractAudio failed:', err?.message)
+      return { success: false, error: err?.message || 'Unknown error' }
+    }
+  })
+
+  // Select video file for audio extraction (single file)
+  ipcMain.handle('pmv:selectVideoForAudio', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Select Video to Extract Audio From',
+      filters: [
+        { name: 'Video Files', extensions: ['mp4', 'webm', 'mkv', 'avi', 'mov', 'wmv', 'flv'] }
+      ],
+      properties: ['openFile']
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
   // PMV export progress event
   let pmvExportAbortController: AbortController | null = null
 

@@ -934,6 +934,9 @@ const api = {
     getVideoInfo: (path: string) => invoke<{ duration: number; width: number; height: number }>('pmv:getVideoInfo', path),
     getVideoThumb: (path: string) => invoke<string | null>('pmv:getVideoThumb', path),
     getAudioInfo: (path: string) => invoke<{ duration: number }>('pmv:getAudioInfo', path),
+    // Audio Burner - extract audio from video
+    selectVideoForAudio: () => invoke<string | null>('pmv:selectVideoForAudio'),
+    extractAudio: (videoPath: string) => invoke<{ success: boolean; path?: string; duration?: number; error?: string }>('pmv:extractAudio', videoPath),
     export: (projectData: {
       videos: Array<{ id: string; path: string; filename: string; duration: number; width: number; height: number }>
       music: { path: string; filename: string; duration: number }
