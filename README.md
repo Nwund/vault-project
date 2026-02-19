@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.1.5-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.1.6-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/electron-32.0.0-47848F.svg" alt="Electron">
   <img src="https://img.shields.io/badge/react-18.3.1-61DAFB.svg" alt="React">
@@ -380,6 +380,24 @@ vault/
 
 ---
 
+## Recent Updates (v2.1.6)
+
+### New Features
+- **Audio Burner** - Extract audio from any video file in PMV Editor with auto BPM detection
+- **GoonWall Auto-Shuffle Control** - Option to disable auto-shuffle (set interval to 0)
+- **Climax Point Toggle** - Choose whether videos start at 70-80% or from beginning
+
+### Improvements
+- **GoonWall Audio Cleanup** - Audio stops immediately when navigating away
+- **Favorites Filter** - Fixed `media:list` to properly filter by `liked: true` parameter
+
+### Bug Fixes
+- Fixed favorites count showing incorrect values on Home dashboard
+- Fixed GoonWall audio continuing after leaving the page
+- Fixed video slot counter not resetting on navigation
+
+---
+
 ## Recent Updates (v2.1.5)
 
 ### New Features
@@ -416,7 +434,8 @@ vault/
 
 ### v2.2.0 (Next)
 - [ ] GIF Creation from video clips
-- [ ] PMV/HMV Editor with BPM sync
+- [x] PMV/HMV Editor - Audio Burner with BPM detection *(partial - v2.1.6)*
+- [ ] PMV/HMV Editor - Full video export with beat sync
 - [ ] Video cropping feature
 - [ ] AI scene detection
 - [ ] Enhanced mobile companion
@@ -443,7 +462,7 @@ vault/
 ## Stats
 
 ```
-Version:     2.1.5
+Version:     2.1.6
 Modules:     71
 Bundle:      952 KB
 Services:    40+
@@ -474,5 +493,5 @@ Private and proprietary. All rights reserved.
 </p>
 
 <p align="center">
-  <sub>Vault v2.1.5 | 71 modules | 952 KB bundle | 40+ services</sub>
+  <sub>Vault v2.1.6 | 71 modules | 952 KB bundle | 40+ services</sub>
 </p>
