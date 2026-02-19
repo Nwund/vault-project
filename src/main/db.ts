@@ -332,6 +332,7 @@ export function createDb() {
     limit?: number
     offset?: number
     sortBy?: 'newest' | 'oldest' | 'name' | 'name_desc' | 'views' | 'views_asc' | 'rating' | 'random' | 'size' | 'size_asc' | 'duration' | 'duration_asc'
+    liked?: boolean
   }) {
     const q = args.q ?? ''
     const type = args.type ?? ''
@@ -339,6 +340,7 @@ export function createDb() {
     const limit = args.limit ?? 50000 // Allow large libraries
     const offset = args.offset ?? 0
     const sortBy = args.sortBy ?? 'newest'
+    const liked = args.liked ?? false
 
     // Build ORDER BY clause based on sortBy
     let orderClause: string
@@ -387,8 +389,14 @@ export function createDb() {
         break
     }
 
+    // Force stats join if filtering by liked (favorites)
+    if (liked) {
+      needsStatsJoin = true
+    }
+
     // Build dynamic query with optional stats join
     const statsJoin = needsStatsJoin ? 'LEFT JOIN media_stats ms ON ms.mediaId = m.id' : ''
+    const likedFilter = liked ? 'AND COALESCE(ms.rating, 0) >= 5' : ''
 
     const query = `
       SELECT DISTINCT m.*
@@ -401,12 +409,33 @@ export function createDb() {
         AND (@type = '' OR m.type = @type)
         AND (@tag = '' OR t.name = @tag)
         AND m.analyzeError = 0
+        ${likedFilter}
       ${orderClause}
       LIMIT @limit OFFSET @offset;
     `
 
     const items = db.prepare(query).all({ q, type, tag, limit, offset }) as MediaRow[]
-    const total = (stmts.countMedia.get({ q, type, tag }) as { n: number }).n
+
+    // Calculate total with liked filter if needed
+    let total: number
+    if (liked) {
+      const countQuery = `
+        SELECT COUNT(DISTINCT m.id) as n
+        FROM media m
+        LEFT JOIN media_tags mt ON mt.mediaId = m.id
+        LEFT JOIN tags t ON t.id = mt.tagId
+        LEFT JOIN media_stats ms ON ms.mediaId = m.id
+        WHERE
+          (@q = '' OR m.filename LIKE '%' || @q || '%')
+          AND (@type = '' OR m.type = @type)
+          AND (@tag = '' OR t.name = @tag)
+          AND m.analyzeError = 0
+          AND COALESCE(ms.rating, 0) >= 5
+      `
+      total = (db.prepare(countQuery).get({ q, type, tag }) as { n: number }).n
+    } else {
+      total = (stmts.countMedia.get({ q, type, tag }) as { n: number }).n
+    }
     return { items, total }
   }
 

@@ -670,7 +670,8 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     const limit = opts?.limit ?? 200
     const offset = opts?.offset ?? 0
     const sortBy = opts?.sortBy ?? 'newest'
-    const result = db.listMedia({ q, type, tag, limit, offset, sortBy })
+    const liked = opts?.liked ?? false
+    const result = db.listMedia({ q, type, tag, limit, offset, sortBy, liked })
     const filteredItems = applyBlacklist(result.items)
     return { ...result, items: filteredItems }
   })

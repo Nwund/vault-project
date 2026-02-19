@@ -878,11 +878,12 @@ type VaultSettings = {
     tileCount?: number
     tileMinPx?: number
     layout?: 'mosaic' | 'grid'
-    intervalSec?: 20 | 30 | 45 | 60 | 90 | 120
+    intervalSec?: 0 | 20 | 30 | 45 | 60 | 90 | 120 // 0 = disabled
     muted?: boolean
     showHud?: boolean
     randomClimax?: boolean
     countdownDuration?: number
+    startAtClimaxPoint?: boolean // Start videos at 70-80% through
     visualEffects?: {
       vignetteIntensity?: number
       bloomIntensity?: number
@@ -7474,6 +7475,8 @@ function GoonWallPage(props: {
               isBlurred={focusedTileIndex !== null && focusedTileIndex !== idx}
               onFocus={() => setFocusedTileIndex(focusedTileIndex === idx ? null : idx)}
               isShuffling={shufflingTiles.has(idx)}
+              shuffleInterval={props.settings?.goonwall?.intervalSec ?? 45}
+              startAtClimaxPoint={props.settings?.goonwall?.startAtClimaxPoint ?? true}
             />
           ))}
 
@@ -7584,9 +7587,10 @@ const GoonTile = React.memo(function GoonTile(props: {
   isBlurred?: boolean
   onFocus?: () => void
   isShuffling?: boolean
-  shuffleInterval?: number // seconds between auto-shuffles (30-60)
+  shuffleInterval?: number // seconds between auto-shuffles (0 = disabled)
+  startAtClimaxPoint?: boolean // Start videos at 70-80% through (false = start from beginning)
 }) {
-  const { media, muted, style, onShuffle, index, tileCount, onBroken, layout, isFocused, isBlurred, onFocus, isShuffling, shuffleInterval = 45 } = props
+  const { media, muted, style, onShuffle, index, tileCount, onBroken, layout, isFocused, isBlurred, onFocus, isShuffling, shuffleInterval = 45, startAtClimaxPoint = true } = props
   const isMosaic = layout === 'mosaic'
   const [url, setUrl] = useState('')
   const [retried, setRetried] = useState(false)
@@ -7604,9 +7608,10 @@ const GoonTile = React.memo(function GoonTile(props: {
     onShuffle()
   }, [onShuffle])
 
-  // Auto-shuffle timer - each tile has a randomized interval (30-60 seconds)
+  // Auto-shuffle timer - each tile has a randomized interval
+  // shuffleInterval of 0 means disabled (no auto-shuffle)
   useEffect(() => {
-    if (!ready || isFocused) return
+    if (!ready || isFocused || shuffleInterval === 0) return
 
     // Randomize the shuffle interval per tile (shuffleInterval +/- 15 seconds)
     const randomizedInterval = (shuffleInterval + (Math.random() * 30 - 15)) * 1000
@@ -7731,7 +7736,7 @@ const GoonTile = React.memo(function GoonTile(props: {
     }
   }, [isShuffling, ready, muted])
 
-  // Seek to "climax point" (70-80% through video) on metadata load
+  // Seek to "climax point" (70-80% through video) on metadata load if enabled
   // Request a playback slot before starting - limits concurrent playing videos
   const handleLoadedMetadata = useCallback(() => {
     const video = videoRef.current
@@ -7740,8 +7745,11 @@ const GoonTile = React.memo(function GoonTile(props: {
       return
     }
     // Start at 70-80% through the video (typically where the action peaks)
-    const climaxPoint = 0.7 + Math.random() * 0.1
-    video.currentTime = climaxPoint * video.duration
+    // Only if startAtClimaxPoint is enabled, otherwise start from beginning
+    if (startAtClimaxPoint) {
+      const climaxPoint = 0.7 + Math.random() * 0.1
+      video.currentTime = climaxPoint * video.duration
+    }
     setReady(true)
 
     // Request a playback slot - only limited videos play simultaneously
@@ -7755,7 +7763,7 @@ const GoonTile = React.memo(function GoonTile(props: {
         // Silently ignore - browser may block autoplay
       })
     })
-  }, [media.id])
+  }, [media.id, startAtClimaxPoint])
 
   // Handle errors — force transcode on first error, skip on second
   const handleError = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {

@@ -40,7 +40,7 @@ export type ThemeId = ClassicThemeId | GoonThemeId
 
 export type GoonWallLayout = 'grid' | 'mosaic'
 export type GoonWallTransition = 'crossfade' | 'cut' | 'slide' | 'zoom' | 'glitch' | 'melt' | 'swipe'
-export type ShuffleInterval = 10 | 20 | 30 | 40 | 50 | 60
+export type ShuffleInterval = 0 | 10 | 20 | 30 | 40 | 50 | 60  // 0 = disabled
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -249,6 +249,7 @@ export interface GoonwallSettings {
   muteByDefault: boolean
   randomClimax: boolean // Auto-trigger climax randomly
   countdownDuration: number // Default countdown duration in seconds
+  startAtClimaxPoint: boolean // Start videos at 70-80% through (false = start from beginning)
 
   // Hypersexual enhancements
   overloadMode: {
@@ -489,6 +490,7 @@ const DEFAULTS: VaultSettings = {
     muteByDefault: true,
     randomClimax: false,
     countdownDuration: 60,
+    startAtClimaxPoint: true, // Start videos at 70-80% through
     // Hypersexual enhancements
     overloadMode: {
       enabled: false,
