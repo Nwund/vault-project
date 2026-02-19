@@ -157,7 +157,8 @@ import {
   Activity,
   PenTool,
   Sliders,
-  Columns
+  Columns,
+  Link2
 } from 'lucide-react'
 import { playClimaxForType } from './utils/soundPlayer'
 import vaultLogo from './assets/vault-logo.png'
@@ -2859,15 +2860,14 @@ export default function App() {
                   { id: 'watchProgress', icon: Play, label: 'Open Watch Progress', action: () => { setShowWatchProgress(true); setShowCommandPalette(false) } },
                   { id: 'mediaQueue', icon: ListMusic, label: 'Open Media Queue', action: () => { setShowMediaQueue(true); setShowCommandPalette(false) } },
                   { id: 'viewModes', icon: LayoutGrid, label: 'Open View Mode Selector', action: () => { setShowViewModeSelector(true); setShowCommandPalette(false) } },
-                  { id: 'autoPlaylists', icon: Sparkles, label: 'Open Auto Playlists', action: () => { setShowAutoPlaylists(true); setShowCommandPalette(false) } },
+                  { id: 'autoPlaylists', icon: Sparkles, label: 'Open Auto Playlists', action: () => { setShowAutoPlaylist(true); setShowCommandPalette(false) } },
                   { id: 'sceneDetector', icon: Film, label: 'Open Scene Detector', action: () => { setShowSceneDetector(true); setShowCommandPalette(false) } },
                   { id: 'aiTagger', icon: Brain, label: 'Open AI Tagger', action: () => { setShowAITagger(true); setShowCommandPalette(false) } },
                   { id: 'bookmarkManager', icon: Bookmark, label: 'Open Bookmark Manager', action: () => { setShowBookmarkManager(true); setShowCommandPalette(false) } },
-                  { id: 'notesPanel', icon: FileText, label: 'Open Notes Panel', action: () => { setShowNotesPanel(true); setShowCommandPalette(false) } },
-                  { id: 'mediaComparison', icon: Columns, label: 'Open Media Comparison', action: () => { setShowMediaComparison(true); setShowCommandPalette(false) } },
-                  { id: 'duplicateFinder', icon: Copy, label: 'Open Duplicate Finder', action: () => { setShowDuplicateFinder(true); setShowCommandPalette(false) } },
-                  { id: 'batchOperations', icon: Layers, label: 'Open Batch Operations', action: () => { setShowBatchOperations(true); setShowCommandPalette(false) } },
-                  { id: 'exportManager', icon: Download, label: 'Open Export Manager', action: () => { setShowExportManager(true); setShowCommandPalette(false) } },
+                  { id: 'notesPanel', icon: FileText, label: 'Open Notes Panel', action: () => { setShowQuickNote(true); setShowCommandPalette(false) } },
+                  { id: 'relatedMedia', icon: Link2, label: 'Open Related Media', action: () => { setShowRelatedMedia(true); setShowCommandPalette(false) } },
+                  { id: 'thumbnailSelector', icon: ImageIcon, label: 'Open Thumbnail Selector', action: () => { setShowThumbnailSelector(true); setShowCommandPalette(false) } },
+                  { id: 'exportManager', icon: Download, label: 'Open Export Manager', action: () => { setShowMediaExporter(true); setShowCommandPalette(false) } },
                   { id: 'pmvEditor', icon: Scissors, label: 'Open PMV Editor', action: () => { setShowPMVEditor(true); setShowCommandPalette(false) } },
                   { id: 'divider4', divider: true },
                   { id: 'addFolder', icon: FolderPlus, label: 'Add Media Folder', action: async () => { await window.api.settings.chooseMediaDir?.(); setShowCommandPalette(false) } },
