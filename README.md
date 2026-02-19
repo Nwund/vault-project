@@ -4,7 +4,7 @@
 
 ### *Your Private Media Sanctuary*
 
-[![Version](https://img.shields.io/badge/v2.2.0-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
+[![Version](https://img.shields.io/badge/v2.3.0-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
 [![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-Platform-blue?style=for-the-badge)](https://github.com/Nwund/vault-project)
 [![Electron](https://img.shields.io/badge/Electron-32.0-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-18.3-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://react.dev)
@@ -264,7 +264,7 @@ Create professional-quality beat-synced videos:
 
 | | |
 |:---:|:---:|
-| **40+** Backend Services | **35+** UI Components |
+| **40+** Backend Services | **65+** UI Components |
 | **25+** Database Tables | **20+** Visual Overlays |
 | **50+** Achievements | **16** PMV Transitions |
 | **15+** Themes | **3** AI Tiers |
@@ -317,7 +317,45 @@ Create professional-quality beat-synced videos:
 
 ## 📝 Recent Updates
 
-### v2.2.0 *(Latest)*
+### v2.3.0 *(Latest)*
+
+**🎬 30 Professional Video Editing & Media Management Components**
+
+- ✨ **Scene Detector** - AI-powered scene detection with frame analysis
+- ✨ **Video Chapters** - Chapter navigation with custom markers and thumbnails
+- ✨ **Color Grading** - Professional color grading with 5 cinematic presets
+- ✨ **Loop Region** - A/B loop region selector with saved loops
+- ✨ **Bookmark Manager** - Video timestamp bookmarks with notes/categories
+- ✨ **Subtitle Editor** - Full subtitle editor with SRT import/export
+- ✨ **Thumbnail Strip** - Video timeline with hover thumbnail preview
+- ✨ **Audio Visualizer** - Real-time visualization (bars, wave, circular, spectrum)
+- ✨ **PiP Controller** - Picture-in-Picture with position presets
+- ✨ **Keyframe Extractor** - Extract keyframes at configurable intervals
+- ✨ **Video Filters** - Real-time filters (vivid, warm, cool, noir, vintage, dreamy)
+- ✨ **Split Screen** - Multi-video split screen player (2-6 videos)
+- ✨ **Smart Crop** - AI-assisted cropping with aspect ratio presets
+- ✨ **Metadata Editor** - Advanced metadata editor with custom fields
+- ✨ **Playlist Sorter** - Advanced sorting with drag-reorder
+- ✨ **Watch Progress** - Continue watching tracker with progress bars
+- ✨ **Media Exporter** - Export with format conversion (mp4, webm, mkv, gif)
+- ✨ **AI Tagger** - AI-powered auto-tagging with confidence thresholds
+- ✨ **Thumbnail Selector** - Select/generate custom thumbnails from any frame
+- ✨ **Related Media** - Smart related media suggestions
+- ✨ **Media Timeline** - Timeline view by date (day/week/month)
+- ✨ **Quick Note** - Quick notes with colors, pinning, and timestamps
+- ✨ **View Mode Selector** - 7 view modes (grid, list, masonry, timeline, carousel...)
+- ✨ **Auto Playlist** - Auto-generated playlists based on behavior
+- ✨ **Media Merger** - Merge multiple videos with transitions
+- ✨ **Media Rotator** - Rotate and flip with undo history
+- ✨ **Watermark Adder** - Add text/image watermarks with 9 positions
+- ✨ **Speed Ramp** - Variable speed ramping with graph editor
+- ✨ **Media Queue** - Playback queue with shuffle and repeat modes
+- ✨ **Aspect Ratio Switcher** - Quick aspect ratio switching with zoom/pan
+
+<details>
+<summary><b>Previous Versions</b></summary>
+
+### v2.2.0
 
 **🎯 35 New Components for Ultimate Experience**
 
@@ -357,9 +395,6 @@ Create professional-quality beat-synced videos:
 - ✨ **Performer Tagger** - Actor tagging with AI suggestions
 - ✨ **Collection Manager** - Hierarchical collections with drag-drop
 
-<details>
-<summary><b>Previous Versions</b></summary>
-
 ### v2.1.7
 - Floating Labels - Draggable text anywhere on images
 - Vignette Effect - Cinematic borders with slider control
@@ -394,7 +429,7 @@ Create professional-quality beat-synced videos:
 
 | Version | Features |
 |:---:|---|
-| **v2.2** | GIF Creator • Full PMV Export • Video Cropping • AI Scene Detection |
+| **v2.4** | GIF Creator • Full PMV Export • Advanced Effects • Plugin System |
 | **v3.0** | Cloud Sync • Plugin System • Watch Parties • Multi-language |
 
 <br/>
@@ -409,7 +444,7 @@ Create professional-quality beat-synced videos:
 
 <br/>
 
-[![Download Latest](https://img.shields.io/badge/Download-v2.2.0-success?style=for-the-badge&logo=windows)](https://github.com/Nwund/vault-project/releases/latest)
+[![Download Latest](https://img.shields.io/badge/Download-v2.3.0-success?style=for-the-badge&logo=windows)](https://github.com/Nwund/vault-project/releases/latest)
 
 <br/>
 
@@ -424,7 +459,7 @@ Create professional-quality beat-synced videos:
 *Built with obsession by developers who understand the mission.*
 
 <sub>
-🔐 Vault v2.2.0 • 40+ services • 106 modules • 35 new components
+🔐 Vault v2.3.0 • 40+ services • 106 modules • 65 components
 </sub>
 
 <br/>
