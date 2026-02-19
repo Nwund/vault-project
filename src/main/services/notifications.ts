@@ -80,9 +80,13 @@ export class NotificationsService extends EventEmitter {
             this.iconPath = p
             break
           }
-        } catch { /* ignore */ }
+        } catch (e) {
+          // Icon check failed - continue to next path
+        }
       }
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.warn('[Notifications] Icon path initialization failed (non-critical):', (e as Error).message)
+    }
   }
 
   /**

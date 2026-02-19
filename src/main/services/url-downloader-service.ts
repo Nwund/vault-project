@@ -217,13 +217,13 @@ class UrlDownloaderService extends EventEmitter {
             item.duration = info.duration_string || (info.duration ? this.formatDuration(info.duration) : null)
             item.fileSize = info.filesize_approx ? this.formatBytes(info.filesize_approx) : null
             this.emit('download:updated', item)
-          } catch {
-            // JSON parse failed
+          } catch (e) {
+            console.warn('[UrlDownloader] JSON parse failed for video info:', (e as Error).message)
           }
         }
       })
-    } catch {
-      // Info fetch failed, not critical
+    } catch (e) {
+      console.warn('[UrlDownloader] Info fetch failed (non-critical):', (e as Error).message)
     }
   }
 
