@@ -183,6 +183,15 @@ const api = {
     saveGif: (gifPath: string) => invoke<{ success: boolean; savedPath?: string; error?: string }>('media:saveGif', gifPath),
     addGifToLibrary: (gifPath: string) => invoke<{ success: boolean; mediaId?: string; error?: string }>('media:addGifToLibrary', gifPath),
     renameGif: (gifPath: string, newName: string) => invoke<{ success: boolean; newPath?: string; error?: string }>('media:renameGif', gifPath, newName),
+    // Video trimming
+    trimVideo: (options: {
+      mediaId: string
+      startTime: number
+      endTime: number
+      outputName?: string
+    }) => invoke<{ success: boolean; outputPath?: string; error?: string }>('media:trimVideo', options),
+    saveTrimmedVideo: (trimmedPath: string) => invoke<{ success: boolean; savedPath?: string; error?: string }>('media:saveTrimmedVideo', trimmedPath),
+    addTrimmedToLibrary: (trimmedPath: string) => invoke<{ success: boolean; mediaId?: string; error?: string }>('media:addTrimmedToLibrary', trimmedPath),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -923,6 +932,97 @@ const api = {
     onCancelled: (cb: (item: any) => void) => on('urlDownloader:cancelled', cb),
     // Called when notification action clicked to open URL downloader
     onOpenRequested: (cb: () => void) => on('vault-open-url-downloader', cb),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VISUAL SIMILARITY - Find similar content using perceptual hashing
+  // ═══════════════════════════════════════════════════════════════════════════
+  similar: {
+    // Find similar media by perceptual hash
+    find: (mediaId: string, options?: { minSimilarity?: number; limit?: number; sameTypeOnly?: boolean }) =>
+      invoke<Array<{
+        mediaId: string
+        filename: string
+        thumbPath: string | null
+        type: string
+        similarity: number
+        matchType: 'exact' | 'very_similar' | 'similar' | 'somewhat_similar'
+      }>>('similar:find', mediaId, options),
+
+    // Find all groups of similar content
+    findAllGroups: (options?: { minSimilarity?: number; minGroupSize?: number }) =>
+      invoke<Array<{
+        groupId: string
+        items: Array<{
+          mediaId: string
+          filename: string
+          thumbPath: string | null
+          type: string
+          similarity: number
+        }>
+        count: number
+      }>>('similar:findAllGroups', options),
+
+    // Find exact duplicates by file hash
+    findDuplicates: () =>
+      invoke<Array<{
+        groupId: string
+        items: Array<{
+          mediaId: string
+          filename: string
+          thumbPath: string | null
+          type: string
+          similarity: number
+        }>
+        count: number
+      }>>('similar:findDuplicates'),
+
+    // Get "more like this" recommendations
+    moreLikeThis: (mediaId: string, limit?: number) =>
+      invoke<Array<{
+        mediaId: string
+        filename: string
+        thumbPath: string | null
+        type: string
+        similarity: number
+      }>>('similar:moreLikeThis', mediaId, limit),
+
+    // Get duplicate statistics
+    getStats: () =>
+      invoke<{
+        duplicateGroups: number
+        totalDuplicates: number
+        potentialSavingsBytes: number
+      }>('similar:getStats'),
+
+    // Compute hash for a single media item
+    computeHash: (mediaId: string) =>
+      invoke<string | null>('similar:computeHash', mediaId),
+
+    // Batch compute hashes for unhashed media
+    batchComputeHashes: (limit?: number) =>
+      invoke<{ processed: number; failed: number }>('similar:batchComputeHashes', limit),
+
+    // Get hash computation statistics
+    getHashStats: () =>
+      invoke<{
+        totalMedia: number
+        hashedMedia: number
+        unhashed: number
+        percentComplete: number
+      }>('similar:getHashStats'),
+
+    // Get list of unhashed media
+    getUnhashed: (limit?: number) =>
+      invoke<any[]>('similar:getUnhashed', limit),
+
+    // Compare two specific media items
+    compare: (mediaId1: string, mediaId2: string) =>
+      invoke<{
+        similar: boolean
+        similarity: number
+        distance: number
+      } | null>('similar:compare', mediaId1, mediaId2),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

@@ -1341,6 +1341,145 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // Trim video - cut a segment without re-encoding
+  ipcMain.handle('media:trimVideo', async (_ev, options: {
+    mediaId: string
+    startTime: number
+    endTime: number
+    outputName?: string
+  }): Promise<{ success: boolean; outputPath?: string; error?: string }> => {
+    try {
+      const { mediaId, startTime, endTime, outputName } = options
+
+      // Get media from database
+      const media = db.getMedia(mediaId)
+      if (!media) {
+        return { success: false, error: 'Media not found' }
+      }
+
+      if (media.type !== 'video') {
+        return { success: false, error: 'Can only trim video files' }
+      }
+
+      // Validate time range
+      const duration = endTime - startTime
+      if (duration <= 0) {
+        return { success: false, error: 'End time must be after start time' }
+      }
+
+      // Create output path in cache directory
+      const cacheDir = getCacheDir()
+      const trimDir = path.join(cacheDir, 'trims')
+      if (!fs.existsSync(trimDir)) {
+        fs.mkdirSync(trimDir, { recursive: true })
+      }
+
+      const ext = path.extname(media.path)
+      const baseName = outputName || `${path.basename(media.path, ext)}_trimmed_${startTime.toFixed(1)}-${endTime.toFixed(1)}`
+      const outputPath = path.join(trimDir, `${baseName}${ext}`)
+
+      console.log(`[Trim] Trimming ${media.filename}: ${startTime}s to ${endTime}s`)
+
+      // Use FFmpeg with copy codec for fast trimming without re-encoding
+      return new Promise((resolve) => {
+        ffmpeg(media.path)
+          .setStartTime(startTime)
+          .setDuration(duration)
+          .outputOptions([
+            '-c', 'copy',  // Copy codec - no re-encoding
+            '-avoid_negative_ts', 'make_zero'
+          ])
+          .output(outputPath)
+          .on('error', (err) => {
+            console.error('[Trim] Error:', err.message)
+            // Fallback: try with re-encoding if copy fails
+            ffmpeg(media.path)
+              .setStartTime(startTime)
+              .setDuration(duration)
+              .outputOptions([
+                '-c:v', 'libx264',
+                '-c:a', 'aac',
+                '-preset', 'fast'
+              ])
+              .output(outputPath)
+              .on('error', (err2) => {
+                console.error('[Trim] Re-encode error:', err2.message)
+                resolve({ success: false, error: err2.message })
+              })
+              .on('end', () => {
+                console.log('[Trim] Complete (re-encoded):', outputPath)
+                resolve({ success: true, outputPath })
+              })
+              .run()
+          })
+          .on('end', () => {
+            console.log('[Trim] Complete:', outputPath)
+            resolve({ success: true, outputPath })
+          })
+          .run()
+      })
+    } catch (err: any) {
+      console.error('[IPC] media:trimVideo error:', err?.message)
+      return { success: false, error: err?.message }
+    }
+  })
+
+  // Save trimmed video to user-selected location
+  ipcMain.handle('media:saveTrimmedVideo', async (_ev, trimmedPath: string): Promise<{ success: boolean; savedPath?: string; error?: string }> => {
+    try {
+      if (!fs.existsSync(trimmedPath)) {
+        return { success: false, error: 'Trimmed video not found' }
+      }
+
+      const ext = path.extname(trimmedPath)
+      const result = await dialog.showSaveDialog({
+        title: 'Save Trimmed Video',
+        defaultPath: path.basename(trimmedPath),
+        filters: [{ name: 'Video', extensions: [ext.slice(1)] }]
+      })
+
+      if (result.canceled || !result.filePath) {
+        return { success: false, error: 'Save cancelled' }
+      }
+
+      fs.copyFileSync(trimmedPath, result.filePath)
+      return { success: true, savedPath: result.filePath }
+    } catch (err: any) {
+      console.error('[IPC] media:saveTrimmedVideo error:', err?.message)
+      return { success: false, error: err?.message }
+    }
+  })
+
+  // Add trimmed video to library
+  ipcMain.handle('media:addTrimmedToLibrary', async (_ev, trimmedPath: string): Promise<{ success: boolean; mediaId?: string; error?: string }> => {
+    try {
+      if (!fs.existsSync(trimmedPath)) {
+        return { success: false, error: 'Trimmed video not found' }
+      }
+
+      const mediaDirs = getMediaDirs()
+      if (mediaDirs.length === 0) {
+        return { success: false, error: 'No media directories configured' }
+      }
+
+      const filename = path.basename(trimmedPath)
+      const destPath = path.join(mediaDirs[0], filename)
+      fs.copyFileSync(trimmedPath, destPath)
+
+      // Import to library
+      const imported = await scanFile(destPath)
+      if (imported) {
+        broadcast('vault:changed')
+        return { success: true, mediaId: imported.id }
+      }
+
+      return { success: false, error: 'Failed to import to library' }
+    } catch (err: any) {
+      console.error('[IPC] media:addTrimmedToLibrary error:', err?.message)
+      return { success: false, error: err?.message }
+    }
+  })
+
   // ═══════════════════════════════════════════════════════════════════════════
   // TAGS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -5543,6 +5682,37 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('similar:getStats', async () => {
     const service = getSimilarContentService(db)
     return service.getDuplicateStats()
+  })
+
+  // Visual similarity hash computation
+  ipcMain.handle('similar:computeHash', async (_ev, mediaId: string) => {
+    const { getVisualSimilarityService } = await import('./services/visual-similarity')
+    const service = getVisualSimilarityService(db)
+    return service.updateHash(mediaId)
+  })
+
+  ipcMain.handle('similar:batchComputeHashes', async (_ev, limit?: number) => {
+    const { getVisualSimilarityService } = await import('./services/visual-similarity')
+    const service = getVisualSimilarityService(db)
+    return service.batchComputeHashes(limit ?? 50)
+  })
+
+  ipcMain.handle('similar:getHashStats', async () => {
+    const { getVisualSimilarityService } = await import('./services/visual-similarity')
+    const service = getVisualSimilarityService(db)
+    return service.getStats()
+  })
+
+  ipcMain.handle('similar:getUnhashed', async (_ev, limit?: number) => {
+    const { getVisualSimilarityService } = await import('./services/visual-similarity')
+    const service = getVisualSimilarityService(db)
+    return service.getUnhashed(limit ?? 100)
+  })
+
+  ipcMain.handle('similar:compare', async (_ev, mediaId1: string, mediaId2: string) => {
+    const { getVisualSimilarityService } = await import('./services/visual-similarity')
+    const service = getVisualSimilarityService(db)
+    return service.compareMedia(mediaId1, mediaId2)
   })
 
   // ═══════════════════════════════════════════════════════════════════════════

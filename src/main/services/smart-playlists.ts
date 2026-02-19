@@ -327,11 +327,13 @@ export function getSmartPlaylistService(db: DB): SmartPlaylistService {
 export const SMART_PLAYLIST_PRESETS = {
   recentFavorites: {
     name: 'Recent Favorites',
+    description: 'Highly rated content from the last month',
+    icon: 'heart',
     rules: {
       match: 'all' as const,
       rules: [
         { field: 'rating' as const, operator: 'greater' as const, value: 3 },
-        { field: 'addedAt' as const, operator: 'greater' as const, value: 30 } // Last 30 days
+        { field: 'addedAt' as const, operator: 'greater' as const, value: 30 }
       ],
       sortBy: 'addedAt' as const,
       sortOrder: 'desc' as const,
@@ -340,11 +342,13 @@ export const SMART_PLAYLIST_PRESETS = {
   },
   longVideos: {
     name: 'Long Videos',
+    description: 'Extended content over 10 minutes',
+    icon: 'clock',
     rules: {
       match: 'all' as const,
       rules: [
         { field: 'type' as const, operator: 'equals' as const, value: 'video' },
-        { field: 'duration' as const, operator: 'greater' as const, value: 600 } // > 10 minutes
+        { field: 'duration' as const, operator: 'greater' as const, value: 600 }
       ],
       sortBy: 'duration' as const,
       sortOrder: 'desc' as const,
@@ -353,11 +357,13 @@ export const SMART_PLAYLIST_PRESETS = {
   },
   quickClips: {
     name: 'Quick Clips',
+    description: 'Short videos under 1 minute',
+    icon: 'zap',
     rules: {
       match: 'all' as const,
       rules: [
         { field: 'type' as const, operator: 'equals' as const, value: 'video' },
-        { field: 'duration' as const, operator: 'less' as const, value: 60 } // < 1 minute
+        { field: 'duration' as const, operator: 'less' as const, value: 60 }
       ],
       sortBy: 'random' as const,
       limit: 50
@@ -365,6 +371,8 @@ export const SMART_PLAYLIST_PRESETS = {
   },
   topRated: {
     name: 'Top Rated',
+    description: '5-star content only',
+    icon: 'star',
     rules: {
       match: 'all' as const,
       rules: [
@@ -377,6 +385,8 @@ export const SMART_PLAYLIST_PRESETS = {
   },
   unwatched: {
     name: 'Unwatched',
+    description: 'Content you haven\'t viewed yet',
+    icon: 'eye-off',
     rules: {
       match: 'all' as const,
       rules: [
@@ -389,12 +399,128 @@ export const SMART_PLAYLIST_PRESETS = {
   },
   mostWatched: {
     name: 'Most Watched',
+    description: 'Your most viewed content',
+    icon: 'eye',
     rules: {
       match: 'all' as const,
       rules: [
         { field: 'views' as const, operator: 'greater' as const, value: 5 }
       ],
       sortBy: 'views' as const,
+      sortOrder: 'desc' as const,
+      limit: 100
+    }
+  },
+  dailyDiscovery: {
+    name: 'Daily Discovery',
+    description: 'Random unwatched content to explore',
+    icon: 'compass',
+    rules: {
+      match: 'all' as const,
+      rules: [
+        { field: 'views' as const, operator: 'less' as const, value: 1 }
+      ],
+      sortBy: 'random' as const,
+      limit: 25
+    }
+  },
+  hiddenGems: {
+    name: 'Hidden Gems',
+    description: 'Highly rated but rarely watched',
+    icon: 'gem',
+    rules: {
+      match: 'all' as const,
+      rules: [
+        { field: 'rating' as const, operator: 'greater' as const, value: 3 },
+        { field: 'views' as const, operator: 'less' as const, value: 3 }
+      ],
+      sortBy: 'rating' as const,
+      sortOrder: 'desc' as const,
+      limit: 50
+    }
+  },
+  sessionStarters: {
+    name: 'Session Starters',
+    description: 'Short highly-rated clips to get going',
+    icon: 'play-circle',
+    rules: {
+      match: 'all' as const,
+      rules: [
+        { field: 'type' as const, operator: 'equals' as const, value: 'video' },
+        { field: 'duration' as const, operator: 'less' as const, value: 180 },
+        { field: 'rating' as const, operator: 'greater' as const, value: 3 }
+      ],
+      sortBy: 'random' as const,
+      limit: 30
+    }
+  },
+  marathonNight: {
+    name: 'Marathon Night',
+    description: 'Extended 30+ minute videos',
+    icon: 'moon',
+    rules: {
+      match: 'all' as const,
+      rules: [
+        { field: 'type' as const, operator: 'equals' as const, value: 'video' },
+        { field: 'duration' as const, operator: 'greater' as const, value: 1800 }
+      ],
+      sortBy: 'rating' as const,
+      sortOrder: 'desc' as const,
+      limit: 50
+    }
+  },
+  freshContent: {
+    name: 'Fresh Content',
+    description: 'Added in the last 7 days',
+    icon: 'sparkles',
+    rules: {
+      match: 'all' as const,
+      rules: [
+        { field: 'addedAt' as const, operator: 'greater' as const, value: 7 }
+      ],
+      sortBy: 'addedAt' as const,
+      sortOrder: 'desc' as const,
+      limit: 100
+    }
+  },
+  allImages: {
+    name: 'All Images',
+    description: 'Browse your image collection',
+    icon: 'image',
+    rules: {
+      match: 'all' as const,
+      rules: [
+        { field: 'type' as const, operator: 'equals' as const, value: 'image' }
+      ],
+      sortBy: 'addedAt' as const,
+      sortOrder: 'desc' as const,
+      limit: 500
+    }
+  },
+  allGifs: {
+    name: 'All GIFs',
+    description: 'Your animated GIF collection',
+    icon: 'film',
+    rules: {
+      match: 'all' as const,
+      rules: [
+        { field: 'type' as const, operator: 'equals' as const, value: 'gif' }
+      ],
+      sortBy: 'random' as const,
+      limit: 200
+    }
+  },
+  midLengthPerfect: {
+    name: 'Perfect Length',
+    description: 'Videos between 5-15 minutes',
+    icon: 'timer',
+    rules: {
+      match: 'all' as const,
+      rules: [
+        { field: 'type' as const, operator: 'equals' as const, value: 'video' },
+        { field: 'duration' as const, operator: 'between' as const, value: 300, value2: 900 }
+      ],
+      sortBy: 'rating' as const,
       sortOrder: 'desc' as const,
       limit: 100
     }
