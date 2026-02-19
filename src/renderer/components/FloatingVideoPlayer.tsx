@@ -3,7 +3,7 @@
 
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2, RectangleHorizontal, Crop, Minus, Square, Scissors, Check, Download, Library, Palette, Sliders, Activity, Gauge } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2, RectangleHorizontal, Crop, Minus, Square, Scissors, Check, Download, Library, Palette, Sliders, Activity, Gauge, Repeat } from 'lucide-react'
 import { RelatedMediaPanel } from './RelatedMediaPanel'
 import { MediaNotesPanel } from './MediaNotesPanel'
 import { BookmarksPanel } from './BookmarksPanel'
@@ -11,6 +11,8 @@ import { ColorGrading } from './ColorGrading'
 import { VideoFilters } from './VideoFilters'
 import { AudioVisualizer } from './AudioVisualizer'
 import { SpeedRamp } from './SpeedRamp'
+import { ThumbnailStrip } from './ThumbnailStrip'
+import { LoopRegion } from './LoopRegion'
 import { formatDuration } from '../utils/formatters'
 import { toFileUrlCached } from '../hooks/usePerformance'
 
@@ -100,6 +102,8 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [showVideoFilters, setShowVideoFilters] = useState(false)
   const [showAudioVisualizer, setShowAudioVisualizer] = useState(false)
   const [showSpeedRamp, setShowSpeedRamp] = useState(false)
+  const [showThumbnailStrip, setShowThumbnailStrip] = useState(false)
+  const [showLoopRegion, setShowLoopRegion] = useState(false)
   const [videoFilterStyle, setVideoFilterStyle] = useState<React.CSSProperties>({})
   const [colorGradeStyle, setColorGradeStyle] = useState<React.CSSProperties>({})
   const [resumePosition, setResumePosition] = useState<number | null>(null)
@@ -2304,6 +2308,28 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               </button>
             )}
 
+            {/* Loop Region - Video only */}
+            {media.type === 'video' && (
+              <button
+                onClick={() => setShowLoopRegion(!showLoopRegion)}
+                className={`p-2 rounded-lg transition ${showLoopRegion ? 'bg-cyan-500/80' : 'bg-white/10 hover:bg-cyan-500/60'}`}
+                title="Loop Region (A-B)"
+              >
+                <Repeat size={16} />
+              </button>
+            )}
+
+            {/* Thumbnail Strip - Video only (fullscreen) */}
+            {isFullscreen && media.type === 'video' && (
+              <button
+                onClick={() => setShowThumbnailStrip(!showThumbnailStrip)}
+                className={`p-2 rounded-lg transition ${showThumbnailStrip ? 'bg-pink-500/80' : 'bg-white/10 hover:bg-pink-500/60'}`}
+                title="Thumbnail Timeline"
+              >
+                <RectangleHorizontal size={16} />
+              </button>
+            )}
+
             {isFullscreen && (
               <button
                 onClick={exitFullscreen}
@@ -2431,6 +2457,32 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               setShowSpeedRamp(false)
             }}
             className="m-2"
+          />
+        </div>
+      )}
+
+      {/* Loop Region Panel */}
+      {showLoopRegion && media.type === 'video' && (
+        <div className="absolute top-0 left-0 w-80 z-40 max-h-[80%] overflow-auto">
+          <LoopRegion
+            videoRef={videoRef}
+            duration={duration}
+            currentTime={currentTime}
+            className="m-2"
+          />
+        </div>
+      )}
+
+      {/* Thumbnail Strip Panel - Fullscreen only */}
+      {showThumbnailStrip && media.type === 'video' && isFullscreen && (
+        <div className="absolute bottom-24 left-4 right-4 z-40">
+          <ThumbnailStrip
+            videoRef={videoRef}
+            duration={duration}
+            currentTime={currentTime}
+            onSeek={(time) => {
+              if (videoRef.current) videoRef.current.currentTime = time
+            }}
           />
         </div>
       )}

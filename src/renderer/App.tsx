@@ -156,7 +156,8 @@ import {
   ListVideo,
   Activity,
   PenTool,
-  Sliders
+  Sliders,
+  Columns
 } from 'lucide-react'
 import { playClimaxForType } from './utils/soundPlayer'
 import vaultLogo from './assets/vault-logo.png'
@@ -2853,6 +2854,22 @@ export default function App() {
                   { id: 'urlDownloader', icon: Download, label: 'Download from URL', shortcut: 'D', action: () => { window.dispatchEvent(new CustomEvent('vault-open-url-downloader')); setShowCommandPalette(false) } },
                   { id: 'fullscreen', icon: Maximize2, label: 'Toggle Fullscreen', shortcut: 'F11', action: () => { window.api.window?.toggleFullscreen?.(); setShowCommandPalette(false) } },
                   { id: 'divider3', divider: true },
+                  // v2.3.0 Tools
+                  { id: 'mediaTimeline', icon: Clock, label: 'Open Media Timeline', action: () => { setShowMediaTimeline(true); setShowCommandPalette(false) } },
+                  { id: 'watchProgress', icon: Play, label: 'Open Watch Progress', action: () => { setShowWatchProgress(true); setShowCommandPalette(false) } },
+                  { id: 'mediaQueue', icon: ListMusic, label: 'Open Media Queue', action: () => { setShowMediaQueue(true); setShowCommandPalette(false) } },
+                  { id: 'viewModes', icon: LayoutGrid, label: 'Open View Mode Selector', action: () => { setShowViewModeSelector(true); setShowCommandPalette(false) } },
+                  { id: 'autoPlaylists', icon: Sparkles, label: 'Open Auto Playlists', action: () => { setShowAutoPlaylists(true); setShowCommandPalette(false) } },
+                  { id: 'sceneDetector', icon: Film, label: 'Open Scene Detector', action: () => { setShowSceneDetector(true); setShowCommandPalette(false) } },
+                  { id: 'aiTagger', icon: Brain, label: 'Open AI Tagger', action: () => { setShowAITagger(true); setShowCommandPalette(false) } },
+                  { id: 'bookmarkManager', icon: Bookmark, label: 'Open Bookmark Manager', action: () => { setShowBookmarkManager(true); setShowCommandPalette(false) } },
+                  { id: 'notesPanel', icon: FileText, label: 'Open Notes Panel', action: () => { setShowNotesPanel(true); setShowCommandPalette(false) } },
+                  { id: 'mediaComparison', icon: Columns, label: 'Open Media Comparison', action: () => { setShowMediaComparison(true); setShowCommandPalette(false) } },
+                  { id: 'duplicateFinder', icon: Copy, label: 'Open Duplicate Finder', action: () => { setShowDuplicateFinder(true); setShowCommandPalette(false) } },
+                  { id: 'batchOperations', icon: Layers, label: 'Open Batch Operations', action: () => { setShowBatchOperations(true); setShowCommandPalette(false) } },
+                  { id: 'exportManager', icon: Download, label: 'Open Export Manager', action: () => { setShowExportManager(true); setShowCommandPalette(false) } },
+                  { id: 'pmvEditor', icon: Scissors, label: 'Open PMV Editor', action: () => { setShowPMVEditor(true); setShowCommandPalette(false) } },
+                  { id: 'divider4', divider: true },
                   { id: 'addFolder', icon: FolderPlus, label: 'Add Media Folder', action: async () => { await window.api.settings.chooseMediaDir?.(); setShowCommandPalette(false) } },
                   { id: 'clearThumbCache', icon: Trash2, label: 'Clear Thumbnail Cache', action: async () => { await window.api.thumbs?.clearCache?.(); globalShowToast('success', 'Thumbnail cache cleared'); setShowCommandPalette(false) } },
                   { id: 'exportSettings', icon: Download, label: 'Export Settings', action: async () => { await window.api.data?.exportSettings?.(); setShowCommandPalette(false) } },
@@ -3910,12 +3927,82 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
           e.preventDefault()
           setShowWatchLaterPanel(true)
           break
+        case 'e':
+        case 'E':
+          // Edit metadata for focused item
+          if (focusedIndex >= 0 && focusedIndex <= maxIndex) {
+            e.preventDefault()
+            const m = sortedMedia[startIndex + focusedIndex]
+            if (m) {
+              setActiveToolMedia(m)
+              setShowMetadataEditor(true)
+            }
+          }
+          break
+        case 't':
+        case 'T':
+          // AI Tagger for focused item
+          if (e.shiftKey && focusedIndex >= 0 && focusedIndex <= maxIndex) {
+            e.preventDefault()
+            const m = sortedMedia[startIndex + focusedIndex]
+            if (m) {
+              setActiveToolMedia(m)
+              setShowAITagger(true)
+            }
+          } else if (!e.shiftKey) {
+            // Open media timeline
+            e.preventDefault()
+            setShowMediaTimeline(true)
+          }
+          break
+        case 'q':
+        case 'Q':
+          // Open media queue
+          e.preventDefault()
+          setShowMediaQueue(true)
+          break
+        case 'v':
+        case 'V':
+          // View mode selector
+          e.preventDefault()
+          setShowViewModeSelector(true)
+          break
+        case 'p':
+        case 'P':
+          // Continue watching / Watch progress
+          e.preventDefault()
+          setShowWatchProgress(true)
+          break
+        case 's':
+        case 'S':
+          // Scene detection for focused video
+          if (e.shiftKey && focusedIndex >= 0 && focusedIndex <= maxIndex) {
+            e.preventDefault()
+            const m = sortedMedia[startIndex + focusedIndex]
+            if (m && m.type === 'video') {
+              setActiveToolMedia(m)
+              setShowSceneDetector(true)
+            }
+          }
+          break
+        case 'n':
+        case 'N':
+          // Quick note for focused item
+          if (focusedIndex >= 0 && focusedIndex <= maxIndex) {
+            e.preventDefault()
+            const m = sortedMedia[startIndex + focusedIndex]
+            if (m) {
+              setActiveToolMedia(m)
+              setShowQuickNote(true)
+            }
+          }
+          break
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [focusedIndex, sortedMedia, effectivePageSize, currentPage, getColumnsCount, openIds, addFloatingPlayer, showToast])
+  }, [focusedIndex, sortedMedia, effectivePageSize, currentPage, getColumnsCount, openIds, addFloatingPlayer, showToast, setActiveToolMedia, setShowMetadataEditor, setShowAITagger, setShowMediaTimeline, setShowMediaQueue, setShowViewModeSelector, setShowWatchProgress, setShowSceneDetector, setShowQuickNote])
 
   // Reset focus when media changes
   useEffect(() => {
