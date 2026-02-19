@@ -107,10 +107,10 @@ interface CustomTemplate {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Transition types between clips
-type TransitionType = 'cut' | 'crossfade' | 'flash' | 'glitch' | 'zoom' | 'slide' | 'dissolve'
+type TransitionType = 'cut' | 'crossfade' | 'flash' | 'glitch' | 'zoom' | 'slide' | 'dissolve' | 'wipeLeft' | 'wipeRight' | 'wipeUp' | 'wipeDown' | 'spin' | 'blur' | 'vhs' | 'bounce' | 'pixelate'
 
 // Video effect types
-type VideoEffectType = 'none' | 'saturate' | 'contrast' | 'vignette' | 'filmGrain' | 'slowMo' | 'bw' | 'sepia' | 'invert'
+type VideoEffectType = 'none' | 'saturate' | 'contrast' | 'vignette' | 'filmGrain' | 'slowMo' | 'bw' | 'sepia' | 'invert' | 'chromatic' | 'shake' | 'strobe' | 'thermal' | 'dream' | 'emboss'
 
 // Overlay effect types
 type OverlayEffectType = 'none' | 'beatFlash' | 'crt' | 'scanlines' | 'vhs'
@@ -135,6 +135,9 @@ interface EffectsSettings {
   overlayEffect: OverlayEffectType
   beatFlashIntensity: number // 0-1
   beatFlashOnEvery: number // every N beats (1, 2, 4)
+
+  // Beat-synced text overlays
+  textOverlays: BeatTextOverlay[]
 
   // Per-clip settings (future: allow per-clip overrides)
   useGlobalEffects: boolean
@@ -226,6 +229,7 @@ const DEFAULT_EFFECTS_SETTINGS: EffectsSettings = {
   overlayEffect: 'none',
   beatFlashIntensity: 0.3,
   beatFlashOnEvery: 2,
+  textOverlays: [],
   useGlobalEffects: true
 }
 
@@ -271,7 +275,16 @@ const TRANSITION_TYPES: Record<TransitionType, { name: string; icon: string }> =
   glitch: { name: 'Glitch', icon: '📺' },
   zoom: { name: 'Zoom', icon: '🔍' },
   slide: { name: 'Slide', icon: '➡️' },
-  dissolve: { name: 'Dissolve', icon: '✨' }
+  dissolve: { name: 'Dissolve', icon: '✨' },
+  wipeLeft: { name: 'Wipe Left', icon: '◀️' },
+  wipeRight: { name: 'Wipe Right', icon: '▶️' },
+  wipeUp: { name: 'Wipe Up', icon: '🔼' },
+  wipeDown: { name: 'Wipe Down', icon: '🔽' },
+  spin: { name: 'Spin', icon: '🔄' },
+  blur: { name: 'Blur', icon: '💨' },
+  vhs: { name: 'VHS', icon: '📼' },
+  bounce: { name: 'Bounce', icon: '🏀' },
+  pixelate: { name: 'Pixelate', icon: '🎮' }
 }
 
 const VIDEO_EFFECTS: Record<VideoEffectType, { name: string; filter: string }> = {
@@ -283,7 +296,13 @@ const VIDEO_EFFECTS: Record<VideoEffectType, { name: string; filter: string }> =
   slowMo: { name: 'Slow Motion', filter: '' }, // Applied via playback rate
   bw: { name: 'Black & White', filter: 'grayscale(1)' },
   sepia: { name: 'Sepia', filter: 'sepia(0.8)' },
-  invert: { name: 'Invert', filter: 'invert(1)' }
+  invert: { name: 'Invert', filter: 'invert(1)' },
+  chromatic: { name: 'Chromatic', filter: '' }, // Applied via multi-layer
+  shake: { name: 'Shake', filter: '' }, // Applied via animation
+  strobe: { name: 'Strobe', filter: '' }, // Applied via animation
+  thermal: { name: 'Thermal', filter: 'hue-rotate(180deg) saturate(2) contrast(1.3)' },
+  dream: { name: 'Dreamy', filter: 'blur(1px) saturate(1.5) brightness(1.1)' },
+  emboss: { name: 'Emboss', filter: 'contrast(1.5) brightness(1.2) grayscale(0.5)' }
 }
 
 const COLOR_GRADES: Record<ColorGradePreset, { name: string; filter: string }> = {
@@ -303,6 +322,34 @@ const OVERLAY_EFFECTS: Record<OverlayEffectType, { name: string; description: st
   scanlines: { name: 'Scanlines', description: 'Horizontal scanlines' },
   vhs: { name: 'VHS', description: 'VHS tape effect' }
 }
+
+// Beat-synced text overlay types
+type TextOverlayStyle = 'pulse' | 'bounce' | 'flash' | 'shake' | 'zoom' | 'glitch'
+type TextOverlayPosition = 'center' | 'top' | 'bottom' | 'random'
+
+interface BeatTextOverlay {
+  id: string
+  text: string
+  style: TextOverlayStyle
+  position: TextOverlayPosition
+  color: string
+  fontSize: number
+  fontFamily: string
+  showOnBeat: number // Show every N beats (1, 2, 4, 8)
+  duration: number // How long to show (in beats: 0.25, 0.5, 1)
+  enabled: boolean
+}
+
+const TEXT_OVERLAY_STYLES: Record<TextOverlayStyle, { name: string; animation: string }> = {
+  pulse: { name: 'Pulse', animation: 'scale(1.2) -> scale(1)' },
+  bounce: { name: 'Bounce', animation: 'translateY bounce' },
+  flash: { name: 'Flash', animation: 'opacity flash' },
+  shake: { name: 'Shake', animation: 'horizontal shake' },
+  zoom: { name: 'Zoom', animation: 'scale(0) -> scale(1)' },
+  glitch: { name: 'Glitch', animation: 'chromatic + shake' }
+}
+
+const DEFAULT_TEXT_OVERLAYS: BeatTextOverlay[] = []
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 5: Audio Settings Types
@@ -718,6 +765,13 @@ export function PmvEditorPage() {
   // Phase 5: Audio panel state
   const [showAudioPanel, setShowAudioPanel] = useState(false)
 
+  // Audio Burner modal state
+  const [showAudioBurnerModal, setShowAudioBurnerModal] = useState(false)
+  const [audioBurnerUrl, setAudioBurnerUrl] = useState('')
+  const [audioBurnerDownloading, setAudioBurnerDownloading] = useState(false)
+  const [audioBurnerDownloads, setAudioBurnerDownloads] = useState<Array<{ id: string; filename: string; path: string; status: string }>>([])
+  const [audioBurnerCollectionVideos, setAudioBurnerCollectionVideos] = useState<Array<{ id: string; filename: string; path: string }>>([])
+
   // Phase 6: Export state
   const [showExportModal, setShowExportModal] = useState(false)
   const [exportSettings, setExportSettings] = useState<ExportSettings>(DEFAULT_EXPORT_SETTINGS)
@@ -964,16 +1018,38 @@ export function PmvEditorPage() {
     setIsDetectingBpm(false)
   }, [])
 
-  // Audio Burner - extract audio from video and import
+  // Audio Burner - open modal to choose source
   const handleAudioBurner = useCallback(async () => {
-    // Select video file
+    // Load completed downloads
+    try {
+      const downloads = await window.api.invoke('urlDownloader:getDownloads') as Array<{ id: string; filename: string; outputPath: string; status: string }>
+      const completed = downloads.filter(d => d.status === 'complete' && d.outputPath)
+      setAudioBurnerDownloads(completed.map(d => ({ id: d.id, filename: d.filename, path: d.outputPath, status: d.status })))
+    } catch (err) {
+      console.error('[PmvEditor] Failed to load downloads:', err)
+    }
+
+    // Load collection videos
+    try {
+      const result = await window.api.media.list({ type: 'video', limit: 100, sortBy: 'newest' }) as any
+      const videos = result?.items || result || []
+      setAudioBurnerCollectionVideos(videos.map((v: any) => ({ id: v.id, filename: v.filename, path: v.path })))
+    } catch (err) {
+      console.error('[PmvEditor] Failed to load collection videos:', err)
+    }
+
+    setShowAudioBurnerModal(true)
+  }, [])
+
+  // Audio Burner - extract from local file
+  const handleAudioBurnerFromFile = useCallback(async () => {
     const videoPath = await window.api.pmv.selectVideoForAudio()
     if (!videoPath) return
 
+    setShowAudioBurnerModal(false)
     setIsExtractingAudio(true)
 
     try {
-      // Extract audio from video
       const result = await window.api.pmv.extractAudio(videoPath)
 
       if (!result.success || !result.path) {
@@ -985,7 +1061,6 @@ export function PmvEditorPage() {
 
       const filename = result.path.split(/[/\\]/).pop() || 'extracted_audio.mp3'
 
-      // Set the extracted audio as music
       setProject(prev => ({
         ...prev,
         music: {
@@ -996,10 +1071,116 @@ export function PmvEditorPage() {
         bpmManualOverride: false
       }))
 
-      // Auto-detect BPM
       detectBpm(result.path)
     } catch (err) {
       console.error('[PmvEditor] Audio burner failed:', err)
+      alert('Failed to extract audio from video')
+    }
+
+    setIsExtractingAudio(false)
+  }, [detectBpm])
+
+  // Audio Burner - extract from URL download
+  const handleAudioBurnerFromUrl = useCallback(async () => {
+    if (!audioBurnerUrl.trim()) return
+
+    setAudioBurnerDownloading(true)
+
+    try {
+      // Start download
+      const downloadResult = await window.api.invoke('urlDownloader:addDownload', audioBurnerUrl) as { id: string; success: boolean; error?: string }
+
+      if (!downloadResult.success) {
+        alert(`Download failed: ${downloadResult.error || 'Unknown error'}`)
+        setAudioBurnerDownloading(false)
+        return
+      }
+
+      // Poll for completion
+      const pollForCompletion = async (): Promise<string | null> => {
+        for (let i = 0; i < 600; i++) { // 10 minute max
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          const downloads = await window.api.invoke('urlDownloader:getDownloads') as Array<{ id: string; status: string; outputPath: string }>
+          const download = downloads.find(d => d.id === downloadResult.id)
+          if (download?.status === 'complete' && download.outputPath) {
+            return download.outputPath
+          }
+          if (download?.status === 'error' || download?.status === 'cancelled') {
+            return null
+          }
+        }
+        return null
+      }
+
+      const downloadedPath = await pollForCompletion()
+
+      if (!downloadedPath) {
+        alert('Download failed or timed out')
+        setAudioBurnerDownloading(false)
+        return
+      }
+
+      // Extract audio from downloaded video
+      const result = await window.api.pmv.extractAudio(downloadedPath)
+
+      if (!result.success || !result.path) {
+        alert(`Audio extraction failed: ${result.error || 'Unknown error'}`)
+        setAudioBurnerDownloading(false)
+        return
+      }
+
+      const filename = result.path.split(/[/\\]/).pop() || 'extracted_audio.mp3'
+
+      setProject(prev => ({
+        ...prev,
+        music: {
+          path: result.path!,
+          filename,
+          duration: result.duration || 0
+        },
+        bpmManualOverride: false
+      }))
+
+      detectBpm(result.path)
+      setShowAudioBurnerModal(false)
+      setAudioBurnerUrl('')
+    } catch (err) {
+      console.error('[PmvEditor] URL audio burner failed:', err)
+      alert('Failed to download and extract audio')
+    }
+
+    setAudioBurnerDownloading(false)
+  }, [audioBurnerUrl, detectBpm])
+
+  // Audio Burner - extract from existing download or collection video
+  const handleAudioBurnerFromPath = useCallback(async (videoPath: string) => {
+    setShowAudioBurnerModal(false)
+    setIsExtractingAudio(true)
+
+    try {
+      const result = await window.api.pmv.extractAudio(videoPath)
+
+      if (!result.success || !result.path) {
+        alert(`Audio extraction failed: ${result.error || 'Unknown error'}`)
+        setIsExtractingAudio(false)
+        return
+      }
+
+      const filename = result.path.split(/[/\\]/).pop() || 'extracted_audio.mp3'
+
+      setProject(prev => ({
+        ...prev,
+        music: {
+          path: result.path!,
+          filename,
+          duration: result.duration || 0
+        },
+        bpmManualOverride: false
+      }))
+
+      detectBpm(result.path)
+    } catch (err) {
+      console.error('[PmvEditor] Audio burner from path failed:', err)
       alert('Failed to extract audio from video')
     }
 
@@ -2329,6 +2510,139 @@ export function PmvEditorPage() {
                     </div>
                   </>
                 )}
+
+                {/* Beat-Synced Text Overlays */}
+                <div className="pt-4 border-t border-zinc-800">
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="text-xs text-zinc-400 font-medium">Beat-Synced Text</label>
+                    <button
+                      onClick={() => {
+                        const newOverlay: BeatTextOverlay = {
+                          id: `text-${Date.now()}`,
+                          text: 'BEAT',
+                          style: 'pulse',
+                          position: 'center',
+                          color: '#ffffff',
+                          fontSize: 48,
+                          fontFamily: 'Impact',
+                          showOnBeat: 2,
+                          duration: 0.5,
+                          enabled: true
+                        }
+                        handleUpdateEffects({
+                          textOverlays: [...project.effectsSettings.textOverlays, newOverlay]
+                        })
+                      }}
+                      className="px-2 py-1 text-xs bg-purple-500/20 text-purple-400 rounded hover:bg-purple-500/30 transition"
+                    >
+                      + Add Text
+                    </button>
+                  </div>
+                  {project.effectsSettings.textOverlays.length === 0 && (
+                    <p className="text-[10px] text-zinc-500 text-center py-2">
+                      Add text that appears synced to beats
+                    </p>
+                  )}
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {project.effectsSettings.textOverlays.map((overlay, idx) => (
+                      <div
+                        key={overlay.id}
+                        className="p-2 rounded-lg bg-zinc-800/50 border border-zinc-700 space-y-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <input
+                            type="text"
+                            value={overlay.text}
+                            onChange={(e) => {
+                              const updated = [...project.effectsSettings.textOverlays]
+                              updated[idx] = { ...overlay, text: e.target.value }
+                              handleUpdateEffects({ textOverlays: updated })
+                            }}
+                            className="flex-1 px-2 py-1 text-xs bg-black/30 rounded border border-zinc-700 focus:outline-none"
+                            placeholder="Text..."
+                          />
+                          <button
+                            onClick={() => {
+                              const updated = project.effectsSettings.textOverlays.filter((_, i) => i !== idx)
+                              handleUpdateEffects({ textOverlays: updated })
+                            }}
+                            className="ml-2 p-1 text-red-400 hover:text-red-300"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <select
+                            value={overlay.style}
+                            onChange={(e) => {
+                              const updated = [...project.effectsSettings.textOverlays]
+                              updated[idx] = { ...overlay, style: e.target.value as TextOverlayStyle }
+                              handleUpdateEffects({ textOverlays: updated })
+                            }}
+                            className="text-[10px] px-1 py-0.5 bg-black/30 border border-zinc-700 rounded"
+                          >
+                            {(Object.keys(TEXT_OVERLAY_STYLES) as TextOverlayStyle[]).map(s => (
+                              <option key={s} value={s}>{TEXT_OVERLAY_STYLES[s].name}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={overlay.position}
+                            onChange={(e) => {
+                              const updated = [...project.effectsSettings.textOverlays]
+                              updated[idx] = { ...overlay, position: e.target.value as TextOverlayPosition }
+                              handleUpdateEffects({ textOverlays: updated })
+                            }}
+                            className="text-[10px] px-1 py-0.5 bg-black/30 border border-zinc-700 rounded"
+                          >
+                            <option value="center">Center</option>
+                            <option value="top">Top</option>
+                            <option value="bottom">Bottom</option>
+                            <option value="random">Random</option>
+                          </select>
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="color"
+                            value={overlay.color}
+                            onChange={(e) => {
+                              const updated = [...project.effectsSettings.textOverlays]
+                              updated[idx] = { ...overlay, color: e.target.value }
+                              handleUpdateEffects({ textOverlays: updated })
+                            }}
+                            className="w-6 h-5 rounded cursor-pointer"
+                          />
+                          <select
+                            value={overlay.showOnBeat}
+                            onChange={(e) => {
+                              const updated = [...project.effectsSettings.textOverlays]
+                              updated[idx] = { ...overlay, showOnBeat: Number(e.target.value) }
+                              handleUpdateEffects({ textOverlays: updated })
+                            }}
+                            className="flex-1 text-[10px] px-1 py-0.5 bg-black/30 border border-zinc-700 rounded"
+                          >
+                            <option value={1}>Every beat</option>
+                            <option value={2}>Every 2 beats</option>
+                            <option value={4}>Every 4 beats</option>
+                            <option value={8}>Every 8 beats</option>
+                          </select>
+                          <button
+                            onClick={() => {
+                              const updated = [...project.effectsSettings.textOverlays]
+                              updated[idx] = { ...overlay, enabled: !overlay.enabled }
+                              handleUpdateEffects({ textOverlays: updated })
+                            }}
+                            className={cn(
+                              'px-2 py-0.5 text-[10px] rounded',
+                              overlay.enabled ? 'bg-green-500/20 text-green-400' : 'bg-zinc-700 text-zinc-500'
+                            )}
+                          >
+                            {overlay.enabled ? 'On' : 'Off'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </>
             )}
           </div>
@@ -2535,6 +2849,127 @@ export function PmvEditorPage() {
             >
               Reset Audio Settings
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Audio Burner Modal */}
+      {showAudioBurnerModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-zinc-900 rounded-2xl border border-zinc-700 w-full max-w-xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+                  <Flame size={18} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold">Audio Burner</h2>
+                  <p className="text-xs text-zinc-500">Extract audio from video</p>
+                </div>
+              </div>
+              {!audioBurnerDownloading && (
+                <button
+                  onClick={() => setShowAudioBurnerModal(false)}
+                  className="p-2 rounded-lg hover:bg-zinc-800 transition"
+                >
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-6 overflow-y-auto flex-1">
+              {/* Option 1: Paste URL */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-orange-500/20 text-orange-400 text-xs flex items-center justify-center font-bold">1</span>
+                  <span className="text-sm font-medium">Download from URL</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={audioBurnerUrl}
+                    onChange={(e) => setAudioBurnerUrl(e.target.value)}
+                    placeholder="Paste video URL (YouTube, etc.)"
+                    className="flex-1 px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 focus:border-orange-500 focus:outline-none text-sm"
+                    disabled={audioBurnerDownloading}
+                  />
+                  <button
+                    onClick={handleAudioBurnerFromUrl}
+                    disabled={!audioBurnerUrl.trim() || audioBurnerDownloading}
+                    className="px-4 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition flex items-center gap-2"
+                  >
+                    {audioBurnerDownloading ? (
+                      <><Loader2 size={14} className="animate-spin" /> Downloading...</>
+                    ) : (
+                      <><Download size={14} /> Extract</>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Option 2: From Downloads */}
+              {audioBurnerDownloads.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-orange-500/20 text-orange-400 text-xs flex items-center justify-center font-bold">2</span>
+                    <span className="text-sm font-medium">From Downloaded Videos ({audioBurnerDownloads.length})</span>
+                  </div>
+                  <div className="max-h-32 overflow-y-auto space-y-1 bg-zinc-800/50 rounded-lg p-2">
+                    {audioBurnerDownloads.slice(0, 10).map(d => (
+                      <button
+                        key={d.id}
+                        onClick={() => handleAudioBurnerFromPath(d.path)}
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-zinc-700 transition text-sm truncate flex items-center gap-2"
+                      >
+                        <FileVideo size={14} className="shrink-0 text-zinc-400" />
+                        <span className="truncate">{d.filename}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Option 3: From Collection */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-orange-500/20 text-orange-400 text-xs flex items-center justify-center font-bold">{audioBurnerDownloads.length > 0 ? '3' : '2'}</span>
+                  <span className="text-sm font-medium">From Your Collection ({audioBurnerCollectionVideos.length})</span>
+                </div>
+                <div className="max-h-48 overflow-y-auto space-y-1 bg-zinc-800/50 rounded-lg p-2">
+                  {audioBurnerCollectionVideos.length === 0 ? (
+                    <div className="text-center text-zinc-500 text-sm py-4">No videos in collection</div>
+                  ) : (
+                    audioBurnerCollectionVideos.slice(0, 20).map(v => (
+                      <button
+                        key={v.id}
+                        onClick={() => handleAudioBurnerFromPath(v.path)}
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-zinc-700 transition text-sm truncate flex items-center gap-2"
+                      >
+                        <FileVideo size={14} className="shrink-0 text-zinc-400" />
+                        <span className="truncate">{v.filename}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Option 4: Browse Files */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-orange-500/20 text-orange-400 text-xs flex items-center justify-center font-bold">{audioBurnerDownloads.length > 0 ? '4' : '3'}</span>
+                  <span className="text-sm font-medium">Browse Files</span>
+                </div>
+                <button
+                  onClick={handleAudioBurnerFromFile}
+                  className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-zinc-700 hover:border-orange-500/50 hover:bg-zinc-800/30 transition flex items-center justify-center gap-2 text-sm"
+                >
+                  <FolderPlus size={16} className="text-zinc-400" />
+                  <span>Select video file from disk</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

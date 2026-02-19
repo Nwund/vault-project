@@ -1,497 +1,396 @@
-<p align="center">
-  <img src="src/renderer/assets/vault-logo.png" alt="Vault Logo" width="120" height="120">
-</p>
+<div align="center">
 
-<h1 align="center">VAULT</h1>
+# 🔐 VAULT
 
-<p align="center">
-  <strong>The Ultimate Private Media Library for Adults</strong>
-</p>
+### *Your Private Media Sanctuary*
 
-<p align="center">
-  <img src="https://img.shields.io/badge/version-2.1.6-blue.svg" alt="Version">
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg" alt="Platform">
-  <img src="https://img.shields.io/badge/electron-32.0.0-47848F.svg" alt="Electron">
-  <img src="https://img.shields.io/badge/react-18.3.1-61DAFB.svg" alt="React">
-  <img src="https://img.shields.io/badge/typescript-5.7-3178C6.svg" alt="TypeScript">
-  <img src="https://img.shields.io/badge/license-Private-red.svg" alt="License">
-</p>
+[![Version](https://img.shields.io/badge/v2.1.7-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
+[![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-Platform-blue?style=for-the-badge)](https://github.com/Nwund/vault-project)
+[![Electron](https://img.shields.io/badge/Electron-32.0-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
+[![React](https://img.shields.io/badge/React-18.3-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
 
-<p align="center">
-  <img src="https://img.shields.io/badge/AI%20Powered-Venice%20AI-ff69b4.svg" alt="AI Powered">
-  <img src="https://img.shields.io/badge/DLNA-Streaming-green.svg" alt="DLNA">
-  <img src="https://img.shields.io/badge/GPU-Accelerated-orange.svg" alt="GPU Accelerated">
-</p>
+<br/>
+
+**The ultimate private media library for discerning adults.**<br/>
+*AI-powered • Privacy-first • Beautifully designed*
+
+<br/>
+
+[**⬇️ Download**](https://github.com/Nwund/vault-project/releases) · [**📖 Documentation**](#features) · [**🚀 Quick Start**](#quick-start)
+
+<br/>
 
 ---
 
-## Overview
+<br/>
 
-**Vault** is a powerful, privacy-focused desktop application for organizing, viewing, and enjoying your adult media collection. Built with Electron and React, it offers a sleek, immersive experience with AI-powered features, customizable visual effects, and comprehensive library management.
+<img src="https://img.shields.io/badge/AI%20Powered-Venice%20%2B%20ONNX-ff69b4?style=flat-square" alt="AI">
+<img src="https://img.shields.io/badge/DLNA-Smart%20TV%20Streaming-success?style=flat-square" alt="DLNA">
+<img src="https://img.shields.io/badge/Mobile-Sync%20%26%20Control-orange?style=flat-square" alt="Mobile">
+<img src="https://img.shields.io/badge/GPU-Accelerated-purple?style=flat-square" alt="GPU">
 
-### Key Highlights
+</div>
 
-- **Massive Library Support** - Handles 10,000+ files effortlessly with virtual scrolling
-- **AI-Powered Tagging** - 3-tier AI system for automatic content analysis
-- **Immersive Visual Effects** - 20+ overlays including CRT, film grain, particles
-- **Multiple View Modes** - Library, Feed, Goon Wall, Brainwash, Sessions
-- **DLNA Streaming** - Cast to smart TVs and devices
-- **Mobile Sync** - Control and browse from your phone
-- **Complete Privacy** - All data stays local, panic key support
+<br/>
 
----
+## ✨ Why Vault?
 
-## Features
+<table>
+<tr>
+<td width="50%">
 
-### Library Management
+### 🎯 **Built for Privacy**
+Your collection stays on YOUR machine. No cloud uploads, no tracking, no telemetry. Panic key instantly hides everything.
 
-| Feature | Description |
-|---------|-------------|
-| **Smart Scanning** | Auto-imports videos, images, GIFs from watched folders |
-| **AI Auto-Tagger** | Venice AI + ONNX models analyze and categorize content |
-| **Tag Categories** | Hierarchical organization (People, Actions, Style, etc.) |
-| **Tag Aliases** | Synonyms automatically resolve to canonical tags |
-| **Custom Filters** | Save complex filter combinations for quick access |
-| **Duplicate Finder** | Detect exact/similar duplicates by hash, size, or name |
-| **Batch Operations** | Bulk tag, rate, delete, or organize media |
-| **Watch Later Queue** | Priority-ordered queue with reminders |
-| **Smart Playlists** | Auto-updating playlists based on custom rules |
+</td>
+<td width="50%">
 
-### Viewing Experience
+### 🧠 **AI That Understands**
+3-tier AI system auto-tags content, generates captions, and learns your preferences. Works offline too.
 
-| Feature | Description |
-|---------|-------------|
-| **Feed Mode** | TikTok-style full-screen swipe navigation (keyboard + mouse + touch) |
-| **Goon Wall** | Multi-video grid with sync, cascade shuffle, and transitions |
-| **Brainwash Mode** | Caption editor with AI generation, filters, and cropping |
-| **Sessions** | Curated playlists with templates and smart rules |
-| **Video Bookmarks** | Save timestamps, export as FFmpeg chapters |
-| **Scene Markers** | Right-click timeline to mark key moments |
-| **Image Zoom** | Scroll wheel zoom with click-drag pan |
-| **Floating Player** | Resizable picture-in-picture video player |
+</td>
+</tr>
+<tr>
+<td width="50%">
 
-### Downloads & Import
+### 🎨 **Immersive Experience**
+20+ visual overlays, 15+ themes, multiple view modes. From focused browsing to immersive walls.
 
-| Feature | Description |
-|---------|-------------|
-| **URL Downloader** | Download from 1000+ sites via yt-dlp integration |
-| **Quality Selection** | Choose Best, 1080p, 720p, 480p, or Audio Only |
-| **Auto-Import** | Automatically add downloads to library |
-| **Drag & Drop** | Drop files directly into library to import |
-| **Progress Tracking** | Real-time download progress with thumbnails |
+</td>
+<td width="50%">
 
-### Visual Effects & Themes
+### 📱 **Everywhere Access**
+Stream to smart TVs via DLNA. Control from your phone. Your library, your way.
 
-| Category | Options |
-|----------|---------|
-| **Overlays** | Film Grain, CRT, Bokeh, Sparkles, Hearts, Rain, Matrix, Aurora, Fire, Neon Drip, TV Border, Glitch, and 15+ more |
-| **Dark Themes** | Obsidian, Neon Dreams, Ember, Velvet, Sapphire, Midnight Purple |
-| **Light Themes** | Arctic, Linen, Mint Cream, Peach Blossom, Sky Blue, Lavender, Coral |
-| **Goon Themes** | Submissive, Dominant, Latex, Bimbo, Hypno |
-| **GoonWords** | Floating text with customizable fonts, colors, presets |
-| **Accessibility** | Color blind modes, reduced motion, font scaling |
+</td>
+</tr>
+</table>
 
-### AI Intelligence (3-Tier System)
-
-```
-+-----------------------------------------------------------+
-|  TIER 3: Cloud AI (Venice API)                            |
-|  - Advanced video analysis with qwen3-vl-235b             |
-|  - Multi-frame scene understanding                        |
-|  - Intelligent tag generation                             |
-|  - AI caption generation for Brainwash                    |
-+-----------------------------------------------------------+
-|  TIER 2: Local LLM (Ollama)                               |
-|  - Privacy-first processing                               |
-|  - Tag cleanup and organization                           |
-|  - Filename suggestions                                   |
-+-----------------------------------------------------------+
-|  TIER 1: ONNX Models (Offline)                            |
-|  - NSFWJS detection                                       |
-|  - WD Tagger classification                               |
-|  - Works without internet                                 |
-+-----------------------------------------------------------+
-```
-
-### Brainwash / Caption Editor
-
-| Feature | Description |
-|---------|-------------|
-| **17 Text Presets** | Pre-configured caption styles |
-| **AI Captions** | Venice AI generates captions in 5 styles |
-| **Image Filters** | Pixelate, low quality, saturation, contrast |
-| **Cropping** | Canvas-based image cropping |
-| **Video Frame Capture** | Capture video frames for captioning |
-| **Caption Bars** | Black/white bars with size control |
-| **Drag Text** | Position text anywhere on image |
-| **Export** | Save as new file or add to library |
-
-### Mobile Sync
-
-| Feature | Description |
-|---------|-------------|
-| **QR Pairing** | Scan QR code to connect mobile device |
-| **Remote Browse** | Browse library from phone browser |
-| **Remote Control** | Control playback from mobile |
-| **Auto-Discovery** | Devices automatically find server on LAN |
-
-### Gamification
-
-| Feature | Description |
-|---------|-------------|
-| **50 Achievements** | Unlock achievements for various activities |
-| **Daily Challenges** | Complete tasks for XP rewards |
-| **Personal Records** | Track your best streaks and stats |
-| **Weekly Stats** | Sessions, videos watched, time spent |
-| **Streak Protection** | Warnings when streaks are at risk |
-
-### Backend Services (40+)
-
-<details>
-<summary><strong>Click to expand full service list</strong></summary>
-
-#### Core Services
-- `db.ts` - SQLite database with better-sqlite3
-- `scanner.ts` - Media file discovery and import
-- `thumbs.ts` - Thumbnail generation with FFmpeg
-- `settings.ts` - Persistent configuration
-- `transcode.ts` - Video transcoding with queue system
-
-#### Media Services
-- `video-bookmarks.ts` - Timestamp bookmarks
-- `media-notes.ts` - Personal annotations
-- `media-relationships.ts` - Link related content
-- `media-info.ts` - Detailed file metadata
-- `metadata-extractor.ts` - FFprobe analysis
-- `scene-detection.ts` - Chapter detection
-
-#### Organization Services
-- `tag-categories.ts` - Hierarchical tags
-- `tag-aliases.ts` - Synonym management
-- `custom-filters.ts` - Saved filter presets
-- `auto-organize.ts` - Rule-based sorting
-- `collections.ts` - Media grouping
-- `performers.ts` - Performer profiles
-
-#### Discovery Services
-- `global-search.ts` - Full-text search
-- `similar-content.ts` - Perceptual hashing
-- `duplicates-finder.ts` - Duplicate detection
-- `smart-playlists.ts` - Dynamic playlists
-
-#### Tracking Services
-- `watch-history.ts` - View tracking
-- `rating-history.ts` - Rating changes over time
-- `session-history.ts` - Viewing sessions
-- `analytics.ts` - Usage statistics
-- `advanced-stats.ts` - Deep insights
-
-#### Utility Services
-- `watch-later.ts` - Queue management
-- `favorite-folders.ts` - Quick access
-- `view-presets.ts` - Layout saves
-- `quick-actions.ts` - Keyboard shortcuts
-- `keyboard-shortcuts.ts` - Custom bindings
-- `notifications.ts` - System alerts
-- `error-logger.ts` - Persistent error logging
-
-#### Media Processing
-- `export-service.ts` - Media export
-- `import-service.ts` - Bulk import
-- `backup-restore.ts` - Data backup
-- `batch-operations.ts` - Bulk actions
-- `media-compare.ts` - Side-by-side view
-- `url-downloader-service.ts` - yt-dlp integration
-
-#### Integration Services
-- `dlna-service.ts` - TV streaming
-- `mobile-sync.ts` - Phone connectivity
-- `file-watcher.ts` - Auto-scan folders
-- `scheduled-tasks.ts` - Background jobs
-
-#### AI Services
-- `ai-intelligence/` - 3-tier AI system
-- `tagging/smart-tagger.ts` - AI tagging
-- `tagging/hybrid-tagger.ts` - Combined approach
-- `ai/video-analyzer.ts` - Content analysis
-
-#### Audio Services
-- `audio/voice-line-service.ts` - Voice playback
-- `audio/sound-organizer.ts` - Sound management
-- `slideshow.ts` - Ambient soundscapes
-
-</details>
+<br/>
 
 ---
 
-## Installation
+<br/>
 
-### Requirements
-- **Node.js** 18+
-- **npm** 9+
-- **FFmpeg** (auto-downloaded or system install)
-- **yt-dlp** (optional, for URL downloads)
-- **Windows 10+** / **macOS 11+** / **Linux** (Ubuntu 20.04+)
+## 🖼️ Screenshots
 
-### Development Setup
+<div align="center">
+
+| Library View | Goon Wall | Brainwash Editor |
+|:---:|:---:|:---:|
+| *Organize thousands of files* | *Multi-video immersive grid* | *AI captions & filters* |
+
+| Feed Mode | PMV Editor | Mobile Sync |
+|:---:|:---:|:---:|
+| *TikTok-style navigation* | *Beat-synced video creation* | *Control from your phone* |
+
+</div>
+
+<br/>
+
+---
+
+<br/>
+
+## 🚀 Quick Start
 
 ```bash
-# Clone repository
+# Clone & Install
 git clone https://github.com/Nwund/vault-project.git
-cd vault-project
+cd vault-project && npm install
 
-# Install dependencies
-npm install
-
-# Start development server
+# Launch
 npm run dev
-
-# Build for production
-npm run build
 ```
 
-### Build Outputs
-- **Windows**: `release/vault-setup.exe` (NSIS installer)
-- **macOS**: `release/vault.dmg`
-- **Linux**: `release/vault.AppImage`
+**That's it!** Add your media folders in Settings and start exploring.
+
+<br/>
 
 ---
 
-## Configuration
+<br/>
 
-### Media Directories
-Add folders in **Settings > Library > Media Directories**. Vault watches these for new content.
+## 🎬 Features
 
-### AI Setup
+### 📚 Library Management
 
-**Venice AI (Recommended)**
-1. Get API key from [Venice AI](https://venice.ai)
-2. Enter in **Settings > AI > Venice API Key**
+| | Feature | Description |
+|:---:|---|---|
+| 🔍 | **Smart Scanning** | Auto-imports from watched folders |
+| 🤖 | **AI Auto-Tagger** | Venice AI + ONNX analyzes content |
+| 🏷️ | **Tag Categories** | Hierarchical organization system |
+| 🔗 | **Tag Aliases** | Synonyms auto-resolve |
+| 💾 | **Custom Filters** | Save complex filter combos |
+| 👯 | **Duplicate Finder** | Hash, size, or name matching |
+| ⚡ | **Batch Operations** | Bulk tag, rate, delete, organize |
+| 📋 | **Watch Later** | Priority queue with reminders |
 
-**Ollama (Local)**
-1. Install [Ollama](https://ollama.ai)
-2. Pull a vision model: `ollama pull llava`
-3. Enable in **Settings > AI > Use Ollama**
+<br/>
 
-### URL Downloader Setup
-1. Install yt-dlp via your package manager:
-   - Windows: `winget install yt-dlp`
-   - macOS: `brew install yt-dlp`
-   - Linux: `pip install yt-dlp`
-2. Vault auto-detects yt-dlp from common install locations
+### 🎥 Viewing Modes
 
-### Keyboard Shortcuts
+<table>
+<tr>
+<td align="center" width="20%">
+<h3>📖</h3>
+<b>Library</b><br/>
+<sub>Grid browsing with filters</sub>
+</td>
+<td align="center" width="20%">
+<h3>📱</h3>
+<b>Feed</b><br/>
+<sub>TikTok-style swipe</sub>
+</td>
+<td align="center" width="20%">
+<h3>🧱</h3>
+<b>Goon Wall</b><br/>
+<sub>Multi-video grid</sub>
+</td>
+<td align="center" width="20%">
+<h3>🧠</h3>
+<b>Brainwash</b><br/>
+<sub>Caption editor</sub>
+</td>
+<td align="center" width="20%">
+<h3>🎵</h3>
+<b>PMV Editor</b><br/>
+<sub>Beat-synced edits</sub>
+</td>
+</tr>
+</table>
 
-| Shortcut | Action |
-|----------|--------|
-| `Space` | Play/Pause |
-| `Left/Right` | Previous/Next or Seek |
-| `Up/Down` | Volume or Navigate |
-| `F` | Fullscreen |
-| `M` | Mute |
-| `L` | Like/Favorite |
-| `B` | Add Bookmark |
-| `H` | Hide UI |
-| `D` | URL Downloader |
-| `?` | Show All Shortcuts |
-| `Ctrl+K` | Command Palette |
-| `Ctrl+Z` | Undo Delete |
-| `Escape` | Panic Key (instant hide) |
+<br/>
+
+### 🤖 AI Intelligence (3-Tier System)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ☁️  TIER 3: Cloud AI (Venice API)                          │
+│      • Advanced video analysis with qwen3-vl-235b           │
+│      • Multi-frame scene understanding                      │
+│      • Intelligent tag & caption generation                 │
+├─────────────────────────────────────────────────────────────┤
+│  🏠  TIER 2: Local LLM (Ollama)                             │
+│      • Privacy-first processing                             │
+│      • Tag cleanup and organization                         │
+│      • Offline-capable with vision models                   │
+├─────────────────────────────────────────────────────────────┤
+│  ⚡  TIER 1: ONNX Models (Instant)                          │
+│      • NSFWJS detection                                     │
+│      • WD Tagger classification                             │
+│      • Works completely offline                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+<br/>
+
+### 🎨 Visual Experience
+
+| 🌈 Themes | 💫 Overlays | 🎭 Effects |
+|---|---|---|
+| Obsidian, Neon Dreams, Ember | Film Grain, CRT, Matrix Rain | Vignette, Chromatic, Glitch |
+| Velvet, Sapphire, Midnight | Bokeh, Hearts, Aurora | Thermal, Dreamy, VHS |
+| Arctic, Mint, Peach Blossom | Sparkles, Fire, Neon Drip | Pixelate, Strobe, Shake |
+| *+ Goon themes: Hypno, Latex* | *20+ total overlays* | *15+ PMV transitions* |
+
+<br/>
+
+### 🎬 PMV/HMV Editor
+
+Create professional-quality beat-synced videos:
+
+- **🎵 BPM Detection** - Auto-detect beats from any audio
+- **✂️ Smart Cuts** - 6 built-in templates (Classic, Hypno, Romantic...)
+- **🔀 16 Transitions** - Flash, Glitch, Zoom, VHS, Pixelate...
+- **📝 Beat Text** - Synced text overlays with 6 animation styles
+- **🔊 Audio Burner** - Extract audio from any video
+
+<br/>
+
+### 📲 Mobile & Streaming
+
+| Feature | Description |
+|:---:|---|
+| 📺 **DLNA Streaming** | Cast to smart TVs with full queue control |
+| 📱 **Mobile Sync** | Browse & control from your phone |
+| 🔗 **QR Pairing** | Instant device connection |
+| 🎮 **Remote Control** | Playback controls from anywhere |
+
+<br/>
+
+### 🏆 Gamification
+
+> *Turn your sessions into achievements*
+
+- **50 Achievements** to unlock
+- **Daily Challenges** for XP rewards
+- **Personal Records** & streaks
+- **Weekly Stats** tracking
+- **Streak Protection** warnings
+
+<br/>
 
 ---
 
-## Architecture
+<br/>
 
-```
-vault/
-├── src/
-│   ├── main/           # Electron main process
-│   │   ├── services/   # 40+ backend services
-│   │   ├── ipc.ts      # IPC handlers (~6500 lines)
-│   │   ├── db.ts       # SQLite database
-│   │   └── index.ts    # Main entry
-│   ├── renderer/       # React frontend
-│   │   ├── components/ # UI components
-│   │   ├── hooks/      # Custom hooks
-│   │   └── App.tsx     # Main app (~18000 lines)
-│   └── preload/        # Preload scripts
-├── electron.vite.config.ts
-└── package.json
-```
+## 🛠️ Tech Stack
 
-### Tech Stack
+<div align="center">
 
 | Layer | Technology |
-|-------|------------|
+|:---:|:---:|
 | **Framework** | Electron 32 |
-| **Frontend** | React 18.3 + TypeScript 5.7 |
-| **Styling** | Tailwind CSS 3.4 |
+| **Frontend** | React 18 + TypeScript |
+| **Styling** | Tailwind CSS |
 | **Database** | SQLite (better-sqlite3) |
-| **Build** | electron-vite 5.0 |
 | **Media** | FFmpeg + FFprobe |
-| **AI** | ONNX Runtime + Venice API + Ollama |
+| **AI** | ONNX Runtime + Venice + Ollama |
 | **Downloads** | yt-dlp |
+
+</div>
+
+<br/>
 
 ---
 
-## Database Schema
+<br/>
+
+## 📊 By the Numbers
+
+<div align="center">
+
+| | |
+|:---:|:---:|
+| **40+** Backend Services | **25+** Database Tables |
+| **20+** Visual Overlays | **15+** Themes |
+| **50** Achievements | **16** PMV Transitions |
+| **6** Caption Styles | **3** AI Tiers |
+
+</div>
+
+<br/>
+
+---
+
+<br/>
+
+## ⌨️ Keyboard Shortcuts
+
+| Key | Action | | Key | Action |
+|:---:|---|---|:---:|---|
+| `Space` | Play/Pause | | `L` | Like/Favorite |
+| `←` `→` | Navigate/Seek | | `B` | Bookmark |
+| `↑` `↓` | Volume/Scroll | | `D` | Downloader |
+| `F` | Fullscreen | | `Ctrl+K` | Command Palette |
+| `M` | Mute | | `Ctrl+Z` | Undo Delete |
+| `H` | Hide UI | | `Esc` | **Panic Key** |
+
+<br/>
+
+---
+
+<br/>
+
+## 🔒 Privacy & Security
+
+<table>
+<tr>
+<td align="center">💾<br/><b>100% Local</b><br/><sub>All data on your machine</sub></td>
+<td align="center">🚫<br/><b>No Telemetry</b><br/><sub>Zero data collection</sub></td>
+<td align="center">🚨<br/><b>Panic Key</b><br/><sub>Instant hide (Esc)</sub></td>
+</tr>
+<tr>
+<td align="center">👻<br/><b>Incognito Mode</b><br/><sub>No history recording</sub></td>
+<td align="center">🔐<br/><b>Encrypted Backup</b><br/><sub>Secure data export</sub></td>
+<td align="center">🛡️<br/><b>Context Isolation</b><br/><sub>Secure Electron config</sub></td>
+</tr>
+</table>
+
+<br/>
+
+---
+
+<br/>
+
+## 📝 Recent Updates
+
+### v2.1.7 *(Latest)*
+
+- ✨ **Floating Labels** - Draggable text anywhere on images
+- ✨ **Vignette Effect** - Cinematic borders with slider control
+- ✨ **Beat-Synced Text** - PMV text overlays synced to music
+- ✨ **9 New Transitions** - VHS, Spin, Blur, Pixelate, Wipe...
+- ✨ **6 New Effects** - Chromatic, Strobe, Thermal, Dreamy...
+- ✨ **Home Dashboard** - Today's Picks, Trending, Unwatched sections
+- ✨ **Series Modal** - View and play full series in order
+- 🔧 **GIF Creator** - Fixed quality/FPS settings
+- 🔧 **Audio Burner** - URL download integration
 
 <details>
-<summary><strong>Click to expand table list</strong></summary>
+<summary><b>Previous Versions</b></summary>
 
-### Core Tables
-- `media` - Main media items
-- `tags` - Tag definitions
-- `media_tags` - Media-tag relationships
-- `playlists` - Playlist definitions (with smart playlist support)
-- `playlist_items` - Playlist contents
+### v2.1.6
+- Audio Burner in PMV Editor
+- GoonWall auto-shuffle control
+- Climax point toggle
 
-### Stats & History
-- `media_stats` - Play counts, ratings
-- `watch_history` - View history
-- `rating_history` - Rating changes
-- `viewing_sessions` - Session tracking
-- `search_history` - Search queries
-
-### Organization
-- `tag_categories` - Category hierarchy
-- `tag_aliases` - Synonym mappings
-- `media_relationships` - Content links
-- `media_notes` - User notes
-- `collections` - Media groups
-- `performers` - Performer profiles
-
-### Features
-- `video_bookmarks` - Timestamp markers
-- `custom_filters` - Saved filters
-- `watch_later` - Queue items
-- `favorite_folders` - Quick access
-- `smart_playlists` - Dynamic lists
-- `scheduled_tasks` - Background jobs
-- `caption_templates` - Brainwash presets
-
-### AI & Processing
-- `media_hashes` - Perceptual hashes
-- `ai_cache` - Analysis cache
-- `ai_analysis_results` - AI tagging results
-- `ai_review_queue` - Pending reviews
+### v2.1.5
+- Smart Playlists
+- Venice AI Captions
+- Welcome Tutorial
+- Video Frame Capture
+- Image Cropping
+- Settings Search
 
 </details>
 
----
-
-## Recent Updates (v2.1.6)
-
-### New Features
-- **Audio Burner** - Extract audio from any video file in PMV Editor with auto BPM detection
-- **GoonWall Auto-Shuffle Control** - Option to disable auto-shuffle (set interval to 0)
-- **Climax Point Toggle** - Choose whether videos start at 70-80% or from beginning
-
-### Improvements
-- **GoonWall Audio Cleanup** - Audio stops immediately when navigating away
-- **Favorites Filter** - Fixed `media:list` to properly filter by `liked: true` parameter
-
-### Bug Fixes
-- Fixed favorites count showing incorrect values on Home dashboard
-- Fixed GoonWall audio continuing after leaving the page
-- Fixed video slot counter not resetting on navigation
+<br/>
 
 ---
 
-## Recent Updates (v2.1.5)
+<br/>
 
-### New Features
-- **Downloads Page** - Full navigation tab for URL downloads
-- **Smart Playlists** - Auto-updating playlists with custom rules
-- **Venice AI Captions** - AI-generated captions in Brainwash
-- **Welcome Tutorial** - 5-step guided tour for new users
-- **Video Frame Capture** - Capture frames from videos in Brainwash
-- **Image Cropping** - Canvas-based crop tool in Brainwash
-- **Drag-Drop Text** - Position caption text anywhere on image
-- **Settings Search** - Find settings by keyword
-- **Streak Protection** - Warnings when losing your streak
-- **Personal Records** - Track your best stats
+## 🗺️ Roadmap
 
-### Improvements
-- **Feed Mousewheel** - Smooth scroll navigation with trackpad support
-- **GoonWall Stability** - Playback slot limiter prevents stuttering
-- **Startup Performance** - Deferred loading for faster window display
-- **Error Logging** - Persistent logs in userData/logs
-- **Thumbnail Cache** - Configurable memory cache size (500-10000)
-- **Light Mode** - Improved UI for light themes
-- **Accessibility** - Color blind modes, screen reader support
+| Version | Features |
+|:---:|---|
+| **v2.2** | GIF Creator • Full PMV Export • Video Cropping • AI Scene Detection |
+| **v3.0** | Cloud Sync • Plugin System • Watch Parties • Multi-language |
 
-### Bug Fixes
-- Fixed React hooks order error in Feed page
-- Fixed yt-dlp detection for WinGet/Scoop/Chocolatey
-- Fixed GPU cache access errors on startup
-- Fixed duplicate caption template prevention
-- Fixed dev server port conflicts
+<br/>
 
 ---
 
-## Roadmap
+<br/>
 
-### v2.2.0 (Next)
-- [ ] GIF Creation from video clips
-- [x] PMV/HMV Editor - Audio Burner with BPM detection *(partial - v2.1.6)*
-- [ ] PMV/HMV Editor - Full video export with beat sync
-- [ ] Video cropping feature
-- [ ] AI scene detection
-- [ ] Enhanced mobile companion
+<div align="center">
 
-### v3.0.0 (Future)
-- [ ] Cloud sync (encrypted metadata)
-- [ ] Plugin system
-- [ ] Watch parties (synchronized viewing)
-- [ ] Multi-language support
+## 📥 Get Started
 
----
+<br/>
 
-## Privacy & Security
+[![Download Latest](https://img.shields.io/badge/Download-v2.1.7-success?style=for-the-badge&logo=windows)](https://github.com/Nwund/vault-project/releases/latest)
 
-- **100% Local** - All data stored on your machine
-- **No Telemetry** - Zero data collection
-- **Panic Key** - Instant hide with Escape
-- **Incognito Mode** - No history recording
-- **Encrypted Backup** - Secure data export
-- **Context Isolation** - Secure Electron configuration
+<br/>
+
+**Requirements:** Node.js 18+ • npm 9+ • Windows 10+ / macOS 11+ / Linux
+
+<br/>
 
 ---
 
-## Stats
+<br/>
 
-```
-Version:     2.1.6
-Modules:     71
-Bundle:      952 KB
-Services:    40+
-IPC Lines:   ~6500
-App.tsx:     ~18000 lines
-DB Tables:   25+
-Themes:      15+
-Overlays:    20+
-Achievements: 50
-```
+*Built with obsession by developers who understand the mission.*
 
----
+<sub>
+🔐 Vault v2.1.7 • 40+ services • 71 modules • 952KB bundle
+</sub>
 
-## Contributing
+<br/>
+<br/>
 
-This is a private project. For access or collaboration inquiries, contact the repository owner.
-
----
-
-## License
-
-Private and proprietary. All rights reserved.
-
----
-
-<p align="center">
-  <strong>Built with obsession by developers who understand the mission.</strong>
-</p>
-
-<p align="center">
-  <sub>Vault v2.1.6 | 71 modules | 952 KB bundle | 40+ services</sub>
-</p>
+</div>

@@ -47,6 +47,22 @@ UI Sound Effects/
 # Icons (if generated)
 Icons/
 
-# Claude settings (local)
-.claude/settings.local.json
+# Claude Code (AI assistant local config)
+.claude/
+
+# Development notes and planning docs (not needed for users)
+BRAINSTORM.md
+CLAUDE_SESSION_PREP.md
+PRIORITIZED_TASKS.md
+UPDATE_*.md
+VAULT_DEVELOPMENT_ROADMAP.txt
 expo-qr.html
+
+# Backup/temp files
+C:*/
+New folder/
+*.backup
+.gitignore.txt
+
+# Mobile app (separate project)
+vault-mobile/

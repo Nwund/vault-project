@@ -1143,7 +1143,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     quality?: 'low' | 'medium' | 'high'
   }): Promise<{ success: boolean; gifPath?: string; error?: string }> => {
     try {
-      const { mediaId, startTime, endTime, fps: _fps = 15, width: _width = 480, quality = 'medium' } = options
+      const { mediaId, startTime, endTime, fps: userFps, width: _width = 480, quality = 'medium' } = options
 
       // Get media from database
       const media = db.getMedia(mediaId)
@@ -1171,13 +1171,15 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       const outputFilename = `${mediaId}_${startTime.toFixed(1)}-${endTime.toFixed(1)}_${Date.now()}.gif`
       const outputPath = path.join(gifDir, outputFilename)
 
-      // Quality settings
+      // Quality settings (scale and dither based on quality, fps from user selection)
       const qualitySettings = {
-        low: { scale: 320, fps: 10, dither: 'none' },
-        medium: { scale: 480, fps: 15, dither: 'bayer:bayer_scale=3' },
-        high: { scale: 640, fps: 20, dither: 'floyd_steinberg' }
+        low: { scale: 320, defaultFps: 10, dither: 'none' },
+        medium: { scale: 480, defaultFps: 15, dither: 'bayer:bayer_scale=3' },
+        high: { scale: 720, defaultFps: 20, dither: 'floyd_steinberg' }
       }
-      const settings = qualitySettings[quality]
+      const baseSettings = qualitySettings[quality]
+      // Use user-specified FPS if provided, otherwise use quality default
+      const settings = { ...baseSettings, fps: userFps || baseSettings.defaultFps }
 
       console.log(`[GIF] Creating GIF from ${media.filename}: ${startTime}s to ${endTime}s`)
 
@@ -2579,6 +2581,14 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   // GOON STATS - Session tracking & achievements
   // ═══════════════════════════════════════════════════════════════════════════
   ipcMain.handle('goon:getStats', async () => {
+    // Sync totalWatchTime from watch history before returning stats
+    try {
+      const history = getWatchHistoryService(db)
+      const watchStats = history.getStats()
+      updateGoonStats({ totalWatchTime: watchStats.totalWatchTime })
+    } catch (e) {
+      // Ignore sync errors, return stats anyway
+    }
     return getGoonStats()
   })
 
@@ -4378,10 +4388,19 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // Track last time we synced watch time to goon stats
+  let lastWatchTimeSync = 0
   ipcMain.handle('watch:update-session', async (_ev, mediaId: string, currentTime: number, duration: number) => {
     try {
       const history = getWatchHistoryService(db)
       history.updateSession(mediaId, currentTime, duration)
+      // Sync total watch time to goon stats every 60 seconds
+      const now = Date.now()
+      if (now - lastWatchTimeSync > 60000) {
+        lastWatchTimeSync = now
+        const watchStats = history.getStats()
+        updateGoonStats({ totalWatchTime: watchStats.totalWatchTime })
+      }
       return { success: true }
     } catch (e: any) {
       return { success: false }
@@ -4392,6 +4411,9 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     try {
       const history = getWatchHistoryService(db)
       history.endSession(mediaId)
+      // Update goon stats with total watch time from database
+      const watchStats = history.getStats()
+      updateGoonStats({ totalWatchTime: watchStats.totalWatchTime })
       return { success: true }
     } catch (e: any) {
       console.error('[Watch] End session error:', e)
@@ -4465,6 +4487,82 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       return history.getMostViewed(limit)
     } catch (e: any) {
       console.error('[Watch] Get most viewed error:', e)
+      return []
+    }
+  })
+
+  // Get unwatched media - videos that haven't been viewed yet
+  ipcMain.handle('watch:get-unwatched', async (_ev, options?: { limit?: number; type?: string }) => {
+    try {
+      const limit = options?.limit || 12
+      const type = options?.type || 'video'
+      // Get all media IDs that have watch history
+      const watchedIds = db.raw.prepare(`
+        SELECT DISTINCT media_id FROM watch_history
+      `).all().map((r: any) => r.media_id)
+
+      // Get media that hasn't been watched
+      const query = type
+        ? `SELECT * FROM media WHERE id NOT IN (${watchedIds.length > 0 ? watchedIds.map(() => '?').join(',') : "''"}) AND type = ? ORDER BY addedAt DESC LIMIT ?`
+        : `SELECT * FROM media WHERE id NOT IN (${watchedIds.length > 0 ? watchedIds.map(() => '?').join(',') : "''"}) ORDER BY addedAt DESC LIMIT ?`
+
+      const params = type ? [...watchedIds, type, limit] : [...watchedIds, limit]
+      const rows = db.raw.prepare(query).all(...params)
+      return rows
+    } catch (e: any) {
+      console.error('[Watch] Get unwatched error:', e)
+      return []
+    }
+  })
+
+  // Get daily picks - random selection that stays consistent for the day
+  ipcMain.handle('watch:get-daily-picks', async (_ev, options?: { date?: string; limit?: number }) => {
+    try {
+      const date = options?.date || new Date().toISOString().split('T')[0]
+      const limit = options?.limit || 8
+      // Use date string as seed for deterministic random
+      const seed = date.split('-').reduce((a, b) => a + parseInt(b), 0)
+
+      // Get all video media
+      const allMedia = db.raw.prepare(`
+        SELECT * FROM media WHERE type = 'video' ORDER BY id
+      `).all()
+
+      if (allMedia.length === 0) return []
+
+      // Seeded random shuffle
+      const shuffled = [...allMedia]
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(((seed * (i + 1)) % 1000) / 1000 * (i + 1))
+        ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+      }
+
+      return shuffled.slice(0, limit)
+    } catch (e: any) {
+      console.error('[Watch] Get daily picks error:', e)
+      return []
+    }
+  })
+
+  // Get trending - most watched in the past N days
+  ipcMain.handle('watch:get-trending', async (_ev, options?: { days?: number; limit?: number }) => {
+    try {
+      const days = options?.days || 7
+      const limit = options?.limit || 12
+      const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000)
+
+      const rows = db.raw.prepare(`
+        SELECT media_id as id, COUNT(*) as recentViews
+        FROM watch_history
+        WHERE last_watched > ?
+        GROUP BY media_id
+        ORDER BY recentViews DESC
+        LIMIT ?
+      `).all(cutoff, limit)
+
+      return rows
+    } catch (e: any) {
+      console.error('[Watch] Get trending error:', e)
       return []
     }
   })

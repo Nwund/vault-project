@@ -320,6 +320,14 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToSt
     totalWatchTime: number
   } | null>(null)
   const [pickingRandom, setPickingRandom] = useState(false)
+  const [unwatched, setUnwatched] = useState<MediaItem[]>([])
+  const [loadingUnwatched, setLoadingUnwatched] = useState(true)
+  const [todaysPicks, setTodaysPicks] = useState<MediaItem[]>([])
+  const [loadingTodaysPicks, setLoadingTodaysPicks] = useState(true)
+  const [trendingThisWeek, setTrendingThisWeek] = useState<Array<MediaItem & { recentViews: number }>>([])
+  const [loadingTrending, setLoadingTrending] = useState(true)
+  const [longestVideos, setLongestVideos] = useState<MediaItem[]>([])
+  const [loadingLongest, setLoadingLongest] = useState(true)
 
   const loadContinueWatching = useCallback(async () => {
     setLoadingContinue(true)
@@ -465,6 +473,73 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToSt
     }
   }, [])
 
+  const loadUnwatched = useCallback(async () => {
+    setLoadingUnwatched(true)
+    try {
+      const result = await window.api.invoke('watch:get-unwatched', { limit: 12, type: 'video' }) as MediaItem[]
+      setUnwatched(result || [])
+    } catch (e) {
+      console.error('Failed to load unwatched:', e)
+      setUnwatched([])
+    } finally {
+      setLoadingUnwatched(false)
+    }
+  }, [])
+
+  const loadTodaysPicks = useCallback(async () => {
+    setLoadingTodaysPicks(true)
+    try {
+      // Use today's date as a seed for consistent daily randomization
+      const today = new Date().toISOString().split('T')[0]
+      const result = await window.api.invoke('watch:get-daily-picks', { date: today, limit: 8 }) as MediaItem[]
+      setTodaysPicks(result || [])
+    } catch (e) {
+      console.error('Failed to load today\'s picks:', e)
+      setTodaysPicks([])
+    } finally {
+      setLoadingTodaysPicks(false)
+    }
+  }, [])
+
+  const loadTrendingThisWeek = useCallback(async () => {
+    setLoadingTrending(true)
+    try {
+      const result = await window.api.invoke('watch:get-trending', { days: 7, limit: 12 }) as Array<{ id: string; recentViews: number }>
+      // Fetch media details for each
+      const withMedia = await Promise.all(
+        result.map(async (item) => {
+          try {
+            const media = await window.api.media.get(item.id)
+            return { ...media, recentViews: item.recentViews }
+          } catch {
+            return null
+          }
+        })
+      )
+      setTrendingThisWeek(withMedia.filter(Boolean) as Array<MediaItem & { recentViews: number }>)
+    } catch (e) {
+      console.error('Failed to load trending:', e)
+      setTrendingThisWeek([])
+    } finally {
+      setLoadingTrending(false)
+    }
+  }, [])
+
+  const loadLongestVideos = useCallback(async () => {
+    setLoadingLongest(true)
+    try {
+      const result = await window.api.media.list({ limit: 12, type: 'video', sortBy: 'duration' })
+      const items = Array.isArray(result) ? result : (result as any)?.items ?? []
+      // Sort by duration descending
+      const sorted = [...items].sort((a: MediaItem, b: MediaItem) => ((b.durationSec || 0) - (a.durationSec || 0)))
+      setLongestVideos(sorted.slice(0, 12))
+    } catch (e) {
+      console.error('Failed to load longest videos:', e)
+    } finally {
+      setLoadingLongest(false)
+    }
+  }, [])
+
   const pickRandomVideo = useCallback(async () => {
     setPickingRandom(true)
     try {
@@ -489,7 +564,11 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToSt
     loadMostWatched()
     loadWatchLater()
     loadQuickStats()
-  }, [loadContinueWatching, loadRecommendations, loadRecentlyAdded, loadFavorites, loadMostWatched, loadWatchLater, loadQuickStats])
+    loadUnwatched()
+    loadTodaysPicks()
+    loadTrendingThisWeek()
+    loadLongestVideos()
+  }, [loadContinueWatching, loadRecommendations, loadRecentlyAdded, loadFavorites, loadMostWatched, loadWatchLater, loadQuickStats, loadUnwatched, loadTodaysPicks, loadTrendingThisWeek, loadLongestVideos])
 
   return (
     <div className="h-full overflow-y-auto">
@@ -730,6 +809,103 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToSt
                   <Eye size={11} /> {item.viewCount}
                 </span>
               }
+            />
+          ))}
+        </HorizontalSection>
+      )}
+
+      {/* Today's Picks Section */}
+      {todaysPicks.length > 0 && (
+        <HorizontalSection
+          title="Today's Picks"
+          icon={<Star size={20} className="text-white" />}
+          gradient="bg-gradient-to-br from-amber-500 to-yellow-500"
+          items={todaysPicks.length}
+          loading={loadingTodaysPicks}
+          onRefresh={loadTodaysPicks}
+        >
+          {todaysPicks.map((item) => (
+            <MediaCard
+              key={item.id}
+              media={item}
+              onClick={() => onPlayMedia(item.id)}
+              badge={
+                <span className="px-2 py-0.5 bg-amber-500/90 backdrop-blur-sm rounded-md text-[11px] text-white font-medium shadow-lg flex items-center gap-1">
+                  <Star size={11} fill="currentColor" /> Daily
+                </span>
+              }
+            />
+          ))}
+        </HorizontalSection>
+      )}
+
+      {/* Trending This Week Section */}
+      {trendingThisWeek.length > 0 && (
+        <HorizontalSection
+          title="Trending This Week"
+          icon={<Flame size={20} className="text-white" />}
+          gradient="bg-gradient-to-br from-rose-500 to-pink-500"
+          items={trendingThisWeek.length}
+          loading={loadingTrending}
+          onRefresh={loadTrendingThisWeek}
+        >
+          {trendingThisWeek.map((item, idx) => (
+            <MediaCard
+              key={item.id}
+              media={item}
+              onClick={() => onPlayMedia(item.id)}
+              rank={idx < 3 ? idx + 1 : undefined}
+              badge={
+                <span className="px-2 py-0.5 bg-rose-500/90 backdrop-blur-sm rounded-md text-[11px] text-white font-medium shadow-lg flex items-center gap-1">
+                  <Flame size={11} /> {item.recentViews}
+                </span>
+              }
+            />
+          ))}
+        </HorizontalSection>
+      )}
+
+      {/* Unwatched Section */}
+      {unwatched.length > 0 && (
+        <HorizontalSection
+          title="Unwatched"
+          icon={<Eye size={20} className="text-white" />}
+          gradient="bg-gradient-to-br from-indigo-500 to-violet-500"
+          items={unwatched.length}
+          loading={loadingUnwatched}
+          onRefresh={loadUnwatched}
+        >
+          {unwatched.map((item) => (
+            <MediaCard
+              key={item.id}
+              media={item}
+              onClick={() => onPlayMedia(item.id)}
+              badge={
+                <span className="px-2 py-0.5 bg-indigo-500/90 backdrop-blur-sm rounded-md text-[11px] text-white font-medium shadow-lg">
+                  New to you
+                </span>
+              }
+            />
+          ))}
+        </HorizontalSection>
+      )}
+
+      {/* Longest Videos Section */}
+      {longestVideos.length > 0 && longestVideos[0].durationSec && longestVideos[0].durationSec > 600 && (
+        <HorizontalSection
+          title="Longest Videos"
+          icon={<Timer size={20} className="text-white" />}
+          gradient="bg-gradient-to-br from-teal-500 to-emerald-500"
+          items={longestVideos.length}
+          loading={loadingLongest}
+          onRefresh={loadLongestVideos}
+        >
+          {longestVideos.map((item, idx) => (
+            <MediaCard
+              key={item.id}
+              media={item}
+              onClick={() => onPlayMedia(item.id)}
+              rank={idx < 3 ? idx + 1 : undefined}
             />
           ))}
         </HorizontalSection>

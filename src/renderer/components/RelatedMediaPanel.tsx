@@ -2,7 +2,8 @@
 // Show related media items (sequels, series, etc.)
 
 import { useState, useEffect, useCallback } from 'react'
-import { Link2, Plus, ChevronRight, Film, Image, Sparkles, Trash2, X } from 'lucide-react'
+import { Link2, Plus, ChevronRight, Film, Image, Sparkles, Trash2, X, Play, ListVideo, ArrowRight } from 'lucide-react'
+import { toFileUrlCached } from '../hooks/usePerformance'
 
 interface RelatedMedia {
   id: string
@@ -12,6 +13,15 @@ interface RelatedMedia {
   relationshipType: string
   relationshipId: string
   note?: string
+}
+
+interface SeriesItem {
+  id: string
+  filename: string
+  thumbPath?: string
+  type: string
+  durationSec?: number
+  order?: number
 }
 
 interface RelatedMediaPanelProps {
@@ -39,6 +49,9 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
   const [loading, setLoading] = useState(true)
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [showSeriesModal, setShowSeriesModal] = useState(false)
+  const [seriesItems, setSeriesItems] = useState<SeriesItem[]>([])
+  const [loadingSeries, setLoadingSeries] = useState(false)
 
   const loadRelated = useCallback(async () => {
     try {
@@ -84,14 +97,28 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
   }
 
   const handleFindSeries = async () => {
+    setLoadingSeries(true)
+    setShowSeriesModal(true)
     try {
-      const seriesIds = await window.api.invoke('relationships:findSeries', mediaId)
-      // TODO: Could open a modal showing the full series
+      const seriesIds = await window.api.invoke('relationships:findSeries', mediaId) as string[]
       if (seriesIds?.length > 0) {
-        // Series found - could display in UI
+        // Fetch media details for each series item
+        const items = await Promise.all(
+          seriesIds.map(async (id, index) => {
+            try {
+              const media = await window.api.media.get(id)
+              return { ...media, order: index + 1 }
+            } catch {
+              return null
+            }
+          })
+        )
+        setSeriesItems(items.filter(Boolean) as SeriesItem[])
       }
     } catch (e) {
       console.error('[RelatedMedia] Failed to find series:', e)
+    } finally {
+      setLoadingSeries(false)
     }
   }
 
@@ -266,6 +293,171 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
           </button>
         </div>
       )}
+
+      {/* Series Modal */}
+      {showSeriesModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 rounded-2xl border border-zinc-700 w-full max-w-2xl max-h-[80vh] overflow-hidden shadow-2xl">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500">
+                  <ListVideo size={20} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold">Full Series</h2>
+                  <p className="text-xs text-zinc-500">
+                    {seriesItems.length} items in this series
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSeriesModal(false)}
+                className="p-2 rounded-lg hover:bg-zinc-800 transition"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-4 overflow-y-auto max-h-[60vh]">
+              {loadingSeries ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mb-3" />
+                  <p className="text-sm text-zinc-500">Loading series...</p>
+                </div>
+              ) : seriesItems.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
+                  <ListVideo size={40} className="mb-3 opacity-30" />
+                  <p className="text-sm">No series items found</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {seriesItems.map((item, index) => (
+                    <SeriesItemCard
+                      key={item.id}
+                      item={item}
+                      index={index}
+                      isCurrent={item.id === mediaId}
+                      onPlay={() => {
+                        onPlayMedia(item.id)
+                        setShowSeriesModal(false)
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            {seriesItems.length > 0 && (
+              <div className="p-4 border-t border-zinc-700 flex justify-between items-center">
+                <p className="text-xs text-zinc-500">
+                  Click any item to play
+                </p>
+                <button
+                  onClick={() => {
+                    // Play all in sequence - play first item
+                    if (seriesItems.length > 0) {
+                      onPlayMedia(seriesItems[0].id)
+                      setShowSeriesModal(false)
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-lg text-sm font-medium hover:opacity-90 transition"
+                >
+                  <Play size={16} />
+                  Play All
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Series Item Card Component
+function SeriesItemCard({ item, index, isCurrent, onPlay }: {
+  item: SeriesItem
+  index: number
+  isCurrent: boolean
+  onPlay: () => void
+}) {
+  const [thumbUrl, setThumbUrl] = useState('')
+
+  useEffect(() => {
+    if (item.thumbPath) {
+      toFileUrlCached(item.thumbPath)
+        .then(setThumbUrl)
+        .catch(() => {})
+    }
+  }, [item.thumbPath])
+
+  const formatDuration = (sec: number) => {
+    const mins = Math.floor(sec / 60)
+    const secs = Math.floor(sec % 60)
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  return (
+    <div
+      onClick={onPlay}
+      className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${
+        isCurrent
+          ? 'bg-cyan-500/20 ring-1 ring-cyan-500/50'
+          : 'bg-zinc-800/50 hover:bg-zinc-800'
+      }`}
+    >
+      {/* Order Number */}
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+        isCurrent
+          ? 'bg-cyan-500 text-white'
+          : 'bg-zinc-700 text-zinc-300'
+      }`}>
+        {index + 1}
+      </div>
+
+      {/* Thumbnail */}
+      <div className="w-20 h-12 bg-zinc-700 rounded-lg overflow-hidden flex-shrink-0">
+        {thumbUrl ? (
+          <img
+            src={thumbUrl}
+            alt=""
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-zinc-500">
+            <Film size={20} />
+          </div>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-medium truncate ${isCurrent ? 'text-cyan-300' : 'text-white'}`}>
+          {item.filename}
+        </p>
+        <div className="flex items-center gap-2 text-xs text-zinc-500">
+          {item.durationSec && (
+            <span>{formatDuration(item.durationSec)}</span>
+          )}
+          {isCurrent && (
+            <span className="text-cyan-400">Currently viewing</span>
+          )}
+        </div>
+      </div>
+
+      {/* Play button */}
+      <div className="flex-shrink-0">
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center transition ${
+          isCurrent
+            ? 'bg-cyan-500 text-white'
+            : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600 hover:text-white'
+        }`}>
+          <Play size={18} className="ml-0.5" fill="currentColor" />
+        </div>
+      </div>
     </div>
   )
 }

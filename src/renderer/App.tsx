@@ -1350,36 +1350,61 @@ export default function App() {
     confetti.fireworks()
   }, [heatLevel, confetti])
 
+  // Aggressive video/audio cleanup helper - ensures all media stops immediately
+  const stopAllMediaPlayback = useCallback(() => {
+    // Stop all video elements
+    document.querySelectorAll('video').forEach(v => {
+      try {
+        v.pause()
+        v.muted = true
+        v.volume = 0
+        v.currentTime = 0
+        v.removeAttribute('src')
+        v.srcObject = null
+        v.load()
+      } catch (e) {
+        // Ignore errors
+      }
+    })
+    // Stop all audio elements (in case any are playing)
+    document.querySelectorAll('audio').forEach(a => {
+      try {
+        a.pause()
+        a.muted = true
+        a.volume = 0
+        a.removeAttribute('src')
+        a.srcObject = null
+        a.load()
+      } catch (e) {
+        // Ignore errors
+      }
+    })
+    // Reset global video state
+    videoPool.releaseAll()
+    resetGoonSlots()
+  }, [])
+
   // Smooth page navigation with transition
   const navigateTo = useCallback((newPage: NavId) => {
     if (newPage === page) return
 
-    // If leaving GoonWall, immediately stop all video audio
+    // If leaving GoonWall, immediately stop all video/audio
     if (page === 'goonwall') {
-      // Force stop all videos immediately
-      document.querySelectorAll('video').forEach(v => {
-        try {
-          v.pause()
-          v.muted = true
-          v.src = ''
-          v.load()
-        } catch (e) {
-          // Ignore
-        }
-      })
-      // Reset global state
-      videoPool.releaseAll()
-      resetGoonSlots()
+      stopAllMediaPlayback()
     }
 
     setPrevPage(page)
     setPageTransition('exit')
     setTimeout(() => {
       setPage(newPage)
+      // Second cleanup pass after page change to catch any stragglers
+      if (page === 'goonwall') {
+        stopAllMediaPlayback()
+      }
       setPageTransition('enter')
       setTimeout(() => setPageTransition(null), 250)
     }, 150)
-  }, [page])
+  }, [page, stopAllMediaPlayback])
 
   // Random climax trigger effect - use ref to properly track timer across recursive scheduling
   const climaxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -4988,23 +5013,79 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
           {/* Pagination Controls */}
           <div className="flex items-center justify-end mb-4 px-1">
             {showPagination && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {/* First page */}
+                <button
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="px-1.5 py-1 rounded text-xs bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="First page"
+                >
+                  ««
+                </button>
+                {/* Jump back 10 */}
+                {totalPages > 10 && (
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 10))}
+                    disabled={currentPage <= 10}
+                    className="px-1.5 py-1 rounded text-xs bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Back 10 pages"
+                  >
+                    -10
+                  </button>
+                )}
+                {/* Prev */}
                 <button
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
                   className="px-2 py-1 rounded text-xs bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                  ← Prev
+                  ←
                 </button>
-                <span className="text-xs text-white/60">
-                  Page {currentPage} of {totalPages}
-                </span>
+                {/* Page indicator with input */}
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={1}
+                    max={totalPages}
+                    value={currentPage}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value)
+                      if (!isNaN(val) && val >= 1 && val <= totalPages) {
+                        setCurrentPage(val)
+                      }
+                    }}
+                    className="w-12 px-1 py-0.5 rounded text-xs bg-white/5 border border-white/10 text-center focus:outline-none focus:border-[var(--primary)]"
+                  />
+                  <span className="text-xs text-white/60">/ {totalPages}</span>
+                </div>
+                {/* Next */}
                 <button
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage >= totalPages}
                   className="px-2 py-1 rounded text-xs bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                  Next →
+                  →
+                </button>
+                {/* Jump forward 10 */}
+                {totalPages > 10 && (
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 10))}
+                    disabled={currentPage > totalPages - 10}
+                    className="px-1.5 py-1 rounded text-xs bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Forward 10 pages"
+                  >
+                    +10
+                  </button>
+                )}
+                {/* Last page */}
+                <button
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage >= totalPages}
+                  className="px-1.5 py-1 rounded text-xs bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Last page"
+                >
+                  »»
                 </button>
               </div>
             )}
@@ -5089,23 +5170,76 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
 
           {/* Bottom Pagination */}
           {showPagination && (
-            <div className="mt-6 flex justify-center items-center gap-4">
+            <div className="mt-6 flex justify-center items-center gap-2 flex-wrap">
+              {/* First page */}
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-2 py-1.5 rounded-lg text-sm bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                title="First page"
+              >
+                ««
+              </button>
+              {/* Jump back 10 */}
+              {totalPages > 10 && (
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 10))}
+                  disabled={currentPage <= 10}
+                  className="px-2 py-1.5 rounded-lg text-sm bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                  title="Back 10 pages"
+                >
+                  -10
+                </button>
+              )}
               <button
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
                 className="px-3 py-1.5 rounded-lg text-sm bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
               >
-                ← Previous
+                ← Prev
               </button>
-              <span className="text-sm text-white/60">
-                Page {currentPage} of {totalPages}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={currentPage}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value)
+                    if (!isNaN(val) && val >= 1 && val <= totalPages) {
+                      setCurrentPage(val)
+                    }
+                  }}
+                  className="w-14 px-2 py-1 rounded-lg text-sm bg-white/5 border border-white/10 text-center focus:outline-none focus:border-[var(--primary)]"
+                />
+                <span className="text-sm text-white/60">/ {totalPages}</span>
+              </div>
               <button
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage >= totalPages}
                 className="px-3 py-1.5 rounded-lg text-sm bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
               >
                 Next →
+              </button>
+              {/* Jump forward 10 */}
+              {totalPages > 10 && (
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 10))}
+                  disabled={currentPage > totalPages - 10}
+                  className="px-2 py-1.5 rounded-lg text-sm bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                  title="Forward 10 pages"
+                >
+                  +10
+                </button>
+              )}
+              {/* Last page */}
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage >= totalPages}
+                className="px-2 py-1.5 rounded-lg text-sm bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                title="Last page"
+              >
+                »»
               </button>
             </div>
           )}
@@ -7002,11 +7136,24 @@ function GoonWallPage(props: {
       // This ensures audio stops when navigating away
       videoPool.releaseAll()
       resetGoonSlots()
-      // Also pause any videos that might not be in the pool
+      // Aggressively stop all video and audio elements
       document.querySelectorAll('video').forEach(v => {
         try {
           v.pause()
           v.muted = true
+          v.volume = 0
+          v.removeAttribute('src')
+          v.srcObject = null
+          v.load()
+        } catch (e) {
+          // Ignore errors
+        }
+      })
+      document.querySelectorAll('audio').forEach(a => {
+        try {
+          a.pause()
+          a.muted = true
+          a.volume = 0
         } catch (e) {
           // Ignore errors
         }
@@ -7707,11 +7854,29 @@ const GoonTile = React.memo(function GoonTile(props: {
     return () => { alive = false; clearTimeout(timer) }
   }, [media.id, media.path, onShuffle, tileCount, index])
 
+  // Track video element for cleanup - store reference that persists through unmount
+  const videoElementRef = useRef<HTMLVideoElement | null>(null)
+  useEffect(() => {
+    videoElementRef.current = videoRef.current
+  })
+
   // Cleanup video, fade animation, and playback slot on unmount
   useEffect(() => {
     return () => {
-      const video = videoRef.current
-      if (video) cleanupVideo(video)
+      // Use stored ref since videoRef.current may be null during cleanup
+      const videoElement = videoElementRef.current || videoRef.current
+      if (videoElement) {
+        try {
+          videoElement.pause()
+          videoElement.muted = true
+          videoElement.volume = 0
+          videoElement.removeAttribute('src')
+          videoElement.srcObject = null
+          videoElement.load()
+        } catch (e) {
+          // Ignore
+        }
+      }
       if (fadeAnimationRef.current) {
         cancelAnimationFrame(fadeAnimationRef.current)
         fadeAnimationRef.current = null
@@ -9200,7 +9365,7 @@ const CaptionedThumb = React.memo(function CaptionedThumb({ mediaId, thumbPath, 
 })
 
 // Image filter types for stacking
-type ImageFilter = 'invert' | 'grayscale' | 'sepia' | 'saturate' | 'contrast' | 'brightness' | 'blur' | 'hueRotate' | 'pixelate' | 'lowQuality'
+type ImageFilter = 'invert' | 'grayscale' | 'sepia' | 'saturate' | 'contrast' | 'brightness' | 'blur' | 'hueRotate' | 'pixelate' | 'lowQuality' | 'vignette'
 
 const FILTER_PRESETS: { id: string; name: string; filters: ImageFilter[]; values?: Partial<Record<ImageFilter, number>> }[] = [
   { id: 'none', name: 'None', filters: [] },
@@ -9216,6 +9381,9 @@ const FILTER_PRESETS: { id: string; name: string; filters: ImageFilter[]; values
   { id: 'lowquality', name: 'Low Quality', filters: ['lowQuality', 'contrast', 'blur'], values: { lowQuality: 5, contrast: 1.1, blur: 0.5 } },
   { id: 'corrupted', name: 'Corrupted', filters: ['pixelate', 'hueRotate', 'contrast'], values: { pixelate: 4, hueRotate: 30, contrast: 1.3 } },
   { id: 'vaporwave', name: 'Vaporwave', filters: ['saturate', 'hueRotate', 'contrast'], values: { saturate: 1.8, hueRotate: 280, contrast: 1.2 } },
+  { id: 'cinematic', name: 'Cinematic', filters: ['vignette', 'contrast', 'saturate'], values: { vignette: 0.6, contrast: 1.2, saturate: 0.9 } },
+  { id: 'dramatic', name: 'Dramatic', filters: ['vignette', 'contrast', 'brightness'], values: { vignette: 0.8, contrast: 1.4, brightness: 0.9 } },
+  { id: 'moody', name: 'Moody', filters: ['vignette', 'grayscale', 'contrast'], values: { vignette: 0.7, grayscale: 0.3, contrast: 1.3 } },
 ]
 
 function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
@@ -9236,7 +9404,7 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
   const [activeFilters, setActiveFilters] = useState<ImageFilter[]>([])
   const [filterValues, setFilterValues] = useState<Record<ImageFilter, number>>({
     invert: 0, grayscale: 0, sepia: 0, saturate: 1, contrast: 1,
-    brightness: 1, blur: 0, hueRotate: 0, pixelate: 0, lowQuality: 0
+    brightness: 1, blur: 0, hueRotate: 0, pixelate: 0, lowQuality: 0, vignette: 0
   })
 
   // Caption bar settings
@@ -9250,6 +9418,23 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
   const [bottomTextY, setBottomTextY] = useState(90) // percent from top
   const [isDraggingText, setIsDraggingText] = useState<'top' | 'bottom' | null>(null)
   const imageContainerRef = useRef<HTMLDivElement>(null)
+
+  // Floating text labels
+  type FloatingLabel = {
+    id: string
+    text: string
+    x: number // percent
+    y: number // percent
+    fontSize: number
+    color: string
+    fontFamily: string
+    shadow: boolean
+    rotation: number
+  }
+  const [floatingLabels, setFloatingLabels] = useState<FloatingLabel[]>([])
+  const [draggingLabelId, setDraggingLabelId] = useState<string | null>(null)
+  const [editingLabelId, setEditingLabelId] = useState<string | null>(null)
+  const labelDragOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
 
   // Crop functionality
   const [cropMode, setCropMode] = useState(false)
@@ -9326,6 +9511,73 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
       }
     }
   }, [isDraggingText, handleTextDrag, handleTextDragEnd])
+
+  // Floating label handlers
+  const addFloatingLabel = useCallback(() => {
+    const newLabel: FloatingLabel = {
+      id: `label-${Date.now()}`,
+      text: 'New Label',
+      x: 50,
+      y: 50,
+      fontSize: 24,
+      color: '#ffffff',
+      fontFamily: 'Impact',
+      shadow: true,
+      rotation: 0
+    }
+    setFloatingLabels(prev => [...prev, newLabel])
+    setEditingLabelId(newLabel.id)
+  }, [])
+
+  const updateFloatingLabel = useCallback((id: string, updates: Partial<FloatingLabel>) => {
+    setFloatingLabels(prev => prev.map(label =>
+      label.id === id ? { ...label, ...updates } : label
+    ))
+  }, [])
+
+  const deleteFloatingLabel = useCallback((id: string) => {
+    setFloatingLabels(prev => prev.filter(label => label.id !== id))
+    if (editingLabelId === id) setEditingLabelId(null)
+  }, [editingLabelId])
+
+  const handleLabelDragStart = useCallback((id: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!imageContainerRef.current) return
+    const rect = imageContainerRef.current.getBoundingClientRect()
+    const label = floatingLabels.find(l => l.id === id)
+    if (!label) return
+    const labelX = (label.x / 100) * rect.width
+    const labelY = (label.y / 100) * rect.height
+    labelDragOffset.current = {
+      x: e.clientX - rect.left - labelX,
+      y: e.clientY - rect.top - labelY
+    }
+    setDraggingLabelId(id)
+  }, [floatingLabels])
+
+  const handleLabelDrag = useCallback((e: MouseEvent) => {
+    if (!draggingLabelId || !imageContainerRef.current) return
+    const rect = imageContainerRef.current.getBoundingClientRect()
+    const x = Math.max(0, Math.min(100, ((e.clientX - rect.left - labelDragOffset.current.x) / rect.width) * 100))
+    const y = Math.max(0, Math.min(100, ((e.clientY - rect.top - labelDragOffset.current.y) / rect.height) * 100))
+    updateFloatingLabel(draggingLabelId, { x, y })
+  }, [draggingLabelId, updateFloatingLabel])
+
+  const handleLabelDragEnd = useCallback(() => {
+    setDraggingLabelId(null)
+  }, [])
+
+  useEffect(() => {
+    if (draggingLabelId) {
+      document.addEventListener('mousemove', handleLabelDrag)
+      document.addEventListener('mouseup', handleLabelDragEnd)
+      return () => {
+        document.removeEventListener('mousemove', handleLabelDrag)
+        document.removeEventListener('mouseup', handleLabelDragEnd)
+      }
+    }
+  }, [draggingLabelId, handleLabelDrag, handleLabelDragEnd])
 
   // Crop handlers
   const handleCropStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -9521,6 +9773,13 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
     { id: 'dark', name: 'Dark Mode', fontFamily: 'Arial', fontSize: 38, fontColor: '#333333', fontWeight: 'bold' as const, textShadow: true, shadowColor: '#000000', strokeEnabled: true, strokeColor: '#666666', strokeWidth: 2, backgroundColor: 'transparent', backgroundOpacity: 0, textTransform: 'uppercase' as const, position: 'both' as const },
     { id: 'anime', name: 'Anime', fontFamily: 'Arial', fontSize: 36, fontColor: '#ffffff', fontWeight: 'bold' as const, textShadow: true, shadowColor: '#ff69b4', strokeEnabled: true, strokeColor: '#000000', strokeWidth: 3, backgroundColor: 'transparent', backgroundOpacity: 0, textTransform: 'none' as const, position: 'both' as const },
     { id: 'hentai', name: 'Hentai', fontFamily: 'Arial Black', fontSize: 40, fontColor: '#ff1493', fontWeight: 'bold' as const, textShadow: true, shadowColor: '#9400d3', strokeEnabled: true, strokeColor: '#ffffff', strokeWidth: 2, backgroundColor: 'transparent', backgroundOpacity: 0, textTransform: 'uppercase' as const, position: 'both' as const },
+    // New styles based on reference images
+    { id: 'snapchat', name: 'Snapchat', fontFamily: 'Helvetica Neue, Arial', fontSize: 32, fontColor: '#00bfff', fontWeight: 'bold' as const, textShadow: false, shadowColor: 'transparent', strokeEnabled: false, strokeColor: 'transparent', strokeWidth: 0, backgroundColor: 'rgba(0,0,0,0.6)', backgroundOpacity: 0.6, textTransform: 'none' as const, position: 'center' as const },
+    { id: 'story', name: 'Story Mode', fontFamily: 'Arial', fontSize: 28, fontColor: '#ffffff', fontWeight: 'normal' as const, textShadow: true, shadowColor: '#000000', strokeEnabled: false, strokeColor: 'transparent', strokeWidth: 0, backgroundColor: 'rgba(0,0,0,0.5)', backgroundOpacity: 0.5, textTransform: 'none' as const, position: 'center' as const },
+    { id: 'tiktok', name: 'TikTok', fontFamily: 'Proxima Nova, Arial', fontSize: 36, fontColor: '#ffd700', fontWeight: 'bold' as const, textShadow: true, shadowColor: '#000000', strokeEnabled: true, strokeColor: '#000000', strokeWidth: 1, backgroundColor: 'transparent', backgroundOpacity: 0, textTransform: 'none' as const, position: 'bottom' as const },
+    { id: 'category', name: 'Category Badge', fontFamily: 'Impact', fontSize: 56, fontColor: '#ffffff', fontWeight: 'bold' as const, textShadow: true, shadowColor: '#000000', strokeEnabled: true, strokeColor: '#000000', strokeWidth: 4, backgroundColor: 'transparent', backgroundOpacity: 0, textTransform: 'uppercase' as const, position: 'bottom' as const },
+    { id: 'goon', name: 'Goon Mode', fontFamily: 'Impact', fontSize: 44, fontColor: '#ff00ff', fontWeight: 'bold' as const, textShadow: true, shadowColor: '#000000', strokeEnabled: true, strokeColor: '#ffffff', strokeWidth: 3, backgroundColor: 'transparent', backgroundOpacity: 0, textTransform: 'lowercase' as const, position: 'both' as const },
+    { id: 'cuck', name: 'Cuck', fontFamily: 'Arial Black', fontSize: 38, fontColor: '#ffffff', fontWeight: 'bold' as const, textShadow: true, shadowColor: '#000000', strokeEnabled: true, strokeColor: '#000000', strokeWidth: 2, backgroundColor: 'transparent', backgroundOpacity: 0, textTransform: 'none' as const, position: 'top' as const },
   ]
 
   // Always use DEFAULT_PRESETS - they have all 17 built-in styles
@@ -9641,7 +9900,15 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
           window.api.media?.list?.({ limit: 2000, sortBy: 'newest' }) ?? { items: [] }
         ])
         setCaptionedMedia(captioned as CaptionedMedia[])
-        setTemplates(templateList as CaptionTemplate[])
+        // Deduplicate templates by topText+bottomText (in case old duplicates exist in DB)
+        const seen = new Set<string>()
+        const deduped = (templateList as CaptionTemplate[]).filter(t => {
+          const key = `${t.topText ?? ''}|||${t.bottomText ?? ''}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+        setTemplates(deduped)
 
         // Include all media types - videos can have frames captured
         const allItems = extractItems<MediaRow>(mediaList)
@@ -9727,7 +9994,7 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
     // Reset all filters first
     const newValues: Record<ImageFilter, number> = {
       invert: 0, grayscale: 0, sepia: 0, saturate: 1, contrast: 1,
-      brightness: 1, blur: 0, hueRotate: 0, pixelate: 0, lowQuality: 0
+      brightness: 1, blur: 0, hueRotate: 0, pixelate: 0, lowQuality: 0, vignette: 0
     }
     // Apply preset values
     if (preset.values) {
@@ -9743,7 +10010,7 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
   const resetFilters = useCallback(() => {
     setFilterValues({
       invert: 0, grayscale: 0, sepia: 0, saturate: 1, contrast: 1,
-      brightness: 1, blur: 0, hueRotate: 0, pixelate: 0, lowQuality: 0
+      brightness: 1, blur: 0, hueRotate: 0, pixelate: 0, lowQuality: 0, vignette: 0
     })
     setActiveFilters([])
     setSelectedFilterPreset('none')
@@ -9817,9 +10084,29 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
         await window.api.captions?.templates?.add?.(ex.top, ex.bottom, ex.category)
       }
       const updated = await window.api.captions?.templates?.list?.() ?? []
-      setTemplates(updated as CaptionTemplate[])
+      // Deduplicate templates
+      const seen = new Set<string>()
+      const deduped = (updated as CaptionTemplate[]).filter(t => {
+        const key = `${t.topText ?? ''}|||${t.bottomText ?? ''}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      setTemplates(deduped)
     } catch (err) {
       console.error('Failed to seed example captions:', err)
+    }
+  }
+
+  const handleClearAllTemplates = async () => {
+    try {
+      // Delete all templates
+      for (const t of templates) {
+        await window.api.captions?.templates?.delete?.(t.id)
+      }
+      setTemplates([])
+    } catch (err) {
+      console.error('Failed to clear templates:', err)
     }
   }
 
@@ -10102,6 +10389,42 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                           }}
                         />
                       )}
+
+                      {/* Vignette overlay effect */}
+                      {filterValues.vignette > 0 && (
+                        <div
+                          className="absolute inset-0 pointer-events-none"
+                          style={{
+                            background: `radial-gradient(ellipse at center, transparent 0%, transparent ${60 - filterValues.vignette * 40}%, rgba(0,0,0,${filterValues.vignette}) 100%)`,
+                          }}
+                        />
+                      )}
+
+                      {/* Floating Labels */}
+                      {floatingLabels.map(label => (
+                        <div
+                          key={label.id}
+                          className={cn(
+                            'absolute cursor-move select-none transition-shadow',
+                            editingLabelId === label.id && 'ring-2 ring-[var(--primary)] ring-offset-2 ring-offset-transparent',
+                            draggingLabelId === label.id && 'opacity-80'
+                          )}
+                          style={{
+                            left: `${label.x}%`,
+                            top: `${label.y}%`,
+                            transform: `translate(-50%, -50%) rotate(${label.rotation}deg)`,
+                            fontSize: `${label.fontSize}px`,
+                            fontFamily: label.fontFamily,
+                            color: label.color,
+                            textShadow: label.shadow ? '2px 2px 4px rgba(0,0,0,0.8), -1px -1px 2px rgba(0,0,0,0.5)' : 'none',
+                            whiteSpace: 'nowrap',
+                          }}
+                          onMouseDown={(e) => handleLabelDragStart(label.id, e)}
+                          onClick={(e) => { e.stopPropagation(); setEditingLabelId(label.id) }}
+                        >
+                          {label.text}
+                        </div>
+                      ))}
 
                       {/* Crop selection overlay */}
                       {cropMode && cropSelection && (
@@ -10464,6 +10787,18 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                           className="w-full h-1 accent-[var(--primary)]"
                         />
                       </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-[var(--muted)]">Vignette</span>
+                          <span className="text-xs text-[var(--muted)]">{Math.round(filterValues.vignette * 100)}%</span>
+                        </div>
+                        <input
+                          type="range" min="0" max="1" step="0.05"
+                          value={filterValues.vignette}
+                          onChange={(e) => setFilterValues(v => ({ ...v, vignette: parseFloat(e.target.value) }))}
+                          className="w-full h-1 accent-[var(--primary)]"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -10530,6 +10865,111 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                           />
                         </div>
                       </div>
+                    )}
+                  </div>
+
+                  {/* Floating Labels */}
+                  <div className="rounded-xl bg-black/30 border border-[var(--border)] p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-semibold text-[var(--muted)]">Floating Labels</div>
+                      <button
+                        onClick={addFloatingLabel}
+                        className="px-2 py-1 rounded text-xs bg-[var(--primary)] text-white hover:bg-[var(--primary)]/80 transition"
+                      >
+                        + Add
+                      </button>
+                    </div>
+                    {floatingLabels.length > 0 && (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {floatingLabels.map(label => (
+                          <div
+                            key={label.id}
+                            className={cn(
+                              'p-2 rounded-lg border transition cursor-pointer',
+                              editingLabelId === label.id
+                                ? 'bg-[var(--primary)]/20 border-[var(--primary)]'
+                                : 'bg-black/20 border-[var(--border)] hover:border-[var(--primary)]/50'
+                            )}
+                            onClick={() => setEditingLabelId(editingLabelId === label.id ? null : label.id)}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs truncate flex-1 mr-2">{label.text}</span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); deleteFloatingLabel(label.id) }}
+                                className="text-red-400 hover:text-red-300 text-xs"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            {editingLabelId === label.id && (
+                              <div className="space-y-2 mt-2 pt-2 border-t border-[var(--border)]">
+                                <input
+                                  type="text"
+                                  value={label.text}
+                                  onChange={(e) => updateFloatingLabel(label.id, { text: e.target.value })}
+                                  className="w-full px-2 py-1 text-xs rounded bg-black/30 border border-[var(--border)] focus:outline-none"
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <span className="text-[10px] text-[var(--muted)]">Size</span>
+                                    <input
+                                      type="range" min="12" max="72" step="2"
+                                      value={label.fontSize}
+                                      onChange={(e) => updateFloatingLabel(label.id, { fontSize: parseInt(e.target.value) })}
+                                      className="w-full h-1"
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-[var(--muted)]">Rotation</span>
+                                    <input
+                                      type="range" min="-45" max="45" step="5"
+                                      value={label.rotation}
+                                      onChange={(e) => updateFloatingLabel(label.id, { rotation: parseInt(e.target.value) })}
+                                      className="w-full h-1"
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  </div>
+                                </div>
+                                <div className="flex gap-2">
+                                  <input
+                                    type="color"
+                                    value={label.color}
+                                    onChange={(e) => updateFloatingLabel(label.id, { color: e.target.value })}
+                                    className="w-8 h-6 rounded cursor-pointer"
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                  <select
+                                    value={label.fontFamily}
+                                    onChange={(e) => updateFloatingLabel(label.id, { fontFamily: e.target.value })}
+                                    className="flex-1 text-xs px-1 py-0.5 rounded bg-black/30 border border-[var(--border)]"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <option value="Impact">Impact</option>
+                                    <option value="Arial Black">Arial Black</option>
+                                    <option value="Comic Sans MS">Comic Sans</option>
+                                    <option value="Georgia">Georgia</option>
+                                    <option value="Times New Roman">Times</option>
+                                    <option value="Courier New">Courier</option>
+                                  </select>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); updateFloatingLabel(label.id, { shadow: !label.shadow }) }}
+                                    className={cn('px-2 py-0.5 text-xs rounded', label.shadow ? 'bg-[var(--primary)]' : 'bg-white/10')}
+                                  >
+                                    Shadow
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {floatingLabels.length === 0 && (
+                      <p className="text-[10px] text-[var(--muted)] text-center py-2">
+                        Add floating labels that can be dragged anywhere on the image
+                      </p>
                     )}
                   </div>
 
@@ -11213,14 +11653,24 @@ function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold">Caption Templates ({templates.length})</div>
-              {templates.length === 0 && (
-                <button
-                  onClick={handleSeedExampleCaptions}
-                  className="px-3 py-1.5 rounded-lg bg-[var(--primary)]/20 text-[var(--primary)] text-xs hover:bg-[var(--primary)]/30 transition"
-                >
-                  Load Example Captions
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {templates.length > 0 && (
+                  <button
+                    onClick={handleClearAllTemplates}
+                    className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 text-xs hover:bg-red-500/30 transition"
+                  >
+                    Clear All
+                  </button>
+                )}
+                {templates.length === 0 && (
+                  <button
+                    onClick={handleSeedExampleCaptions}
+                    className="px-3 py-1.5 rounded-lg bg-[var(--primary)]/20 text-[var(--primary)] text-xs hover:bg-[var(--primary)]/30 transition"
+                  >
+                    Load Example Captions
+                  </button>
+                )}
+              </div>
             </div>
             {templates.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12">
@@ -14633,24 +15083,11 @@ type DailyChallengeStateUI = {
   streak: number
 }
 
-// Reactive time counter that updates every second for a dynamic feel
-function ReactiveTimeCounter({ totalSeconds }: { totalSeconds: number }) {
-  const [tick, setTick] = useState(0)
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTick(prev => prev + 1)
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [])
-
-  // Add tick to seconds for the visual effect (doesn't change actual total, just makes it feel live)
-  const displaySeconds = totalSeconds + (tick % 60)
-
-  const days = Math.floor(displaySeconds / 86400)
-  const hours = Math.floor((displaySeconds % 86400) / 3600)
-  const minutes = Math.floor((displaySeconds % 3600) / 60)
-  const seconds = displaySeconds % 60
+// Format duration display - shows total video content duration
+function DurationDisplay({ totalSeconds }: { totalSeconds: number }) {
+  const days = Math.floor(totalSeconds / 86400)
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
 
   if (days > 0) {
     return (
@@ -14660,9 +15097,7 @@ function ReactiveTimeCounter({ totalSeconds }: { totalSeconds: number }) {
         <span className="text-white font-bold">{hours.toString().padStart(2, '0')}</span>
         <span className="text-[var(--muted)]">h </span>
         <span className="text-white font-bold">{minutes.toString().padStart(2, '0')}</span>
-        <span className="text-[var(--muted)]">m </span>
-        <span className="text-[var(--primary)] font-bold animate-pulse">{seconds.toString().padStart(2, '0')}</span>
-        <span className="text-[var(--muted)]">s</span>
+        <span className="text-[var(--muted)]">m</span>
       </span>
     )
   }
@@ -14673,9 +15108,7 @@ function ReactiveTimeCounter({ totalSeconds }: { totalSeconds: number }) {
         <span className="text-white font-bold">{hours}</span>
         <span className="text-[var(--muted)]">h </span>
         <span className="text-white font-bold">{minutes.toString().padStart(2, '0')}</span>
-        <span className="text-[var(--muted)]">m </span>
-        <span className="text-[var(--primary)] font-bold animate-pulse">{seconds.toString().padStart(2, '0')}</span>
-        <span className="text-[var(--muted)]">s</span>
+        <span className="text-[var(--muted)]">m</span>
       </span>
     )
   }
@@ -14683,9 +15116,7 @@ function ReactiveTimeCounter({ totalSeconds }: { totalSeconds: number }) {
   return (
     <span className="font-mono">
       <span className="text-white font-bold">{minutes}</span>
-      <span className="text-[var(--muted)]">m </span>
-      <span className="text-[var(--primary)] font-bold animate-pulse">{seconds.toString().padStart(2, '0')}</span>
-      <span className="text-[var(--muted)]">s</span>
+      <span className="text-[var(--muted)]">m</span>
     </span>
   )
 }
@@ -14959,7 +15390,7 @@ function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof useConfet
           </div>
           <div className="flex items-center gap-6 text-sm">
             <div className="flex items-center gap-1">
-              <ReactiveTimeCounter totalSeconds={vs?.totalDurationSec ?? 0} />
+              <DurationDisplay totalSeconds={vs?.totalDurationSec ?? 0} />
               <span className="text-[var(--muted)]">of video</span>
             </div>
             <div><span className="text-white font-medium">{fmt(vs?.totalMedia ?? 0)}</span> <span className="text-[var(--muted)]">files</span></div>
@@ -14986,7 +15417,11 @@ function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof useConfet
         </div>
 
         {/* Activity row */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-4 gap-3 mb-6">
+          <div className="p-3 bg-gradient-to-br from-pink-500/10 to-rose-500/10 rounded-xl border border-pink-500/20">
+            <div className="text-lg font-semibold text-pink-400">{fmtDuration(gs?.totalWatchTime ?? 0)}</div>
+            <div className="text-[10px] text-[var(--muted)]">Total Watch Time</div>
+          </div>
           <div className="p-3 bg-white/5 rounded-xl border border-white/10">
             <div className="text-lg font-semibold">{gs?.goonWallSessions ?? 0}</div>
             <div className="text-[10px] text-[var(--muted)]">Wall Sessions</div>
