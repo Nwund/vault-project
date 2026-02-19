@@ -20,7 +20,7 @@ import { ArousalEffects, CumCountdownOverlay, HeartsOverlay, RainOverlay, Glitch
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { shuffleTake } from './utils/shuffle'
 import { formatDuration, formatBytes } from './utils/formatters'
-import { cleanupVideo } from './hooks/useVideoCleanup'
+import { cleanupVideo, videoPool } from './hooks/useVideoCleanup'
 import { useAnime } from './hooks/useAnime'
 import { useConfetti } from './hooks/useConfetti'
 import { useUiSounds } from './hooks/useUiSounds'
@@ -6979,6 +6979,19 @@ function GoonWallPage(props: {
 
     return () => {
       unsub?.()
+      // Force cleanup of all videos when leaving GoonWall
+      // This ensures audio stops when navigating away
+      videoPool.releaseAll()
+      resetGoonSlots()
+      // Also pause any videos that might not be in the pool
+      document.querySelectorAll('video').forEach(v => {
+        try {
+          v.pause()
+          v.muted = true
+        } catch (e) {
+          // Ignore errors
+        }
+      })
     }
   }, [])
 
@@ -7539,6 +7552,12 @@ function GoonWallPage(props: {
 let goonActiveVideos = 0
 const GOON_MAX_VIDEOS = 4 // Only allow 4 videos to actually play at once
 const goonVideoQueue: Array<{ start: () => void; id: string }> = []
+
+// Reset all goon slots - call when leaving GoonWall
+function resetGoonSlots(): void {
+  goonActiveVideos = 0
+  goonVideoQueue.length = 0
+}
 
 function requestGoonSlot(id: string, onSlotAvailable: () => void): () => void {
   if (goonActiveVideos < GOON_MAX_VIDEOS) {
