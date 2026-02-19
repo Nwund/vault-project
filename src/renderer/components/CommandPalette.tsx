@@ -40,7 +40,11 @@ import {
   StickyNote,
   Link2,
   ListOrdered,
-  Layers
+  Layers,
+  Filter,
+  FolderHeart,
+  TrendingUp,
+  FolderTree
 } from 'lucide-react'
 
 interface CommandAction {
@@ -122,7 +126,13 @@ export function CommandPalette({
 
     // Settings shortcuts
     { id: 'toggle-dark-mode', title: 'Toggle Dark Mode', icon: EyeOff, category: 'settings', keywords: ['dark', 'light', 'theme', 'mode'], action: () => { onAction?.('toggle-theme') } },
-    { id: 'keyboard-shortcuts', title: 'Keyboard Shortcuts', subtitle: 'View all shortcuts', icon: Command, category: 'settings', keywords: ['keyboard', 'shortcuts', 'keys', 'hotkeys'], action: () => onNavigate('/settings/shortcuts') }
+    { id: 'keyboard-shortcuts', title: 'Keyboard Shortcuts', subtitle: 'View all shortcuts', icon: Command, category: 'settings', keywords: ['keyboard', 'shortcuts', 'keys', 'hotkeys'], action: () => onNavigate('/settings/shortcuts') },
+
+    // New v2.3.0 tools
+    { id: 'custom-filters', title: 'Custom Filters', subtitle: 'Create and manage filter presets', icon: Filter, category: 'tools', keywords: ['filters', 'custom', 'presets', 'search', 'query'], action: () => { onAction?.('custom-filters') } },
+    { id: 'favorite-folders', title: 'Favorite Folders', subtitle: 'Quick access to favorite directories', icon: FolderHeart, category: 'navigation', keywords: ['favorites', 'folders', 'quick', 'access', 'directories'], action: () => { onAction?.('favorite-folders') } },
+    { id: 'rating-trends', title: 'Rating Trends', subtitle: 'Track rating changes over time', icon: TrendingUp, category: 'library', keywords: ['rating', 'trends', 'history', 'rising', 'falling'], action: () => { onAction?.('rating-trends') } },
+    { id: 'tag-categories', title: 'Tag Categories', subtitle: 'Organize tags into categories', icon: FolderTree, category: 'library', keywords: ['tags', 'categories', 'organize', 'hierarchy'], action: () => { onAction?.('tag-categories') } }
   ], [onNavigate, onPlayMedia, onAction])
 
   // Filter commands based on query

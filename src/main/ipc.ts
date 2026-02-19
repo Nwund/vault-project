@@ -1936,6 +1936,16 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return result.filePaths[0]
   })
 
+  ipcMain.handle('fs:saveFile', async (_ev, opts?: { defaultPath?: string; filters?: any[]; title?: string }) => {
+    const result = await dialog.showSaveDialog({
+      title: opts?.title ?? 'Save File',
+      defaultPath: opts?.defaultPath,
+      filters: opts?.filters
+    })
+    if (result.canceled || !result.filePath) return null
+    return result.filePath
+  })
+
   // ═══════════════════════════════════════════════════════════════════════════
   // PMV EDITOR - Music video compilation tools
   // ═══════════════════════════════════════════════════════════════════════════

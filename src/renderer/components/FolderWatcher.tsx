@@ -91,10 +91,12 @@ export function FolderWatcher({
     setShowAddFolder(false)
   }, [newFolderPath, onAddFolder])
 
-  // Browse for folder (would use electron dialog)
+  // Browse for folder using Electron dialog
   const browseFolder = useCallback(async () => {
-    // In real implementation: const result = await window.api.dialog.showOpenDialog({ properties: ['openDirectory'] })
-    console.log('Would open folder dialog')
+    const selected = await window.api.fs.chooseFolder({ title: 'Select Watch Folder' })
+    if (selected) {
+      setNewFolderPath(selected)
+    }
   }, [])
 
   return (

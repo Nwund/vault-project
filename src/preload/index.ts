@@ -324,6 +324,7 @@ const api = {
     // New file/folder pickers
     chooseFile: (opts?: { filters?: any[]; title?: string }) => invoke('fs:chooseFile', opts),
     chooseFolder: (opts?: { title?: string }) => invoke('fs:chooseFolder', opts),
+    saveFile: (opts?: { defaultPath?: string; filters?: any[]; title?: string }) => invoke<string | null>('fs:saveFile', opts),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

@@ -41,9 +41,19 @@ export function MediaExporter({ mediaType, mediaPath, duration, onExport, classN
   }, [settings, outputPath, onExport])
 
   const selectOutput = useCallback(async () => {
-    // In real app: const result = await window.api.dialog.showSaveDialog({ defaultPath: 'export.' + settings.format })
-    setOutputPath(`C:/exports/media.${settings.format}`)
-  }, [settings.format])
+    const filters = mediaType === 'video'
+      ? [{ name: 'Video Files', extensions: [settings.format] }]
+      : [{ name: 'Image Files', extensions: [settings.format] }]
+
+    const selected = await window.api.fs.saveFile({
+      title: 'Save Exported Media',
+      defaultPath: `export.${settings.format}`,
+      filters
+    })
+    if (selected) {
+      setOutputPath(selected)
+    }
+  }, [settings.format, mediaType])
 
   return (
     <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
