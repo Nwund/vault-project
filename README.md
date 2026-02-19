@@ -4,7 +4,7 @@
 
 ### *Your Private Media Sanctuary*
 
-[![Version](https://img.shields.io/badge/v2.1.7-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
+[![Version](https://img.shields.io/badge/v2.2.0-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
 [![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-Platform-blue?style=for-the-badge)](https://github.com/Nwund/vault-project)
 [![Electron](https://img.shields.io/badge/Electron-32.0-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-18.3-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://react.dev)
@@ -264,10 +264,10 @@ Create professional-quality beat-synced videos:
 
 | | |
 |:---:|:---:|
-| **40+** Backend Services | **25+** Database Tables |
-| **20+** Visual Overlays | **15+** Themes |
-| **50** Achievements | **16** PMV Transitions |
-| **6** Caption Styles | **3** AI Tiers |
+| **40+** Backend Services | **35+** UI Components |
+| **25+** Database Tables | **20+** Visual Overlays |
+| **50+** Achievements | **16** PMV Transitions |
+| **15+** Themes | **3** AI Tiers |
 
 </div>
 
@@ -317,20 +317,57 @@ Create professional-quality beat-synced videos:
 
 ## 📝 Recent Updates
 
-### v2.1.7 *(Latest)*
+### v2.2.0 *(Latest)*
 
-- ✨ **Floating Labels** - Draggable text anywhere on images
-- ✨ **Vignette Effect** - Cinematic borders with slider control
-- ✨ **Beat-Synced Text** - PMV text overlays synced to music
-- ✨ **9 New Transitions** - VHS, Spin, Blur, Pixelate, Wipe...
-- ✨ **6 New Effects** - Chromatic, Strobe, Thermal, Dreamy...
-- ✨ **Home Dashboard** - Today's Picks, Trending, Unwatched sections
-- ✨ **Series Modal** - View and play full series in order
-- 🔧 **GIF Creator** - Fixed quality/FPS settings
-- 🔧 **Audio Burner** - URL download integration
+**🎯 35 New Components for Ultimate Experience**
+
+- ✨ **Command Palette** - Spotlight-style launcher (Ctrl+K)
+- ✨ **Watch History Timeline** - Visual timeline with session groupings
+- ✨ **Content Queue** - Smart queue with drag-reorder and shuffle
+- ✨ **Discovery Engine** - AI-powered suggestions that learn preferences
+- ✨ **Edge Mode** - Timer-based intensity sessions with 5 presets
+- ✨ **Immersive Mode** - Distraction-free fullscreen with gesture controls
+- ✨ **Quick Actions Panel** - Floating panel with Alt+key shortcuts
+- ✨ **Session Summary** - Post-session stats and insights
+- ✨ **Smart Playlist Builder** - Visual rule-based playlist creation
+- ✨ **Ambient Mode** - Dynamic lighting from video frame colors
+- ✨ **Video Preloader** - Smooth transitions with smart preloading
+- ✨ **Streaks & Achievements** - Gamification with 50+ achievements
+- ✨ **Gesture Controls** - Touch/swipe controls for mobile-like navigation
+- ✨ **Theater Mode Controller** - Enhanced theater mode settings
+- ✨ **Slideshow Controller** - Advanced slideshow with 8+ transitions
+- ✨ **Quick Rating** - Star rating with hover preview
+- ✨ **Playback Speed Control** - Speed selector with custom presets
+- ✨ **Media Info Overlay** - Detailed media metadata panel
+- ✨ **Search History** - Search suggestions with recent history
+- ✨ **Playlist Quick Add** - Quick add to playlists with search
+- ✨ **Tag Autocomplete** - Smart tag input with suggestions
+- ✨ **Screenshot Capture** - Capture frames with format/scale options
+- ✨ **Hotkey Help** - Full keyboard shortcut reference (press ?)
+- ✨ **Context Menu** - Right-click menus with submenus
+- ✨ **Media Preview** - Hover preview with video scrubbing
+- ✨ **Batch Actions** - Bulk operations with confirmation dialogs
+- ✨ **Import Progress** - Import queue with progress tracking
+- ✨ **Folder Watcher** - Watch folder management with status
+- ✨ **Volume Normalizer** - Audio normalization with compressor/limiter
+- ✨ **Media Comparison** - Side-by-side comparison with sync playback
+- ✨ **Duplicate Finder** - Find duplicates with hash comparison
+- ✨ **Media Stats** - Analytics dashboard with trends
+- ✨ **Quick Search** - Instant search with keyboard navigation
+- ✨ **Performer Tagger** - Actor tagging with AI suggestions
+- ✨ **Collection Manager** - Hierarchical collections with drag-drop
 
 <details>
 <summary><b>Previous Versions</b></summary>
+
+### v2.1.7
+- Floating Labels - Draggable text anywhere on images
+- Vignette Effect - Cinematic borders with slider control
+- Beat-Synced Text - PMV text overlays synced to music
+- 9 New Transitions - VHS, Spin, Blur, Pixelate, Wipe...
+- 6 New Effects - Chromatic, Strobe, Thermal, Dreamy...
+- Home Dashboard - Today's Picks, Trending, Unwatched sections
+- Series Modal - View and play full series in order
 
 ### v2.1.6
 - Audio Burner in PMV Editor
@@ -372,7 +409,7 @@ Create professional-quality beat-synced videos:
 
 <br/>
 
-[![Download Latest](https://img.shields.io/badge/Download-v2.1.7-success?style=for-the-badge&logo=windows)](https://github.com/Nwund/vault-project/releases/latest)
+[![Download Latest](https://img.shields.io/badge/Download-v2.2.0-success?style=for-the-badge&logo=windows)](https://github.com/Nwund/vault-project/releases/latest)
 
 <br/>
 
@@ -387,7 +424,7 @@ Create professional-quality beat-synced videos:
 *Built with obsession by developers who understand the mission.*
 
 <sub>
-🔐 Vault v2.1.7 • 40+ services • 71 modules • 952KB bundle
+🔐 Vault v2.2.0 • 40+ services • 106 modules • 35 new components
 </sub>
 
 <br/>
