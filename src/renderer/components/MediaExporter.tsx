@@ -2,7 +2,7 @@
 // Export media with format conversion and quality options
 
 import React, { useState, useCallback } from 'react'
-import { Download, Film, Image as ImageIcon, Settings, Loader2, Check, FolderOpen, FileVideo, FileImage, Maximize, Compress, Zap } from 'lucide-react'
+import { Download, Film, Image as ImageIcon, Settings, Loader2, Check, FolderOpen, FileVideo, FileImage, Maximize, Zap } from 'lucide-react'
 
 type VideoFormat = 'mp4' | 'webm' | 'mkv' | 'gif'
 type ImageFormat = 'jpg' | 'png' | 'webp' | 'gif'

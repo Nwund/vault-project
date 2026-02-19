@@ -141,7 +141,7 @@ export function CustomFiltersManager({ onFilterExecute, className = '' }: Custom
 
   const loadFilters = useCallback(async () => {
     try {
-      const result = await window.api.invoke<CustomFilter[]>('customFilters:getAll', true)
+      const result = await window.api.invoke('customFilters:getAll', true) as CustomFilter[]
       setFilters(result || [])
     } catch (e) {
       console.error('Failed to load filters:', e)
@@ -226,7 +226,7 @@ export function CustomFiltersManager({ onFilterExecute, className = '' }: Custom
   const handleExecute = useCallback(async (filterId: string) => {
     setExecuting(filterId)
     try {
-      const result = await window.api.invoke<{ mediaIds: string[]; totalCount: number }>('customFilters:execute', filterId)
+      const result = await window.api.invoke('customFilters:execute', filterId) as { mediaIds: string[]; totalCount: number }
       if (result && onFilterExecute) {
         onFilterExecute(result.mediaIds)
       }
@@ -248,7 +248,7 @@ export function CustomFiltersManager({ onFilterExecute, className = '' }: Custom
   const handlePreview = useCallback(async () => {
     if (formConditions.length === 0) return
     try {
-      const count = await window.api.invoke<number>('customFilters:preview', formConditions, formCombineMode)
+      const count = await window.api.invoke('customFilters:preview', formConditions, formCombineMode) as number
       setPreviewCount(count)
     } catch (e) {
       setPreviewCount(null)

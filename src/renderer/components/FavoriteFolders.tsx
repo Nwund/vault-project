@@ -65,7 +65,7 @@ export function FavoriteFolders({
 
   const loadFolders = useCallback(async () => {
     try {
-      const result = await window.api.invoke<FavoriteFolder[]>('favoriteFolders:getAll')
+      const result = await window.api.invoke('favoriteFolders:getAll') as FavoriteFolder[]
       setFolders(result || [])
     } catch (e) {
       console.error('Failed to load favorite folders:', e)
@@ -79,7 +79,7 @@ export function FavoriteFolders({
 
   const loadStats = useCallback(async (folderId: string) => {
     try {
-      const result = await window.api.invoke<FolderStats>('favoriteFolders:getStats', folderId)
+      const result = await window.api.invoke('favoriteFolders:getStats', folderId) as FolderStats
       if (result) {
         setStats(prev => ({ ...prev, [folderId]: result }))
       }
@@ -136,7 +136,7 @@ export function FavoriteFolders({
     if (onNavigate) {
       onNavigate(folder.path)
     } else if (onMediaSelect) {
-      const mediaIds = await window.api.invoke<string[]>('favoriteFolders:getMedia', folder.id, 100)
+      const mediaIds = await window.api.invoke('favoriteFolders:getMedia', folder.id, 100) as string[]
       if (mediaIds?.length) {
         onMediaSelect(mediaIds)
       }

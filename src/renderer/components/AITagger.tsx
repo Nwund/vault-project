@@ -79,7 +79,10 @@ export function AITagger({ mediaId, mediaSrc, mediaType = 'video', onApplyTags, 
             source: 'vision' as const
           }))
         }
-      } catch {}
+      } catch (e) {
+        // No existing analysis, continue to other methods
+        console.debug('[AITagger] No existing analysis:', e)
+      }
 
       // If no results, try video analysis API
       if (results.length === 0 && mediaType === 'video') {
@@ -92,7 +95,9 @@ export function AITagger({ mediaId, mediaSrc, mediaType = 'video', onApplyTags, 
               source: t.source || 'scene' as const
             }))
           }
-        } catch {}
+        } catch (e) {
+          console.debug('[AITagger] Video analysis not available:', e)
+        }
       }
 
       // Try WD tagger for images
@@ -106,7 +111,9 @@ export function AITagger({ mediaId, mediaSrc, mediaType = 'video', onApplyTags, 
               source: 'vision' as const
             }))
           }
-        } catch {}
+        } catch (e) {
+          console.debug('[AITagger] WD tagger not available:', e)
+        }
       }
 
       // Generate some sample suggestions if no AI results

@@ -491,7 +491,7 @@ export function MoreLikeThisButton({
   useEffect(() => {
     // Quick check for similar count
     window.api.similar.find(mediaId, { minSimilarity: 80, limit: 5 })
-      .then(items => setCount(items.length))
+      .then((items: any[]) => setCount(items.length))
       .catch(() => setCount(null))
   }, [mediaId])
 

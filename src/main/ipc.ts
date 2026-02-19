@@ -1466,9 +1466,27 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       const destPath = path.join(mediaDirs[0], filename)
       fs.copyFileSync(trimmedPath, destPath)
 
-      // Import to library
-      const imported = await scanFile(destPath)
-      if (imported) {
+      // Import to library using upsertMedia
+      const stats = fs.statSync(destPath)
+      const ext = path.extname(destPath).toLowerCase()
+      const type = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.webm', '.m4v', '.flv', '.ts'].includes(ext) ? 'video' : ext === '.gif' ? 'gif' : 'image'
+
+      const imported = db.upsertMedia({
+        path: destPath,
+        filename,
+        type: type as any,
+        ext,
+        size: stats.size,
+        mtimeMs: stats.mtimeMs,
+        durationSec: null,
+        width: null,
+        height: null,
+        thumbPath: null,
+        hashSha256: null,
+        phash: null
+      })
+
+      if (imported?.id) {
         broadcast('vault:changed')
         return { success: true, mediaId: imported.id }
       }

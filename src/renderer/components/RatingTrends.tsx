@@ -62,11 +62,11 @@ export function RatingTrends({ onMediaClick, className = '' }: RatingTrendsProps
     setLoading(true)
     try {
       const [statsResult, risingResult, fallingResult, volatileResult, recentResult] = await Promise.all([
-        window.api.invoke<RatingStats>('ratingHistory:getStats'),
-        window.api.invoke<RatingTrend[]>('ratingHistory:getRisingStars', 20),
-        window.api.invoke<RatingTrend[]>('ratingHistory:getFallingStars', 20),
-        window.api.invoke<RatingTrend[]>('ratingHistory:getMostVolatile', 20),
-        window.api.invoke<any[]>('ratingHistory:getRecentlyRated', 20)
+        window.api.invoke('ratingHistory:getStats') as Promise<RatingStats>,
+        window.api.invoke('ratingHistory:getRisingStars', 20) as Promise<RatingTrend[]>,
+        window.api.invoke('ratingHistory:getFallingStars', 20) as Promise<RatingTrend[]>,
+        window.api.invoke('ratingHistory:getMostVolatile', 20) as Promise<RatingTrend[]>,
+        window.api.invoke('ratingHistory:getRecentlyRated', 20) as Promise<any[]>
       ])
 
       setStats(statsResult || null)

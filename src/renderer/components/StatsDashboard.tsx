@@ -113,11 +113,11 @@ export function StatsDashboard({
     setLoading(true)
     try {
       const [dashboard, storage, duration, tags, growth] = await Promise.all([
-        window.api.invoke<DashboardStats>('advancedStats:getDashboard'),
-        window.api.invoke<StorageStats>('advancedStats:getStorage'),
-        window.api.invoke<DurationStats>('advancedStats:getDuration'),
-        window.api.invoke<TagStats>('advancedStats:getTags'),
-        window.api.invoke<GrowthStats>('advancedStats:getGrowth')
+        window.api.invoke('advancedStats:getDashboard') as Promise<DashboardStats>,
+        window.api.invoke('advancedStats:getStorage') as Promise<StorageStats>,
+        window.api.invoke('advancedStats:getDuration') as Promise<DurationStats>,
+        window.api.invoke('advancedStats:getTags') as Promise<TagStats>,
+        window.api.invoke('advancedStats:getGrowth') as Promise<GrowthStats>
       ])
       setDashboardStats(dashboard)
       setStorageStats(storage)

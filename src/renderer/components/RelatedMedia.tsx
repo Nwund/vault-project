@@ -79,17 +79,17 @@ export function RelatedMedia({
           const tagNames = currentMedia.tags.map((t: any) => t.name || t).slice(0, 3)
           for (const tag of tagNames) {
             const result = await window.api.media.list({ limit: 20, tags: [tag] })
-            const tagMedia = extractItems(result)
+            const tagMedia = extractItems<any>(result)
             for (const m of tagMedia) {
-              if (!seenIds.has(m.id)) {
-                seenIds.add(m.id)
+              if (!seenIds.has((m as any).id)) {
+                seenIds.add((m as any).id)
                 related.push({
-                  id: m.id,
-                  title: m.filename || 'Unknown',
-                  thumbnail: m.thumbPath,
-                  type: m.type || 'video',
-                  duration: m.durationSec,
-                  rating: m.rating,
+                  id: (m as any).id,
+                  title: (m as any).filename || 'Unknown',
+                  thumbnail: (m as any).thumbPath,
+                  type: (m as any).type || 'video',
+                  duration: (m as any).durationSec,
+                  rating: (m as any).rating,
                   relationTypes: ['same_tag'],
                   score: 0.7
                 })
@@ -106,21 +106,21 @@ export function RelatedMedia({
         try {
           const searchWord = nameWords[0]
           const result = await window.api.media.list({ limit: 30, search: searchWord })
-          const similarMedia = extractItems(result)
+          const similarMedia = extractItems<any>(result)
           for (const m of similarMedia) {
-            if (!seenIds.has(m.id)) {
-              seenIds.add(m.id)
+            if (!seenIds.has((m as any).id)) {
+              seenIds.add((m as any).id)
               // Check how many words match
-              const mWords = (m.filename || '').replace(/\.[^.]+$/, '').toLowerCase().split(/[\s_\-\[\]\(\)]+/)
+              const mWords = ((m as any).filename || '').replace(/\.[^.]+$/, '').toLowerCase().split(/[\s_\-\[\]\(\)]+/)
               const matchCount = nameWords.filter((w: string) => mWords.includes(w.toLowerCase())).length
               if (matchCount > 0) {
                 related.push({
-                  id: m.id,
-                  title: m.filename || 'Unknown',
-                  thumbnail: m.thumbPath,
-                  type: m.type || 'video',
-                  duration: m.durationSec,
-                  rating: m.rating,
+                  id: (m as any).id,
+                  title: (m as any).filename || 'Unknown',
+                  thumbnail: (m as any).thumbPath,
+                  type: (m as any).type || 'video',
+                  duration: (m as any).durationSec,
+                  rating: (m as any).rating,
                   relationTypes: matchCount >= 2 ? ['same_series'] : ['similar'],
                   score: 0.5 + (matchCount * 0.1)
                 })

@@ -104,8 +104,8 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [showSpeedRamp, setShowSpeedRamp] = useState(false)
   const [showThumbnailStrip, setShowThumbnailStrip] = useState(false)
   const [showLoopRegion, setShowLoopRegion] = useState(false)
-  const [videoFilterStyle, setVideoFilterStyle] = useState<React.CSSProperties>({})
-  const [colorGradeStyle, setColorGradeStyle] = useState<React.CSSProperties>({})
+  const [videoFilterStyle, setVideoFilterStyle] = useState<string>('none')
+  const [colorGradeStyle, setColorGradeStyle] = useState<{ brightness: number; contrast: number; saturation: number; hue: number; temperature: number; tint: number; shadows: number; highlights: number; vibrance: number }>({ brightness: 100, contrast: 100, saturation: 100, hue: 0, temperature: 0, tint: 0, shadows: 0, highlights: 0, vibrance: 0 })
   const [resumePosition, setResumePosition] = useState<number | null>(null)
   const [showResumePrompt, setShowResumePrompt] = useState(false)
   const [isInPiP, setIsInPiP] = useState(false) // Browser Picture-in-Picture mode
@@ -175,7 +175,9 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     return () => {
       // End watch session when media changes or component unmounts
       if (watchSessionStarted.current) {
-        window.api.invoke('watch:end-session', media.id).catch(() => {})
+        window.api.invoke('watch:end-session', media.id).catch((e: unknown) => {
+          console.debug('[VideoPlayer] Failed to end watch session:', e)
+        })
         watchSessionStarted.current = false
       }
     }
@@ -185,7 +187,9 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     setIsPaused(false)
     // Start watch session on first play
     if (media.type === 'video' && !watchSessionStarted.current) {
-      window.api.invoke('watch:start-session', media.id).catch(() => {})
+      window.api.invoke('watch:start-session', media.id).catch((e: unknown) => {
+        console.debug('[VideoPlayer] Failed to start watch session:', e)
+      })
       watchSessionStarted.current = true
     }
   }, [media.id, media.type])
@@ -1534,9 +1538,11 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                 ...((cropValues.top > 0 || cropValues.right > 0 || cropValues.bottom > 0 || cropValues.left > 0) ? {
                   clipPath: `inset(${cropValues.top}% ${cropValues.right}% ${cropValues.bottom}% ${cropValues.left}%)`,
                 } : {}),
-                // Apply color grading and video filters
-                ...colorGradeStyle,
-                ...videoFilterStyle,
+                // Apply color grading and video filters as CSS filter
+                filter: [
+                  videoFilterStyle !== 'none' ? videoFilterStyle : '',
+                  `brightness(${colorGradeStyle.brightness}%) contrast(${colorGradeStyle.contrast}%) saturate(${colorGradeStyle.saturation}%) hue-rotate(${colorGradeStyle.hue}deg)`
+                ].filter(Boolean).join(' ') || 'none',
               }}
               onClick={isCropMode ? undefined : togglePlay}
               onDoubleClick={isCropMode ? undefined : toggleFullscreen}
@@ -2413,10 +2419,8 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       {showColorGrading && media.type === 'video' && (
         <div className="absolute top-0 right-0 w-80 z-40 max-h-[80%] overflow-auto">
           <ColorGrading
-            onApply={(style) => {
-              setColorGradeStyle(style)
-              setShowColorGrading(false)
-            }}
+            settings={colorGradeStyle}
+            onChange={(s) => setColorGradeStyle(s)}
             className="m-2"
           />
         </div>
@@ -2426,10 +2430,8 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       {showVideoFilters && media.type === 'video' && (
         <div className="absolute top-0 right-0 w-80 z-40 max-h-[80%] overflow-auto">
           <VideoFilters
-            onApply={(style) => {
-              setVideoFilterStyle(style)
-              setShowVideoFilters(false)
-            }}
+            onFilterChange={(filter) => setVideoFilterStyle(filter)}
+            currentFilter={videoFilterStyle}
             className="m-2"
           />
         </div>
@@ -2439,7 +2441,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       {showAudioVisualizer && media.type === 'video' && videoRef.current && (
         <div className="absolute bottom-16 left-0 right-0 h-24 z-30 pointer-events-none">
           <AudioVisualizer
-            audioSource={videoRef.current}
+            videoRef={videoRef}
             mode="bars"
             className="h-full opacity-60"
           />

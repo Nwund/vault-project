@@ -208,9 +208,9 @@ export function QuickActionsPanel({
               >
                 <Icon size={18} className={action.color || 'text-zinc-400'} />
                 <span className="flex-1 text-sm text-zinc-300 group-hover:text-white">{action.label}</span>
-                {action.shortcut && (
+                {(action as any).shortcut && (
                   <span className="text-[10px] text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded">
-                    Alt+{action.shortcut}
+                    Alt+{(action as any).shortcut}
                   </span>
                 )}
               </button>

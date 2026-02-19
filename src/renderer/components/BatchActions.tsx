@@ -206,14 +206,14 @@ export function BatchActions({
                     key={action.id}
                     onClick={() => handleAction(
                       action.id,
-                      action.confirm,
-                      action.data
+                      (action as any).confirm,
+                      (action as any).data
                     )}
                     disabled={state.loading || count === 0}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition ${
                       state.success
                         ? 'bg-green-500/20 text-green-400'
-                        : action.danger
+                        : (action as any).danger
                         ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400'
                         : 'bg-zinc-800 hover:bg-zinc-700'
                     } disabled:opacity-50`}
@@ -223,7 +223,7 @@ export function BatchActions({
                     ) : state.success ? (
                       <Check size={14} />
                     ) : (
-                      <Icon size={14} className={action.color} />
+                      <Icon size={14} className={(action as any).color || ''} />
                     )}
                     {action.label}
                   </button>

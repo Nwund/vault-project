@@ -87,9 +87,9 @@ export function TagCategoriesManager({ onTagSelect, className = '' }: TagCategor
   const loadData = useCallback(async () => {
     try {
       const [categoriesResult, uncategorizedResult, statsResult] = await Promise.all([
-        window.api.invoke<TagCategory[]>('tagCategories:getAll'),
-        window.api.invoke<TagInCategory[]>('tagCategories:getUncategorized'),
-        window.api.invoke<CategoryStats>('tagCategories:getStats')
+        window.api.invoke('tagCategories:getAll') as Promise<TagCategory[]>,
+        window.api.invoke('tagCategories:getUncategorized') as Promise<TagInCategory[]>,
+        window.api.invoke('tagCategories:getStats') as Promise<CategoryStats>
       ])
       setCategories(categoriesResult || [])
       setUncategorizedTags(uncategorizedResult || [])
@@ -107,7 +107,7 @@ export function TagCategoriesManager({ onTagSelect, className = '' }: TagCategor
   const loadCategoryTags = useCallback(async (categoryId: string) => {
     if (categoryTags[categoryId]) return
     try {
-      const tags = await window.api.invoke<TagInCategory[]>('tagCategories:getTagsInCategory', categoryId)
+      const tags = await window.api.invoke('tagCategories:getTagsInCategory', categoryId) as TagInCategory[]
       setCategoryTags(prev => ({ ...prev, [categoryId]: tags || [] }))
     } catch (e) {
       console.error('Failed to load category tags:', e)
@@ -165,7 +165,7 @@ export function TagCategoriesManager({ onTagSelect, className = '' }: TagCategor
   const handleAutoCategorize = useCallback(async () => {
     setAutoCategorizing(true)
     try {
-      const result = await window.api.invoke<{ categorized: number }>('tagCategories:autoCategorize')
+      const result = await window.api.invoke('tagCategories:autoCategorize') as { categorized: number }
       if (result) {
         loadData()
       }

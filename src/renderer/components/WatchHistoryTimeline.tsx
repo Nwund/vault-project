@@ -68,10 +68,10 @@ export function WatchHistoryTimeline({
         since = Date.now() - days * 24 * 60 * 60 * 1000
       }
 
-      const result = await window.api.invoke<WatchHistoryItem[]>('watchHistory:list', {
+      const result = await window.api.invoke('watchHistory:list', {
         limit: 500,
         since
-      })
+      }) as WatchHistoryItem[]
       setHistory(result)
 
       // Auto-expand today and yesterday
@@ -404,7 +404,7 @@ export function WatchHistoryWidget({
   const [recentItems, setRecentItems] = useState<WatchHistoryItem[]>([])
 
   useEffect(() => {
-    window.api.invoke<WatchHistoryItem[]>('watchHistory:list', { limit: 5 })
+    (window.api.invoke('watchHistory:list', { limit: 5 }) as Promise<WatchHistoryItem[]>)
       .then(setRecentItems)
       .catch(() => {})
   }, [])

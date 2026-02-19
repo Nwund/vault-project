@@ -63,7 +63,7 @@ export function BackupRestorePanel({
   const loadBackups = useCallback(async () => {
     setLoading(true)
     try {
-      const list = await window.api.invoke<BackupInfo[]>('backup:list')
+      const list = await window.api.invoke('backup:list') as BackupInfo[]
       setBackups(list)
     } catch (e) {
       console.error('Failed to load backups:', e)
@@ -80,10 +80,10 @@ export function BackupRestorePanel({
     setCreating(true)
     setStatus(null)
     try {
-      const backup = await window.api.invoke<BackupInfo>('backup:create', {
+      const backup = await window.api.invoke('backup:create', {
         includeDatabase: true,
         includeSettings: true
-      })
+      }) as BackupInfo
       setBackups(prev => [backup, ...prev])
       setStatus({ type: 'success', message: `Backup created: ${backup.filename}` })
     } catch (e: any) {
@@ -100,11 +100,11 @@ export function BackupRestorePanel({
     setStatus(null)
 
     try {
-      const result = await window.api.invoke<{
+      const result = await window.api.invoke('backup:restore', selectedBackup.path, restoreOptions) as {
         success: boolean
         restored: { media: number; tags: number; playlists: number }
         errors: string[]
-      }>('backup:restore', selectedBackup.path, restoreOptions)
+      }
 
       if (result.success) {
         setStatus({
@@ -142,7 +142,7 @@ export function BackupRestorePanel({
 
   const handleImportFromFile = useCallback(async () => {
     try {
-      const result = await window.api.invoke<{ success: boolean; backup?: BackupInfo }>('backup:importFromFile')
+      const result = await window.api.invoke('backup:importFromFile') as { success: boolean; backup?: BackupInfo }
       if (result.success && result.backup) {
         setBackups(prev => [result.backup!, ...prev])
         setStatus({ type: 'success', message: 'Backup imported successfully' })
@@ -436,8 +436,8 @@ export function QuickBackupButton({ className = '' }: { className?: string }) {
   const [lastBackup, setLastBackup] = useState<number | null>(null)
 
   useEffect(() => {
-    window.api.invoke<BackupInfo[]>('backup:list')
-      .then(backups => {
+    window.api.invoke('backup:list')
+      .then((backups: BackupInfo[]) => {
         if (backups.length > 0) {
           setLastBackup(backups[0].createdAt)
         }

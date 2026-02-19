@@ -193,6 +193,15 @@ function extractItems<T>(result: ApiListResult<T>): T[] {
   return (result as { items?: T[]; media?: T[] })?.items ?? (result as { items?: T[]; media?: T[] })?.media ?? []
 }
 
+// Synchronous file path to URL conversion (for use in JSX where async isn't possible)
+function toFileUrl(path: string): string {
+  if (!path) return ''
+  if (path.startsWith('file://')) return path
+  if (path.startsWith('blob:')) return path
+  // Convert Windows path to file URL
+  return `file:///${path.replace(/\\/g, '/')}`
+}
+
 const GlobalTaskContext = React.createContext<{
   tasks: GlobalTask[]
   addTask: (task: Omit<GlobalTask, 'startedAt'>) => void
@@ -2855,20 +2864,20 @@ export default function App() {
                   { id: 'urlDownloader', icon: Download, label: 'Download from URL', shortcut: 'D', action: () => { window.dispatchEvent(new CustomEvent('vault-open-url-downloader')); setShowCommandPalette(false) } },
                   { id: 'fullscreen', icon: Maximize2, label: 'Toggle Fullscreen', shortcut: 'F11', action: () => { window.api.window?.toggleFullscreen?.(); setShowCommandPalette(false) } },
                   { id: 'divider3', divider: true },
-                  // v2.3.0 Tools
-                  { id: 'mediaTimeline', icon: Clock, label: 'Open Media Timeline', action: () => { setShowMediaTimeline(true); setShowCommandPalette(false) } },
-                  { id: 'watchProgress', icon: Play, label: 'Open Watch Progress', action: () => { setShowWatchProgress(true); setShowCommandPalette(false) } },
-                  { id: 'mediaQueue', icon: ListMusic, label: 'Open Media Queue', action: () => { setShowMediaQueue(true); setShowCommandPalette(false) } },
-                  { id: 'viewModes', icon: LayoutGrid, label: 'Open View Mode Selector', action: () => { setShowViewModeSelector(true); setShowCommandPalette(false) } },
-                  { id: 'autoPlaylists', icon: Sparkles, label: 'Open Auto Playlists', action: () => { setShowAutoPlaylist(true); setShowCommandPalette(false) } },
-                  { id: 'sceneDetector', icon: Film, label: 'Open Scene Detector', action: () => { setShowSceneDetector(true); setShowCommandPalette(false) } },
-                  { id: 'aiTagger', icon: Brain, label: 'Open AI Tagger', action: () => { setShowAITagger(true); setShowCommandPalette(false) } },
-                  { id: 'bookmarkManager', icon: Bookmark, label: 'Open Bookmark Manager', action: () => { setShowBookmarkManager(true); setShowCommandPalette(false) } },
-                  { id: 'notesPanel', icon: FileText, label: 'Open Notes Panel', action: () => { setShowQuickNote(true); setShowCommandPalette(false) } },
-                  { id: 'relatedMedia', icon: Link2, label: 'Open Related Media', action: () => { setShowRelatedMedia(true); setShowCommandPalette(false) } },
-                  { id: 'thumbnailSelector', icon: ImageIcon, label: 'Open Thumbnail Selector', action: () => { setShowThumbnailSelector(true); setShowCommandPalette(false) } },
-                  { id: 'exportManager', icon: Download, label: 'Open Export Manager', action: () => { setShowMediaExporter(true); setShowCommandPalette(false) } },
-                  { id: 'pmvEditor', icon: Scissors, label: 'Open PMV Editor', action: () => { setShowPMVEditor(true); setShowCommandPalette(false) } },
+                  // v2.3.0 Tools - Use custom events to communicate with LibraryPage component
+                  { id: 'mediaTimeline', icon: Clock, label: 'Open Media Timeline', action: () => { window.dispatchEvent(new CustomEvent('vault-open-media-timeline')); setShowCommandPalette(false) } },
+                  { id: 'watchProgress', icon: Play, label: 'Open Watch Progress', action: () => { window.dispatchEvent(new CustomEvent('vault-open-watch-progress')); setShowCommandPalette(false) } },
+                  { id: 'mediaQueue', icon: ListMusic, label: 'Open Media Queue', action: () => { window.dispatchEvent(new CustomEvent('vault-open-media-queue')); setShowCommandPalette(false) } },
+                  { id: 'viewModes', icon: LayoutGrid, label: 'Open View Mode Selector', action: () => { window.dispatchEvent(new CustomEvent('vault-open-view-modes')); setShowCommandPalette(false) } },
+                  { id: 'autoPlaylists', icon: Sparkles, label: 'Open Auto Playlists', action: () => { window.dispatchEvent(new CustomEvent('vault-open-auto-playlists')); setShowCommandPalette(false) } },
+                  { id: 'sceneDetector', icon: Film, label: 'Open Scene Detector', action: () => { window.dispatchEvent(new CustomEvent('vault-open-scene-detector')); setShowCommandPalette(false) } },
+                  { id: 'aiTagger', icon: Brain, label: 'Open AI Tagger', action: () => { window.dispatchEvent(new CustomEvent('vault-open-ai-tagger')); setShowCommandPalette(false) } },
+                  { id: 'bookmarkManager', icon: Bookmark, label: 'Open Bookmark Manager', action: () => { window.dispatchEvent(new CustomEvent('vault-open-bookmarks')); setShowCommandPalette(false) } },
+                  { id: 'notesPanel', icon: FileText, label: 'Open Notes Panel', action: () => { window.dispatchEvent(new CustomEvent('vault-open-notes')); setShowCommandPalette(false) } },
+                  { id: 'relatedMedia', icon: Link2, label: 'Open Related Media', action: () => { window.dispatchEvent(new CustomEvent('vault-open-related')); setShowCommandPalette(false) } },
+                  { id: 'thumbnailSelector', icon: ImageIcon, label: 'Open Thumbnail Selector', action: () => { window.dispatchEvent(new CustomEvent('vault-open-thumbnail-selector')); setShowCommandPalette(false) } },
+                  { id: 'exportManager', icon: Download, label: 'Open Export Manager', action: () => { window.dispatchEvent(new CustomEvent('vault-open-exporter')); setShowCommandPalette(false) } },
+                  { id: 'pmvEditor', icon: Scissors, label: 'Open PMV Editor', action: () => { setPage('pmv'); setShowCommandPalette(false) } },
                   { id: 'divider4', divider: true },
                   { id: 'addFolder', icon: FolderPlus, label: 'Add Media Folder', action: async () => { await window.api.settings.chooseMediaDir?.(); setShowCommandPalette(false) } },
                   { id: 'clearThumbCache', icon: Trash2, label: 'Clear Thumbnail Cache', action: async () => { await window.api.thumbs?.clearCache?.(); globalShowToast('success', 'Thumbnail cache cleared'); setShowCommandPalette(false) } },
@@ -3474,8 +3483,8 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   const [showMediaQueue, setShowMediaQueue] = useState(false)
   const [showAspectRatioSwitcher, setShowAspectRatioSwitcher] = useState(false)
   const [activeToolMedia, setActiveToolMedia] = useState<MediaRow | null>(null) // Media for tool panels
-  const [videoFiltersStyle, setVideoFiltersStyle] = useState<React.CSSProperties>({}) // Applied video filters
-  const [colorGradingStyle, setColorGradingStyle] = useState<React.CSSProperties>({}) // Applied color grading
+  const [videoFiltersStyle, setVideoFiltersStyle] = useState<string>('none') // Applied video filters (CSS filter string)
+  const [colorGradingStyle, setColorGradingStyle] = useState<{ brightness: number; contrast: number; saturation: number; hue: number; temperature: number; tint: number; shadows: number; highlights: number; vibrance: number } | null>(null) // Applied color grading
   const [wallAutoScroll, setWallAutoScroll] = useState(false) // Wall mode autoscroll
   const [wallScrollSpeed, setWallScrollSpeed] = useState(30) // Autoscroll speed (pixels per second)
   const wallScrollRef = useRef<HTMLDivElement>(null)
@@ -3617,23 +3626,42 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
         addFloatingPlayer(mediaItem.id)
       }
     }
-    const handleOpenWatchLater = () => {
-      setShowWatchLaterPanel(true)
-    }
-    const handleOpenDuplicates = () => {
-      setShowDuplicatesModal(true)
-    }
-    const handleOpenTVRemote = () => {
-      setShowTVRemotePanel(true)
-    }
-    const handleOpenUrlDownloader = () => {
-      setShowUrlDownloaderPanel(true)
-    }
+    const handleOpenWatchLater = () => setShowWatchLaterPanel(true)
+    const handleOpenDuplicates = () => setShowDuplicatesModal(true)
+    const handleOpenTVRemote = () => setShowTVRemotePanel(true)
+    const handleOpenUrlDownloader = () => setShowUrlDownloaderPanel(true)
+    // v2.3.0 Tool handlers
+    const handleOpenMediaTimeline = () => setShowMediaTimeline(true)
+    const handleOpenWatchProgress = () => setShowWatchProgress(true)
+    const handleOpenMediaQueue = () => setShowMediaQueue(true)
+    const handleOpenViewModes = () => setShowViewModeSelector(true)
+    const handleOpenAutoPlaylists = () => setShowAutoPlaylist(true)
+    const handleOpenSceneDetector = () => setShowSceneDetector(true)
+    const handleOpenAITagger = () => setShowAITagger(true)
+    const handleOpenBookmarks = () => setShowBookmarkManager(true)
+    const handleOpenNotes = () => setShowQuickNote(true)
+    const handleOpenRelated = () => setShowRelatedMedia(true)
+    const handleOpenThumbnailSelector = () => setShowThumbnailSelector(true)
+    const handleOpenExporter = () => setShowMediaExporter(true)
+
     window.addEventListener('vault-open-video', handleOpenVideo as EventListener)
     window.addEventListener('vault-open-watch-later', handleOpenWatchLater)
     window.addEventListener('vault-open-duplicates', handleOpenDuplicates)
     window.addEventListener('vault-open-tv-remote', handleOpenTVRemote)
     window.addEventListener('vault-open-url-downloader', handleOpenUrlDownloader)
+    // v2.3.0 Tool event listeners
+    window.addEventListener('vault-open-media-timeline', handleOpenMediaTimeline)
+    window.addEventListener('vault-open-watch-progress', handleOpenWatchProgress)
+    window.addEventListener('vault-open-media-queue', handleOpenMediaQueue)
+    window.addEventListener('vault-open-view-modes', handleOpenViewModes)
+    window.addEventListener('vault-open-auto-playlists', handleOpenAutoPlaylists)
+    window.addEventListener('vault-open-scene-detector', handleOpenSceneDetector)
+    window.addEventListener('vault-open-ai-tagger', handleOpenAITagger)
+    window.addEventListener('vault-open-bookmarks', handleOpenBookmarks)
+    window.addEventListener('vault-open-notes', handleOpenNotes)
+    window.addEventListener('vault-open-related', handleOpenRelated)
+    window.addEventListener('vault-open-thumbnail-selector', handleOpenThumbnailSelector)
+    window.addEventListener('vault-open-exporter', handleOpenExporter)
     // Also listen for IPC event from notification clicks
     const unsubUrlDownloader = window.api.urlDownloader?.onOpenRequested?.(() => {
       handleOpenUrlDownloader()
@@ -3644,6 +3672,19 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       window.removeEventListener('vault-open-duplicates', handleOpenDuplicates)
       window.removeEventListener('vault-open-tv-remote', handleOpenTVRemote)
       window.removeEventListener('vault-open-url-downloader', handleOpenUrlDownloader)
+      // v2.3.0 Tool cleanup
+      window.removeEventListener('vault-open-media-timeline', handleOpenMediaTimeline)
+      window.removeEventListener('vault-open-watch-progress', handleOpenWatchProgress)
+      window.removeEventListener('vault-open-media-queue', handleOpenMediaQueue)
+      window.removeEventListener('vault-open-view-modes', handleOpenViewModes)
+      window.removeEventListener('vault-open-auto-playlists', handleOpenAutoPlaylists)
+      window.removeEventListener('vault-open-scene-detector', handleOpenSceneDetector)
+      window.removeEventListener('vault-open-ai-tagger', handleOpenAITagger)
+      window.removeEventListener('vault-open-bookmarks', handleOpenBookmarks)
+      window.removeEventListener('vault-open-notes', handleOpenNotes)
+      window.removeEventListener('vault-open-related', handleOpenRelated)
+      window.removeEventListener('vault-open-thumbnail-selector', handleOpenThumbnailSelector)
+      window.removeEventListener('vault-open-exporter', handleOpenExporter)
       unsubUrlDownloader?.()
     }
   }, [addFloatingPlayer])
@@ -4505,33 +4546,33 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
                   <span className="text-xs text-[var(--muted)] font-medium">Video Tools</span>
                 </div>
                 <div className="p-1">
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowSceneDetector(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Activity size={14} />Scene Detector</button>
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowVideoChapters(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><ListVideo size={14} />Video Chapters</button>
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowColorGrading(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Sliders size={14} />Color Grading</button>
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowVideoFilters(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Sparkles size={14} />Video Filters</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowSceneDetector(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Activity size={14} />Scene Detector</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowVideoChapters(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><ListVideo size={14} />Video Chapters</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowColorGrading(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Sliders size={14} />Color Grading</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowVideoFilters(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Sparkles size={14} />Video Filters</button>
                   <button onClick={() => setShowSplitScreen(true)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Grid3X3 size={14} />Split Screen</button>
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowKeyframeExtractor(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Film size={14} />Keyframe Extractor</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowKeyframeExtractor(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Film size={14} />Keyframe Extractor</button>
                 </div>
                 <div className="p-2 border-t border-b border-[var(--border)]">
                   <span className="text-xs text-[var(--muted)] font-medium">Edit Tools</span>
                 </div>
                 <div className="p-1">
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowSmartCrop(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Crop size={14} />Smart Crop</button>
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowMediaRotator(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><RotateCw size={14} />Rotate & Flip</button>
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowWatermarkAdder(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Type size={14} />Add Watermark</button>
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowThumbnailSelector(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><ImageIcon size={14} />Thumbnail Selector</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowSmartCrop(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Crop size={14} />Smart Crop</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowMediaRotator(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><RotateCw size={14} />Rotate & Flip</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowWatermarkAdder(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Type size={14} />Add Watermark</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowThumbnailSelector(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><ImageIcon size={14} />Thumbnail Selector</button>
                   <button onClick={() => setShowMediaMerger(true)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Scissors size={14} />Merge Videos</button>
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowMediaExporter(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Download size={14} />Export Media</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowMediaExporter(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Download size={14} />Export Media</button>
                 </div>
                 <div className="p-2 border-t border-b border-[var(--border)]">
                   <span className="text-xs text-[var(--muted)] font-medium">Organization</span>
                 </div>
                 <div className="p-1">
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowMetadataEditor(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><PenTool size={14} />Metadata Editor</button>
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowAITagger(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Brain size={14} />AI Auto-Tagger</button>
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowBookmarkManager(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Bookmark size={14} />Bookmark Manager</button>
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowSubtitleEditor(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><MessageSquare size={14} />Subtitle Editor</button>
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowQuickNote(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><FileText size={14} />Quick Note</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowMetadataEditor(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><PenTool size={14} />Metadata Editor</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowAITagger(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Brain size={14} />AI Auto-Tagger</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowBookmarkManager(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Bookmark size={14} />Bookmark Manager</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowSubtitleEditor(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><MessageSquare size={14} />Subtitle Editor</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowQuickNote(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><FileText size={14} />Quick Note</button>
                 </div>
                 <div className="p-2 border-t border-b border-[var(--border)]">
                   <span className="text-xs text-[var(--muted)] font-medium">Views & Playlists</span>
@@ -4543,7 +4584,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
                   <button onClick={() => setShowAutoPlaylist(true)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><ListMusic size={14} />Auto Playlists</button>
                   <button onClick={() => setShowPlaylistSorter(true)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Layers size={14} />Playlist Sorter</button>
                   <button onClick={() => setShowMediaQueue(true)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><ListVideo size={14} />Media Queue</button>
-                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowRelatedMedia(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Sparkles size={14} />Related Media</button>
+                  <button onClick={() => { if (media[0]) { setActiveToolMedia(media[0]); setShowRelatedMedia(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Sparkles size={14} />Related Media</button>
                 </div>
               </div>
             </div>
@@ -6131,7 +6172,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showSceneDetector && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowSceneDetector(false)}>
           <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <SceneDetector videoSrc={toFileUrlCached(activeToolMedia.path)} duration={activeToolMedia.durationSec || 0} onSceneSelect={(time) => { showToast('info', `Scene at ${formatDuration(time)}`); setShowSceneDetector(false) }} className="m-4" />
+            <SceneDetector videoSrc={toFileUrl(activeToolMedia.path)} mediaId={activeToolMedia.id} duration={activeToolMedia.durationSec || 0} onSceneSelect={(time: number) => { showToast('info', `Scene at ${formatDuration(time)}`); setShowSceneDetector(false) }} className="m-4" />
           </div>
         </div>
       )}
@@ -6139,7 +6180,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showVideoChapters && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowVideoChapters(false)}>
           <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <VideoChapters mediaId={activeToolMedia.id} duration={activeToolMedia.durationSec || 0} onChapterSelect={(time) => showToast('info', `Jump to ${formatDuration(time)}`)} className="m-4" />
+            <VideoChapters mediaId={activeToolMedia.id} duration={activeToolMedia.durationSec || 0} currentTime={0} onSeek={(time: number) => showToast('info', `Jump to ${formatDuration(time)}`)} className="m-4" />
           </div>
         </div>
       )}
@@ -6147,7 +6188,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showColorGrading && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowColorGrading(false)}>
           <div className="max-w-xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <ColorGrading onApply={(style) => { setColorGradingStyle(style); showToast('success', 'Color grading applied'); setShowColorGrading(false) }} className="m-4" />
+            <ColorGrading settings={colorGradingStyle || { brightness: 100, contrast: 100, saturation: 100, hue: 0, temperature: 0, tint: 0, shadows: 0, highlights: 0, vibrance: 0 }} onChange={(s) => { setColorGradingStyle(s); showToast('success', 'Color grading applied') }} className="m-4" />
           </div>
         </div>
       )}
@@ -6163,7 +6204,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showSubtitleEditor && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowSubtitleEditor(false)}>
           <div className="max-w-3xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <SubtitleEditor mediaId={activeToolMedia.id} duration={activeToolMedia.durationSec || 0} onSave={(subs) => { showToast('success', `Saved ${subs.length} subtitles`); setShowSubtitleEditor(false) }} className="m-4" />
+            <SubtitleEditor currentTime={0} duration={activeToolMedia.durationSec || 0} subtitles={[]} onChange={(subs) => { showToast('success', `Updated ${subs.length} subtitles`) }} onSeek={(time: number) => showToast('info', `Seek to ${formatDuration(time)}`)} className="m-4" />
           </div>
         </div>
       )}
@@ -6171,7 +6212,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showKeyframeExtractor && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowKeyframeExtractor(false)}>
           <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <KeyframeExtractor videoSrc={toFileUrlCached(activeToolMedia.path)} duration={activeToolMedia.durationSec || 0} filename={activeToolMedia.filename || 'video'} onExtract={(frames) => { showToast('success', `Extracted ${frames.length} keyframes`); setShowKeyframeExtractor(false) }} className="m-4" />
+            <KeyframeExtractor videoRef={React.createRef<HTMLVideoElement>()} duration={activeToolMedia.durationSec || 0} onExtract={(frames) => { showToast('success', `Extracted ${frames.length} keyframes`); setShowKeyframeExtractor(false) }} className="m-4" />
           </div>
         </div>
       )}
@@ -6179,7 +6220,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showVideoFilters && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowVideoFilters(false)}>
           <div className="max-w-xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <VideoFilters onApply={(style) => { setVideoFiltersStyle(style); showToast('success', 'Video filter applied'); setShowVideoFilters(false) }} className="m-4" />
+            <VideoFilters onFilterChange={(filter: string) => { setVideoFiltersStyle(filter); showToast('success', 'Video filter applied') }} currentFilter={videoFiltersStyle || 'none'} className="m-4" />
           </div>
         </div>
       )}
@@ -6187,7 +6228,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showSplitScreen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowSplitScreen(false)}>
           <div className="max-w-4xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <SplitScreen videos={allMedia.filter(m => m.type === 'video').slice(0, 6).map(m => ({ id: m.id, src: toFileUrlCached(m.path), title: m.filename || '' }))} className="m-4" />
+            <SplitScreen availableMedia={media.filter((m: MediaRow) => m.type === 'video').slice(0, 20).map((m: MediaRow) => ({ id: m.id, path: m.path, thumbnail: m.thumbPath || undefined, title: m.filename || '' }))} className="m-4" />
           </div>
         </div>
       )}
@@ -6195,7 +6236,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showSmartCrop && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowSmartCrop(false)}>
           <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <SmartCrop src={toFileUrlCached(activeToolMedia.path)} type={activeToolMedia.type === 'video' ? 'video' : 'image'} onApply={(crop) => { showToast('success', `Crop applied: ${crop.width}x${crop.height}`); setShowSmartCrop(false) }} className="m-4" />
+            <SmartCrop imageSrc={toFileUrl(activeToolMedia.thumbPath || activeToolMedia.path)} onCrop={(region, aspect) => { showToast('success', `Crop applied: ${Math.round(region.width)}x${Math.round(region.height)} (${aspect})`); setShowSmartCrop(false) }} className="m-4" />
           </div>
         </div>
       )}
@@ -6211,7 +6252,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showPlaylistSorter && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowPlaylistSorter(false)}>
           <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <PlaylistSorter items={allMedia.slice(0, 20).map(m => ({ id: m.id, title: m.filename || '', thumbnail: m.thumbPath || undefined, duration: m.durationSec || undefined }))} onReorder={(items) => { showToast('success', 'Playlist reordered'); setShowPlaylistSorter(false) }} className="m-4" />
+            <PlaylistSorter items={media.slice(0, 20).map((m: MediaRow, i: number) => ({ id: m.id, title: m.filename || '', duration: m.durationSec || undefined, index: i }))} onSort={(sortedIds: string[]) => { showToast('success', `Sorted ${sortedIds.length} items`); setShowPlaylistSorter(false) }} className="m-4" />
           </div>
         </div>
       )}
@@ -6219,7 +6260,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showWatchProgress && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowWatchProgress(false)}>
           <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <WatchProgress items={allMedia.filter(m => m.type === 'video').slice(0, 10).map(m => ({ id: m.id, title: m.filename || '', thumbnail: m.thumbPath || undefined, duration: m.durationSec || 0, progress: Math.random() * 100, lastWatched: new Date(Date.now() - Math.random() * 86400000 * 7) }))} onResume={(id) => { addFloatingPlayer(id); setShowWatchProgress(false) }} onRemove={(id) => showToast('info', 'Removed from progress')} className="m-4" />
+            <WatchProgress onResume={(id: string) => { addFloatingPlayer(id); setShowWatchProgress(false) }} onRemove={(id: string) => showToast('info', 'Removed from progress')} className="m-4" />
           </div>
         </div>
       )}
@@ -6227,7 +6268,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showMediaExporter && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowMediaExporter(false)}>
           <div className="max-w-xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <MediaExporter media={{ id: activeToolMedia.id, filename: activeToolMedia.filename || '', type: activeToolMedia.type, duration: activeToolMedia.durationSec || undefined }} onExport={(opts) => { showToast('success', `Exporting as ${opts.format}`); setShowMediaExporter(false) }} className="m-4" />
+            <MediaExporter mediaType={activeToolMedia.type === 'video' ? 'video' : 'image'} mediaPath={activeToolMedia.path} duration={activeToolMedia.durationSec || undefined} onExport={async (settings, outputPath) => { showToast('success', `Exporting as ${settings.format} to ${outputPath}`); setShowMediaExporter(false) }} className="m-4" />
           </div>
         </div>
       )}
@@ -6235,7 +6276,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showAITagger && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowAITagger(false)}>
           <div className="max-w-xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <AITagger mediaId={activeToolMedia.id} mediaSrc={toFileUrlCached(activeToolMedia.path)} mediaType={activeToolMedia.type} onApplyTags={(tags) => { showToast('success', `Applied ${tags.length} tags`); setShowAITagger(false) }} className="m-4" />
+            <AITagger mediaId={activeToolMedia.id} mediaSrc={toFileUrl(activeToolMedia.path)} mediaType={activeToolMedia.type === 'video' ? 'video' : activeToolMedia.type === 'gif' ? 'gif' : 'image'} onApplyTags={(tags) => { showToast('success', `Applied ${tags.length} tags`); setShowAITagger(false) }} className="m-4" />
           </div>
         </div>
       )}
@@ -6243,7 +6284,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showThumbnailSelector && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowThumbnailSelector(false)}>
           <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <ThumbnailSelector videoSrc={toFileUrlCached(activeToolMedia.path)} duration={activeToolMedia.durationSec || 0} currentThumbnail={activeToolMedia.thumbPath || undefined} onSelect={(thumb) => { showToast('success', 'Thumbnail updated'); setShowThumbnailSelector(false) }} className="m-4" />
+            <ThumbnailSelector duration={activeToolMedia.durationSec || 0} currentThumbnail={activeToolMedia.thumbPath ? toFileUrl(activeToolMedia.thumbPath) : undefined} onSelect={(thumb: string) => { showToast('success', 'Thumbnail updated'); setShowThumbnailSelector(false) }} className="m-4" />
           </div>
         </div>
       )}
@@ -6251,7 +6292,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showRelatedMedia && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowRelatedMedia(false)}>
           <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <RelatedMedia currentMediaId={activeToolMedia.id} items={allMedia.filter(m => m.id !== activeToolMedia.id).slice(0, 12).map(m => ({ id: m.id, title: m.filename || '', thumbnail: m.thumbPath || undefined, type: m.type, matchReason: ['similar', 'same_tag', 'same_performer'][Math.floor(Math.random() * 3)] as any, matchScore: Math.random() * 100 }))} onSelect={(id) => { addFloatingPlayer(id); setShowRelatedMedia(false) }} className="m-4" />
+            <RelatedMedia currentMediaId={activeToolMedia.id} onPlay={(id: string) => { addFloatingPlayer(id); setShowRelatedMedia(false) }} maxItems={12} className="m-4" />
           </div>
         </div>
       )}
@@ -6259,7 +6300,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showMediaTimeline && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowMediaTimeline(false)}>
           <div className="max-w-4xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <MediaTimeline items={allMedia.slice(0, 50).map(m => ({ id: m.id, title: m.filename || '', thumbnail: m.thumbPath || undefined, type: m.type, addedAt: new Date(Date.now() - Math.random() * 86400000 * 30) }))} onSelect={(id) => { addFloatingPlayer(id); setShowMediaTimeline(false) }} className="m-4" />
+            <MediaTimeline onSelect={(id: string) => { addFloatingPlayer(id); setShowMediaTimeline(false) }} className="m-4" />
           </div>
         </div>
       )}
@@ -6267,7 +6308,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showQuickNote && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowQuickNote(false)}>
           <div className="max-w-md w-full" onClick={e => e.stopPropagation()}>
-            <QuickNote mediaId={activeToolMedia.id} mediaTitle={activeToolMedia.filename || ''} onSave={(note) => { showToast('success', 'Note saved'); setShowQuickNote(false) }} onClose={() => setShowQuickNote(false)} className="m-4" />
+            <QuickNote mediaId={activeToolMedia.id} onChange={(notes) => { showToast('success', `${notes.length} notes`) }} className="m-4" />
           </div>
         </div>
       )}
@@ -6275,7 +6316,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showViewModeSelector && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowViewModeSelector(false)}>
           <div className="max-w-md w-full" onClick={e => e.stopPropagation()}>
-            <ViewModeSelector current={layout} onChange={(mode) => { setLayout(mode as LayoutOption); showToast('success', `View: ${mode}`); setShowViewModeSelector(false) }} className="m-4" />
+            <ViewModeSelector mode="grid" config={{ columns: 4, showInfo: true, showThumbnails: true, cardSize: 'medium', aspectRatio: '16:9' }} onChange={(mode, config) => { setLayout(mode === 'masonry' ? 'wall' : 'grid'); showToast('success', `View: ${mode}`); setShowViewModeSelector(false) }} className="m-4" />
           </div>
         </div>
       )}
@@ -6283,7 +6324,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showAutoPlaylist && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowAutoPlaylist(false)}>
           <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <AutoPlaylist playlists={[{ id: '1', name: 'Most Watched', type: 'most_watched' as const, itemCount: 25, lastUpdated: new Date() }, { id: '2', name: 'Recently Added', type: 'recently_added' as const, itemCount: 50, lastUpdated: new Date() }, { id: '3', name: 'Top Rated', type: 'top_rated' as const, itemCount: 20, lastUpdated: new Date() }]} onSelect={(id) => { showToast('info', `Opening playlist ${id}`); setShowAutoPlaylist(false) }} onCreate={(config) => { showToast('success', `Created auto playlist: ${config.name}`); setShowAutoPlaylist(false) }} className="m-4" />
+            <AutoPlaylist onPlay={(items) => { if (items.length > 0) addFloatingPlayer(items[0].id); showToast('info', `Playing ${items.length} items`); setShowAutoPlaylist(false) }} onSave={(type, name, items) => { showToast('success', `Saved playlist: ${name} (${items.length} items)`); setShowAutoPlaylist(false) }} className="m-4" />
           </div>
         </div>
       )}
@@ -6291,7 +6332,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showMediaMerger && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowMediaMerger(false)}>
           <div className="max-w-3xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <MediaMerger videos={allMedia.filter(m => m.type === 'video').slice(0, 10).map(m => ({ id: m.id, src: toFileUrlCached(m.path), title: m.filename || '', duration: m.durationSec || 0, thumbnail: m.thumbPath || undefined }))} onMerge={(ids, opts) => { showToast('success', `Merging ${ids.length} videos`); setShowMediaMerger(false) }} className="m-4" />
+            <MediaMerger onMerge={async (items, settings) => { showToast('success', `Merging ${items.length} videos as ${settings.outputFormat}`); setShowMediaMerger(false) }} onAddMedia={async () => { const videos = media.filter((m: MediaRow) => m.type === 'video'); if (videos.length === 0) return null; const m = videos[Math.floor(Math.random() * videos.length)]; return { id: m.id, path: m.path, title: m.filename || '', duration: m.durationSec || 0, thumbnail: m.thumbPath || undefined } }} className="m-4" />
           </div>
         </div>
       )}
@@ -6299,7 +6340,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showMediaRotator && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowMediaRotator(false)}>
           <div className="max-w-xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <MediaRotator src={toFileUrlCached(activeToolMedia.path)} type={activeToolMedia.type === 'video' ? 'video' : 'image'} onApply={(transform) => { showToast('success', `Applied: ${transform.rotation}° rotation`); setShowMediaRotator(false) }} className="m-4" />
+            <MediaRotator src={toFileUrl(activeToolMedia.path)} type={activeToolMedia.type === 'video' ? 'video' : 'image'} onApply={(transform) => { showToast('success', `Applied: ${transform.rotation}° rotation`); setShowMediaRotator(false) }} className="m-4" />
           </div>
         </div>
       )}
@@ -6307,7 +6348,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showWatermarkAdder && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowWatermarkAdder(false)}>
           <div className="max-w-xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <WatermarkAdder mediaSrc={toFileUrlCached(activeToolMedia.path)} mediaType={activeToolMedia.type === 'video' ? 'video' : 'image'} onApply={(watermark) => { showToast('success', 'Watermark applied'); setShowWatermarkAdder(false) }} className="m-4" />
+            <WatermarkAdder mediaSrc={toFileUrl(activeToolMedia.path)} mediaType={activeToolMedia.type === 'video' ? 'video' : 'image'} onApply={(watermark) => { showToast('success', 'Watermark applied'); setShowWatermarkAdder(false) }} className="m-4" />
           </div>
         </div>
       )}
@@ -6315,7 +6356,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       {showMediaQueue && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowMediaQueue(false)}>
           <div className="max-w-md w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <MediaQueue items={allMedia.filter(m => m.type === 'video').slice(0, 10).map(m => ({ id: m.id, title: m.filename || '', thumbnail: m.thumbPath || undefined, duration: m.durationSec || undefined, type: 'video' as const }))} currentIndex={0} isPlaying={false} onPlay={(i) => { addFloatingPlayer(allMedia.filter(m => m.type === 'video')[i]?.id || ''); setShowMediaQueue(false) }} onPause={() => {}} onNext={() => {}} onPrev={() => {}} onReorder={() => {}} onRemove={() => {}} onClear={() => {}} onShuffle={() => {}} repeatMode="off" onRepeatChange={() => {}} className="m-4" />
+            <MediaQueue onPlay={(i: number) => { const videos = media.filter((m: MediaRow) => m.type === 'video'); if (videos[i]) addFloatingPlayer(videos[i].id); setShowMediaQueue(false) }} className="m-4" />
           </div>
         </div>
       )}

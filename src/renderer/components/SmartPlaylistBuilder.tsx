@@ -438,7 +438,7 @@ export function SmartPlaylistBuilder({
           <div className="flex items-center gap-2">
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
               className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg outline-none focus:border-[var(--primary)]"
             >
               {SORT_OPTIONS.map(opt => (
