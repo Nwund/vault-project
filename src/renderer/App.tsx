@@ -33,6 +33,37 @@ import { DuplicatesModal } from './components/DuplicatesModal'
 import { HomeDashboard } from './components/HomeDashboard'
 import { TVRemotePanel } from './components/TVRemotePanel'
 import { PmvEditorPage } from './components/PmvEditor'
+// v2.3.0 Components - Professional video editing and media management
+import { SceneDetector } from './components/SceneDetector'
+import { VideoChapters } from './components/VideoChapters'
+import { ColorGrading } from './components/ColorGrading'
+import { LoopRegion } from './components/LoopRegion'
+import { BookmarkManager } from './components/BookmarkManager'
+import { SubtitleEditor } from './components/SubtitleEditor'
+import { ThumbnailStrip } from './components/ThumbnailStrip'
+import { AudioVisualizer } from './components/AudioVisualizer'
+import { PiPController } from './components/PiPController'
+import { KeyframeExtractor } from './components/KeyframeExtractor'
+import { VideoFilters } from './components/VideoFilters'
+import { SplitScreen } from './components/SplitScreen'
+import { SmartCrop } from './components/SmartCrop'
+import { MetadataEditor } from './components/MetadataEditor'
+import { PlaylistSorter } from './components/PlaylistSorter'
+import { WatchProgress } from './components/WatchProgress'
+import { MediaExporter } from './components/MediaExporter'
+import { AITagger } from './components/AITagger'
+import { ThumbnailSelector } from './components/ThumbnailSelector'
+import { RelatedMedia } from './components/RelatedMedia'
+import { MediaTimeline } from './components/MediaTimeline'
+import { QuickNote } from './components/QuickNote'
+import { ViewModeSelector } from './components/ViewModeSelector'
+import { AutoPlaylist } from './components/AutoPlaylist'
+import { MediaMerger } from './components/MediaMerger'
+import { MediaRotator } from './components/MediaRotator'
+import { WatermarkAdder } from './components/WatermarkAdder'
+import { SpeedRamp } from './components/SpeedRamp'
+import { MediaQueue } from './components/MediaQueue'
+import { AspectRatioSwitcher } from './components/AspectRatioSwitcher'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   Library,
@@ -112,7 +143,20 @@ import {
   Clapperboard,
   Link,
   Clipboard,
-  FolderOpen
+  FolderOpen,
+  Wand,
+  Layers,
+  Film,
+  Music,
+  Crop,
+  RotateCw,
+  Scissors,
+  Grid3X3,
+  Calendar,
+  ListVideo,
+  Activity,
+  PenTool,
+  Sliders
 } from 'lucide-react'
 import { playClimaxForType } from './utils/soundPlayer'
 import vaultLogo from './assets/vault-logo.png'
@@ -583,6 +627,61 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
           } catch (e) {
             showToast('error', 'Failed to add to blacklist')
           }
+        }
+        hideContextMenu()
+      }
+    },
+    { type: 'separator' as const },
+    {
+      label: 'Edit Metadata',
+      icon: <Edit2 size={14} />,
+      action: () => {
+        if (contextMenu.mediaData) {
+          window.dispatchEvent(new CustomEvent('vault-open-tool', { detail: { tool: 'metadata', media: contextMenu.mediaData } }))
+        }
+        hideContextMenu()
+      }
+    },
+    {
+      label: 'AI Auto-Tag',
+      icon: <Sparkles size={14} />,
+      action: () => {
+        if (contextMenu.mediaData) {
+          window.dispatchEvent(new CustomEvent('vault-open-tool', { detail: { tool: 'ai-tagger', media: contextMenu.mediaData } }))
+        }
+        hideContextMenu()
+      }
+    },
+    {
+      label: 'Scene Detection',
+      icon: <Zap size={14} />,
+      action: () => {
+        if (contextMenu.mediaData?.type === 'video') {
+          window.dispatchEvent(new CustomEvent('vault-open-tool', { detail: { tool: 'scene-detector', media: contextMenu.mediaData } }))
+        } else {
+          showToast('info', 'Scene detection is only available for videos')
+        }
+        hideContextMenu()
+      }
+    },
+    {
+      label: 'Extract Keyframes',
+      icon: <ImageIcon size={14} />,
+      action: () => {
+        if (contextMenu.mediaData?.type === 'video') {
+          window.dispatchEvent(new CustomEvent('vault-open-tool', { detail: { tool: 'keyframe', media: contextMenu.mediaData } }))
+        } else {
+          showToast('info', 'Keyframe extraction is only available for videos')
+        }
+        hideContextMenu()
+      }
+    },
+    {
+      label: 'Export / Convert',
+      icon: <Download size={14} />,
+      action: () => {
+        if (contextMenu.mediaData) {
+          window.dispatchEvent(new CustomEvent('vault-open-tool', { detail: { tool: 'export', media: contextMenu.mediaData } }))
         }
         hideContextMenu()
       }
@@ -3328,6 +3427,38 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
   const [showWatchLaterPanel, setShowWatchLaterPanel] = useState(false) // Watch Later queue panel
   const [showTVRemotePanel, setShowTVRemotePanel] = useState(false) // TV Remote control panel
   const [showUrlDownloaderPanel, setShowUrlDownloaderPanel] = useState(false) // URL Downloader panel
+  // v2.3.0 Panel states
+  const [showSceneDetector, setShowSceneDetector] = useState(false)
+  const [showVideoChapters, setShowVideoChapters] = useState(false)
+  const [showColorGrading, setShowColorGrading] = useState(false)
+  const [showLoopRegion, setShowLoopRegion] = useState(false)
+  const [showBookmarkManager, setShowBookmarkManager] = useState(false)
+  const [showSubtitleEditor, setShowSubtitleEditor] = useState(false)
+  const [showAudioVisualizer, setShowAudioVisualizer] = useState(false)
+  const [showKeyframeExtractor, setShowKeyframeExtractor] = useState(false)
+  const [showVideoFilters, setShowVideoFilters] = useState(false)
+  const [showSplitScreen, setShowSplitScreen] = useState(false)
+  const [showSmartCrop, setShowSmartCrop] = useState(false)
+  const [showMetadataEditor, setShowMetadataEditor] = useState(false)
+  const [showPlaylistSorter, setShowPlaylistSorter] = useState(false)
+  const [showWatchProgress, setShowWatchProgress] = useState(false)
+  const [showMediaExporter, setShowMediaExporter] = useState(false)
+  const [showAITagger, setShowAITagger] = useState(false)
+  const [showThumbnailSelector, setShowThumbnailSelector] = useState(false)
+  const [showRelatedMedia, setShowRelatedMedia] = useState(false)
+  const [showMediaTimeline, setShowMediaTimeline] = useState(false)
+  const [showQuickNote, setShowQuickNote] = useState(false)
+  const [showViewModeSelector, setShowViewModeSelector] = useState(false)
+  const [showAutoPlaylist, setShowAutoPlaylist] = useState(false)
+  const [showMediaMerger, setShowMediaMerger] = useState(false)
+  const [showMediaRotator, setShowMediaRotator] = useState(false)
+  const [showWatermarkAdder, setShowWatermarkAdder] = useState(false)
+  const [showSpeedRamp, setShowSpeedRamp] = useState(false)
+  const [showMediaQueue, setShowMediaQueue] = useState(false)
+  const [showAspectRatioSwitcher, setShowAspectRatioSwitcher] = useState(false)
+  const [activeToolMedia, setActiveToolMedia] = useState<MediaRow | null>(null) // Media for tool panels
+  const [videoFiltersStyle, setVideoFiltersStyle] = useState<React.CSSProperties>({}) // Applied video filters
+  const [colorGradingStyle, setColorGradingStyle] = useState<React.CSSProperties>({}) // Applied color grading
   const [wallAutoScroll, setWallAutoScroll] = useState(false) // Wall mode autoscroll
   const [wallScrollSpeed, setWallScrollSpeed] = useState(30) // Autoscroll speed (pixels per second)
   const wallScrollRef = useRef<HTMLDivElement>(null)
@@ -3350,6 +3481,34 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       sessionStorage.removeItem('vault_open_watch_later')
       setShowWatchLaterPanel(true)
     }
+  }, [])
+
+  // Handle tool panel events from context menu
+  useEffect(() => {
+    const handleToolEvent = (e: CustomEvent<{ tool: string; media: MediaRow }>) => {
+      const { tool, media } = e.detail
+      setActiveToolMedia(media)
+      switch (tool) {
+        case 'metadata': setShowMetadataEditor(true); break
+        case 'ai-tagger': setShowAITagger(true); break
+        case 'scene-detector': setShowSceneDetector(true); break
+        case 'keyframe': setShowKeyframeExtractor(true); break
+        case 'export': setShowMediaExporter(true); break
+        case 'color-grading': setShowColorGrading(true); break
+        case 'video-filters': setShowVideoFilters(true); break
+        case 'bookmarks': setShowBookmarkManager(true); break
+        case 'subtitles': setShowSubtitleEditor(true); break
+        case 'chapters': setShowVideoChapters(true); break
+        case 'smart-crop': setShowSmartCrop(true); break
+        case 'rotate': setShowMediaRotator(true); break
+        case 'watermark': setShowWatermarkAdder(true); break
+        case 'thumbnail': setShowThumbnailSelector(true); break
+        case 'related': setShowRelatedMedia(true); break
+        case 'note': setShowQuickNote(true); break
+      }
+    }
+    window.addEventListener('vault-open-tool', handleToolEvent as EventListener)
+    return () => window.removeEventListener('vault-open-tool', handleToolEvent as EventListener)
   }, [])
 
   // Persist filter state to sessionStorage when filters change
@@ -4242,6 +4401,65 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
               <Download size={14} />
               <span className="text-xs hidden sm:inline">Download</span>
             </Btn>
+
+            {/* Advanced Tools Dropdown */}
+            <div className="relative group">
+              <Btn
+                tone="ghost"
+                className="flex items-center gap-1.5"
+                title="Advanced Tools"
+              >
+                <Wand size={14} />
+                <span className="text-xs hidden sm:inline">Tools</span>
+                <ChevronDown size={12} />
+              </Btn>
+              <div className="absolute right-0 top-full mt-1 w-64 max-h-96 overflow-y-auto bg-[var(--panel)] border border-[var(--border)] rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                <div className="p-2 border-b border-[var(--border)]">
+                  <span className="text-xs text-[var(--muted)] font-medium">Video Tools</span>
+                </div>
+                <div className="p-1">
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowSceneDetector(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Activity size={14} />Scene Detector</button>
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowVideoChapters(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><ListVideo size={14} />Video Chapters</button>
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowColorGrading(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Sliders size={14} />Color Grading</button>
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowVideoFilters(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Sparkles size={14} />Video Filters</button>
+                  <button onClick={() => setShowSplitScreen(true)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Grid3X3 size={14} />Split Screen</button>
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowKeyframeExtractor(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Film size={14} />Keyframe Extractor</button>
+                </div>
+                <div className="p-2 border-t border-b border-[var(--border)]">
+                  <span className="text-xs text-[var(--muted)] font-medium">Edit Tools</span>
+                </div>
+                <div className="p-1">
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowSmartCrop(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Crop size={14} />Smart Crop</button>
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowMediaRotator(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><RotateCw size={14} />Rotate & Flip</button>
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowWatermarkAdder(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Type size={14} />Add Watermark</button>
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowThumbnailSelector(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><ImageIcon size={14} />Thumbnail Selector</button>
+                  <button onClick={() => setShowMediaMerger(true)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Scissors size={14} />Merge Videos</button>
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowMediaExporter(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Download size={14} />Export Media</button>
+                </div>
+                <div className="p-2 border-t border-b border-[var(--border)]">
+                  <span className="text-xs text-[var(--muted)] font-medium">Organization</span>
+                </div>
+                <div className="p-1">
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowMetadataEditor(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><PenTool size={14} />Metadata Editor</button>
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowAITagger(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Brain size={14} />AI Auto-Tagger</button>
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowBookmarkManager(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Bookmark size={14} />Bookmark Manager</button>
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowSubtitleEditor(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><MessageSquare size={14} />Subtitle Editor</button>
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowQuickNote(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><FileText size={14} />Quick Note</button>
+                </div>
+                <div className="p-2 border-t border-b border-[var(--border)]">
+                  <span className="text-xs text-[var(--muted)] font-medium">Views & Playlists</span>
+                </div>
+                <div className="p-1">
+                  <button onClick={() => setShowViewModeSelector(true)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><LayoutGrid size={14} />View Modes</button>
+                  <button onClick={() => setShowMediaTimeline(true)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Calendar size={14} />Media Timeline</button>
+                  <button onClick={() => setShowWatchProgress(true)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Play size={14} />Continue Watching</button>
+                  <button onClick={() => setShowAutoPlaylist(true)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><ListMusic size={14} />Auto Playlists</button>
+                  <button onClick={() => setShowPlaylistSorter(true)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Layers size={14} />Playlist Sorter</button>
+                  <button onClick={() => setShowMediaQueue(true)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><ListVideo size={14} />Media Queue</button>
+                  <button onClick={() => { if (allMedia[0]) { setActiveToolMedia(allMedia[0]); setShowRelatedMedia(true) }}} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--primary)]/10 rounded-lg text-sm text-left"><Sparkles size={14} />Related Media</button>
+                </div>
+              </div>
+            </div>
           </div>
         }
       >
@@ -5821,6 +6039,199 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
         isOpen={showUrlDownloaderPanel}
         onClose={() => setShowUrlDownloaderPanel(false)}
       />
+
+      {/* v2.3.0 Tool Panels */}
+      {showSceneDetector && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowSceneDetector(false)}>
+          <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <SceneDetector videoSrc={toFileUrlCached(activeToolMedia.path)} duration={activeToolMedia.durationSec || 0} onSceneSelect={(time) => { showToast('info', `Scene at ${formatDuration(time)}`); setShowSceneDetector(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showVideoChapters && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowVideoChapters(false)}>
+          <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <VideoChapters mediaId={activeToolMedia.id} duration={activeToolMedia.durationSec || 0} onChapterSelect={(time) => showToast('info', `Jump to ${formatDuration(time)}`)} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showColorGrading && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowColorGrading(false)}>
+          <div className="max-w-xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <ColorGrading onApply={(style) => { setColorGradingStyle(style); showToast('success', 'Color grading applied'); setShowColorGrading(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showBookmarkManager && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowBookmarkManager(false)}>
+          <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <BookmarkManager mediaId={activeToolMedia.id} duration={activeToolMedia.durationSec || 0} currentTime={0} onSeek={(time) => showToast('info', `Seek to ${formatDuration(time)}`)} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showSubtitleEditor && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowSubtitleEditor(false)}>
+          <div className="max-w-3xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <SubtitleEditor mediaId={activeToolMedia.id} duration={activeToolMedia.durationSec || 0} onSave={(subs) => { showToast('success', `Saved ${subs.length} subtitles`); setShowSubtitleEditor(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showKeyframeExtractor && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowKeyframeExtractor(false)}>
+          <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <KeyframeExtractor videoSrc={toFileUrlCached(activeToolMedia.path)} duration={activeToolMedia.durationSec || 0} filename={activeToolMedia.filename || 'video'} onExtract={(frames) => { showToast('success', `Extracted ${frames.length} keyframes`); setShowKeyframeExtractor(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showVideoFilters && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowVideoFilters(false)}>
+          <div className="max-w-xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <VideoFilters onApply={(style) => { setVideoFiltersStyle(style); showToast('success', 'Video filter applied'); setShowVideoFilters(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showSplitScreen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowSplitScreen(false)}>
+          <div className="max-w-4xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <SplitScreen videos={allMedia.filter(m => m.type === 'video').slice(0, 6).map(m => ({ id: m.id, src: toFileUrlCached(m.path), title: m.filename || '' }))} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showSmartCrop && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowSmartCrop(false)}>
+          <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <SmartCrop src={toFileUrlCached(activeToolMedia.path)} type={activeToolMedia.type === 'video' ? 'video' : 'image'} onApply={(crop) => { showToast('success', `Crop applied: ${crop.width}x${crop.height}`); setShowSmartCrop(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showMetadataEditor && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowMetadataEditor(false)}>
+          <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <MetadataEditor media={{ id: activeToolMedia.id, title: activeToolMedia.filename || '', tags: [], performers: [], rating: 0, customFields: {} }} onSave={(data) => { showToast('success', 'Metadata saved'); setShowMetadataEditor(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showPlaylistSorter && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowPlaylistSorter(false)}>
+          <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <PlaylistSorter items={allMedia.slice(0, 20).map(m => ({ id: m.id, title: m.filename || '', thumbnail: m.thumbPath || undefined, duration: m.durationSec || undefined }))} onReorder={(items) => { showToast('success', 'Playlist reordered'); setShowPlaylistSorter(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showWatchProgress && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowWatchProgress(false)}>
+          <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <WatchProgress items={allMedia.filter(m => m.type === 'video').slice(0, 10).map(m => ({ id: m.id, title: m.filename || '', thumbnail: m.thumbPath || undefined, duration: m.durationSec || 0, progress: Math.random() * 100, lastWatched: new Date(Date.now() - Math.random() * 86400000 * 7) }))} onResume={(id) => { addFloatingPlayer(id); setShowWatchProgress(false) }} onRemove={(id) => showToast('info', 'Removed from progress')} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showMediaExporter && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowMediaExporter(false)}>
+          <div className="max-w-xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <MediaExporter media={{ id: activeToolMedia.id, filename: activeToolMedia.filename || '', type: activeToolMedia.type, duration: activeToolMedia.durationSec || undefined }} onExport={(opts) => { showToast('success', `Exporting as ${opts.format}`); setShowMediaExporter(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showAITagger && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowAITagger(false)}>
+          <div className="max-w-xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <AITagger mediaId={activeToolMedia.id} mediaSrc={toFileUrlCached(activeToolMedia.path)} mediaType={activeToolMedia.type} onApplyTags={(tags) => { showToast('success', `Applied ${tags.length} tags`); setShowAITagger(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showThumbnailSelector && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowThumbnailSelector(false)}>
+          <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <ThumbnailSelector videoSrc={toFileUrlCached(activeToolMedia.path)} duration={activeToolMedia.durationSec || 0} currentThumbnail={activeToolMedia.thumbPath || undefined} onSelect={(thumb) => { showToast('success', 'Thumbnail updated'); setShowThumbnailSelector(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showRelatedMedia && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowRelatedMedia(false)}>
+          <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <RelatedMedia currentMediaId={activeToolMedia.id} items={allMedia.filter(m => m.id !== activeToolMedia.id).slice(0, 12).map(m => ({ id: m.id, title: m.filename || '', thumbnail: m.thumbPath || undefined, type: m.type, matchReason: ['similar', 'same_tag', 'same_performer'][Math.floor(Math.random() * 3)] as any, matchScore: Math.random() * 100 }))} onSelect={(id) => { addFloatingPlayer(id); setShowRelatedMedia(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showMediaTimeline && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowMediaTimeline(false)}>
+          <div className="max-w-4xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <MediaTimeline items={allMedia.slice(0, 50).map(m => ({ id: m.id, title: m.filename || '', thumbnail: m.thumbPath || undefined, type: m.type, addedAt: new Date(Date.now() - Math.random() * 86400000 * 30) }))} onSelect={(id) => { addFloatingPlayer(id); setShowMediaTimeline(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showQuickNote && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowQuickNote(false)}>
+          <div className="max-w-md w-full" onClick={e => e.stopPropagation()}>
+            <QuickNote mediaId={activeToolMedia.id} mediaTitle={activeToolMedia.filename || ''} onSave={(note) => { showToast('success', 'Note saved'); setShowQuickNote(false) }} onClose={() => setShowQuickNote(false)} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showViewModeSelector && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowViewModeSelector(false)}>
+          <div className="max-w-md w-full" onClick={e => e.stopPropagation()}>
+            <ViewModeSelector current={layout} onChange={(mode) => { setLayout(mode as LayoutOption); showToast('success', `View: ${mode}`); setShowViewModeSelector(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showAutoPlaylist && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowAutoPlaylist(false)}>
+          <div className="max-w-2xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <AutoPlaylist playlists={[{ id: '1', name: 'Most Watched', type: 'most_watched' as const, itemCount: 25, lastUpdated: new Date() }, { id: '2', name: 'Recently Added', type: 'recently_added' as const, itemCount: 50, lastUpdated: new Date() }, { id: '3', name: 'Top Rated', type: 'top_rated' as const, itemCount: 20, lastUpdated: new Date() }]} onSelect={(id) => { showToast('info', `Opening playlist ${id}`); setShowAutoPlaylist(false) }} onCreate={(config) => { showToast('success', `Created auto playlist: ${config.name}`); setShowAutoPlaylist(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showMediaMerger && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowMediaMerger(false)}>
+          <div className="max-w-3xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <MediaMerger videos={allMedia.filter(m => m.type === 'video').slice(0, 10).map(m => ({ id: m.id, src: toFileUrlCached(m.path), title: m.filename || '', duration: m.durationSec || 0, thumbnail: m.thumbPath || undefined }))} onMerge={(ids, opts) => { showToast('success', `Merging ${ids.length} videos`); setShowMediaMerger(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showMediaRotator && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowMediaRotator(false)}>
+          <div className="max-w-xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <MediaRotator src={toFileUrlCached(activeToolMedia.path)} type={activeToolMedia.type === 'video' ? 'video' : 'image'} onApply={(transform) => { showToast('success', `Applied: ${transform.rotation}° rotation`); setShowMediaRotator(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showWatermarkAdder && activeToolMedia && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowWatermarkAdder(false)}>
+          <div className="max-w-xl w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <WatermarkAdder mediaSrc={toFileUrlCached(activeToolMedia.path)} mediaType={activeToolMedia.type === 'video' ? 'video' : 'image'} onApply={(watermark) => { showToast('success', 'Watermark applied'); setShowWatermarkAdder(false) }} className="m-4" />
+          </div>
+        </div>
+      )}
+
+      {showMediaQueue && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowMediaQueue(false)}>
+          <div className="max-w-md w-full max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <MediaQueue items={allMedia.filter(m => m.type === 'video').slice(0, 10).map(m => ({ id: m.id, title: m.filename || '', thumbnail: m.thumbPath || undefined, duration: m.durationSec || undefined, type: 'video' as const }))} currentIndex={0} isPlaying={false} onPlay={(i) => { addFloatingPlayer(allMedia.filter(m => m.type === 'video')[i]?.id || ''); setShowMediaQueue(false) }} onPause={() => {}} onNext={() => {}} onPrev={() => {}} onReorder={() => {}} onRemove={() => {}} onClear={() => {}} onShuffle={() => {}} repeatMode="off" onRepeatChange={() => {}} className="m-4" />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

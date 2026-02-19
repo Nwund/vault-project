@@ -3,10 +3,14 @@
 
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2, RectangleHorizontal, Crop, Minus, Square, Scissors, Check, Download, Library } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2, RectangleHorizontal, Crop, Minus, Square, Scissors, Check, Download, Library, Palette, Sliders, Activity, Gauge } from 'lucide-react'
 import { RelatedMediaPanel } from './RelatedMediaPanel'
 import { MediaNotesPanel } from './MediaNotesPanel'
 import { BookmarksPanel } from './BookmarksPanel'
+import { ColorGrading } from './ColorGrading'
+import { VideoFilters } from './VideoFilters'
+import { AudioVisualizer } from './AudioVisualizer'
+import { SpeedRamp } from './SpeedRamp'
 import { formatDuration } from '../utils/formatters'
 import { toFileUrlCached } from '../hooks/usePerformance'
 
@@ -91,6 +95,13 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [showRelatedPanel, setShowRelatedPanel] = useState(false)
   const [showNotesPanel, setShowNotesPanel] = useState(false)
   const [showBookmarksPanel, setShowBookmarksPanel] = useState(false)
+  // v2.3.0 Tool panels
+  const [showColorGrading, setShowColorGrading] = useState(false)
+  const [showVideoFilters, setShowVideoFilters] = useState(false)
+  const [showAudioVisualizer, setShowAudioVisualizer] = useState(false)
+  const [showSpeedRamp, setShowSpeedRamp] = useState(false)
+  const [videoFilterStyle, setVideoFilterStyle] = useState<React.CSSProperties>({})
+  const [colorGradeStyle, setColorGradeStyle] = useState<React.CSSProperties>({})
   const [resumePosition, setResumePosition] = useState<number | null>(null)
   const [showResumePrompt, setShowResumePrompt] = useState(false)
   const [isInPiP, setIsInPiP] = useState(false) // Browser Picture-in-Picture mode
@@ -1519,6 +1530,9 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                 ...((cropValues.top > 0 || cropValues.right > 0 || cropValues.bottom > 0 || cropValues.left > 0) ? {
                   clipPath: `inset(${cropValues.top}% ${cropValues.right}% ${cropValues.bottom}% ${cropValues.left}%)`,
                 } : {}),
+                // Apply color grading and video filters
+                ...colorGradeStyle,
+                ...videoFilterStyle,
               }}
               onClick={isCropMode ? undefined : togglePlay}
               onDoubleClick={isCropMode ? undefined : toggleFullscreen}
@@ -2246,6 +2260,50 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               </button>
             )}
 
+            {/* Color Grading - Video only */}
+            {media.type === 'video' && (
+              <button
+                onClick={() => setShowColorGrading(!showColorGrading)}
+                className={`p-2 rounded-lg transition ${showColorGrading ? 'bg-orange-500/80' : 'bg-white/10 hover:bg-orange-500/60'}`}
+                title="Color Grading"
+              >
+                <Palette size={16} />
+              </button>
+            )}
+
+            {/* Video Filters - Video only */}
+            {media.type === 'video' && (
+              <button
+                onClick={() => setShowVideoFilters(!showVideoFilters)}
+                className={`p-2 rounded-lg transition ${showVideoFilters ? 'bg-purple-500/80' : 'bg-white/10 hover:bg-purple-500/60'}`}
+                title="Video Filters"
+              >
+                <Sliders size={16} />
+              </button>
+            )}
+
+            {/* Audio Visualizer - Video only */}
+            {media.type === 'video' && (
+              <button
+                onClick={() => setShowAudioVisualizer(!showAudioVisualizer)}
+                className={`p-2 rounded-lg transition ${showAudioVisualizer ? 'bg-green-500/80' : 'bg-white/10 hover:bg-green-500/60'}`}
+                title="Audio Visualizer"
+              >
+                <Activity size={16} />
+              </button>
+            )}
+
+            {/* Speed Ramp - Video only */}
+            {media.type === 'video' && (
+              <button
+                onClick={() => setShowSpeedRamp(!showSpeedRamp)}
+                className={`p-2 rounded-lg transition ${showSpeedRamp ? 'bg-red-500/80' : 'bg-white/10 hover:bg-red-500/60'}`}
+                title="Speed Ramp"
+              >
+                <Gauge size={16} />
+              </button>
+            )}
+
             {isFullscreen && (
               <button
                 onClick={exitFullscreen}
@@ -2321,6 +2379,58 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               }
             }}
             isCompact={!isFullscreen}
+          />
+        </div>
+      )}
+
+      {/* Color Grading Panel */}
+      {showColorGrading && media.type === 'video' && (
+        <div className="absolute top-0 right-0 w-80 z-40 max-h-[80%] overflow-auto">
+          <ColorGrading
+            onApply={(style) => {
+              setColorGradeStyle(style)
+              setShowColorGrading(false)
+            }}
+            className="m-2"
+          />
+        </div>
+      )}
+
+      {/* Video Filters Panel */}
+      {showVideoFilters && media.type === 'video' && (
+        <div className="absolute top-0 right-0 w-80 z-40 max-h-[80%] overflow-auto">
+          <VideoFilters
+            onApply={(style) => {
+              setVideoFilterStyle(style)
+              setShowVideoFilters(false)
+            }}
+            className="m-2"
+          />
+        </div>
+      )}
+
+      {/* Audio Visualizer Panel */}
+      {showAudioVisualizer && media.type === 'video' && videoRef.current && (
+        <div className="absolute bottom-16 left-0 right-0 h-24 z-30 pointer-events-none">
+          <AudioVisualizer
+            audioSource={videoRef.current}
+            mode="bars"
+            className="h-full opacity-60"
+          />
+        </div>
+      )}
+
+      {/* Speed Ramp Panel */}
+      {showSpeedRamp && media.type === 'video' && (
+        <div className="absolute top-0 left-0 w-96 z-40 max-h-[80%] overflow-auto">
+          <SpeedRamp
+            videoRef={videoRef}
+            duration={duration}
+            onApply={(points) => {
+              console.log('Speed ramp applied:', points)
+              setShowSpeedRamp(false)
+            }}
+            className="m-2"
           />
         </div>
       )}
