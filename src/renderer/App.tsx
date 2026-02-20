@@ -7566,6 +7566,12 @@ function GoonWallPage(props: {
   const [showHud, setShowHud] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Preload phase - preload video URLs before showing wall
+  const [preloading, setPreloading] = useState(false)
+  const [preloadProgress, setPreloadProgress] = useState(0)
+  const [preloadTotal, setPreloadTotal] = useState(0)
+  const [showPreloadOption, setShowPreloadOption] = useState(true) // Show preload screen initially
+  const preloadedUrlsRef = useRef<Map<string, string>>(new Map()) // Cache preloaded URLs
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [layout, setLayout] = useState<GoonWallLayout>('mosaic')
   const [focusedTileIndex, setFocusedTileIndex] = useState<number | null>(null) // Focus mode: clicked tile expands
@@ -7645,6 +7651,51 @@ function GoonWallPage(props: {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Preload video URLs before showing the wall (optional)
+  const preloadVideos = async (videosToPreload: MediaRow[]) => {
+    setPreloading(true)
+    setPreloadProgress(0)
+    setPreloadTotal(videosToPreload.length)
+    preloadedUrlsRef.current.clear()
+
+    const batchSize = 5 // Load 5 at a time
+    let loaded = 0
+
+    for (let i = 0; i < videosToPreload.length; i += batchSize) {
+      const batch = videosToPreload.slice(i, i + batchSize)
+      await Promise.all(
+        batch.map(async (video) => {
+          try {
+            // Try low-res first for faster preloading
+            let url: string | null = null
+            if (tileCount >= 9 && window.api.media.getLowResUrl) {
+              const maxH = tileCount > 16 ? 360 : 480
+              url = await window.api.media.getLowResUrl(video.id, maxH) as string
+            }
+            if (!url) {
+              url = await window.api.media.getPlayableUrl(video.id) as string
+            }
+            if (url) {
+              preloadedUrlsRef.current.set(video.id, url)
+            }
+          } catch {
+            // Skip failed preloads
+          }
+          loaded++
+          setPreloadProgress(loaded)
+        })
+      )
+    }
+
+    setPreloading(false)
+    setShowPreloadOption(false)
+  }
+
+  // Start wall without preloading
+  const startWithoutPreload = () => {
+    setShowPreloadOption(false)
   }
 
   // Fullscreen toggle
@@ -8256,6 +8307,53 @@ function GoonWallPage(props: {
         </div>
       )}
 
+      {/* Preload option screen */}
+      {!loading && !error && showPreloadOption && videos.length > 0 && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black z-40">
+          <div className="text-center max-w-md px-4">
+            <div className="text-4xl mb-4">🎬</div>
+            <div className="text-xl font-bold mb-2">GoonWall Ready</div>
+            <div className="text-white/60 mb-6">
+              {videos.length} videos available • {tileCount} tiles
+            </div>
+
+            {preloading ? (
+              <div className="space-y-4">
+                <div className="text-sm text-white/60">
+                  Preloading videos for smooth playback...
+                </div>
+                <div className="w-64 h-2 bg-white/10 rounded-full overflow-hidden mx-auto">
+                  <div
+                    className="h-full bg-gradient-to-r from-pink-500 to-purple-500 transition-all duration-300"
+                    style={{ width: `${(preloadProgress / preloadTotal) * 100}%` }}
+                  />
+                </div>
+                <div className="text-sm text-white/40">
+                  {preloadProgress} / {preloadTotal} videos preloaded
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <button
+                  onClick={() => preloadVideos(tiles)}
+                  className="w-full px-6 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 rounded-xl font-medium transition"
+                >
+                  Preload {tileCount} Videos First
+                  <div className="text-xs text-white/60 mt-1">Smoother experience, takes a moment</div>
+                </button>
+                <button
+                  onClick={startWithoutPreload}
+                  className="w-full px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-medium transition"
+                >
+                  Start Immediately
+                  <div className="text-xs text-white/60 mt-1">Videos load as they play</div>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Error state */}
       {error && !loading && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black">
@@ -8267,7 +8365,7 @@ function GoonWallPage(props: {
       )}
 
       {/* Video Grid */}
-      {!loading && !error && tiles.length > 0 && (
+      {!loading && !error && !showPreloadOption && tiles.length > 0 && (
         <div
           className="absolute inset-0 overflow-hidden"
           style={{
@@ -8293,6 +8391,7 @@ function GoonWallPage(props: {
               isShuffling={shufflingTiles.has(idx)}
               shuffleInterval={props.settings?.goonwall?.intervalSec ?? 45}
               startAtClimaxPoint={props.settings?.goonwall?.startAtClimaxPoint ?? true}
+              preloadedUrl={preloadedUrlsRef.current.get(media.id)}
             />
           ))}
 
@@ -8359,10 +8458,11 @@ const getGoonMaxVideos = (tileCount: number) => {
   if (tileCount <= 4) return tileCount
   if (tileCount <= 9) return 6
   if (tileCount <= 16) return 8
-  return 10 // Max 10 concurrent videos even for 30 tiles
+  if (tileCount <= 25) return 12
+  return 15 // Increased max for better coverage
 }
 let GOON_MAX_VIDEOS = 8 // Default, updated dynamically
-const goonVideoQueue: Array<{ start: () => void; id: string }> = []
+const goonVideoQueue: Array<{ start: () => void; id: string; priority: number }> = []
 
 // Reset all goon slots - call when leaving GoonWall
 function resetGoonSlots(): void {
@@ -8374,9 +8474,18 @@ function resetGoonSlots(): void {
 // Update max videos based on tile count
 function updateGoonMaxVideos(tileCount: number): void {
   GOON_MAX_VIDEOS = getGoonMaxVideos(tileCount)
+  // Process queue if we now have more slots available
+  while (goonActiveVideos < GOON_MAX_VIDEOS && goonVideoQueue.length > 0) {
+    const next = goonVideoQueue.shift()
+    if (next) {
+      goonActiveVideos++
+      next.start()
+    }
+  }
 }
 
-function requestGoonSlot(id: string, onSlotAvailable: () => void): () => void {
+// Request a slot with priority (lower = higher priority, used for randomization)
+function requestGoonSlot(id: string, onSlotAvailable: () => void, priority: number = 0): () => void {
   if (goonActiveVideos < GOON_MAX_VIDEOS) {
     goonActiveVideos++
     onSlotAvailable()
@@ -8391,7 +8500,14 @@ function requestGoonSlot(id: string, onSlotAvailable: () => void): () => void {
       }
     }
   } else {
-    goonVideoQueue.push({ start: onSlotAvailable, id })
+    // Insert by priority (lower priority number = earlier in queue)
+    const entry = { start: onSlotAvailable, id, priority }
+    const insertIdx = goonVideoQueue.findIndex(q => q.priority > priority)
+    if (insertIdx === -1) {
+      goonVideoQueue.push(entry)
+    } else {
+      goonVideoQueue.splice(insertIdx, 0, entry)
+    }
     return () => {
       const idx = goonVideoQueue.findIndex(q => q.id === id)
       if (idx !== -1) {
@@ -8425,8 +8541,9 @@ const GoonTile = React.memo(function GoonTile(props: {
   isShuffling?: boolean
   shuffleInterval?: number // seconds between auto-shuffles (0 = disabled)
   startAtClimaxPoint?: boolean // Start videos at 70-80% through (false = start from beginning)
+  preloadedUrl?: string // URL preloaded by parent for faster startup
 }) {
-  const { media, muted, style, onShuffle, index, tileCount, onBroken, layout, isFocused, isBlurred, onFocus, isShuffling, shuffleInterval = 45, startAtClimaxPoint = true } = props
+  const { media, muted, style, onShuffle, index, tileCount, onBroken, layout, isFocused, isBlurred, onFocus, isShuffling, shuffleInterval = 45, startAtClimaxPoint = true, preloadedUrl } = props
   const isMosaic = layout === 'mosaic'
   const [url, setUrl] = useState('')
   const [retried, setRetried] = useState(false)
@@ -8463,15 +8580,21 @@ const GoonTile = React.memo(function GoonTile(props: {
     }
   }, [ready, isFocused, shuffleInterval, onShuffle, media.id])
 
-  // PERFORMANCE OPTIMIZATION: Request a playback slot FIRST, only load video if we have a slot
-  // This prevents Chrome from decoding 30 videos when only 8-10 can play
-  // Tiles without slots just show thumbnails (no video element overhead)
+  // PERFORMANCE OPTIMIZATION: Load URL first, then request slot when ready to play
+  // This ensures slots are only used by tiles that can actually play
+  // Random priority ensures different tiles get chances to play
+  const urlReadyRef = useRef(false)
+  const slotPriorityRef = useRef(Math.random()) // Random priority for fair distribution
+
+  // Load video URL (happens regardless of slot availability)
   useEffect(() => {
     let alive = true
     setRetried(false)
     setReady(false)
     setUrl('')
     setHasSlot(false)
+    urlReadyRef.current = false
+    slotPriorityRef.current = Math.random() // New random priority for each video
 
     // Release any existing slot
     if (releaseSlotRef.current) {
@@ -8479,43 +8602,69 @@ const GoonTile = React.memo(function GoonTile(props: {
       releaseSlotRef.current = null
     }
 
-    // Stagger slot requests: first 4 immediate, rest delayed
-    const delay = index < 4 ? 0 : (index - 4) * 50 // 50ms stagger (faster than before)
-    const timer = setTimeout(() => {
-      if (!alive) return
-
-      // Request a slot first - only load video if we get one
+    // If we have a preloaded URL, use it immediately
+    if (preloadedUrl) {
+      urlReadyRef.current = true
+      setUrl(preloadedUrl)
+      // Request slot immediately since URL is ready
       releaseSlotRef.current = requestGoonSlot(media.id, () => {
         if (!alive) return
         setHasSlot(true)
-
-        // Now load the video URL since we have a slot
-        // For many tiles, try low-res first for faster loading
-        if (tileCount >= 9 && window.api.media.getLowResUrl) {
-          const maxH = tileCount > 16 ? 360 : 480
-          window.api.media.getLowResUrl(media.id, maxH).then((lowU: any) => {
-            if (alive && lowU) setUrl(lowU as string)
-            else if (alive) {
-              // Fallback to full-res
-              window.api.media.getPlayableUrl(media.id).then((u: any) => {
-                if (alive && u) setUrl(u as string)
-                else if (alive) onShuffle()
-              }).catch(() => { if (alive) onShuffle() })
-            }
-          }).catch(() => {
-            if (!alive) return
-            window.api.media.getPlayableUrl(media.id).then((u: any) => {
-              if (alive && u) setUrl(u as string)
-              else if (alive) onShuffle()
-            }).catch(() => { if (alive) onShuffle() })
-          })
-        } else {
-          window.api.media.getPlayableUrl(media.id).then((u: any) => {
-            if (alive && u) setUrl(u as string)
-            else if (alive) onShuffle()
-          }).catch(() => { if (alive) onShuffle() })
+      }, slotPriorityRef.current)
+      return () => {
+        alive = false
+        if (releaseSlotRef.current) {
+          releaseSlotRef.current()
+          releaseSlotRef.current = null
         }
-      })
+      }
+    }
+
+    // Stagger URL loading: first 6 immediate, rest with small delay
+    const delay = index < 6 ? 0 : Math.min((index - 6) * 30, 500)
+    const timer = setTimeout(() => {
+      if (!alive) return
+
+      // Load the video URL first
+      const loadUrl = async () => {
+        try {
+          let videoUrl: string | null = null
+
+          // For many tiles, try low-res first for faster loading
+          if (tileCount >= 9 && window.api.media.getLowResUrl) {
+            const maxH = tileCount > 16 ? 360 : 480
+            try {
+              videoUrl = await window.api.media.getLowResUrl(media.id, maxH) as string
+            } catch {
+              // Fall through to full-res
+            }
+          }
+
+          if (!videoUrl) {
+            videoUrl = await window.api.media.getPlayableUrl(media.id) as string
+          }
+
+          if (!alive || !videoUrl) {
+            if (alive) onShuffle()
+            return
+          }
+
+          // URL is ready - now request a slot
+          urlReadyRef.current = true
+          setUrl(videoUrl)
+
+          // Request slot with random priority so different tiles get chances
+          releaseSlotRef.current = requestGoonSlot(media.id, () => {
+            if (!alive) return
+            setHasSlot(true)
+          }, slotPriorityRef.current)
+
+        } catch (err) {
+          if (alive) onShuffle()
+        }
+      }
+
+      loadUrl()
     }, delay)
 
     return () => {
@@ -8527,7 +8676,7 @@ const GoonTile = React.memo(function GoonTile(props: {
         releaseSlotRef.current = null
       }
     }
-  }, [media.id, media.path, onShuffle, tileCount, index])
+  }, [media.id, media.path, onShuffle, tileCount, index, preloadedUrl])
 
   // Track video element for cleanup - store reference that persists through unmount
   const videoElementRef = useRef<HTMLVideoElement | null>(null)
@@ -8611,28 +8760,34 @@ const GoonTile = React.memo(function GoonTile(props: {
   }, [isShuffling, ready, muted])
 
   // Seek to "climax point" (70-80% through video) on metadata load if enabled
-  // Slot already acquired before loading - just start playback
   const handleLoadedMetadata = useCallback(() => {
     const video = videoRef.current
-    if (!video || !video.duration || video.duration < 2) {
-      setReady(true)
-      // Start playing - we already have a slot
-      video?.play().catch(() => {})
-      return
-    }
-    // Start at 70-80% through the video (typically where the action peaks)
-    // Only if startAtClimaxPoint is enabled, otherwise start from beginning
-    if (startAtClimaxPoint) {
+    if (!video) return
+
+    // Set the start position
+    if (video.duration && video.duration >= 2 && startAtClimaxPoint) {
       const climaxPoint = 0.7 + Math.random() * 0.1
       video.currentTime = climaxPoint * video.duration
     }
-    setReady(true)
 
-    // Start playing - we already have a slot (acquired before loading URL)
-    video.play().catch(() => {
-      // Silently ignore - browser may block autoplay
-    })
-  }, [startAtClimaxPoint])
+    // Only play if we have a slot
+    if (hasSlot) {
+      setReady(true)
+      video.play().catch(() => {})
+    }
+  }, [startAtClimaxPoint, hasSlot])
+
+  // Start playing when slot becomes available (if video is already loaded)
+  useEffect(() => {
+    if (hasSlot && url && videoRef.current) {
+      const video = videoRef.current
+      // Check if video is ready to play
+      if (video.readyState >= 2) {
+        setReady(true)
+        video.play().catch(() => {})
+      }
+    }
+  }, [hasSlot, url])
 
   // Handle errors — force transcode on first error, skip on second
   const handleError = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -8718,8 +8873,8 @@ const GoonTile = React.memo(function GoonTile(props: {
       }}
       onContextMenu={handleContextMenu}
     >
-      {/* Show thumbnail poster while video loads OR when waiting for slot */}
-      {poster && (!ready || !hasSlot) && (
+      {/* Show thumbnail poster while video loads */}
+      {poster && !url && (
         <img
           src={poster}
           className="absolute inset-0 w-full h-full object-cover"
@@ -8727,8 +8882,8 @@ const GoonTile = React.memo(function GoonTile(props: {
         />
       )}
 
-      {/* Only create video element when we have a slot and URL */}
-      {hasSlot && url && (
+      {/* Create video element when URL is available - plays when slot is granted */}
+      {url && (
         <video
           ref={videoRef}
           src={url}
@@ -8744,15 +8899,25 @@ const GoonTile = React.memo(function GoonTile(props: {
         />
       )}
 
+      {/* Poster overlay when video loaded but not ready/playing yet */}
+      {poster && url && !ready && (
+        <img
+          src={poster}
+          className="absolute inset-0 w-full h-full object-cover"
+          alt=""
+        />
+      )}
+
       {/* Loading shimmer when no poster and not ready */}
       {!poster && !ready && (
         <div className="absolute inset-0 bg-gray-900 sexy-shimmer" />
       )}
 
-      {/* Waiting for slot indicator - show a subtle loading state */}
-      {!hasSlot && poster && (
-        <div className="absolute bottom-2 right-2 w-4 h-4">
-          <div className="w-full h-full border-2 border-white/30 border-t-white/70 rounded-full animate-spin" />
+      {/* Waiting for slot indicator */}
+      {url && !hasSlot && (
+        <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 rounded-full flex items-center gap-1">
+          <div className="w-3 h-3 border-2 border-white/30 border-t-white/70 rounded-full animate-spin" />
+          <span className="text-[10px] text-white/60">queued</span>
         </div>
       )}
 

@@ -1206,6 +1206,57 @@ export function PmvEditorPage() {
   // Phase 2: Auto-Cut Generation
   // ─────────────────────────────────────────────────────────────────────────────
 
+  // AUTO-GENERATE clips when both music and videos are present and BPM is detected
+  // This makes the workflow more intuitive - user just adds content and it works
+  const autoGenerateTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  useEffect(() => {
+    // Clear any pending auto-generate
+    if (autoGenerateTimeoutRef.current) {
+      clearTimeout(autoGenerateTimeoutRef.current)
+    }
+
+    // Only auto-generate if:
+    // 1. We have music
+    // 2. We have at least one video
+    // 3. BPM has been detected (confidence > 0 or manual override)
+    // 4. Clips haven't been generated yet
+    const shouldAutoGenerate =
+      project.music &&
+      project.videos.length > 0 &&
+      (project.bpmConfidence > 0 || project.bpmManualOverride) &&
+      !project.isGenerated &&
+      !isGenerating
+
+    if (shouldAutoGenerate) {
+      // Small delay to allow BPM detection to settle
+      autoGenerateTimeoutRef.current = setTimeout(() => {
+        console.log('[PmvEditor] Auto-generating clips...')
+        // Trigger generation
+        setIsGenerating(true)
+        setTimeout(() => {
+          const clips = generateClips(
+            project.videos,
+            project.music!,
+            project.bpm,
+            project.cutSettings
+          )
+          setProject(prev => ({
+            ...prev,
+            clips,
+            isGenerated: true
+          }))
+          setIsGenerating(false)
+        }, 100)
+      }, 500)
+    }
+
+    return () => {
+      if (autoGenerateTimeoutRef.current) {
+        clearTimeout(autoGenerateTimeoutRef.current)
+      }
+    }
+  }, [project.music, project.videos.length, project.bpm, project.bpmConfidence, project.bpmManualOverride, project.isGenerated, isGenerating])
+
   // Apply a cut template preset
   const handleApplyTemplate = useCallback((templateId: BuiltInTemplate) => {
     const template = BUILT_IN_TEMPLATES[templateId]
