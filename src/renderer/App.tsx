@@ -1462,37 +1462,71 @@ export default function App() {
 
   // Aggressive video/audio cleanup helper - ensures all media stops immediately
   const stopAllMediaPlayback = useCallback(() => {
-    // Stop all video elements
-    document.querySelectorAll('video').forEach(v => {
-      try {
-        v.pause()
-        v.muted = true
-        v.volume = 0
-        v.currentTime = 0
-        v.removeAttribute('src')
-        v.srcObject = null
-        v.load()
-      } catch (e) {
-        // Ignore errors
-      }
-    })
-    // Stop all audio elements (in case any are playing)
-    document.querySelectorAll('audio').forEach(a => {
-      try {
-        a.pause()
-        a.muted = true
-        a.volume = 0
-        a.removeAttribute('src')
-        a.srcObject = null
-        a.load()
-      } catch (e) {
-        // Ignore errors
-      }
-    })
+    // Stop all video elements - helper function for multiple passes
+    const stopVideos = () => {
+      document.querySelectorAll('video').forEach(v => {
+        try {
+          v.pause()
+          v.muted = true
+          v.volume = 0
+          v.currentTime = 0
+          v.removeAttribute('src')
+          v.srcObject = null
+          v.load()
+        } catch (e) {
+          // Ignore errors
+        }
+      })
+    }
+
+    // Stop all audio elements
+    const stopAudios = () => {
+      document.querySelectorAll('audio').forEach(a => {
+        try {
+          a.pause()
+          a.muted = true
+          a.volume = 0
+          a.removeAttribute('src')
+          a.srcObject = null
+          a.load()
+        } catch (e) {
+          // Ignore errors
+        }
+      })
+    }
+
+    // Run immediately
+    stopVideos()
+    stopAudios()
+
     // Reset global video state
     videoPool.releaseAll()
     resetGoonSlots()
+
+    // Run again after short delays to catch any stragglers created during cleanup
+    setTimeout(() => { stopVideos(); stopAudios(); }, 100)
+    setTimeout(() => { stopVideos(); stopAudios(); }, 500)
   }, [])
+
+  // Stop all media when browser tab becomes hidden (user switches tabs or minimizes)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && page === 'goonwall') {
+        // Mute all videos when tab is hidden to stop audio
+        document.querySelectorAll('video').forEach(v => {
+          try {
+            v.muted = true
+            v.volume = 0
+          } catch (e) {
+            // Ignore
+          }
+        })
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [page])
 
   // Smooth page navigation with transition
   const navigateTo = useCallback((newPage: NavId) => {
@@ -2318,8 +2352,17 @@ export default function App() {
                   window.api.goon?.recordWatch?.(mediaId).catch(() => {})
                   sessionStorage.setItem('vault_pending_media', mediaId)
                   navigateTo('library')
+                  // Dispatch event after navigation to ensure Library picks up the pending media
+                  setTimeout(() => {
+                    window.dispatchEvent(new Event('vault_pending_media_check'))
+                  }, 300)
                 }}
                 onNavigateToLibrary={() => navigateTo('library')}
+                onNavigateToFavorites={() => {
+                  // Navigate to library with favorites filter active
+                  sessionStorage.setItem('vault_library_filter', 'favorites')
+                  navigateTo('library')
+                }}
                 onNavigateToStats={() => navigateTo('stats')}
               />
             </ErrorBoundary>
@@ -3608,15 +3651,39 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
 
   // Auto-open media if coming from Home dashboard with pending media
   useEffect(() => {
-    const pendingMedia = sessionStorage.getItem('vault_pending_media')
-    if (pendingMedia) {
-      sessionStorage.removeItem('vault_pending_media')
-      // Wait a bit for media to load, then open the floating player
-      setTimeout(() => {
-        addFloatingPlayer(pendingMedia)
-      }, 500)
+    const checkPendingMedia = () => {
+      const pendingMedia = sessionStorage.getItem('vault_pending_media')
+      if (pendingMedia) {
+        sessionStorage.removeItem('vault_pending_media')
+        // Wait a bit for media to load, then open the floating player
+        setTimeout(() => {
+          addFloatingPlayer(pendingMedia)
+        }, 500)
+      }
+    }
+
+    // Check immediately on mount
+    checkPendingMedia()
+
+    // Also listen for the event in case media is set after mount
+    window.addEventListener('vault_pending_media_check', checkPendingMedia)
+    return () => {
+      window.removeEventListener('vault_pending_media_check', checkPendingMedia)
     }
   }, [addFloatingPlayer])
+
+  // Check for incoming filter from Home dashboard (e.g., favorites)
+  useEffect(() => {
+    const pendingFilter = sessionStorage.getItem('vault_library_filter')
+    if (pendingFilter) {
+      sessionStorage.removeItem('vault_library_filter')
+      if (pendingFilter === 'favorites') {
+        // Apply favorites filter (rating:5)
+        setQuery('rating:5')
+        setTypeFilter('all')
+      }
+    }
+  }, [])
 
   // Listen for custom events from other parts of the app (e.g., Command Palette)
   useEffect(() => {
@@ -4286,7 +4353,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       sessionStorage.setItem('vault_library_scroll', '0')
     }
     void refresh()
-  }, [debouncedQuery, activeTags.join('|'), typeFilter, sortBy])
+  }, [debouncedQuery, activeTags.join('|'), typeFilter, sortBy, sortAscending])
 
   const toggleSelect = (id: string) => {
     const s = new Set(props.selected)
@@ -7524,13 +7591,22 @@ function GoonWallPage(props: {
   useEffect(() => {
     const gw = props.settings?.goonwall
     if (gw) {
-      if (gw.tileCount) setTileCount(Math.min(gw.tileCount, 30))
+      if (gw.tileCount) {
+        const count = Math.min(gw.tileCount, 30)
+        setTileCount(count)
+        updateGoonMaxVideos(count)
+      }
       if (gw.muted !== undefined) setMuted(gw.muted)
       if (gw.showHud !== undefined) setShowHud(gw.showHud)
       if (gw.layout) setLayout(gw.layout)
       if (gw.countdownDuration !== undefined) setCountdownDuration(gw.countdownDuration)
     }
   }, [props.settings?.goonwall])
+
+  // Update max concurrent videos when tile count changes
+  useEffect(() => {
+    updateGoonMaxVideos(tileCount)
+  }, [tileCount])
 
   // Save settings when they change
   const saveSettings = useCallback(async (patch: Partial<{ tileCount: number; muted: boolean; showHud: boolean; layout: GoonWallLayout; countdownDuration: number }>) => {
@@ -8277,13 +8353,27 @@ function GoonWallPage(props: {
 
 // Global playback limiter for GoonWall - prevents Chrome from fighting over resources
 let goonActiveVideos = 0
-const GOON_MAX_VIDEOS = 4 // Only allow 4 videos to actually play at once
+// Dynamic max based on tile count - fewer tiles = more videos can play each
+// More tiles = show more as thumbnails to prevent GPU overload
+const getGoonMaxVideos = (tileCount: number) => {
+  if (tileCount <= 4) return tileCount
+  if (tileCount <= 9) return 6
+  if (tileCount <= 16) return 8
+  return 10 // Max 10 concurrent videos even for 30 tiles
+}
+let GOON_MAX_VIDEOS = 8 // Default, updated dynamically
 const goonVideoQueue: Array<{ start: () => void; id: string }> = []
 
 // Reset all goon slots - call when leaving GoonWall
 function resetGoonSlots(): void {
   goonActiveVideos = 0
   goonVideoQueue.length = 0
+  GOON_MAX_VIDEOS = 8 // Reset to default
+}
+
+// Update max videos based on tile count
+function updateGoonMaxVideos(tileCount: number): void {
+  GOON_MAX_VIDEOS = getGoonMaxVideos(tileCount)
 }
 
 function requestGoonSlot(id: string, onSlotAvailable: () => void): () => void {
@@ -8373,46 +8463,70 @@ const GoonTile = React.memo(function GoonTile(props: {
     }
   }, [ready, isFocused, shuffleInterval, onShuffle, media.id])
 
-  // Load video URL with staggered delay based on tile index to avoid overwhelming the system
+  // PERFORMANCE OPTIMIZATION: Request a playback slot FIRST, only load video if we have a slot
+  // This prevents Chrome from decoding 30 videos when only 8-10 can play
+  // Tiles without slots just show thumbnails (no video element overhead)
   useEffect(() => {
     let alive = true
     setRetried(false)
     setReady(false)
     setUrl('')
+    setHasSlot(false)
 
-    // Stagger tile loads: first 4 immediate, rest delayed by 100ms per tile
-    const delay = index < 4 ? 0 : (index - 4) * 100
+    // Release any existing slot
+    if (releaseSlotRef.current) {
+      releaseSlotRef.current()
+      releaseSlotRef.current = null
+    }
+
+    // Stagger slot requests: first 4 immediate, rest delayed
+    const delay = index < 4 ? 0 : (index - 4) * 50 // 50ms stagger (faster than before)
     const timer = setTimeout(() => {
       if (!alive) return
 
-      // For 9+ tiles, try low-res first for faster loading
-      if (tileCount >= 9 && window.api.media.getLowResUrl) {
-        const maxH = tileCount > 16 ? 360 : 480
-        window.api.media.getLowResUrl(media.id, maxH).then((lowU: any) => {
-          if (alive && lowU) setUrl(lowU as string)
-          else if (alive) {
-            // Fallback to full-res
+      // Request a slot first - only load video if we get one
+      releaseSlotRef.current = requestGoonSlot(media.id, () => {
+        if (!alive) return
+        setHasSlot(true)
+
+        // Now load the video URL since we have a slot
+        // For many tiles, try low-res first for faster loading
+        if (tileCount >= 9 && window.api.media.getLowResUrl) {
+          const maxH = tileCount > 16 ? 360 : 480
+          window.api.media.getLowResUrl(media.id, maxH).then((lowU: any) => {
+            if (alive && lowU) setUrl(lowU as string)
+            else if (alive) {
+              // Fallback to full-res
+              window.api.media.getPlayableUrl(media.id).then((u: any) => {
+                if (alive && u) setUrl(u as string)
+                else if (alive) onShuffle()
+              }).catch(() => { if (alive) onShuffle() })
+            }
+          }).catch(() => {
+            if (!alive) return
             window.api.media.getPlayableUrl(media.id).then((u: any) => {
               if (alive && u) setUrl(u as string)
               else if (alive) onShuffle()
             }).catch(() => { if (alive) onShuffle() })
-          }
-        }).catch(() => {
-          if (!alive) return
+          })
+        } else {
           window.api.media.getPlayableUrl(media.id).then((u: any) => {
             if (alive && u) setUrl(u as string)
             else if (alive) onShuffle()
           }).catch(() => { if (alive) onShuffle() })
-        })
-      } else {
-        window.api.media.getPlayableUrl(media.id).then((u: any) => {
-          if (alive && u) setUrl(u as string)
-          else if (alive) onShuffle()
-        }).catch(() => { if (alive) onShuffle() })
-      }
+        }
+      })
     }, delay)
 
-    return () => { alive = false; clearTimeout(timer) }
+    return () => {
+      alive = false
+      clearTimeout(timer)
+      // Release slot on cleanup
+      if (releaseSlotRef.current) {
+        releaseSlotRef.current()
+        releaseSlotRef.current = null
+      }
+    }
   }, [media.id, media.path, onShuffle, tileCount, index])
 
   // Track video element for cleanup - store reference that persists through unmount
@@ -8421,7 +8535,8 @@ const GoonTile = React.memo(function GoonTile(props: {
     videoElementRef.current = videoRef.current
   })
 
-  // Cleanup video, fade animation, and playback slot on unmount
+  // Cleanup video and fade animation on unmount
+  // Note: slot is released in the main useEffect cleanup
   useEffect(() => {
     return () => {
       // Use stored ref since videoRef.current may be null during cleanup
@@ -8441,11 +8556,6 @@ const GoonTile = React.memo(function GoonTile(props: {
       if (fadeAnimationRef.current) {
         cancelAnimationFrame(fadeAnimationRef.current)
         fadeAnimationRef.current = null
-      }
-      // Release playback slot
-      if (releaseSlotRef.current) {
-        releaseSlotRef.current()
-        releaseSlotRef.current = null
       }
     }
   }, [])
@@ -8501,11 +8611,13 @@ const GoonTile = React.memo(function GoonTile(props: {
   }, [isShuffling, ready, muted])
 
   // Seek to "climax point" (70-80% through video) on metadata load if enabled
-  // Request a playback slot before starting - limits concurrent playing videos
+  // Slot already acquired before loading - just start playback
   const handleLoadedMetadata = useCallback(() => {
     const video = videoRef.current
     if (!video || !video.duration || video.duration < 2) {
       setReady(true)
+      // Start playing - we already have a slot
+      video?.play().catch(() => {})
       return
     }
     // Start at 70-80% through the video (typically where the action peaks)
@@ -8516,18 +8628,11 @@ const GoonTile = React.memo(function GoonTile(props: {
     }
     setReady(true)
 
-    // Request a playback slot - only limited videos play simultaneously
-    // This prevents Chrome from constantly pausing/unpausing due to resource limits
-    if (releaseSlotRef.current) {
-      releaseSlotRef.current()
-    }
-    releaseSlotRef.current = requestGoonSlot(media.id, () => {
-      setHasSlot(true)
-      video.play().catch(() => {
-        // Silently ignore - browser may block autoplay
-      })
+    // Start playing - we already have a slot (acquired before loading URL)
+    video.play().catch(() => {
+      // Silently ignore - browser may block autoplay
     })
-  }, [media.id, startAtClimaxPoint])
+  }, [startAtClimaxPoint])
 
   // Handle errors — force transcode on first error, skip on second
   const handleError = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -8613,8 +8718,8 @@ const GoonTile = React.memo(function GoonTile(props: {
       }}
       onContextMenu={handleContextMenu}
     >
-      {/* Show thumbnail poster while video loads */}
-      {poster && !ready && (
+      {/* Show thumbnail poster while video loads OR when waiting for slot */}
+      {poster && (!ready || !hasSlot) && (
         <img
           src={poster}
           className="absolute inset-0 w-full h-full object-cover"
@@ -8622,15 +8727,16 @@ const GoonTile = React.memo(function GoonTile(props: {
         />
       )}
 
-      {url && (
+      {/* Only create video element when we have a slot and URL */}
+      {hasSlot && url && (
         <video
           ref={videoRef}
           src={url}
           loop
           muted={muted}
           playsInline
-          preload={index < 4 ? 'auto' : 'metadata'}
-          className={`w-full h-full ${isFocused ? 'object-contain' : isMosaic ? 'object-cover' : 'object-contain'}`}
+          preload="auto"
+          className={`w-full h-full goon-video ${isFocused ? 'object-contain' : isMosaic ? 'object-cover' : 'object-contain'}`}
           style={{ opacity: ready ? 1 : 0 }}
           onLoadedMetadata={handleLoadedMetadata}
           onCanPlay={() => setReady(true)}
@@ -8641,6 +8747,13 @@ const GoonTile = React.memo(function GoonTile(props: {
       {/* Loading shimmer when no poster and not ready */}
       {!poster && !ready && (
         <div className="absolute inset-0 bg-gray-900 sexy-shimmer" />
+      )}
+
+      {/* Waiting for slot indicator - show a subtle loading state */}
+      {!hasSlot && poster && (
+        <div className="absolute bottom-2 right-2 w-4 h-4">
+          <div className="w-full h-full border-2 border-white/30 border-t-white/70 rounded-full animate-spin" />
+        </div>
       )}
 
       {/* Hover overlay - not shown when focused */}

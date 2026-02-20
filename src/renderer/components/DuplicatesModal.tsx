@@ -91,13 +91,23 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
       }
       setScanResult(result)
 
-      // Auto-suggest keeps for all groups
+      // Auto-load details and suggest keeps for all groups (so thumbnails are visible)
       const keeps = new Map<string, string>()
+      const details = new Map<string, DuplicateMedia[]>()
       for (const group of result.groups) {
-        const suggestion = await window.api.invoke('duplicates:suggestKeep', group.mediaIds)
+        const [suggestion, groupDetails] = await Promise.all([
+          window.api.invoke('duplicates:suggestKeep', group.mediaIds),
+          window.api.invoke('duplicates:getGroupDetails', group.mediaIds)
+        ])
         keeps.set(group.hash, suggestion.keepId)
+        details.set(group.hash, groupDetails as DuplicateMedia[])
       }
       setKeepSelected(keeps)
+      setGroupDetails(details)
+      // Auto-expand first group for immediate visibility
+      if (result.groups.length > 0) {
+        setExpandedGroups(new Set([result.groups[0].hash]))
+      }
     } catch (e) {
       console.error('Failed to scan for duplicates:', e)
     } finally {
@@ -369,16 +379,20 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
                               </button>
 
                               {/* Thumbnail */}
-                              <div className="w-16 h-10 bg-zinc-700 rounded overflow-hidden flex-shrink-0">
+                              <div className="w-20 h-14 bg-zinc-700 rounded overflow-hidden flex-shrink-0">
                                 {media.thumbPath ? (
                                   <img
                                     src={`vault://${media.thumbPath}`}
                                     alt=""
                                     className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      // Hide broken image and show fallback
+                                      (e.target as HTMLImageElement).style.display = 'none'
+                                    }}
                                   />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-zinc-500">
-                                    <FileText className="w-4 h-4" />
+                                    <FileText className="w-5 h-5" />
                                   </div>
                                 )}
                               </div>

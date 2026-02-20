@@ -5286,6 +5286,17 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // Select a device (set as active without casting)
+  ipcMain.handle('dlna:selectDevice', async (_ev, deviceId: string) => {
+    try {
+      const dlna = getDLNAService()
+      return dlna.selectDevice(deviceId)
+    } catch (e: any) {
+      console.error('[DLNA] Select device error:', e)
+      return false
+    }
+  })
+
   // Cast media to device
   ipcMain.handle('dlna:cast', async (_ev, deviceId: string, mediaPath: string, options?: {
     title?: string
@@ -5405,7 +5416,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   }>) => {
     try {
       const dlna = getDLNAService()
-      dlna.setQueue(items)
+      await dlna.setQueue(items)
       return { success: true }
     } catch (e: any) {
       console.error('[DLNA] Set queue error:', e)
@@ -5422,7 +5433,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   }) => {
     try {
       const dlna = getDLNAService()
-      dlna.addToQueue(item)
+      await dlna.addToQueue(item)
       return { success: true }
     } catch (e: any) {
       return { success: false, error: e.message }

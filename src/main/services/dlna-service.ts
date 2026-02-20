@@ -405,21 +405,30 @@ class DLNAService extends EventEmitter {
   private startStatusPolling(): void {
     this.stopStatusPolling()
 
+    // Poll more frequently (500ms) for better responsiveness
     this.statusPollInterval = setInterval(async () => {
       try {
         const status = await this.getPlaybackStatus()
         this.emit('statusUpdate', status)
 
         // Detect playback end for auto-advance
-        if (this.lastPlaybackState === 'playing' && status.state === 'stopped') {
-          // Playback just ended
+        // Check for multiple end conditions:
+        // 1. State changed from playing to stopped
+        // 2. State is idle but we were playing
+        // 3. Current time >= duration (playback completed)
+        const wasPlaying = this.lastPlaybackState === 'playing'
+        const isEnded = status.state === 'stopped' || status.state === 'idle'
+        const reachedEnd = status.duration > 0 && status.currentTime >= status.duration - 1
+
+        if ((wasPlaying && isEnded) || (wasPlaying && reachedEnd)) {
+          console.log('[DLNA] Detected playback end:', { wasPlaying, state: status.state, currentTime: status.currentTime, duration: status.duration })
           this.handlePlaybackEnded()
         }
         this.lastPlaybackState = status.state
       } catch {
-        // Ignore status errors
+        // Ignore status errors - device might be disconnected
       }
-    }, 1000)
+    }, 500)
   }
 
   /**
@@ -608,8 +617,9 @@ class DLNAService extends EventEmitter {
 
   /**
    * Set the entire cast queue
+   * If autoStart is true and we have an active device, starts playing immediately
    */
-  setQueue(items: CastQueueItem[]): void {
+  async setQueue(items: CastQueueItem[], autoStart: boolean = true): Promise<void> {
     this.queue = {
       items: [...items],
       currentIndex: items.length > 0 ? 0 : -1,
@@ -619,12 +629,34 @@ class DLNAService extends EventEmitter {
     }
     this.emit('queueUpdated', this.getQueueState())
     console.log('[DLNA] Queue set with', items.length, 'items')
+
+    // Auto-start playback if we have items and a device
+    if (autoStart && items.length > 0 && this.activeDeviceId) {
+      console.log('[DLNA] Auto-starting queue playback')
+      await this.playAtIndex(0)
+    }
+  }
+
+  /**
+   * Select a device to cast to (sets it as active without casting)
+   */
+  selectDevice(deviceId: string): boolean {
+    const device = this.devices.get(deviceId)
+    if (!device) {
+      console.warn('[DLNA] Device not found:', deviceId)
+      return false
+    }
+    this.activeDeviceId = deviceId
+    console.log('[DLNA] Device selected:', device.name)
+    return true
   }
 
   /**
    * Add a single item to the queue
+   * If nothing is playing and we have an active device, auto-start playback
    */
-  addToQueue(item: CastQueueItem): void {
+  async addToQueue(item: CastQueueItem, autoStart: boolean = true): Promise<void> {
+    const wasEmpty = this.queue.items.length === 0
     this.queue.items.push(item)
     this.queue.originalOrder.push(item)
     // If queue was empty, set current index to first item
@@ -633,6 +665,12 @@ class DLNAService extends EventEmitter {
     }
     this.emit('queueUpdated', this.getQueueState())
     console.log('[DLNA] Added to queue:', item.title)
+
+    // Auto-start if queue was empty and we have a device selected
+    if (wasEmpty && autoStart && this.activeDeviceId && this.lastPlaybackState !== 'playing') {
+      console.log('[DLNA] Auto-starting playback for first queue item')
+      await this.playAtIndex(0)
+    }
   }
 
   /**
@@ -712,11 +750,21 @@ class DLNAService extends EventEmitter {
     this.queue.currentIndex = index
 
     try {
-      // Cast to the active device
+      // Check if we have an active device
       if (!this.activeDeviceId) {
-        console.warn('[DLNA] No active device for queue playback')
-        return false
+        // Try to get first available device
+        const devices = this.getDevices()
+        if (devices.length > 0) {
+          this.activeDeviceId = devices[0].id
+          console.log('[DLNA] Auto-selected device:', devices[0].name)
+        } else {
+          console.warn('[DLNA] No devices available for queue playback')
+          this.emit('queueUpdated', this.getQueueState())
+          return false
+        }
       }
+
+      console.log('[DLNA] Playing queue item:', item.title, 'on device:', this.activeDeviceId)
 
       await this.cast(this.activeDeviceId, item.path, {
         title: item.title,
@@ -728,6 +776,8 @@ class DLNAService extends EventEmitter {
       return true
     } catch (err) {
       console.error('[DLNA] Failed to play queue item:', err)
+      // Don't clear device on error - it might be temporary
+      this.emit('queueUpdated', this.getQueueState())
       return false
     }
   }
@@ -829,27 +879,47 @@ class DLNAService extends EventEmitter {
     console.log('[DLNA] Removed item from queue')
   }
 
+  // Debounce flag to prevent multiple triggers
+  private isHandlingPlaybackEnd: boolean = false
+
   /**
    * Handle auto-advance when playback ends
    * Called by status polling when state changes to stopped
    */
   private async handlePlaybackEnded(): Promise<void> {
+    // Prevent multiple triggers (debounce)
+    if (this.isHandlingPlaybackEnd) {
+      console.log('[DLNA] Already handling playback end, skipping')
+      return
+    }
     if (!this.autoAdvanceEnabled) return
     if (this.queue.items.length === 0) return
 
+    this.isHandlingPlaybackEnd = true
+
     console.log('[DLNA] Playback ended, checking for next item...')
 
-    // Handle repeat one mode
-    if (this.queue.repeatMode === 'one') {
-      await this.playAtIndex(this.queue.currentIndex)
-      return
-    }
+    // Small delay to ensure state is settled
+    await new Promise(resolve => setTimeout(resolve, 500))
 
-    // Try to play next item
-    const hasNext = await this.playNext()
-    if (!hasNext) {
-      console.log('[DLNA] Queue finished')
-      this.emit('queueEnded')
+    try {
+      // Handle repeat one mode
+      if (this.queue.repeatMode === 'one') {
+        await this.playAtIndex(this.queue.currentIndex)
+        return
+      }
+
+      // Try to play next item
+      const hasNext = await this.playNext()
+      if (!hasNext) {
+        console.log('[DLNA] Queue finished')
+        this.emit('queueEnded')
+      }
+    } finally {
+      // Reset flag after a delay to allow new detections
+      setTimeout(() => {
+        this.isHandlingPlaybackEnd = false
+      }, 2000)
     }
   }
 

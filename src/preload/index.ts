@@ -723,6 +723,9 @@ const api = {
     // Manual connection by IP
     connectManual: (ip: string) => invoke<boolean>('dlna:connectManual', ip),
 
+    // Select device (set as active without casting)
+    selectDevice: (deviceId: string) => invoke<boolean>('dlna:selectDevice', deviceId),
+
     // Casting
     cast: (deviceId: string, mediaPath: string, options?: {
       title?: string

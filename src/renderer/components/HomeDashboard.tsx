@@ -30,6 +30,7 @@ interface RecommendationItem {
 interface HomeDashboardProps {
   onPlayMedia: (mediaId: string) => void
   onNavigateToLibrary: () => void
+  onNavigateToFavorites?: () => void
   onNavigateToStats?: () => void
 }
 
@@ -322,7 +323,7 @@ const HorizontalSection = React.memo(function HorizontalSection({ title, icon, i
   )
 })
 
-export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToStats }: HomeDashboardProps) {
+export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToFavorites, onNavigateToStats }: HomeDashboardProps) {
   const [continueWatching, setContinueWatching] = useState<Array<ContinueWatchingItem & MediaItem>>([])
   const [recommendations, setRecommendations] = useState<Array<RecommendationItem & MediaItem>>([])
   const [recentlyAdded, setRecentlyAdded] = useState<MediaItem[]>([])
@@ -566,14 +567,23 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToSt
   const pickRandomVideo = useCallback(async () => {
     setPickingRandom(true)
     try {
-      const result = await window.api.media.list({ limit: 100, type: 'video' })
+      // Add timeout to prevent indefinite loading
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout')), 10000)
+      )
+      const result = await Promise.race([
+        window.api.media.list({ limit: 200, type: 'video' }),
+        timeoutPromise
+      ])
       const items = Array.isArray(result) ? result : (result as any)?.items ?? []
       if (items.length > 0) {
         const randomItem = items[Math.floor(Math.random() * items.length)]
         onPlayMedia(randomItem.id)
+      } else {
+        console.warn('[RandomPick] No videos found in library')
       }
     } catch (e) {
-      console.error('Failed to pick random video:', e)
+      console.error('[RandomPick] Failed to pick random video:', e)
     } finally {
       setPickingRandom(false)
     }
@@ -767,6 +777,7 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToSt
           items={favorites.length}
           loading={loadingFavorites}
           onRefresh={loadFavorites}
+          onSeeAll={onNavigateToFavorites}
         >
           {favorites.map((item) => (
             <MediaCard

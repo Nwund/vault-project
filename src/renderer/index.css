@@ -1334,6 +1334,13 @@ button:focus-visible,
 .tile-slide-out { animation: tileSlide 0.3s ease-in forwards; }
 .tile-swipe-out { animation: tileSwipe 0.35s ease-in-out forwards; }
 
+/* GoonWall video optimization - GPU acceleration hints */
+.goon-video {
+  transform: translateZ(0);
+  will-change: opacity;
+  backface-visibility: hidden;
+}
+
 /* Shimmer loading effect */
 .shimmer {
   background: linear-gradient(

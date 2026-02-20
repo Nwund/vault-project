@@ -183,9 +183,15 @@ export function TVRemotePanel({ isOpen, onClose, onAddMore }: TVRemotePanelProps
   }
 
   const handleSelectDevice = async (device: Device) => {
-    setActiveDevice(device)
-    setShowDeviceList(false)
-    setShowManualEntry(false)
+    try {
+      // Tell the backend this is now the active device
+      await window.api.dlna?.selectDevice?.(device.id)
+      setActiveDevice(device)
+      setShowDeviceList(false)
+      setShowManualEntry(false)
+    } catch (err) {
+      console.error('[TVRemote] Select device error:', err)
+    }
   }
 
   const handleManualConnect = async () => {
