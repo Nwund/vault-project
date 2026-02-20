@@ -777,6 +777,16 @@ export function PmvEditorPage() {
   const [exportSettings, setExportSettings] = useState<ExportSettings>(DEFAULT_EXPORT_SETTINGS)
   const [exportProgress, setExportProgress] = useState<ExportProgress>({ status: 'idle', progress: 0 })
 
+  // Live Preview state
+  const [isLivePreview, setIsLivePreview] = useState(false)
+  const [livePreviewPlaying, setLivePreviewPlaying] = useState(false)
+  const [livePreviewTime, setLivePreviewTime] = useState(0)
+  const [currentClipIndex, setCurrentClipIndex] = useState(0)
+  const [clipVideoUrls, setClipVideoUrls] = useState<Map<string, string>>(new Map())
+  const livePreviewVideoRef = useRef<HTMLVideoElement>(null)
+  const livePreviewAudioRef = useRef<HTMLAudioElement>(null)
+  const livePreviewAnimationRef = useRef<number | null>(null)
+
   const videoRef = useRef<HTMLVideoElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
   const timelineRef = useRef<HTMLDivElement>(null)
@@ -1538,6 +1548,159 @@ export function PmvEditorPage() {
   }, [project.effectsSettings])
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // LIVE PREVIEW - Play through timeline with synced audio and video clips
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // Load video URLs for all clips when entering live preview
+  useEffect(() => {
+    if (!isLivePreview || project.clips.length === 0) return
+
+    const loadUrls = async () => {
+      const urls = new Map<string, string>()
+      for (const video of project.videos) {
+        try {
+          const url = await window.api.media.getPlayableUrl(video.id)
+          if (url) urls.set(video.id, url as string)
+        } catch {
+          // Skip failed loads
+        }
+      }
+      setClipVideoUrls(urls)
+    }
+
+    loadUrls()
+  }, [isLivePreview, project.videos, project.clips.length])
+
+  // Find which clip should be playing at a given time
+  const getCurrentClipAtTime = useCallback((time: number): { clip: PmvClip; index: number } | null => {
+    for (let i = 0; i < project.clips.length; i++) {
+      const clip = project.clips[i]
+      if (time >= clip.timelineStart && time < clip.timelineEnd) {
+        return { clip, index: i }
+      }
+    }
+    return null
+  }, [project.clips])
+
+  // Start live preview
+  const startLivePreview = useCallback(() => {
+    if (!project.music || project.clips.length === 0) return
+    setIsLivePreview(true)
+    setLivePreviewTime(0)
+    setCurrentClipIndex(0)
+    setLivePreviewPlaying(true)
+  }, [project.music, project.clips.length])
+
+  // Stop live preview
+  const stopLivePreview = useCallback(() => {
+    setLivePreviewPlaying(false)
+    setIsLivePreview(false)
+    if (livePreviewAnimationRef.current) {
+      cancelAnimationFrame(livePreviewAnimationRef.current)
+    }
+    if (livePreviewAudioRef.current) {
+      livePreviewAudioRef.current.pause()
+      livePreviewAudioRef.current.currentTime = 0
+    }
+  }, [])
+
+  // Toggle live preview play/pause
+  const toggleLivePreviewPlayback = useCallback(() => {
+    if (livePreviewPlaying) {
+      setLivePreviewPlaying(false)
+      if (livePreviewAudioRef.current) {
+        livePreviewAudioRef.current.pause()
+      }
+    } else {
+      setLivePreviewPlaying(true)
+      if (livePreviewAudioRef.current) {
+        livePreviewAudioRef.current.play()
+      }
+    }
+  }, [livePreviewPlaying])
+
+  // Live preview animation loop - sync video to audio
+  useEffect(() => {
+    if (!isLivePreview || !livePreviewPlaying) return
+
+    const audio = livePreviewAudioRef.current
+    const video = livePreviewVideoRef.current
+    if (!audio) return
+
+    // Start audio if not playing
+    if (audio.paused) {
+      audio.currentTime = livePreviewTime
+      audio.play().catch(() => {})
+    }
+
+    const updateFrame = () => {
+      if (!livePreviewPlaying) return
+
+      const currentTime = audio.currentTime
+      setLivePreviewTime(currentTime)
+      setTimelineCurrentTime(currentTime)
+
+      // Find current clip
+      const clipInfo = getCurrentClipAtTime(currentTime)
+      if (clipInfo && video) {
+        const { clip, index } = clipInfo
+        const newIndex = index
+
+        // Switch video if clip changed
+        if (newIndex !== currentClipIndex) {
+          setCurrentClipIndex(newIndex)
+          const sourceVideo = project.videos[clip.videoIndex]
+          const url = clipVideoUrls.get(sourceVideo.id)
+          if (url && video.src !== url) {
+            video.src = url
+          }
+          video.currentTime = clip.startTime
+          video.play().catch(() => {})
+        } else {
+          // Keep video in sync with clip position
+          const clipProgress = currentTime - clip.timelineStart
+          const targetTime = clip.startTime + clipProgress
+          if (Math.abs(video.currentTime - targetTime) > 0.2) {
+            video.currentTime = targetTime
+          }
+        }
+      }
+
+      // Check if reached end
+      if (currentTime >= (project.music?.duration || 0)) {
+        stopLivePreview()
+        return
+      }
+
+      livePreviewAnimationRef.current = requestAnimationFrame(updateFrame)
+    }
+
+    livePreviewAnimationRef.current = requestAnimationFrame(updateFrame)
+
+    return () => {
+      if (livePreviewAnimationRef.current) {
+        cancelAnimationFrame(livePreviewAnimationRef.current)
+      }
+    }
+  }, [isLivePreview, livePreviewPlaying, currentClipIndex, clipVideoUrls, project.videos, project.music?.duration, getCurrentClipAtTime, stopLivePreview, livePreviewTime])
+
+  // Get current clip for display
+  const currentLiveClip = useMemo(() => {
+    if (!isLivePreview || project.clips.length === 0) return null
+    return project.clips[currentClipIndex] || null
+  }, [isLivePreview, project.clips, currentClipIndex])
+
+  // Get music URL for live preview audio
+  const [musicUrl, setMusicUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (project.music?.path) {
+      toFileUrlCached(project.music.path).then(url => setMusicUrl(url)).catch(() => {})
+    } else {
+      setMusicUrl(null)
+    }
+  }, [project.music?.path])
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Phase 5: Audio Management
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1875,7 +2038,45 @@ export function PmvEditorPage() {
             <div className="px-4 py-2 border-b border-zinc-800 flex items-center gap-2">
               <Play size={14} className="text-zinc-500" />
               <span className="text-sm font-medium">Preview</span>
-              {selectedVideo && (
+
+              {/* Live Preview toggle */}
+              {project.isGenerated && project.clips.length > 0 && (
+                <div className="ml-auto flex items-center gap-2">
+                  {isLivePreview ? (
+                    <>
+                      <span className="text-xs text-green-400 flex items-center gap-1">
+                        <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                        LIVE
+                      </span>
+                      <button
+                        onClick={toggleLivePreviewPlayback}
+                        className="p-1.5 rounded bg-purple-500 hover:bg-purple-400 transition"
+                        title={livePreviewPlaying ? 'Pause' : 'Play'}
+                      >
+                        {livePreviewPlaying ? <Pause size={14} /> : <Play size={14} />}
+                      </button>
+                      <button
+                        onClick={stopLivePreview}
+                        className="p-1.5 rounded bg-zinc-700 hover:bg-zinc-600 transition"
+                        title="Stop Live Preview"
+                      >
+                        <X size={14} />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={startLivePreview}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 transition"
+                      title="Play full timeline with music"
+                    >
+                      <Play size={12} fill="currentColor" />
+                      Live Preview
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {!isLivePreview && selectedVideo && (
                 <span className="text-xs text-zinc-500 ml-auto">
                   {selectedVideo.filename}
                 </span>
@@ -1883,7 +2084,81 @@ export function PmvEditorPage() {
             </div>
 
             <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
-              {previewUrl && selectedVideo ? (
+              {/* Live Preview Mode */}
+              {isLivePreview ? (
+                <div className={cn('relative w-full h-full flex items-center justify-center', getOverlayClass)}>
+                  {/* Hidden audio element for music */}
+                  {musicUrl && (
+                    <audio
+                      ref={livePreviewAudioRef}
+                      src={musicUrl}
+                      preload="auto"
+                    />
+                  )}
+
+                  {/* Video element for clips */}
+                  <video
+                    ref={livePreviewVideoRef}
+                    className="max-w-full max-h-full"
+                    style={{ filter: getPreviewFilters || undefined }}
+                    muted
+                    playsInline
+                  />
+
+                  {/* Vignette overlay */}
+                  {project.effectsSettings.videoEffect === 'vignette' && (
+                    <div
+                      className="absolute inset-0 pointer-events-none"
+                      style={{
+                        background: `radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,${project.effectsSettings.effectIntensity * 0.8}) 100%)`
+                      }}
+                    />
+                  )}
+
+                  {/* Film grain overlay */}
+                  {project.effectsSettings.videoEffect === 'filmGrain' && (
+                    <div
+                      className="absolute inset-0 pointer-events-none mix-blend-overlay"
+                      style={{
+                        opacity: project.effectsSettings.effectIntensity * 0.4,
+                        backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")'
+                      }}
+                    />
+                  )}
+
+                  {/* Live preview info overlay */}
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
+                    <div className="flex items-center justify-between text-white">
+                      <div className="text-sm">
+                        <span className="text-zinc-400">Clip {currentClipIndex + 1}/{project.clips.length}</span>
+                        {currentLiveClip && (
+                          <span className="ml-2 text-zinc-300">
+                            {project.videos[currentLiveClip.videoIndex]?.filename?.slice(0, 30)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm font-mono">
+                        {formatDuration(livePreviewTime)} / {formatDuration(project.music?.duration || 0)}
+                      </div>
+                    </div>
+                    {/* Progress bar */}
+                    <div className="mt-2 h-1 bg-white/20 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-green-500 to-emerald-500 transition-all duration-100"
+                        style={{ width: `${(livePreviewTime / (project.music?.duration || 1)) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Active effects indicator */}
+                  {activeEffectsCount > 0 && (
+                    <div className="absolute top-2 right-2 px-2 py-1 bg-purple-500/80 rounded text-[10px] font-medium text-white flex items-center gap-1">
+                      <Wand2 size={10} />
+                      {activeEffectsCount} effect{activeEffectsCount > 1 ? 's' : ''}
+                    </div>
+                  )}
+                </div>
+              ) : previewUrl && selectedVideo ? (
                 <div className={cn('relative w-full h-full flex items-center justify-center', getOverlayClass)}>
                   <video
                     ref={videoRef}
@@ -1922,7 +2197,11 @@ export function PmvEditorPage() {
               ) : (
                 <div className="text-center text-zinc-500">
                   <Film size={48} className="mx-auto mb-3 opacity-30" />
-                  <div className="text-sm">Select a video to preview</div>
+                  <div className="text-sm">
+                    {project.isGenerated && project.clips.length > 0
+                      ? 'Click "Live Preview" to watch your PMV'
+                      : 'Select a video to preview'}
+                  </div>
                 </div>
               )}
             </div>
