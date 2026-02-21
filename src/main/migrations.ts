@@ -299,6 +299,26 @@ const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_playlists_smart ON playlists(isSmart);
       `)
     }
+  },
+
+  // v10: Additional performance indexes and cleanup
+  {
+    id: 10,
+    up: (db) => {
+      db.exec(`
+        -- Index for duplicate detection by hash
+        CREATE INDEX IF NOT EXISTS idx_media_hashSha256 ON media(hashSha256);
+
+        -- Index for dimension-based filtering
+        CREATE INDEX IF NOT EXISTS idx_media_dimensions ON media(width, height);
+
+        -- Index for combined type+rating queries (favorites by type)
+        CREATE INDEX IF NOT EXISTS idx_media_stats_mediaId ON media_stats(mediaId);
+
+        -- Optimize media_tags for tag-based lookups
+        CREATE INDEX IF NOT EXISTS idx_media_tags_mediaId ON media_tags(mediaId);
+      `)
+    }
   }
 ]
 

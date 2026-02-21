@@ -8553,11 +8553,13 @@ let goonActiveVideos = 0
 // Dynamic max based on tile count - fewer tiles = more videos can play each
 // More tiles = show more as thumbnails to prevent GPU overload
 const getGoonMaxVideos = (tileCount: number) => {
+  // Conservative limits to prevent browser resource conflicts
   if (tileCount <= 4) return tileCount
-  if (tileCount <= 9) return 6
-  if (tileCount <= 16) return 8
-  if (tileCount <= 25) return 12
-  return 15 // Increased max for better coverage
+  if (tileCount <= 6) return 4
+  if (tileCount <= 9) return 5
+  if (tileCount <= 16) return 6
+  if (tileCount <= 25) return 8
+  return 10 // Keep some tiles as thumbnails for stability
 }
 let GOON_MAX_VIDEOS = 8 // Default, updated dynamically
 const goonVideoQueue: Array<{ start: () => void; id: string; priority: number }> = []
@@ -8910,11 +8912,39 @@ const GoonTile = React.memo(function GoonTile(props: {
     onShuffle()
   }, [media.id, media.path, onShuffle, onBroken, retried])
 
-  // Playback recovery - handle browser pausing/stalling videos due to resource limits
-  // Use refs to avoid re-renders and prevent recovery loops
+  // Playback recovery - gently resume videos that were paused by the browser
+  // Only recover when visibility changes or on user interaction, not continuously
+  const lastPlayAttemptRef = useRef(0)
 
-  // Let browser manage video playback naturally - no automatic recovery
-  // This prevents fighting with browser resource management which causes stuttering
+  // Resume playback when visibility changes (user tabs back in)
+  useEffect(() => {
+    if (!hasSlot || !url || !ready) return
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && videoRef.current?.paused) {
+        // Only attempt if we haven't tried recently (prevents rapid retries)
+        const now = Date.now()
+        if (now - lastPlayAttemptRef.current > 1000) {
+          lastPlayAttemptRef.current = now
+          videoRef.current?.play().catch(() => {})
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [hasSlot, url, ready])
+
+  // Resume on user interaction with the tile (click already handled, add mouseenter)
+  const handleMouseEnter = useCallback(() => {
+    if (hasSlot && videoRef.current?.paused && ready) {
+      const now = Date.now()
+      if (now - lastPlayAttemptRef.current > 500) {
+        lastPlayAttemptRef.current = now
+        videoRef.current?.play().catch(() => {})
+      }
+    }
+  }, [hasSlot, ready])
 
   // Poster thumbnail URL
   const [poster, setPoster] = useState('')
@@ -8974,6 +9004,7 @@ const GoonTile = React.memo(function GoonTile(props: {
         }
       }}
       onContextMenu={handleContextMenu}
+      onMouseEnter={handleMouseEnter}
     >
       {/* Show thumbnail poster while video loads */}
       {poster && !url && (

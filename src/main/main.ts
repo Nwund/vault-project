@@ -360,8 +360,10 @@ try {
   errorLogger.warn('Main', 'Failed to set custom cache path', { error: String(err) })
 }
 
-// Disable autofill feature to suppress "Autofill.enable" DevTools errors
-app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication')
+// Disable autofill features to suppress "Autofill.enable" DevTools errors
+// Multiple features need to be disabled for full suppression
+app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,Autofill,AutofillCreditCardAuthentication')
+app.commandLine.appendSwitch('disable-blink-features', 'AutofillAddress,AutofillCreditCard')
 
 app.whenReady().then(() => void main())
 
