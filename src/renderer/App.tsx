@@ -2357,7 +2357,7 @@ export default function App() {
               <HomeDashboard
                 onPlayMedia={(mediaId) => {
                   // Navigate to library and set pending media to open
-                  window.api.goon?.recordWatch?.(mediaId).catch(() => {})
+                  window.api.goon?.recordWatch?.(mediaId).catch((err: unknown) => console.warn('[Home] Failed to record watch:', err))
                   sessionStorage.setItem('vault_pending_media', mediaId)
                   navigateTo('library')
                   // Dispatch event after navigation to ensure Library picks up the pending media
@@ -3617,7 +3617,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       // At max capacity - do nothing (don't replace)
       if (prev.length >= MAX_FLOATING_PLAYERS) return prev
       // Track the watch
-      window.api.goon?.recordWatch?.(mediaId).catch(() => {})
+      window.api.goon?.recordWatch?.(mediaId).catch((err: unknown) => console.warn('[Player] Failed to record watch:', err))
       // Add new player
       return [...prev, mediaId]
     })
@@ -3840,7 +3840,7 @@ function LibraryPage(props: { settings: VaultSettings | null; selected: string[]
       if (Array.isArray(t)) {
         setAllTagsForSearch(t.map((tag: any) => ({ name: tag.name, count: tag.count || 0 })))
       }
-    }).catch(() => {})
+    }).catch((err: unknown) => console.warn('[Search] Failed to load tags:', err))
   }, [])
 
   // Compute search suggestions based on current query
@@ -8950,7 +8950,7 @@ const GoonTile = React.memo(function GoonTile(props: {
   const [poster, setPoster] = useState('')
   useEffect(() => {
     if (media.thumbPath) {
-      toFileUrlCached(media.thumbPath).then(u => setPoster(u)).catch(() => {})
+      toFileUrlCached(media.thumbPath).then(u => setPoster(u)).catch((err: unknown) => console.warn('[GoonTile] Failed to load poster:', err))
     }
   }, [media.thumbPath])
 

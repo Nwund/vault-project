@@ -183,7 +183,7 @@ async function autoOrganizeSoundpack(): Promise<void> {
         const vls = getVoiceLineService()
         await vls.reload()
       } catch (e) {
-        console.error('[Audio] Failed to organize sound pack:', e)
+        errorLogger.error('Audio', 'Failed to organize sound pack', e)
       }
       break
     }
@@ -624,7 +624,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       console.log(`[Captions] Exported captioned image to: ${outputPath}`)
       return { success: true, path: outputPath }
     } catch (err) {
-      console.error('[Captions] Export failed:', err)
+      errorLogger.error('Captions', 'Export failed', err)
       return { success: false, error: String(err) }
     }
   })
@@ -751,7 +751,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
         fs.copyFileSync(filePath, targetPath)
         imported.push(targetPath)
       } catch (err) {
-        console.error(`[Import] Failed to import ${filePath}:`, err)
+        errorLogger.error('Import', `Failed to import ${filePath}`, err)
         failed.push(filePath)
       }
     }
@@ -798,7 +798,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
         db.statsSetRating(mediaId, rating)
         updated++
       } catch (err) {
-        console.error(`[Media] Failed to set rating for ${mediaId}:`, err)
+        errorLogger.error('Media', `Failed to set rating for ${mediaId}`, err)
       }
     }
     if (updated > 0) {
@@ -856,7 +856,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
       return { success: true, movedTo: finalDest }
     } catch (err: any) {
-      console.error('[Media] Failed to move broken file:', err)
+      errorLogger.error('Media', 'Failed to move broken file', err)
       return { success: false, error: err.message }
     }
   })
@@ -941,7 +941,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       }
       return thumbPath
     } catch (err: any) {
-      console.error('[IPC] generateThumb failed:', mediaId, err?.message)
+      errorLogger.error('IPC', `generateThumb failed for ${mediaId}`, err)
       return null
     }
   })
@@ -1081,7 +1081,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
       return { success: true, deletedMedia: { id: mediaId, path: media.path, filename: media.filename } }
     } catch (err: any) {
-      console.error('[IPC] media:delete error:', err?.message)
+      errorLogger.error('IPC', 'media:delete error', err)
       return { success: false, error: err?.message }
     }
   })
@@ -2418,7 +2418,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
       return { success: true, outputPath }
     } catch (err: any) {
-      console.error('[PMV Export] Error:', err?.message)
+      errorLogger.error('PMV Export', 'Export failed', err)
       broadcast('pmv:exportProgress', {
         status: 'error',
         progress: 0,
