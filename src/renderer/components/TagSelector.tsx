@@ -1,7 +1,7 @@
 // File: src/renderer/components/TagSelector.tsx
 // Searchable dropdown tag selector per specification
 
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
 import { X, Plus, Tag, ChevronDown } from 'lucide-react'
 
 interface TagOption {
@@ -9,6 +9,65 @@ interface TagOption {
   name: string
   count?: number
 }
+
+// Memoized selected tag chip to prevent re-renders
+const SelectedTagChip = memo(function SelectedTagChip({
+  tag,
+  onRemove
+}: {
+  tag: string
+  onRemove: (tag: string) => void
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--primary)]/20 text-[var(--primary)] text-xs font-medium">
+      <Tag size={10} />
+      {tag}
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemove(tag)
+        }}
+        className="ml-0.5 hover:bg-[var(--primary)]/30 rounded p-0.5 transition"
+        title={`Remove ${tag}`}
+      >
+        <X size={10} />
+      </button>
+    </span>
+  )
+})
+
+// Memoized dropdown option to prevent re-renders during keyboard navigation
+const TagOptionItem = memo(function TagOptionItem({
+  tag,
+  isHighlighted,
+  onSelect,
+  onHover
+}: {
+  tag: TagOption
+  isHighlighted: boolean
+  onSelect: (name: string) => void
+  onHover: () => void
+}) {
+  return (
+    <button
+      onClick={() => onSelect(tag.name)}
+      onMouseEnter={onHover}
+      className={`w-full px-4 py-2.5 text-left text-sm flex items-center justify-between transition ${
+        isHighlighted
+          ? 'bg-[var(--primary)]/20 text-[var(--primary)]'
+          : 'hover:bg-white/5'
+      }`}
+    >
+      <span className="flex items-center gap-2">
+        <Tag size={12} />
+        {tag.name}
+      </span>
+      {tag.count !== undefined && (
+        <span className="text-xs text-[var(--muted)]">{tag.count}</span>
+      )}
+    </button>
+  )
+})
 
 interface TagSelectorProps {
   tags: TagOption[]
@@ -152,23 +211,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
       >
         {/* Selected tag chips */}
         {selectedTags.map(tag => (
-          <span
-            key={tag}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--primary)]/20 text-[var(--primary)] text-xs font-medium"
-          >
-            <Tag size={10} />
-            {tag}
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                removeTag(tag)
-              }}
-              className="ml-0.5 hover:bg-[var(--primary)]/30 rounded p-0.5 transition"
-              title={`Remove ${tag}`}
-            >
-              <X size={10} />
-            </button>
-          </span>
+          <SelectedTagChip key={tag} tag={tag} onRemove={removeTag} />
         ))}
 
         {/* Search Input */}
@@ -200,24 +243,13 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
         <div className="absolute z-50 top-full left-0 right-0 mt-1 py-1 bg-[var(--panel)] border border-[var(--border)] rounded-xl shadow-lg max-h-60 overflow-auto">
           {/* Filtered tag options */}
           {filteredTags.map((tag, idx) => (
-            <button
+            <TagOptionItem
               key={tag.id}
-              onClick={() => addTag(tag.name)}
-              onMouseEnter={() => setHighlightIndex(idx)}
-              className={`w-full px-4 py-2.5 text-left text-sm flex items-center justify-between transition ${
-                highlightIndex === idx
-                  ? 'bg-[var(--primary)]/20 text-[var(--primary)]'
-                  : 'hover:bg-white/5'
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                <Tag size={12} />
-                {tag.name}
-              </span>
-              {tag.count !== undefined && (
-                <span className="text-xs text-[var(--muted)]">{tag.count}</span>
-              )}
-            </button>
+              tag={tag}
+              isHighlighted={highlightIndex === idx}
+              onSelect={addTag}
+              onHover={() => setHighlightIndex(idx)}
+            />
           ))}
 
           {/* Create new tag option */}

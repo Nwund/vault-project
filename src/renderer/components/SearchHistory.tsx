@@ -1,7 +1,7 @@
 // File: src/renderer/components/SearchHistory.tsx
 // Search history with suggestions and recent searches
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import {
   Search,
   Clock,
@@ -29,6 +29,88 @@ interface SearchHistoryProps {
   recentTags?: string[]
   className?: string
 }
+
+// Get icon for search type
+const getSearchIcon = (type: string) => {
+  switch (type) {
+    case 'tag': return Tag
+    case 'filter': return Filter
+    default: return Search
+  }
+}
+
+// Format time ago
+function formatTimeAgo(timestamp: number): string {
+  const diff = Date.now() - timestamp
+  const minutes = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+
+  if (minutes < 1) return 'Just now'
+  if (minutes < 60) return `${minutes}m ago`
+  if (hours < 24) return `${hours}h ago`
+  if (days < 7) return `${days}d ago`
+  return new Date(timestamp).toLocaleDateString()
+}
+
+// Memoized history item to prevent re-renders
+const HistoryItemRow = memo(function HistoryItemRow({
+  item,
+  onSearch,
+  onRemove
+}: {
+  item: SearchHistoryItem
+  onSearch: (item: SearchHistoryItem) => void
+  onRemove: (id: string) => void
+}) {
+  const Icon = getSearchIcon(item.type)
+  return (
+    <div
+      className="flex items-center gap-3 px-5 py-3 hover:bg-zinc-800/50 cursor-pointer group"
+      onClick={() => onSearch(item)}
+    >
+      <Icon size={14} className="text-zinc-500 flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="text-sm truncate">{item.query}</div>
+        <div className="text-[10px] text-zinc-600">
+          {item.resultCount !== undefined && (
+            <span>{item.resultCount} results • </span>
+          )}
+          {formatTimeAgo(item.timestamp)}
+        </div>
+      </div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemove(item.id)
+        }}
+        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-zinc-700 transition"
+      >
+        <X size={12} className="text-zinc-500" />
+      </button>
+      <ArrowRight size={14} className="text-zinc-600 opacity-0 group-hover:opacity-100" />
+    </div>
+  )
+})
+
+// Memoized recent tag button
+const RecentTagButton = memo(function RecentTagButton({
+  tag,
+  onSearch
+}: {
+  tag: string
+  onSearch: (query: string, type: string) => void
+}) {
+  return (
+    <button
+      onClick={() => onSearch(tag, 'tag')}
+      className="flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs transition"
+    >
+      <Tag size={10} className="text-zinc-500" />
+      {tag}
+    </button>
+  )
+})
 
 // Storage key
 const STORAGE_KEY = 'vault-search-history'
@@ -131,15 +213,6 @@ export function SearchHistory({
     clearSearchHistory()
   }, [])
 
-  // Get icon for search type
-  const getIcon = (type: string) => {
-    switch (type) {
-      case 'tag': return Tag
-      case 'filter': return Filter
-      default: return Search
-    }
-  }
-
   const displayedHistory = showAll ? history : history.slice(0, 10)
 
   return (
@@ -168,14 +241,7 @@ export function SearchHistory({
             <div className="text-xs text-zinc-500 mb-2">Recent Tags</div>
             <div className="flex flex-wrap gap-1">
               {recentTags.slice(0, 8).map(tag => (
-                <button
-                  key={tag}
-                  onClick={() => onSearch(tag, 'tag')}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs transition"
-                >
-                  <Tag size={10} className="text-zinc-500" />
-                  {tag}
-                </button>
+                <RecentTagButton key={tag} tag={tag} onSearch={onSearch} />
               ))}
             </div>
           </div>
@@ -190,37 +256,14 @@ export function SearchHistory({
           </div>
         ) : (
           <div className="divide-y divide-zinc-800/50">
-            {displayedHistory.map(item => {
-              const Icon = getIcon(item.type)
-              return (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-3 px-5 py-3 hover:bg-zinc-800/50 cursor-pointer group"
-                  onClick={() => handleSearch(item)}
-                >
-                  <Icon size={14} className="text-zinc-500 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm truncate">{item.query}</div>
-                    <div className="text-[10px] text-zinc-600">
-                      {item.resultCount !== undefined && (
-                        <span>{item.resultCount} results • </span>
-                      )}
-                      {formatTimeAgo(item.timestamp)}
-                    </div>
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      removeItem(item.id)
-                    }}
-                    className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-zinc-700 transition"
-                  >
-                    <X size={12} className="text-zinc-500" />
-                  </button>
-                  <ArrowRight size={14} className="text-zinc-600 opacity-0 group-hover:opacity-100" />
-                </div>
-              )
-            })}
+            {displayedHistory.map(item => (
+              <HistoryItemRow
+                key={item.id}
+                item={item}
+                onSearch={handleSearch}
+                onRemove={removeItem}
+              />
+            ))}
           </div>
         )}
 
@@ -261,20 +304,6 @@ export function SearchHistory({
       </div>
     </div>
   )
-}
-
-// Format time ago
-function formatTimeAgo(timestamp: number): string {
-  const diff = Date.now() - timestamp
-  const minutes = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes}m ago`
-  if (hours < 24) return `${hours}h ago`
-  if (days < 7) return `${days}d ago`
-  return new Date(timestamp).toLocaleDateString()
 }
 
 // Search suggestions component

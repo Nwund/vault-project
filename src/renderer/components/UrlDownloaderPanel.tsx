@@ -60,6 +60,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
   const [showSettings, setShowSettings] = useState(false)
   const [quality, setQuality] = useState<VideoQuality>('best')
   const [autoImport, setAutoImport] = useState(false)
+  const [urlError, setUrlError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Check yt-dlp availability
@@ -144,16 +145,39 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
     return () => unsubs.forEach(fn => fn())
   }, [])
 
+  // Validate URL format and protocol
+  const validateUrl = (input: string): { valid: boolean; error?: string } => {
+    if (!input) return { valid: false, error: 'URL is required' }
+
+    try {
+      const parsed = new URL(input)
+      // Only allow http and https protocols
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return { valid: false, error: 'Only HTTP and HTTPS URLs are supported' }
+      }
+      // Check for valid hostname
+      if (!parsed.hostname || parsed.hostname.length < 3) {
+        return { valid: false, error: 'Invalid hostname' }
+      }
+      return { valid: true }
+    } catch {
+      // Check if user forgot the protocol
+      if (!input.startsWith('http://') && !input.startsWith('https://')) {
+        return { valid: false, error: 'URL must start with http:// or https://' }
+      }
+      return { valid: false, error: 'Invalid URL format' }
+    }
+  }
+
   // Add download
   const handleAddDownload = async () => {
     const url = urlInput.trim()
     if (!url) return
 
-    // Basic URL validation
-    try {
-      new URL(url)
-    } catch {
-      showToast('error', 'Please enter a valid URL')
+    // Validate URL
+    const validation = validateUrl(url)
+    if (!validation.valid) {
+      showToast('error', validation.error || 'Invalid URL')
       return
     }
 
@@ -165,6 +189,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
       })
       if (result.success) {
         setUrlInput('')
+        setUrlError(null)
         showToast('success', 'Download added to queue')
       } else {
         showToast('error', `Failed: ${result.error}`)
@@ -181,9 +206,17 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
     try {
       const text = await navigator.clipboard.readText()
       if (text) {
-        setUrlInput(text.trim())
+        const trimmed = text.trim()
+        setUrlInput(trimmed)
+        // Validate the pasted content immediately
+        const validation = validateUrl(trimmed)
+        setUrlError(validation.valid ? null : validation.error || null)
         inputRef.current?.focus()
-        showToast('info', 'Pasted from clipboard')
+        if (validation.valid) {
+          showToast('info', 'URL pasted from clipboard')
+        } else {
+          showToast('warning', validation.error || 'Invalid URL pasted')
+        }
       }
     } catch {
       showToast('error', 'Clipboard access denied')
@@ -323,15 +356,27 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
       <div className="p-4 border-b border-zinc-800">
         <div className="flex gap-2">
           <div className="flex-1 relative">
-            <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+            <Link className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${urlError ? 'text-red-400' : 'text-gray-500'}`} />
             <input
               ref={inputRef}
               type="text"
               value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
+              onChange={(e) => {
+                setUrlInput(e.target.value)
+                setUrlError(null) // Clear error as user types
+              }}
+              onBlur={() => {
+                // Validate on blur if there's content
+                if (urlInput.trim()) {
+                  const validation = validateUrl(urlInput.trim())
+                  setUrlError(validation.valid ? null : validation.error || null)
+                }
+              }}
               onKeyDown={(e) => e.key === 'Enter' && handleAddDownload()}
               placeholder="Paste video URL..."
-              className="w-full pl-10 pr-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+              className={`w-full pl-10 pr-3 py-2.5 bg-zinc-800 border rounded-lg text-white placeholder-gray-500 focus:outline-none ${
+                urlError ? 'border-red-500/50 focus:border-red-500' : 'border-zinc-700 focus:border-blue-500'
+              }`}
               disabled={!isAvailable}
             />
           </div>
@@ -344,7 +389,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
           </button>
           <button
             onClick={handleAddDownload}
-            disabled={!urlInput.trim() || adding || !isAvailable}
+            disabled={!urlInput.trim() || adding || !isAvailable || !!urlError}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white font-medium transition-colors flex items-center gap-2"
           >
             {adding ? (
@@ -356,6 +401,12 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
             )}
           </button>
         </div>
+        {urlError && (
+          <div className="mt-1.5 flex items-center gap-1.5 text-xs text-red-400">
+            <AlertCircle className="w-3 h-3" />
+            <span>{urlError}</span>
+          </div>
+        )}
         <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
           <span>Supports 1000+ sites</span>
           {quality !== 'best' && (

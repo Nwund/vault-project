@@ -19613,7 +19613,7 @@ function ToggleSwitch({ checked, onChange, disabled }: { checked: boolean; onCha
 function AboutPage() {
   const [tier, setTier] = useState<string>('free')
   const [vaultStats, setVaultStats] = useState<any>(null)
-  const [appVersion, setAppVersion] = useState('2.1.5')
+  const [appVersion, setAppVersion] = useState('2.4.0')
 
   useEffect(() => {
     window.api.license?.getTier?.().then((t: any) => setTier(t || 'free'))

@@ -49,13 +49,15 @@ export class ErrorBoundary extends Component<Props, State> {
 
   handleCopyError = async () => {
     const { error, errorInfo } = this.state
+    // Fetch version dynamically
+    const appVersion = await window.api?.app?.getVersion?.() || 'Unknown'
     const errorText = `
 ## Error Report
 
 **Page:** ${this.props.pageName || 'Unknown'}
 **Error:** ${error?.message || 'Unknown error'}
 **Timestamp:** ${new Date().toISOString()}
-**App Version:** 2.1.5
+**App Version:** ${appVersion}
 
 ### Stack Trace
 \`\`\`
