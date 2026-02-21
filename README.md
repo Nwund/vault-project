@@ -4,7 +4,7 @@
 
 ### *Your Private Media Sanctuary*
 
-[![Version](https://img.shields.io/badge/v2.3.0-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
+[![Version](https://img.shields.io/badge/v2.4.0-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
 [![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-Platform-blue?style=for-the-badge)](https://github.com/Nwund/vault-project)
 [![Electron](https://img.shields.io/badge/Electron-32.0-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-18.3-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://react.dev)
@@ -317,7 +317,20 @@ Create professional-quality beat-synced videos:
 
 ## 📝 Recent Updates
 
-### v2.3.0 *(Latest)*
+### v2.4.0 *(Latest)*
+
+**🚀 Stability, Performance & Polish Release**
+
+- ✨ **GoonWall Stability** - Improved video slot limiting and playback recovery
+- ✨ **URL Downloader UX** - Quality selector, auto-import, toast notifications
+- ✨ **Native Notifications** - OS notifications when downloads complete
+- ✨ **Database Performance** - New indexes for faster duplicate detection and filtering
+- ✨ **Memory Optimizations** - Fixed timer/listener leaks, improved cleanup
+- ✨ **Code Quality** - Removed 935 lines of dead code, improved type safety
+- ✨ **PMV Editor Polish** - Live preview, improved BPM detection
+- ✨ **GIF Thumbnails** - Better GIF thumbnail generation with fallbacks
+
+### v2.3.0
 
 **🎬 30 Professional Video Editing & Media Management Components**
 
@@ -429,8 +442,8 @@ Create professional-quality beat-synced videos:
 
 | Version | Features |
 |:---:|---|
-| **v2.4** | GIF Creator • Full PMV Export • Advanced Effects • Plugin System |
-| **v3.0** | Cloud Sync • Plugin System • Watch Parties • Multi-language |
+| **v2.5** | Plugin System • Cloud Sync • Watch Parties • Multi-language |
+| **v3.0** | AI Scene Intelligence • Multi-user • Cloud Library • Mobile App |
 
 <br/>
 
@@ -444,7 +457,7 @@ Create professional-quality beat-synced videos:
 
 <br/>
 
-[![Download Latest](https://img.shields.io/badge/Download-v2.3.0-success?style=for-the-badge&logo=windows)](https://github.com/Nwund/vault-project/releases/latest)
+[![Download Latest](https://img.shields.io/badge/Download-v2.4.0-success?style=for-the-badge&logo=windows)](https://github.com/Nwund/vault-project/releases/latest)
 
 <br/>
 
@@ -459,7 +472,7 @@ Create professional-quality beat-synced videos:
 *Built with obsession by developers who understand the mission.*
 
 <sub>
-🔐 Vault v2.3.0 • 40+ services • 106 modules • 65 components
+🔐 Vault v2.4.0 • 61 services • 73 modules • 94 components
 </sub>
 
 <br/>

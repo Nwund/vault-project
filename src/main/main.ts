@@ -361,9 +361,10 @@ try {
 }
 
 // Disable autofill features to suppress "Autofill.enable" DevTools errors
-// Multiple features need to be disabled for full suppression
-app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,Autofill,AutofillCreditCardAuthentication')
-app.commandLine.appendSwitch('disable-blink-features', 'AutofillAddress,AutofillCreditCard')
+// These errors are cosmetic (CDP protocol) and don't affect app functionality
+app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,Autofill,AutofillCreditCardAuthentication,AutofillEnableAccountWalletStorage')
+app.commandLine.appendSwitch('disable-blink-features', 'AutofillAddress,AutofillCreditCard,AutofillAddressDetails,AutofillUploadOnFormSubmission')
+app.commandLine.appendSwitch('disable-component-update')
 
 app.whenReady().then(() => void main())
 
