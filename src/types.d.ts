@@ -18,3 +18,18 @@ declare module 'canvas-confetti' {
   }
   export = confetti
 }
+
+// Window.api uses 'any' because:
+// 1. The API is defined in preload/index.ts with full type exports
+// 2. App.tsx uses window.api.invoke() for many handlers not in the typed API
+// 3. Full strict typing would require significant refactoring
+// See src/preload/index.ts for the full typed API definition
+interface Window {
+  api: any
+  vaultDiagnostics: {
+    getSnapshot: () => Promise<any>
+    onEvent: (cb: (ev: any) => void) => () => void
+    onToggle: (cb: (enabled: boolean) => void) => () => void
+    log: (level: 'info' | 'warn' | 'error', message: string, meta?: any) => Promise<void>
+  }
+}

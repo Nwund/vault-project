@@ -1036,11 +1036,8 @@ type VaultSettings = {
   }
 }
 
-declare global {
-  interface Window {
-    api: any
-  }
-}
+// Window.api type is defined globally in src/types.d.ts
+// Uses 'any' due to extensive use of window.api.invoke() for dynamic handlers
 
 function cn(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ')

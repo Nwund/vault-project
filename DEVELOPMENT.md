@@ -84,7 +84,9 @@ src/renderer/
 ├── App.tsx           # Main app (~19,700 lines)
 ├── index.css         # Tailwind + custom styles
 ├── components/       # 94 UI components
+├── contexts/         # React contexts (Toast, GlobalTask)
 ├── hooks/            # 11 custom hooks
+├── types/            # Shared TypeScript types
 ├── utils/            # Utility functions
 └── styles/           # Theme definitions
 ```
