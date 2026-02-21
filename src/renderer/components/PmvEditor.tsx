@@ -779,10 +779,13 @@ export function PmvEditorPage() {
 
   // Live Preview state
   const [isLivePreview, setIsLivePreview] = useState(false)
+  const [isLivePreviewLoading, setIsLivePreviewLoading] = useState(false)
   const [livePreviewPlaying, setLivePreviewPlaying] = useState(false)
   const [livePreviewTime, setLivePreviewTime] = useState(0)
   const [currentClipIndex, setCurrentClipIndex] = useState(0)
   const [clipVideoUrls, setClipVideoUrls] = useState<Map<string, string>>(new Map())
+  const [currentVideoUrl, setCurrentVideoUrl] = useState<string | null>(null) // Current video URL for Live Preview
+  const [currentVideoStartTime, setCurrentVideoStartTime] = useState(0) // Start time for current clip
   const livePreviewVideoRef = useRef<HTMLVideoElement>(null)
   const livePreviewAudioRef = useRef<HTMLAudioElement>(null)
   const livePreviewAnimationRef = useRef<number | null>(null)
@@ -1536,6 +1539,115 @@ export function PmvEditorPage() {
     }
   }, [project.effectsSettings.overlayEffect])
 
+  // Calculate visible text overlays based on current time and BPM
+  const visibleTextOverlays = useMemo(() => {
+    if (!isLivePreview || !livePreviewPlaying) return []
+    if (project.effectsSettings.textOverlays.length === 0) return []
+
+    const bpm = project.bpm
+    const beatDuration = 60 / bpm
+    const currentBeat = Math.floor(livePreviewTime / beatDuration)
+
+    return project.effectsSettings.textOverlays
+      .filter(overlay => overlay.enabled)
+      .filter(overlay => {
+        // Show on every N beats
+        return currentBeat % overlay.showOnBeat === 0
+      })
+      .map(overlay => {
+        // Calculate animation state based on position within the overlay duration
+        const overlayDurationSec = beatDuration * overlay.duration
+        const beatProgress = livePreviewTime % beatDuration
+        const animationProgress = Math.min(1, beatProgress / overlayDurationSec)
+        return {
+          ...overlay,
+          animationProgress
+        }
+      })
+      .filter(overlay => overlay.animationProgress < 1) // Only show while animation is active
+  }, [isLivePreview, livePreviewPlaying, project.effectsSettings.textOverlays, project.bpm, livePreviewTime])
+
+  // Get position style for text overlay
+  const getTextOverlayPosition = (position: TextOverlayPosition): React.CSSProperties => {
+    switch (position) {
+      case 'top':
+        return { top: '10%', left: '50%', transform: 'translateX(-50%)' }
+      case 'bottom':
+        return { bottom: '20%', left: '50%', transform: 'translateX(-50%)' }
+      case 'random':
+        return {
+          top: `${20 + Math.random() * 60}%`,
+          left: `${10 + Math.random() * 80}%`,
+          transform: 'translate(-50%, -50%)'
+        }
+      case 'center':
+      default:
+        return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
+    }
+  }
+
+  // Get animation class for text overlay style
+  const getTextOverlayAnimation = (overlay: BeatTextOverlay & { animationProgress: number }): React.CSSProperties => {
+    const { style, color, fontSize, fontFamily, animationProgress: progress } = overlay
+    const baseStyle: React.CSSProperties = {
+      fontSize: `${fontSize}px`,
+      fontWeight: 'bold',
+      fontFamily: fontFamily || 'inherit',
+      textShadow: '0 0 20px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.5)',
+      color: color || 'white',
+      whiteSpace: 'nowrap',
+    }
+
+    // Fade out as we progress through the animation
+    const opacity = Math.max(0, 1 - progress)
+
+    switch (style) {
+      case 'pulse':
+        const scale = 1 + (1 - progress) * 0.3
+        return { ...baseStyle, opacity, transform: `scale(${scale})` }
+      case 'bounce':
+        const bounce = Math.sin(progress * Math.PI) * 20
+        return { ...baseStyle, opacity, transform: `translateY(${-bounce}px)` }
+      case 'flash':
+        return { ...baseStyle, opacity: progress < 0.5 ? 1 : 0 }
+      case 'shake':
+        const shake = Math.sin(progress * Math.PI * 10) * 5
+        return { ...baseStyle, opacity, transform: `translateX(${shake}px)` }
+      case 'zoom':
+        const zoom = 0.5 + progress
+        return { ...baseStyle, opacity, transform: `scale(${zoom})` }
+      case 'glitch':
+        const glitchX = Math.sin(progress * Math.PI * 20) * 3
+        return {
+          ...baseStyle,
+          opacity,
+          transform: `translateX(${glitchX}px)`,
+          textShadow: `${glitchX}px 0 rgba(255,0,0,0.5), ${-glitchX}px 0 rgba(0,255,255,0.5)`
+        }
+      default:
+        return { ...baseStyle, opacity }
+    }
+  }
+
+  // Beat flash state for live preview
+  const [isBeatFlash, setIsBeatFlash] = useState(false)
+
+  // Calculate beat flash visibility based on current time and BPM
+  const shouldShowBeatFlash = useMemo(() => {
+    if (project.effectsSettings.overlayEffect !== 'beatFlash') return false
+    if (!isLivePreview || !livePreviewPlaying) return false
+
+    const bpm = project.bpm
+    const beatDuration = 60 / bpm // Duration of one beat in seconds
+    const flashOnEvery = project.effectsSettings.beatFlashOnEvery || 1
+    const effectiveBeatDuration = beatDuration * flashOnEvery
+
+    // Check if we're within the flash window (first 100ms of a beat)
+    const beatPosition = livePreviewTime % effectiveBeatDuration
+    const flashWindow = 0.1 // 100ms flash duration
+    return beatPosition < flashWindow
+  }, [project.effectsSettings.overlayEffect, project.effectsSettings.beatFlashOnEvery, project.bpm, livePreviewTime, isLivePreview, livePreviewPlaying])
+
   // Count active effects for badge
   const activeEffectsCount = useMemo(() => {
     const effects = project.effectsSettings
@@ -1559,8 +1671,8 @@ export function PmvEditorPage() {
       const urls = new Map<string, string>()
       for (const video of project.videos) {
         try {
-          const url = await window.api.media.getPlayableUrl(video.id)
-          if (url) urls.set(video.id, url as string)
+          const url = await toFileUrlCached(video.path)
+          if (url) urls.set(video.id, url)
         } catch {
           // Skip failed loads
         }
@@ -1583,18 +1695,81 @@ export function PmvEditorPage() {
   }, [project.clips])
 
   // Start live preview
-  const startLivePreview = useCallback(() => {
+  const startLivePreview = useCallback(async () => {
     if (!project.music || project.clips.length === 0) return
+
+    setIsLivePreviewLoading(true)
     setIsLivePreview(true)
+
+    // Load video URLs first - use toFileUrlCached like regular preview
+    const urls = new Map<string, string>()
+    for (const video of project.videos) {
+      try {
+        const url = await toFileUrlCached(video.path)
+        if (url) urls.set(video.id, url)
+      } catch {
+        // Skip failed loads
+      }
+    }
+    setClipVideoUrls(urls)
+
+    // Set initial state
     setLivePreviewTime(0)
     setCurrentClipIndex(0)
-    setLivePreviewPlaying(true)
-  }, [project.music, project.clips.length])
+
+    // Set up first clip video after refs are available
+    const firstClip = project.clips[0]
+    if (firstClip) {
+      const sourceVideo = project.videos[firstClip.videoIndex]
+      const url = urls.get(sourceVideo.id)
+
+      // Try multiple times to ensure refs are mounted
+      const trySetupVideo = (attempts = 0) => {
+        const video = livePreviewVideoRef.current
+        const audio = livePreviewAudioRef.current
+
+        if (!video && attempts < 10) {
+          // Retry after a short delay - refs may not be mounted yet
+          setTimeout(() => trySetupVideo(attempts + 1), 50)
+          return
+        }
+
+        if (url) {
+          // Set the video URL and start time via state (React will update the video element)
+          setCurrentVideoUrl(url)
+          setCurrentVideoStartTime(firstClip.startTime)
+
+          // Clear loading state after a short delay to allow video to load
+          setTimeout(() => {
+            setIsLivePreviewLoading(false)
+          }, 500)
+        } else {
+          setIsLivePreviewLoading(false)
+        }
+
+        if (audio) {
+          audio.currentTime = 0
+          audio.play().catch(() => {})
+        }
+
+        setLivePreviewPlaying(true)
+      }
+
+      // Start trying after React has time to re-render
+      setTimeout(() => trySetupVideo(0), 100)
+    } else {
+      setIsLivePreviewLoading(false)
+    }
+  }, [project.music, project.clips, project.videos])
 
   // Stop live preview
   const stopLivePreview = useCallback(() => {
     setLivePreviewPlaying(false)
     setIsLivePreview(false)
+    setCurrentVideoUrl(null)
+    setCurrentVideoStartTime(0)
+    setLivePreviewTime(0)
+    setCurrentClipIndex(0)
     if (livePreviewAnimationRef.current) {
       cancelAnimationFrame(livePreviewAnimationRef.current)
     }
@@ -1602,22 +1777,50 @@ export function PmvEditorPage() {
       livePreviewAudioRef.current.pause()
       livePreviewAudioRef.current.currentTime = 0
     }
+    if (livePreviewVideoRef.current) {
+      livePreviewVideoRef.current.pause()
+    }
   }, [])
 
   // Toggle live preview play/pause
   const toggleLivePreviewPlayback = useCallback(() => {
+    const video = livePreviewVideoRef.current
+    const audio = livePreviewAudioRef.current
+
     if (livePreviewPlaying) {
       setLivePreviewPlaying(false)
-      if (livePreviewAudioRef.current) {
-        livePreviewAudioRef.current.pause()
-      }
+      if (audio) audio.pause()
+      if (video) video.pause()
     } else {
       setLivePreviewPlaying(true)
-      if (livePreviewAudioRef.current) {
-        livePreviewAudioRef.current.play()
-      }
+      if (audio) audio.play().catch(() => {})
+      if (video) video.play().catch(() => {})
     }
   }, [livePreviewPlaying])
+
+  // Keyboard shortcuts for Live Preview
+  useEffect(() => {
+    if (!isLivePreview) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+      switch (e.code) {
+        case 'Space':
+          e.preventDefault()
+          toggleLivePreviewPlayback()
+          break
+        case 'Escape':
+          e.preventDefault()
+          stopLivePreview()
+          break
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isLivePreview, toggleLivePreviewPlayback, stopLivePreview])
 
   // Live preview animation loop - sync video to audio
   useEffect(() => {
@@ -1645,17 +1848,16 @@ export function PmvEditorPage() {
       if (clipInfo && video) {
         const { clip, index } = clipInfo
         const newIndex = index
+        const sourceVideo = project.videos[clip.videoIndex]
+        const url = clipVideoUrls.get(sourceVideo.id)
 
-        // Switch video if clip changed
-        if (newIndex !== currentClipIndex) {
+        // Switch video if clip changed OR if video has no source yet
+        if (newIndex !== currentClipIndex || !currentVideoUrl) {
           setCurrentClipIndex(newIndex)
-          const sourceVideo = project.videos[clip.videoIndex]
-          const url = clipVideoUrls.get(sourceVideo.id)
-          if (url && video.src !== url) {
-            video.src = url
+          if (url) {
+            setCurrentVideoUrl(url)
+            setCurrentVideoStartTime(clip.startTime)
           }
-          video.currentTime = clip.startTime
-          video.play().catch(() => {})
         } else {
           // Keep video in sync with clip position
           const clipProgress = currentTime - clip.timelineStart
@@ -1682,7 +1884,7 @@ export function PmvEditorPage() {
         cancelAnimationFrame(livePreviewAnimationRef.current)
       }
     }
-  }, [isLivePreview, livePreviewPlaying, currentClipIndex, clipVideoUrls, project.videos, project.music?.duration, getCurrentClipAtTime, stopLivePreview, livePreviewTime])
+  }, [isLivePreview, livePreviewPlaying, currentClipIndex, clipVideoUrls, currentVideoUrl, project.videos, project.music?.duration, getCurrentClipAtTime, stopLivePreview, livePreviewTime])
 
   // Get current clip for display
   const currentLiveClip = useMemo(() => {
@@ -1788,8 +1990,13 @@ export function PmvEditorPage() {
           transitionDuration: project.effectsSettings.transitionDuration,
           videoEffect: project.effectsSettings.videoEffect,
           effectIntensity: project.effectsSettings.effectIntensity,
-          colorGrade: project.effectsSettings.colorGrade
+          colorGrade: project.effectsSettings.colorGrade,
+          overlayEffect: project.effectsSettings.overlayEffect,
+          beatFlashIntensity: project.effectsSettings.beatFlashIntensity,
+          beatFlashOnEvery: project.effectsSettings.beatFlashOnEvery,
+          textOverlays: project.effectsSettings.textOverlays
         },
+        bpm: project.bpm,
         audio: {
           musicVolume: project.audioSettings.musicVolume,
           keepOriginalAudio: project.audioSettings.keepOriginalAudio,
@@ -2096,13 +2303,31 @@ export function PmvEditorPage() {
                     />
                   )}
 
+                  {/* Loading indicator while preloading videos */}
+                  {isLivePreviewLoading && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/90">
+                      <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mb-3" />
+                      <div className="text-sm text-zinc-400">Loading videos...</div>
+                    </div>
+                  )}
+
                   {/* Video element for clips */}
                   <video
                     ref={livePreviewVideoRef}
+                    src={currentVideoUrl || undefined}
                     className="max-w-full max-h-full"
-                    style={{ filter: getPreviewFilters || undefined }}
+                    style={{ filter: getPreviewFilters || undefined, opacity: isLivePreviewLoading ? 0 : 1 }}
                     muted
                     playsInline
+                    autoPlay
+                    onLoadedMetadata={(e) => {
+                      // Seek to the clip start time when metadata is loaded
+                      const video = e.currentTarget
+                      if (currentVideoStartTime > 0) {
+                        video.currentTime = currentVideoStartTime
+                      }
+                      video.play().catch(() => {})
+                    }}
                   />
 
                   {/* Vignette overlay */}
@@ -2125,6 +2350,30 @@ export function PmvEditorPage() {
                       }}
                     />
                   )}
+
+                  {/* Beat flash overlay */}
+                  {shouldShowBeatFlash && (
+                    <div
+                      className="absolute inset-0 pointer-events-none z-20 transition-opacity duration-100"
+                      style={{
+                        backgroundColor: `rgba(255, 255, 255, ${project.effectsSettings.beatFlashIntensity * 0.5})`,
+                      }}
+                    />
+                  )}
+
+                  {/* Text overlays */}
+                  {visibleTextOverlays.map((overlay, idx) => (
+                    <div
+                      key={`${overlay.text}-${idx}`}
+                      className="absolute pointer-events-none z-30"
+                      style={{
+                        ...getTextOverlayPosition(overlay.position),
+                        ...getTextOverlayAnimation(overlay)
+                      }}
+                    >
+                      {overlay.text}
+                    </div>
+                  ))}
 
                   {/* Live preview info overlay */}
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">

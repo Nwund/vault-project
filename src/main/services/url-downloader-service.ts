@@ -211,11 +211,23 @@ class UrlDownloaderService extends EventEmitter {
       proc.on('close', (code) => {
         if (code === 0 && output) {
           try {
-            const info = JSON.parse(output)
-            item.title = info.title || 'Unknown'
-            item.thumbnailUrl = info.thumbnail || null
-            item.duration = info.duration_string || (info.duration ? this.formatDuration(info.duration) : null)
-            item.fileSize = info.filesize_approx ? this.formatBytes(info.filesize_approx) : null
+            // yt-dlp outputs one JSON per line for playlists, so parse line by line
+            const lines = output.trim().split('\n')
+            for (const line of lines) {
+              try {
+                const info = JSON.parse(line)
+                // Use the first valid entry (or last if it's a playlist summary)
+                if (info.title) {
+                  item.title = info.title
+                  item.thumbnailUrl = info.thumbnail || null
+                  item.duration = info.duration_string || (info.duration ? this.formatDuration(info.duration) : null)
+                  item.fileSize = info.filesize_approx ? this.formatBytes(info.filesize_approx) : null
+                  break
+                }
+              } catch {
+                // Skip invalid JSON lines
+              }
+            }
             this.emit('download:updated', item)
           } catch (e) {
             console.warn('[UrlDownloader] JSON parse failed for video info:', (e as Error).message)
