@@ -9,6 +9,7 @@ interface WatchItem {
   id: string
   title: string
   thumbnail?: string
+  thumbnailUrl?: string // Cached file:// URL for the thumbnail
   duration: number
   progress: number
   lastWatched: Date
@@ -28,10 +29,31 @@ export function WatchProgress({ items: propItems, onResume, onRemove, className 
   const [filter, setFilter] = useState<'all' | 'inprogress' | 'completed'>('inprogress')
   const [showMenu, setShowMenu] = useState<string | null>(null)
 
+  // Convert file path to file:// URL
+  const toFileUrl = useCallback(async (path: string): Promise<string> => {
+    try {
+      const url = await window.api.fs.toFileUrl(path)
+      return url || ''
+    } catch {
+      return ''
+    }
+  }, [])
+
   // Fetch watch history from backend
   useEffect(() => {
     if (propItems) {
-      setItems(propItems)
+      // Convert thumbnail paths to URLs for prop items
+      const convertThumbnails = async () => {
+        const converted = await Promise.all(propItems.map(async (item) => {
+          if (item.thumbnail) {
+            const url = await toFileUrl(item.thumbnail)
+            return { ...item, thumbnailUrl: url }
+          }
+          return item
+        }))
+        setItems(converted)
+      }
+      convertThumbnails()
       return
     }
 
@@ -46,10 +68,15 @@ export function WatchProgress({ items: propItems, onResume, onRemove, className 
             try {
               const media = await window.api.invoke('media:getById', h.mediaId || h.media_id)
               if (media) {
+                let thumbnailUrl = ''
+                if (media.thumbPath) {
+                  thumbnailUrl = await toFileUrl(media.thumbPath)
+                }
                 enrichedItems.push({
                   id: h.mediaId || h.media_id,
                   title: media.filename || 'Unknown',
                   thumbnail: media.thumbPath || undefined,
+                  thumbnailUrl,
                   duration: media.durationSec || h.duration || 0,
                   progress: h.watchedSec || h.progress || 0,
                   lastWatched: new Date(h.lastWatched || h.watchedAt || h.timestamp || Date.now()),
@@ -69,7 +96,7 @@ export function WatchProgress({ items: propItems, onResume, onRemove, className 
     }
 
     fetchHistory()
-  }, [propItems])
+  }, [propItems, toFileUrl])
 
   const filtered = useMemo(() => {
     let list = [...items].sort((a, b) => b.lastWatched.getTime() - a.lastWatched.getTime())
@@ -109,10 +136,15 @@ export function WatchProgress({ items: propItems, onResume, onRemove, className 
           try {
             const media = await window.api.invoke('media:getById', h.mediaId || h.media_id)
             if (media) {
+              let thumbnailUrl = ''
+              if (media.thumbPath) {
+                thumbnailUrl = await toFileUrl(media.thumbPath)
+              }
               enrichedItems.push({
                 id: h.mediaId || h.media_id,
                 title: media.filename || 'Unknown',
                 thumbnail: media.thumbPath || undefined,
+                thumbnailUrl,
                 duration: media.durationSec || h.duration || 0,
                 progress: h.watchedSec || h.progress || 0,
                 lastWatched: new Date(h.lastWatched || h.watchedAt || h.timestamp || Date.now()),
@@ -127,7 +159,7 @@ export function WatchProgress({ items: propItems, onResume, onRemove, className 
       console.error('Failed to refresh watch history:', e)
     }
     setLoading(false)
-  }, [])
+  }, [toFileUrl])
 
   return (
     <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
@@ -179,8 +211,8 @@ export function WatchProgress({ items: propItems, onResume, onRemove, className 
               <div key={item.id} className="relative group flex items-center gap-3 px-4 py-3 hover:bg-zinc-800/50">
                 {/* Thumbnail */}
                 <div className="relative w-20 h-12 rounded bg-zinc-800 overflow-hidden flex-shrink-0">
-                  {item.thumbnail ? (
-                    <img src={item.thumbnail} className="w-full h-full object-cover" alt="" />
+                  {item.thumbnailUrl ? (
+                    <img src={item.thumbnailUrl} className="w-full h-full object-cover" alt="" />
                   ) : (
                     <Film size={16} className="absolute inset-0 m-auto text-zinc-600" />
                   )}

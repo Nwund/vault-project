@@ -1840,7 +1840,15 @@ export default function App() {
     }
   }, [settings?.appearance])
 
-  const patchSettings = async (patch: Partial<VaultSettings>) => {
+  const patchSettings = async (patch: Partial<VaultSettings> | VaultSettings) => {
+    // If we're being called with what looks like full settings (has all top-level keys),
+    // just set the state directly - the settings have already been saved
+    const isFullSettings = patch && 'library' in patch && 'appearance' in patch && 'playback' in patch
+    if (isFullSettings) {
+      setSettings(patch as VaultSettings)
+      return
+    }
+    // Otherwise, save the partial and update state
     const next = await window.api.settings.patch(patch)
     setSettings(next)
   }
@@ -7571,7 +7579,10 @@ function GoonWallPage(props: {
   const [preloadProgress, setPreloadProgress] = useState(0)
   const [preloadTotal, setPreloadTotal] = useState(0)
   const [showPreloadOption, setShowPreloadOption] = useState(true) // Show preload screen initially
+  const [preloadCount, setPreloadCount] = useState(50) // Configurable number of videos to preload
+  const [backgroundPreloading, setBackgroundPreloading] = useState(false) // Continue preloading after starting
   const preloadedUrlsRef = useRef<Map<string, string>>(new Map()) // Cache preloaded URLs
+  const preloadAbortRef = useRef(false) // For cancelling preload
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [layout, setLayout] = useState<GoonWallLayout>('mosaic')
   const [focusedTileIndex, setFocusedTileIndex] = useState<number | null>(null) // Focus mode: clicked tile expands
@@ -7654,19 +7665,37 @@ function GoonWallPage(props: {
   }
 
   // Preload video URLs before showing the wall (optional)
-  const preloadVideos = async (videosToPreload: MediaRow[]) => {
+  // Non-blocking implementation that works in background
+  const preloadVideos = useCallback(async (videosToPreload: MediaRow[], continueInBackground = false) => {
+    preloadAbortRef.current = false
     setPreloading(true)
     setPreloadProgress(0)
-    setPreloadTotal(videosToPreload.length)
-    preloadedUrlsRef.current.clear()
 
-    const batchSize = 5 // Load 5 at a time
+    // Limit to preloadCount videos
+    const videosToLoad = videosToPreload.slice(0, preloadCount)
+    setPreloadTotal(videosToLoad.length)
+
+    const batchSize = 3 // Smaller batches for smoother UI
     let loaded = 0
 
-    for (let i = 0; i < videosToPreload.length; i += batchSize) {
-      const batch = videosToPreload.slice(i, i + batchSize)
+    // Use requestIdleCallback-like approach to avoid blocking UI
+    const loadBatch = async (startIndex: number): Promise<void> => {
+      if (preloadAbortRef.current) return
+
+      const batch = videosToLoad.slice(startIndex, startIndex + batchSize)
+      if (batch.length === 0) {
+        // Done loading
+        setPreloading(false)
+        setBackgroundPreloading(false)
+        if (!continueInBackground) {
+          setShowPreloadOption(false)
+        }
+        return
+      }
+
       await Promise.all(
         batch.map(async (video) => {
+          if (preloadAbortRef.current) return
           try {
             // Try low-res first for faster preloading
             let url: string | null = null
@@ -7687,16 +7716,32 @@ function GoonWallPage(props: {
           setPreloadProgress(loaded)
         })
       )
+
+      // Yield to UI before next batch (prevents freezing)
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      // Continue with next batch
+      await loadBatch(startIndex + batchSize)
     }
 
-    setPreloading(false)
+    await loadBatch(0)
+  }, [preloadCount, tileCount])
+
+  // Start preloading and go to wall immediately (background preload)
+  const startWithBackgroundPreload = useCallback(() => {
+    setBackgroundPreloading(true)
     setShowPreloadOption(false)
-  }
+    // Start preloading in background
+    preloadVideos(tiles, true)
+  }, [tiles, preloadVideos])
 
   // Start wall without preloading
-  const startWithoutPreload = () => {
+  const startWithoutPreload = useCallback(() => {
+    preloadAbortRef.current = true
     setShowPreloadOption(false)
-  }
+    setPreloading(false)
+    setBackgroundPreloading(false)
+  }, [])
 
   // Fullscreen toggle
   const toggleFullscreen = async () => {
@@ -8331,23 +8376,61 @@ function GoonWallPage(props: {
                 <div className="text-sm text-white/40">
                   {preloadProgress} / {preloadTotal} videos preloaded
                 </div>
+                <button
+                  onClick={startWithBackgroundPreload}
+                  className="mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm transition"
+                >
+                  Start Now (continue in background)
+                </button>
               </div>
             ) : (
-              <div className="space-y-3">
-                <button
-                  onClick={() => preloadVideos(tiles)}
-                  className="w-full px-6 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 rounded-xl font-medium transition"
-                >
-                  Preload {tileCount} Videos First
-                  <div className="text-xs text-white/60 mt-1">Smoother experience, takes a moment</div>
-                </button>
-                <button
-                  onClick={startWithoutPreload}
-                  className="w-full px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-medium transition"
-                >
-                  Start Immediately
-                  <div className="text-xs text-white/60 mt-1">Videos load as they play</div>
-                </button>
+              <div className="space-y-4">
+                {/* Preload count slider */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-white/60">Videos to preload:</span>
+                    <span className="font-medium">{preloadCount}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max={Math.min(200, videos.length)}
+                    value={preloadCount}
+                    onChange={(e) => setPreloadCount(Number(e.target.value))}
+                    className="w-64 h-2 bg-white/10 rounded-full appearance-none cursor-pointer
+                      [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
+                      [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gradient-to-r
+                      [&::-webkit-slider-thumb]:from-pink-500 [&::-webkit-slider-thumb]:to-purple-500"
+                  />
+                  <div className="flex justify-between text-xs text-white/40 w-64 mx-auto">
+                    <span>10</span>
+                    <span>{Math.min(200, videos.length)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <button
+                    onClick={() => preloadVideos(tiles)}
+                    className="w-full px-6 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 rounded-xl font-medium transition"
+                  >
+                    Preload {preloadCount} Videos First
+                    <div className="text-xs text-white/60 mt-1">Wait for smooth playback</div>
+                  </button>
+                  <button
+                    onClick={startWithBackgroundPreload}
+                    className="w-full px-6 py-3 bg-purple-600/50 hover:bg-purple-500/50 rounded-xl font-medium transition"
+                  >
+                    Start + Preload in Background
+                    <div className="text-xs text-white/60 mt-1">Begin immediately, loads continue</div>
+                  </button>
+                  <button
+                    onClick={startWithoutPreload}
+                    className="w-full px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-medium transition"
+                  >
+                    Start Immediately
+                    <div className="text-xs text-white/60 mt-1">No preloading</div>
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -8376,7 +8459,7 @@ function GoonWallPage(props: {
         >
           {tiles.map((media, idx) => (
             <GoonTile
-              key={`${media.id}-${idx}`}
+              key={`goon-tile-${idx}`}
               media={media}
               muted={focusedTileIndex !== null ? (idx !== focusedTileIndex) : muted}
               style={getTileStyle(idx)}
@@ -8394,6 +8477,21 @@ function GoonWallPage(props: {
               preloadedUrl={preloadedUrlsRef.current.get(media.id)}
             />
           ))}
+
+          {/* Background Preload Progress */}
+          {backgroundPreloading && preloadProgress < preloadTotal && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-black/80 backdrop-blur-sm rounded-full px-4 py-2 flex items-center gap-3">
+              <div className="w-32 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-pink-500 to-purple-500 transition-all duration-300"
+                  style={{ width: `${(preloadProgress / preloadTotal) * 100}%` }}
+                />
+              </div>
+              <span className="text-xs text-white/60 whitespace-nowrap">
+                {preloadProgress}/{preloadTotal} preloaded
+              </span>
+            </div>
+          )}
 
           {/* Vignette Overlay */}
           {visualEffects.vignetteIntensity > 0 && (
@@ -8555,11 +8653,15 @@ const GoonTile = React.memo(function GoonTile(props: {
   const audioVolumeRef = useRef(0) // Use ref instead of state to avoid re-renders
   const fadeAnimationRef = useRef<number | null>(null)
 
+  // Store onShuffle in ref to avoid triggering effect re-runs when callback changes
+  const onShuffleRef = useRef(onShuffle)
+  useEffect(() => { onShuffleRef.current = onShuffle })
+
   // Right-click to skip to next video
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
-    onShuffle()
-  }, [onShuffle])
+    onShuffleRef.current()
+  }, [])
 
   // Auto-shuffle timer - each tile has a randomized interval
   // shuffleInterval of 0 means disabled (no auto-shuffle)
@@ -8570,7 +8672,7 @@ const GoonTile = React.memo(function GoonTile(props: {
     const randomizedInterval = (shuffleInterval + (Math.random() * 30 - 15)) * 1000
 
     autoShuffleRef.current = setTimeout(() => {
-      onShuffle()
+      onShuffleRef.current()
     }, randomizedInterval)
 
     return () => {
@@ -8578,7 +8680,7 @@ const GoonTile = React.memo(function GoonTile(props: {
         clearTimeout(autoShuffleRef.current)
       }
     }
-  }, [ready, isFocused, shuffleInterval, onShuffle, media.id])
+  }, [ready, isFocused, shuffleInterval, media.id])
 
   // PERFORMANCE OPTIMIZATION: Load URL first, then request slot when ready to play
   // This ensures slots are only used by tiles that can actually play
@@ -8645,7 +8747,7 @@ const GoonTile = React.memo(function GoonTile(props: {
           }
 
           if (!alive || !videoUrl) {
-            if (alive) onShuffle()
+            if (alive) onShuffleRef.current()
             return
           }
 
@@ -8660,7 +8762,7 @@ const GoonTile = React.memo(function GoonTile(props: {
           }, slotPriorityRef.current)
 
         } catch (err) {
-          if (alive) onShuffle()
+          if (alive) onShuffleRef.current()
         }
       }
 
@@ -8676,7 +8778,7 @@ const GoonTile = React.memo(function GoonTile(props: {
         releaseSlotRef.current = null
       }
     }
-  }, [media.id, media.path, onShuffle, tileCount, index, preloadedUrl])
+  }, [media.id, media.path, tileCount, index, preloadedUrl])
 
   // Track video element for cleanup - store reference that persists through unmount
   const videoElementRef = useRef<HTMLVideoElement | null>(null)
@@ -9155,9 +9257,14 @@ function AiTaggerPage() {
   async function downloadModels() {
     try {
       setDownloadingModel('Starting...')
-      await window.api.ai.downloadModels()
+      const result = await window.api.ai.downloadModels() as { success: boolean; error?: string }
+      setDownloadingModel(null)
       await checkModels()
-      showToast('success', 'Models downloaded successfully')
+      if (result?.success) {
+        showToast('success', 'Models downloaded successfully')
+      } else {
+        showToast('error', result?.error ?? 'Download completed with errors')
+      }
     } catch (err: any) {
       console.error('[AI] Failed to download models:', err)
       showToast('error', err?.message ?? 'Failed to download models')

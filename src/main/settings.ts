@@ -10,6 +10,11 @@ import path from 'node:path'
 // TYPE DEFINITIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Deep partial type for nested settings updates
+type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P]
+}
+
 // Original themes
 export type ClassicThemeId =
   | 'obsidian'
@@ -1008,7 +1013,7 @@ export function getThemeId(): ThemeId {
 // SETTERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function updateSettings(patch: Partial<VaultSettings>): VaultSettings {
+export function updateSettings(patch: DeepPartial<VaultSettings>): VaultSettings {
   const current = getSettings()
   const next = deepMerge(current, patch) as VaultSettings
   settings.store = next
@@ -1016,23 +1021,23 @@ export function updateSettings(patch: Partial<VaultSettings>): VaultSettings {
 }
 
 export function updateLibrarySettings(patch: Partial<LibrarySettings>): VaultSettings {
-  return updateSettings({ library: { ...getSettings().library, ...patch } })
+  return updateSettings({ library: patch })
 }
 
 export function updatePlaybackSettings(patch: Partial<PlaybackSettings>): VaultSettings {
-  return updateSettings({ playback: { ...getSettings().playback, ...patch } })
+  return updateSettings({ playback: patch })
 }
 
 export function updateGoonwallSettings(patch: Partial<GoonwallSettings>): VaultSettings {
-  return updateSettings({ goonwall: { ...getSettings().goonwall, ...patch } })
+  return updateSettings({ goonwall: patch })
 }
 
 export function updateAppearanceSettings(patch: Partial<AppearanceSettings>): VaultSettings {
-  return updateSettings({ appearance: { ...getSettings().appearance, ...patch } })
+  return updateSettings({ appearance: patch })
 }
 
 export function updatePrivacySettings(patch: Partial<PrivacySettings>): VaultSettings {
-  return updateSettings({ privacy: { ...getSettings().privacy, ...patch } })
+  return updateSettings({ privacy: patch })
 }
 
 export function updateBlacklistSettings(patch: Partial<BlacklistSettings>): VaultSettings {
