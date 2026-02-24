@@ -1,5 +1,5 @@
 // File: src/renderer/components/CommandPalette.tsx
-// Command palette for quick actions with fuzzy search
+// Command palette for quick actions with fuzzy search, recent actions, and typeahead
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
@@ -44,7 +44,8 @@ import {
   Filter,
   FolderHeart,
   TrendingUp,
-  FolderTree
+  FolderTree,
+  History
 } from 'lucide-react'
 
 interface CommandAction {
@@ -67,6 +68,63 @@ interface CommandPaletteProps {
   currentMediaId?: string
 }
 
+// Local storage key for recent actions
+const RECENT_ACTIONS_KEY = 'vault-cmd-recent'
+const MAX_RECENT_ACTIONS = 8
+
+// Helper to highlight matching characters in text
+function highlightMatch(text: string, query: string): React.ReactNode {
+  if (!query.trim()) return text
+
+  const queryLower = query.toLowerCase()
+  const textLower = text.toLowerCase()
+  const index = textLower.indexOf(queryLower)
+
+  if (index === -1) {
+    // Try character-by-character matching
+    let result: React.ReactNode[] = []
+    let queryIdx = 0
+    for (let i = 0; i < text.length; i++) {
+      if (queryIdx < queryLower.length && textLower[i] === queryLower[queryIdx]) {
+        result.push(<span key={i} className="cmd-highlight">{text[i]}</span>)
+        queryIdx++
+      } else {
+        result.push(text[i])
+      }
+    }
+    return result
+  }
+
+  return (
+    <>
+      {text.slice(0, index)}
+      <span className="cmd-highlight">{text.slice(index, index + query.length)}</span>
+      {text.slice(index + query.length)}
+    </>
+  )
+}
+
+// Get recent actions from localStorage
+function getRecentActions(): string[] {
+  try {
+    const stored = localStorage.getItem(RECENT_ACTIONS_KEY)
+    return stored ? JSON.parse(stored) : []
+  } catch {
+    return []
+  }
+}
+
+// Save recent action to localStorage
+function saveRecentAction(actionId: string): void {
+  try {
+    const recent = getRecentActions().filter(id => id !== actionId)
+    recent.unshift(actionId)
+    localStorage.setItem(RECENT_ACTIONS_KEY, JSON.stringify(recent.slice(0, MAX_RECENT_ACTIONS)))
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 export function CommandPalette({
   isOpen,
   onClose,
@@ -78,8 +136,14 @@ export function CommandPalette({
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [recentActionIds, setRecentActionIds] = useState<string[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+
+  // Load recent actions on mount
+  useEffect(() => {
+    setRecentActionIds(getRecentActions())
+  }, [isOpen])
 
   // Define all available commands
   const allCommands: CommandAction[] = useMemo(() => [
@@ -135,6 +199,21 @@ export function CommandPalette({
     { id: 'tag-categories', title: 'Tag Categories', subtitle: 'Organize tags into categories', icon: FolderTree, category: 'library', keywords: ['tags', 'categories', 'organize', 'hierarchy'], action: () => { onAction?.('tag-categories') } }
   ], [onNavigate, onPlayMedia, onAction])
 
+  // Create a map for quick command lookup
+  const commandMap = useMemo(() => {
+    const map = new Map<string, CommandAction>()
+    allCommands.forEach(cmd => map.set(cmd.id, cmd))
+    return map
+  }, [allCommands])
+
+  // Get recent commands
+  const recentCommands = useMemo(() => {
+    return recentActionIds
+      .map(id => commandMap.get(id))
+      .filter((cmd): cmd is CommandAction => cmd !== undefined)
+      .slice(0, 5)
+  }, [recentActionIds, commandMap])
+
   // Filter commands based on query
   const filteredCommands = useMemo(() => {
     if (!query.trim()) {
@@ -169,6 +248,9 @@ export function CommandPalette({
       })
   }, [query, selectedCategory, allCommands])
 
+  // Show recent actions when query is empty and no category selected
+  const showRecent = !query.trim() && !selectedCategory && recentCommands.length > 0
+
   // Reset selected index when results change
   useEffect(() => {
     setSelectedIndex(0)
@@ -191,25 +273,43 @@ export function CommandPalette({
     }
   }, [selectedIndex])
 
+  // Execute command and track in recent
+  const executeCommand = useCallback((cmd: CommandAction) => {
+    saveRecentAction(cmd.id)
+    cmd.action()
+    onClose()
+  }, [onClose])
+
   // Handle keyboard navigation
   useEffect(() => {
     if (!isOpen) return
+
+    const totalItems = showRecent
+      ? recentCommands.length + filteredCommands.length
+      : filteredCommands.length
 
     const handleKeyDown = (e: KeyboardEvent) => {
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault()
-          setSelectedIndex(prev => (prev + 1) % filteredCommands.length)
+          setSelectedIndex(prev => (prev + 1) % totalItems)
           break
         case 'ArrowUp':
           e.preventDefault()
-          setSelectedIndex(prev => (prev - 1 + filteredCommands.length) % filteredCommands.length)
+          setSelectedIndex(prev => (prev - 1 + totalItems) % totalItems)
           break
         case 'Enter':
           e.preventDefault()
-          if (filteredCommands[selectedIndex]) {
-            filteredCommands[selectedIndex].action()
-            onClose()
+          if (showRecent) {
+            if (selectedIndex < recentCommands.length) {
+              executeCommand(recentCommands[selectedIndex])
+            } else {
+              const cmd = filteredCommands[selectedIndex - recentCommands.length]
+              if (cmd) executeCommand(cmd)
+            }
+          } else {
+            const cmd = filteredCommands[selectedIndex]
+            if (cmd) executeCommand(cmd)
           }
           break
         case 'Escape':
@@ -235,7 +335,7 @@ export function CommandPalette({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, filteredCommands, selectedIndex, selectedCategory, onClose])
+  }, [isOpen, filteredCommands, recentCommands, selectedIndex, selectedCategory, showRecent, onClose, executeCommand])
 
   if (!isOpen) return null
 
@@ -257,6 +357,49 @@ export function CommandPalette({
     settings: 'Settings'
   }
 
+  const renderCommandItem = (cmd: CommandAction, idx: number, isRecent: boolean = false) => {
+    const Icon = cmd.icon
+    const actualIndex = isRecent ? idx : (showRecent ? recentCommands.length + idx : idx)
+
+    return (
+      <button
+        key={`${isRecent ? 'recent-' : ''}${cmd.id}`}
+        data-index={actualIndex}
+        onClick={() => executeCommand(cmd)}
+        onMouseEnter={() => setSelectedIndex(actualIndex)}
+        className={`cmd-result-item w-full flex items-center gap-3 px-4 py-2.5 text-left transition ${
+          actualIndex === selectedIndex
+            ? 'bg-[var(--primary)]/20 text-white'
+            : 'text-zinc-300 hover:bg-zinc-800'
+        }`}
+      >
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+          actualIndex === selectedIndex ? 'bg-[var(--primary)]' : 'bg-zinc-800'
+        }`}>
+          <Icon size={16} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-medium">{highlightMatch(cmd.title, query)}</div>
+          {cmd.subtitle && (
+            <div className="text-xs text-zinc-500 truncate">{cmd.subtitle}</div>
+          )}
+        </div>
+        {cmd.shortcut && (
+          <div className="flex items-center gap-1">
+            {cmd.shortcut.map((key, i) => (
+              <kbd
+                key={i}
+                className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-[10px] text-zinc-400"
+              >
+                {key}
+              </kbd>
+            ))}
+          </div>
+        )}
+      </button>
+    )
+  }
+
   return (
     <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[10vh]">
       {/* Backdrop */}
@@ -266,7 +409,7 @@ export function CommandPalette({
       />
 
       {/* Palette */}
-      <div className="relative w-full max-w-xl bg-zinc-900 rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-xl command-palette-bg rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden">
         {/* Search input */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800">
           <Search size={20} className="text-zinc-500" />
@@ -289,7 +432,7 @@ export function CommandPalette({
         <div className="flex items-center gap-1 px-4 py-2 border-b border-zinc-800 overflow-x-auto">
           <button
             onClick={() => setSelectedCategory(null)}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition btn-press ${
               selectedCategory === null
                 ? 'bg-[var(--primary)] text-white'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
@@ -303,7 +446,7 @@ export function CommandPalette({
               <button
                 key={key}
                 onClick={() => setSelectedCategory(key)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition btn-press ${
                   selectedCategory === key
                     ? 'bg-[var(--primary)] text-white'
                     : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
@@ -318,56 +461,29 @@ export function CommandPalette({
 
         {/* Results */}
         <div ref={listRef} className="max-h-[50vh] overflow-y-auto">
-          {filteredCommands.length === 0 ? (
+          {filteredCommands.length === 0 && !showRecent ? (
             <div className="py-8 text-center text-zinc-500">
               <Command size={32} className="mx-auto mb-2 opacity-50" />
               <p>No commands found</p>
             </div>
           ) : (
             <div className="py-2">
-              {filteredCommands.map((cmd, idx) => {
-                const Icon = cmd.icon
-                return (
-                  <button
-                    key={cmd.id}
-                    data-index={idx}
-                    onClick={() => {
-                      cmd.action()
-                      onClose()
-                    }}
-                    onMouseEnter={() => setSelectedIndex(idx)}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition ${
-                      idx === selectedIndex
-                        ? 'bg-[var(--primary)]/20 text-white'
-                        : 'text-zinc-300 hover:bg-zinc-800'
-                    }`}
-                  >
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                      idx === selectedIndex ? 'bg-[var(--primary)]' : 'bg-zinc-800'
-                    }`}>
-                      <Icon size={16} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium">{cmd.title}</div>
-                      {cmd.subtitle && (
-                        <div className="text-xs text-zinc-500 truncate">{cmd.subtitle}</div>
-                      )}
-                    </div>
-                    {cmd.shortcut && (
-                      <div className="flex items-center gap-1">
-                        {cmd.shortcut.map((key, i) => (
-                          <kbd
-                            key={i}
-                            className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-[10px] text-zinc-400"
-                          >
-                            {key}
-                          </kbd>
-                        ))}
-                      </div>
-                    )}
-                  </button>
-                )
-              })}
+              {/* Recent Actions Section */}
+              {showRecent && (
+                <div className="cmd-recent-section">
+                  <div className="cmd-recent-label flex items-center gap-2">
+                    <History size={10} />
+                    Recent
+                  </div>
+                  {recentCommands.map((cmd, idx) => renderCommandItem(cmd, idx, true))}
+                </div>
+              )}
+
+              {/* All Commands */}
+              {showRecent && (
+                <div className="cmd-recent-label">All Commands</div>
+              )}
+              {filteredCommands.map((cmd, idx) => renderCommandItem(cmd, idx))}
             </div>
           )}
         </div>

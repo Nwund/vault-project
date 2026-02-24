@@ -18,7 +18,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({
   height,
   animate = true
 }) => {
-  const baseStyles = `bg-white/5 ${animate ? 'sexy-shimmer' : ''}`
+  const baseStyles = `bg-white/5 ${animate ? 'skeleton-shimmer' : ''}`
   const variantStyles = {
     rect: 'rounded-lg',
     circle: 'rounded-full',

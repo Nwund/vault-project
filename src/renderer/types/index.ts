@@ -288,11 +288,17 @@ export type GlobalTask = {
 
 // Toast notifications
 export type ToastType = 'success' | 'error' | 'info' | 'warning'
+export type ToastAction = {
+  label: string
+  onClick: () => void
+}
 export type Toast = {
   id: string
   type: ToastType
   message: string
   duration?: number
+  action?: ToastAction
+  createdAt?: number
 }
 
 // Context menu state

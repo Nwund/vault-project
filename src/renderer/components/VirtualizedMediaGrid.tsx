@@ -2,6 +2,7 @@
 // Virtualized media grid for performance with large libraries
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { Play, Heart } from 'lucide-react'
 // react-window v2 exports 'Grid' but @types/react-window is for v1 with 'FixedSizeGrid'
 // Using require to bridge the type mismatch until types are updated
 const { Grid: FixedSizeGrid } = require('react-window') as { Grid: React.ComponentType<any> }
@@ -36,7 +37,7 @@ interface VirtualizedMediaGridProps {
   onToggleSelect?: (id: string) => void
 }
 
-// Lazy loading thumbnail component with progressive blur-to-sharp loading
+// Lazy loading thumbnail component with progressive blur-to-sharp loading + Ken Burns
 const LazyThumbnail: React.FC<{ thumbPath: string | null | undefined }> = ({ thumbPath }) => {
   const [ref, isVisible] = useLazyLoad('300px')
   const [url, setUrl] = useState<string>('')
@@ -60,16 +61,16 @@ const LazyThumbnail: React.FC<{ thumbPath: string | null | undefined }> = ({ thu
           🎬
         </div>
       ) : !isVisible ? (
-        <div className="w-full h-full sexy-shimmer bg-white/5" />
+        <div className="w-full h-full skeleton-shimmer bg-white/5" />
       ) : error ? (
         <div className="w-full h-full flex items-center justify-center text-[var(--muted)] text-2xl">
           🖼️
         </div>
       ) : (
         <>
-          {/* Blur placeholder while loading */}
+          {/* Ken Burns shimmer while loading */}
           {!loaded && (
-            <div className="absolute inset-0 sexy-shimmer" />
+            <div className="absolute inset-0 skeleton-shimmer thumb-loading" />
           )}
           {url && (
             <img
@@ -77,12 +78,12 @@ const LazyThumbnail: React.FC<{ thumbPath: string | null | undefined }> = ({ thu
               alt=""
               loading="lazy"
               decoding="async"
-              className="w-full h-full object-cover gpu-accelerated"
+              className={`w-full h-full object-cover gpu-accelerated ${loaded ? 'thumb-loaded' : 'thumb-loading-blur'}`}
               style={{
                 opacity: loaded ? 1 : 0,
                 filter: loaded ? 'none' : 'blur(10px)',
-                transform: loaded ? 'scale(1)' : 'scale(1.1)',
-                transition: 'opacity 0.3s ease-out, filter 0.4s ease-out, transform 0.4s ease-out'
+                transform: loaded ? 'scale(1)' : 'scale(1.05)',
+                transition: 'opacity 0.35s ease-out, filter 0.4s ease-out, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)'
               }}
               onLoad={() => setLoaded(true)}
               onError={() => setError(true)}
@@ -110,13 +111,37 @@ const MediaTile = React.memo<{
       onContextMenu={onContextMenu}
       className={`
         text-left rounded-2xl border bg-black/20 hover:border-white/15
-        transition overflow-hidden relative cursor-pointer h-full
-        contain-layout media-tile-glow
+        overflow-hidden relative cursor-pointer h-full
+        contain-layout media-tile-glow media-card-enhanced
         ${selected ? 'border-white/25 ring-2 ring-[var(--primary)]/30' : 'border-[var(--border)]'}
       `}
     >
       <div className="aspect-[16/10] relative overflow-hidden">
         <LazyThumbnail thumbPath={media.thumbPath} />
+
+        {/* Quick action buttons - fade in on hover */}
+        <div className="media-card-actions">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDoubleClick?.()
+            }}
+            className="media-action-btn"
+            title="Play"
+          >
+            <Play size={14} fill="currentColor" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleSelect()
+            }}
+            className="media-action-btn"
+            title="Favorite"
+          >
+            <Heart size={14} className={selected ? 'fill-current' : ''} />
+          </button>
+        </div>
 
         {media.type === 'video' && media.durationSec ? (
           <div className="absolute bottom-2 right-2 text-[10px] px-2 py-1 rounded-lg bg-black/60 border border-white/10">
@@ -130,7 +155,7 @@ const MediaTile = React.memo<{
             onToggleSelect()
           }}
           className={`
-            absolute top-2 left-2 px-3 py-2 rounded-xl text-xs border transition
+            absolute top-2 left-2 px-3 py-2 rounded-xl text-xs border transition btn-press
             ${selected
               ? 'bg-white/15 hover:bg-white/20 border-white/20'
               : 'bg-black/20 hover:bg-white/5 border-[var(--border)] hover:border-white/15'}
