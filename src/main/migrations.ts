@@ -2,6 +2,7 @@
 // File: src/main/migrations.ts
 // ===============================
 import type Database from 'better-sqlite3'
+import { getCanonicalCategory } from './services/ai-intelligence/canonical-tags'
 
 type Migration = { id: number; up: (db: Database.Database) => void }
 
@@ -319,6 +320,367 @@ const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_media_tags_mediaId ON media_tags(mediaId);
       `)
     }
+  },
+
+  // v11: AI rename suggestions — Tier 2 ports analyzer.py "suggested_filename" output
+  // so the user can accept/reject a rename for gibberish filenames in the review queue.
+  {
+    id: 11,
+    up: (db) => {
+      // Column may already exist if a prior dev run partially applied — guard with PRAGMA.
+      const cols = db.prepare(`PRAGMA table_info(ai_analysis_results)`).all() as Array<{ name: string }>
+      const has = (n: string) => cols.some((c) => c.name === n)
+      if (!has('suggested_filename')) {
+        db.exec(`ALTER TABLE ai_analysis_results ADD COLUMN suggested_filename TEXT;`)
+      }
+      if (!has('rich_tags')) {
+        db.exec(`ALTER TABLE ai_analysis_results ADD COLUMN rich_tags TEXT;`)
+      }
+    }
+  },
+
+  // v12: AI confidence calibration. Tracks per-(tag, source) rolling stats so
+  // we can blend new Tier-2 predictions toward what's been historically true
+  // for a given tag, AND scale by how often the user has approved/rejected it.
+  // Mirrors content_analyzer/analyzer.py:LearningDatabase.confidence_history +
+  // correction_history, but keyed by tag-name (not category).
+  {
+    id: 12,
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS ai_tag_calibration (
+          tag_name        TEXT NOT NULL,
+          source          TEXT NOT NULL,
+          sample_count    INTEGER NOT NULL DEFAULT 0,
+          sum_confidence  REAL NOT NULL DEFAULT 0,
+          approved_count  INTEGER NOT NULL DEFAULT 0,
+          rejected_count  INTEGER NOT NULL DEFAULT 0,
+          last_seen       TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (tag_name, source)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_calib_seen ON ai_tag_calibration(last_seen);
+      `)
+    }
+  },
+
+  // v13: media.title — used by AI Review's "approve with edited title" path
+  // (processing-queue.ts:approveEdited) and various display surfaces. Was
+  // never declared in v1 schema even though writes to it existed; queries
+  // failed silently with `no such column: title`. Idempotent guard.
+  {
+    id: 13,
+    up: (db) => {
+      const cols = db.prepare(`PRAGMA table_info(media)`).all() as Array<{ name: string }>
+      if (!cols.some((c) => c.name === 'title')) {
+        db.exec(`ALTER TABLE media ADD COLUMN title TEXT;`)
+      }
+    }
+  },
+
+  // v14: tags.color + tags.category. Tier3TagMatcher.createNewTags writes
+  // INSERT INTO tags (name, color), and import-service writes
+  // INSERT INTO tags (id, name, color, category). Neither column existed in
+  // v1's CREATE TABLE — every AI-driven tag creation has been silently
+  // throwing `no such column: color`, blocking auto-apply entirely.
+  // Idempotent guards.
+  {
+    id: 14,
+    up: (db) => {
+      const cols = db.prepare(`PRAGMA table_info(tags)`).all() as Array<{ name: string }>
+      if (!cols.some((c) => c.name === 'color')) {
+        db.exec(`ALTER TABLE tags ADD COLUMN color TEXT;`)
+      }
+      if (!cols.some((c) => c.name === 'category')) {
+        db.exec(`ALTER TABLE tags ADD COLUMN category TEXT;`)
+      }
+    }
+  },
+
+  // v15: backfill tags.category for rows where it's still NULL using the
+  // canonical-tags vocabulary. v14 added the column but didn't populate it,
+  // and Tier 3 only just started writing categories on new rows — this catches
+  // every tag the user already has so the categorized AI Review pane and
+  // tag-bar grouping work for legacy data too.
+  {
+    id: 15,
+    up: (db) => {
+      const rows = db.prepare(
+        `SELECT id, name FROM tags WHERE category IS NULL OR category = ''`
+      ).all() as Array<{ id: string; name: string }>
+
+      const update = db.prepare(`UPDATE tags SET category = ? WHERE id = ?`)
+      let categorized = 0
+      const tx = db.transaction((rs: typeof rows) => {
+        for (const r of rs) {
+          const cat = getCanonicalCategory(r.name)
+          if (cat) {
+            update.run(cat, r.id)
+            categorized++
+          }
+        }
+      })
+      tx(rows)
+      console.log(`[Migration v15] Categorized ${categorized}/${rows.length} legacy tag rows`)
+    }
+  },
+
+  // v16: rejection_history JSON column on ai_analysis_results. Each entry
+  // captures one full reject() call as { rejectedAt, prevTitle, prevDesc,
+  // prevTags } so subsequent re-analysis passes can tell Tier 2 "the user
+  // already saw and rejected these directions — try something different".
+  // Powers the rejection-feedback loop for task #9.
+  {
+    id: 16,
+    up: (db) => {
+      try {
+        db.exec(`ALTER TABLE ai_analysis_results ADD COLUMN rejection_history TEXT`)
+        console.log('[Migration v16] Added rejection_history TEXT column to ai_analysis_results')
+      } catch (e: any) {
+        if (!String(e?.message ?? '').includes('duplicate column')) throw e
+      }
+    }
+  },
+  {
+    id: 17,
+    up: (db) => {
+      // SFace face recognition tables. face_embeddings stores the
+      // 128-D embedding per face detection (one per face per video).
+      // face_clusters groups embeddings into "performer" identities;
+      // the user can name a cluster and the queue will then emit
+      // performer:NAME tags for new media containing that face.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS face_clusters (
+          id TEXT PRIMARY KEY,
+          name TEXT,
+          centroid_b64 TEXT NOT NULL,
+          sample_count INTEGER NOT NULL DEFAULT 0,
+          representative_media_id TEXT,
+          representative_bbox TEXT,
+          created_at REAL NOT NULL,
+          updated_at REAL NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS face_embeddings (
+          id TEXT PRIMARY KEY,
+          media_id TEXT NOT NULL,
+          cluster_id TEXT,
+          frame_idx INTEGER NOT NULL,
+          bbox TEXT NOT NULL,
+          embedding_b64 TEXT NOT NULL,
+          detection_score REAL NOT NULL,
+          created_at REAL NOT NULL,
+          FOREIGN KEY (cluster_id) REFERENCES face_clusters(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_face_emb_media ON face_embeddings(media_id);
+        CREATE INDEX IF NOT EXISTS idx_face_emb_cluster ON face_embeddings(cluster_id);
+        CREATE INDEX IF NOT EXISTS idx_face_clusters_name ON face_clusters(name) WHERE name IS NOT NULL;
+      `)
+      console.log('[Migration v17] Added face_clusters + face_embeddings tables for SFace recognition')
+    }
+  },
+  {
+    id: 18,
+    up: (db) => {
+      // Person ReID body embeddings. Each row is a body crop + 768-D
+      // embedding extracted from a MoveNet pose detection. The
+      // face_cluster_id is populated when a body and face co-occur in
+      // the same frame — letting body crops "inherit" the performer
+      // identity from the face cluster they appear with. Future:
+      // standalone body clustering for face-occluded videos.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS body_embeddings (
+          id TEXT PRIMARY KEY,
+          media_id TEXT NOT NULL,
+          face_cluster_id TEXT,
+          frame_idx INTEGER NOT NULL,
+          bbox TEXT NOT NULL,
+          embedding_b64 TEXT NOT NULL,
+          detection_score REAL NOT NULL,
+          created_at REAL NOT NULL,
+          FOREIGN KEY (face_cluster_id) REFERENCES face_clusters(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_body_emb_media ON body_embeddings(media_id);
+        CREATE INDEX IF NOT EXISTS idx_body_emb_face_cluster ON body_embeddings(face_cluster_id);
+      `)
+      console.log('[Migration v18] Added body_embeddings table for Person ReID')
+    }
+  },
+
+  {
+    id: 19,
+    up: (db) => {
+      // Multi-frame video fingerprint. Stores a JSON array of N hex pHashes
+      // sampled across a video's middle 80%. Catches re-encodes where the
+      // single-frame phash above misses because the keyframe shifted. The
+      // existing `phash` column stays for image/thumb aHash (cheap, single-
+      // shot, used for the AI dedup mode).
+      const cols = db.prepare(`PRAGMA table_info(media)`).all() as Array<{ name: string }>
+      if (!cols.find((c) => c.name === 'multi_phash')) {
+        db.exec(`ALTER TABLE media ADD COLUMN multi_phash TEXT;`)
+        console.log('[Migration v19] Added media.multi_phash for multi-frame dedup')
+      }
+    }
+  },
+
+  {
+    id: 20,
+    up: (db) => {
+      // Repair migration — fills in columns that earlier `CREATE TABLE IF
+      // NOT EXISTS` statements would have set, but which are missing from
+      // databases whose tables predated those migrations. The user
+      // reported "ai:review-list" failing with "no such column:
+      // ar.review_status"; this restores it (plus the other columns from
+      // v8 + downstream additions) without touching existing rows.
+      const cols = db.prepare(`PRAGMA table_info(ai_analysis_results)`).all() as Array<{ name: string }>
+      const has = (name: string) => cols.some((c) => c.name === name)
+      const addCol = (name: string, def: string) => {
+        if (!has(name)) {
+          db.exec(`ALTER TABLE ai_analysis_results ADD COLUMN ${name} ${def};`)
+          console.log(`[Migration v20] Added ai_analysis_results.${name}`)
+        }
+      }
+      // Only run when the table itself exists — fresh DBs already have
+      // these from the v8 CREATE TABLE.
+      if (cols.length > 0) {
+        addCol('review_status', `TEXT NOT NULL DEFAULT 'pending'`)
+        addCol('approved_tag_ids', `TEXT`)
+        addCol('approved_title', `TEXT`)
+        addCol('reviewed_at', `TEXT`)
+        addCol('rich_tags', `TEXT`)
+        addCol('rejection_history', `TEXT`)
+        addCol('suggested_filename', `TEXT`)
+        // Older DBs may also be missing the index — IF NOT EXISTS makes
+        // this safe to re-run.
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_results_review ON ai_analysis_results(review_status);`)
+      }
+    }
+  },
+
+  {
+    id: 21,
+    up: (db) => {
+      // Persist whisper transcripts + create an FTS5 search index over
+      // them. Lets the user find videos by dialogue: "search for 'step
+      // sister'" returns every video where that phrase was spoken.
+      // FTS5 is built into SQLite — no extension load needed.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS media_transcripts (
+          media_id TEXT PRIMARY KEY,
+          text TEXT NOT NULL,
+          language TEXT,
+          source TEXT NOT NULL DEFAULT 'whisper',  -- 'whisper' or 'subtitle' or 'manual'
+          created_at REAL NOT NULL DEFAULT (strftime('%s', 'now')),
+          FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
+        );
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS media_transcripts_fts USING fts5(
+          text,
+          content='media_transcripts',
+          content_rowid='rowid',
+          tokenize='unicode61 remove_diacritics 1'
+        );
+
+        -- Keep FTS in sync via triggers.
+        CREATE TRIGGER IF NOT EXISTS media_transcripts_ai AFTER INSERT ON media_transcripts BEGIN
+          INSERT INTO media_transcripts_fts(rowid, text) VALUES (new.rowid, new.text);
+        END;
+        CREATE TRIGGER IF NOT EXISTS media_transcripts_ad AFTER DELETE ON media_transcripts BEGIN
+          INSERT INTO media_transcripts_fts(media_transcripts_fts, rowid, text) VALUES('delete', old.rowid, old.text);
+        END;
+        CREATE TRIGGER IF NOT EXISTS media_transcripts_au AFTER UPDATE ON media_transcripts BEGIN
+          INSERT INTO media_transcripts_fts(media_transcripts_fts, rowid, text) VALUES('delete', old.rowid, old.text);
+          INSERT INTO media_transcripts_fts(rowid, text) VALUES (new.rowid, new.text);
+        END;
+      `)
+      console.log('[Migration v21] Added media_transcripts + FTS5 index')
+    }
+  },
+
+  {
+    id: 22,
+    up: (db) => {
+      // Persist CLIP image embeddings per media. Enables natural-
+      // language search ("find beach scenes", "POV close-up") by
+      // encoding the query string via CLIP's text encoder and cosine-
+      // matching against the stored image embeddings.
+      //
+      // Embedding stored as base64'd Float32 — keeps the table self-
+      // contained and column type uniform. ViT-B/32 → 512-D,
+      // ViT-L/14 → 768-D — schema doesn't care, the lookup checks
+      // dim at compare time.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS media_clip_embeddings (
+          media_id TEXT PRIMARY KEY,
+          embedding_b64 TEXT NOT NULL,
+          model TEXT NOT NULL DEFAULT 'unknown',
+          created_at REAL NOT NULL DEFAULT (strftime('%s', 'now')),
+          FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_clip_emb_model ON media_clip_embeddings(model);
+      `)
+      console.log('[Migration v22] Added media_clip_embeddings table')
+    }
+  },
+
+  {
+    id: 23,
+    up: (db) => {
+      // Whisparr-style performer watchlist (#56). User flags
+      // performers they want to follow; a background poller hits
+      // Browse sources (TpDB / Reddit / Bluesky / RedGifs / boorus)
+      // looking for new uploads. Hits land in performer_watchlist_hits
+      // as "pending" entries the user can approve/dismiss from the
+      // Performers tab.
+      //
+      // Design notes:
+      //   - performer_name is the lowercase canonical name (matches
+      //     the `performer:NAME` tag the rest of Vault uses).
+      //   - sources is JSON array of source names to poll for this
+      //     performer (so the user can opt-out individual sources
+      //     per performer — useful for AI-art-only performers).
+      //   - last_polled_at / next_poll_at give the scheduler a way
+      //     to stagger polls instead of hammering all sources at once.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS performer_watchlist (
+          performer_name TEXT PRIMARY KEY,
+          face_cluster_id TEXT,                              -- when linked to an existing SFace cluster
+          sources TEXT NOT NULL DEFAULT '[]',                -- JSON array of source ids
+          enabled INTEGER NOT NULL DEFAULT 1,
+          last_polled_at REAL,
+          next_poll_at REAL,
+          poll_interval_hours INTEGER NOT NULL DEFAULT 24,
+          added_at REAL NOT NULL DEFAULT (strftime('%s', 'now')),
+          notes TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_watchlist_next_poll
+          ON performer_watchlist(next_poll_at)
+          WHERE enabled = 1;
+
+        CREATE TABLE IF NOT EXISTS performer_watchlist_hits (
+          id TEXT PRIMARY KEY,
+          performer_name TEXT NOT NULL,
+          source_name TEXT NOT NULL,                          -- 'tpdb' / 'reddit' / 'bluesky' / etc
+          source_id TEXT,                                     -- the upstream item id
+          url TEXT NOT NULL,
+          title TEXT,
+          thumb_url TEXT,
+          released_at REAL,
+          discovered_at REAL NOT NULL DEFAULT (strftime('%s', 'now')),
+          status TEXT NOT NULL DEFAULT 'pending',             -- 'pending' / 'queued' / 'dismissed' / 'downloaded'
+          notes TEXT,
+          FOREIGN KEY (performer_name) REFERENCES performer_watchlist(performer_name) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_watchlist_hits_performer
+          ON performer_watchlist_hits(performer_name);
+        CREATE INDEX IF NOT EXISTS idx_watchlist_hits_status
+          ON performer_watchlist_hits(status, discovered_at DESC);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_watchlist_hits_dedup
+          ON performer_watchlist_hits(performer_name, source_name, source_id);
+      `)
+      console.log('[Migration v23] Added performer_watchlist + performer_watchlist_hits')
+    }
   }
 ]
 
@@ -349,4 +711,37 @@ export function runMigrations(db: Database.Database): void {
       })()
     }
   }
+  // Unconditional schema-drift repair — runs every startup so that
+  // databases whose tables predate later CREATE-IF-NOT-EXISTS additions
+  // get the missing columns added. Idempotent: each addCol guards on
+  // PRAGMA table_info. This is the safety net for cases where a versioned
+  // migration was skipped because schema_version had already advanced.
+  try { repairAiAnalysisResultsColumns(db) } catch (err) {
+    console.warn('[Migrations] Schema-drift repair pass failed (non-fatal):', err)
+  }
+}
+
+/**
+ * Ensure ai_analysis_results has all the columns the application code
+ * expects. Each ALTER TABLE only runs when PRAGMA table_info reports
+ * the column is missing — safe to call repeatedly.
+ */
+function repairAiAnalysisResultsColumns(db: Database.Database): void {
+  const cols = db.prepare(`PRAGMA table_info(ai_analysis_results)`).all() as Array<{ name: string }>
+  if (cols.length === 0) return  // table doesn't exist yet — nothing to repair
+  const has = (name: string) => cols.some((c) => c.name === name)
+  const ensure = (name: string, def: string) => {
+    if (!has(name)) {
+      db.exec(`ALTER TABLE ai_analysis_results ADD COLUMN ${name} ${def};`)
+      console.log(`[Schema-repair] Added ai_analysis_results.${name}`)
+    }
+  }
+  ensure('review_status', `TEXT NOT NULL DEFAULT 'pending'`)
+  ensure('approved_tag_ids', `TEXT`)
+  ensure('approved_title', `TEXT`)
+  ensure('reviewed_at', `TEXT`)
+  ensure('rich_tags', `TEXT`)
+  ensure('rejection_history', `TEXT`)
+  ensure('suggested_filename', `TEXT`)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_results_review ON ai_analysis_results(review_status);`)
 }

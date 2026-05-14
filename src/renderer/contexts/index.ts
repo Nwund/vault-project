@@ -3,3 +3,4 @@
 
 export { ToastProvider, ToastContainer, useToast } from './ToastContext'
 export { GlobalTaskProvider, GlobalProgressBar, useGlobalTasks } from './GlobalTaskContext'
+export { ContextMenuContext, useContextMenu, type ContextMenuState } from './ContextMenuContext'

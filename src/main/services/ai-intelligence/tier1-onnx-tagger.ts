@@ -59,6 +59,83 @@ const ANIME_META_TAGS = new Set([
   'anime style', 'manga style', 'doujinshi', 'visual novel',
 ])
 
+// Tags that are pure noise for an adult content library — always filter them
+// regardless of contentType. WD Tagger emits color-mode + booru-rating
+// artifacts that crowd out useful tags in the Review queue. Keep this list
+// disjoint from ANIME_META_TAGS so the intent stays clear.
+const ALWAYS_FILTERED_TAGS = new Set([
+  // Color mode artifacts (WD Tagger emits these from grayscale/monochrome
+  // frames or from low-saturation thumbnails)
+  'monochrome', 'grayscale', 'greyscale',
+  'desaturated', 'low saturation',
+
+  // Booru rating tags — meaningless to us; we have our own NSFW classifier
+  'rating:general', 'rating:sensitive', 'rating:questionable', 'rating:explicit',
+  'general', 'sensitive', 'questionable', 'explicit',  // bare rating words
+
+  // Booru meta-instructions
+  'tagme', 'translation request', 'commentary request',
+
+  // Quality / resolution noise
+  'highres', 'absurdres', 'incredibly absurdres', 'lowres',
+  'jpeg artifacts', 'compression artifacts',
+
+  // "Looking at viewer" — technically descriptive but it's on virtually every
+  // performer-facing-camera frame and adds zero signal
+  'looking at viewer',
+
+  // Composition / scene-meta tags from WD Tagger that show up on adult content
+  // for no useful reason (a porn frame is rarely tagged "no humans" but the
+  // model still fires it on close-ups; "negative space" is the same kind of
+  // false positive). Added in response to live-log noise.
+  'no humans', 'no human', '0girls', '0boys',
+  'negative space', 'simple background', 'plain background',
+  'blurry', 'blurry background', 'depth of field',
+  'censored', 'uncensored', 'mosaic censoring', 'bar censor', 'heart censor',
+  'real life', 'realistic', 'photograph', 'photorealistic',  // boring meta
+
+  // Genre / composition labels WD Tagger emits on REAL frames as if they were
+  // illustrations — useless for an adult library. (User reported "comic 63%"
+  // and "portrait 61%" landing on a video of a teen on a bed.)
+  'comic', 'portrait', 'wallpaper', 'cover',
+  'dark', 'bright', 'glowing', 'shiny',  // single-word color/light artifacts
+  // Note: 'group' and 'duo' are NOT filtered anymore — they're legitimate
+  // atomic tags per the canonical vocab (e.g. "group sex" decomposes to
+  // "group" + "sex", and the user picker treats them as filterable atoms).
+
+  // More WD noise spotted in user's review: text focus is meaningless for
+  // adult video frames, "clothed" actively pollutes (we want explicit context),
+  // selfie is a phone-camera artifact tag, "screenshot" / "ui" / "logo" same.
+  'text focus', 'text', 'speech bubble',
+  'clothed', 'fully clothed', 'selfie',
+  'screenshot', 'ui', 'logo', 'watermark',
+  'official', 'commentary', 'artist name',
+
+  // Hair colors — user prefers these in title/filename, never as tags
+  // (2026-05-09 feedback). WD Tagger fires multiple hair-color tags at near-
+  // equal confidence on the same frame; that's worse than dropping them all.
+  'blonde', 'brunette', 'redhead', 'red head',
+  'blonde hair', 'brown hair', 'black hair', 'red hair',
+  'gray hair', 'grey hair', 'silver hair', 'white hair',
+  'pink hair', 'blue hair', 'purple hair', 'green hair',
+  'dyed hair', 'bleached hair',
+])
+
+// Exclusive groups — when WD Tagger shotguns multiple tags from one of these
+// sets at near-equal confidence (it does this constantly for hair color +
+// settings), keep only the single highest-confidence member of each group
+// after aggregation. This stops users seeing "redhead 62% / blonde 62% /
+// gray hair 62% / black hair 62%" all at once on the same video.
+const EXCLUSIVE_TAG_GROUPS: ReadonlyArray<ReadonlySet<string>> = [
+  new Set(['blonde', 'blonde hair', 'brunette', 'brunette hair', 'brown hair',
+    'redhead', 'red hair', 'ginger', 'black hair', 'dark hair', 'gray hair',
+    'grey hair', 'silver hair', 'white hair']),
+  new Set(['bedroom', 'bathroom', 'kitchen', 'living room', 'office',
+    'outdoors', 'public', 'beach', 'pool', 'gym', 'shower', 'bathtub',
+    'car interior']),
+  new Set(['solo', 'duo', 'threesome', 'gangbang', 'group sex']),  // singular categorization
+]
+
 // Tags to add based on NSFWJS category - applied to ALL content for better classification
 const NSFWJS_CATEGORY_TAGS: Record<string, string[]> = {
   'porn': ['explicit', 'nsfw', 'adult content', 'real', 'live action'],
@@ -221,12 +298,51 @@ export class Tier1OnnxTagger {
         console.log(`[Tier1] NSFW classifier loaded (input: ${this.nsfwInputName})`)
       }
 
-      // Load WD Tagger
-      const taggerPath = this.modelDownloader.getModelPath('wd-tagger-v3.onnx')
+      // Load WD Tagger. Variant picked from settings:
+      //   'swinv2' (default)  → wd-tagger-v3.onnx (467MB, original)
+      //   'vit'               → wd-vit-tagger-v3.onnx (343MB, ~25% smaller)
+      //   'pixai'             → pixai-tagger-v0_9.onnx (anime/cosplay
+      //                          character specialist; recognizes named
+      //                          characters like "asuka langley" that
+      //                          WD Tagger doesn't know)
+      //   'joytag'            → joytag.onnx (RedRocket/JoyTag — 200k+ tag
+      //                          vocabulary including hard-edge NSFW
+      //                          tags that WD prunes; good "second
+      //                          opinion" against SwinV2)
+      //   'idolsankaku'       → idolsankaku-eva02-tagger-v1.onnx
+      //                          (alternate anime/cosplay specialist
+      //                          trained on idolsankaku boards; some
+      //                          characters PixAI misses)
+      // Falls back to whichever model is present when the picked one
+      // isn't on disk.
+      let wdVariant = 'swinv2'
+      try {
+        const { getSettings } = await import('../../settings')
+        wdVariant = ((getSettings().ai as any)?.wdTaggerVariant ?? 'swinv2').toString().toLowerCase()
+      } catch { /* default */ }
+      const swinPath = this.modelDownloader.getModelPath('wd-tagger-v3.onnx')
+      const vitPath = this.modelDownloader.getModelPath('wd-vit-tagger-v3.onnx')
+      const pixaiPath = this.modelDownloader.getModelPath('pixai-tagger-v0_9.onnx')
+      const joytagPath = this.modelDownloader.getModelPath('joytag.onnx')
+      const idolPath = this.modelDownloader.getModelPath('idolsankaku-eva02-tagger-v1.onnx')
+      let taggerPath: string
+      if (wdVariant === 'pixai' && fs.existsSync(pixaiPath)) taggerPath = pixaiPath
+      else if (wdVariant === 'joytag' && fs.existsSync(joytagPath)) taggerPath = joytagPath
+      else if (wdVariant === 'idolsankaku' && fs.existsSync(idolPath)) taggerPath = idolPath
+      else if (wdVariant === 'vit' && fs.existsSync(vitPath)) taggerPath = vitPath
+      else if (fs.existsSync(swinPath)) taggerPath = swinPath
+      else if (fs.existsSync(vitPath)) taggerPath = vitPath
+      else if (fs.existsSync(joytagPath)) taggerPath = joytagPath
+      else if (fs.existsSync(pixaiPath)) taggerPath = pixaiPath
+      else taggerPath = idolPath
       if (fs.existsSync(taggerPath)) {
         this.taggerSession = await ort.InferenceSession.create(taggerPath, sessionOptions)
         this.taggerInputName = this.taggerSession.inputNames[0] || 'input'
-        console.log(`[Tier1] WD Tagger loaded (input: ${this.taggerInputName})`)
+        const variantLabel = taggerPath === pixaiPath ? 'pixai'
+          : taggerPath === joytagPath ? 'joytag'
+          : taggerPath === idolPath ? 'idolsankaku'
+          : taggerPath === vitPath ? 'vit' : 'swinv2'
+        console.log(`[Tier1] WD Tagger loaded — variant: ${variantLabel} (input: ${this.taggerInputName})`)
       }
 
       // Load NudeNet classifier
@@ -428,6 +544,15 @@ export class Tier1OnnxTagger {
       const avgConfidence = data.sum / data.count
       const labelLower = label.toLowerCase().replace(/_/g, ' ')
 
+      // ALWAYS-filtered noise tags (color mode artifacts, booru ratings, etc.)
+      // These are useless for an adult content library regardless of contentType,
+      // and were the source of "monochrome 90%" / "grayscale 90%" review-queue
+      // pollution.
+      if (ALWAYS_FILTERED_TAGS.has(labelLower)) {
+        filteredCount++
+        continue
+      }
+
       // For real content, filter out anime META tags
       if (contentType === 'real') {
         if (ANIME_META_TAGS.has(labelLower)) {
@@ -464,75 +589,100 @@ export class Tier1OnnxTagger {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Generate dedicated CATEGORY tags (prefixed with "category:") for filtering
-    // These are high-level classifications useful for browsing/filtering
+    // High-signal atomic tags from cross-model evidence (gender / count / body
+    // type). User feedback 2026-05-09: tags must look like real porn-site tags
+    // — no "category:" prefix, no compound buckets. Just plain atomic words
+    // the user combines in the picker. NSFWJS rating tags are already added
+    // above via NSFWJS_CATEGORY_TAGS, so no need to duplicate them here.
     // ═══════════════════════════════════════════════════════════════════════════
-    const categoryTags: Array<{ label: string; confidence: number }> = []
+    const derivedTags: Array<{ label: string; confidence: number }> = []
 
-    // Gender detection (from NudeNet face detection)
-    const hasFemale = aggregatedTags.some(t => t.label.toLowerCase().includes('female face') || t.label.toLowerCase().includes('female'))
-    const hasMale = aggregatedTags.some(t => t.label.toLowerCase().includes('male face') || t.label.toLowerCase().includes('male'))
-    // Use exposed body parts as hints
-    const hasFemaleParts = aggregatedTags.some(t =>
-      ['exposed breasts', 'covered breasts', 'exposed pussy', 'covered pussy'].includes(t.label.toLowerCase())
-    )
-    const hasMaleParts = aggregatedTags.some(t =>
-      ['male chest', 'exposed penis'].includes(t.label.toLowerCase())
-    )
-    if (hasFemale || hasFemaleParts) {
-      const conf = aggregatedTags.find(t => t.label.toLowerCase().includes('female'))?.confidence || 0.7
-      categoryTags.push({ label: 'category:female', confidence: conf })
+    const findConfidence = (predicate: (label: string) => boolean): number =>
+      aggregatedTags.find(t => predicate(t.label.toLowerCase()))?.confidence ?? 0.7
+
+    // Gender — emit plain "female" / "male" when NudeNet face / body-part
+    // signal agrees with WD Tagger gender hints.
+    const hasFemaleSignal = aggregatedTags.some(t => {
+      const l = t.label.toLowerCase()
+      return l.includes('female face') || l === 'female' ||
+        ['exposed breasts', 'covered breasts', 'exposed pussy', 'covered pussy'].includes(l)
+    })
+    const hasMaleSignal = aggregatedTags.some(t => {
+      const l = t.label.toLowerCase()
+      return l.includes('male face') || l === 'male' ||
+        ['male chest', 'exposed penis'].includes(l)
+    })
+    if (hasFemaleSignal) {
+      derivedTags.push({ label: 'female', confidence: findConfidence(l => l.includes('female')) })
     }
-    if (hasMale || hasMaleParts) {
-      const conf = aggregatedTags.find(t => t.label.toLowerCase().includes('male'))?.confidence || 0.7
-      categoryTags.push({ label: 'category:male', confidence: conf })
-    }
-
-    // Subject count (from CLIP)
-    const hasSolo = aggregatedTags.some(t => t.label.toLowerCase() === 'solo')
-    const hasCouple = aggregatedTags.some(t => t.label.toLowerCase() === 'couple')
-    const hasGroup = aggregatedTags.some(t => t.label.toLowerCase() === 'group')
-    if (hasSolo) categoryTags.push({ label: 'category:solo', confidence: 0.8 })
-    if (hasCouple) categoryTags.push({ label: 'category:couple', confidence: 0.8 })
-    if (hasGroup) categoryTags.push({ label: 'category:group', confidence: 0.8 })
-
-    // Body type (from CLIP)
-    const bodyTypes = ['slim', 'athletic', 'curvy', 'plus size']
-    for (const bt of bodyTypes) {
-      const match = aggregatedTags.find(t => t.label.toLowerCase() === bt)
-      if (match) {
-        categoryTags.push({ label: `category:${bt.replace(' ', '-')}`, confidence: match.confidence })
-      }
+    if (hasMaleSignal) {
+      derivedTags.push({ label: 'male', confidence: findConfidence(l => l === 'male' || l.includes('male face')) })
     }
 
-    // Content rating category
-    if (nsfwCategory === 'normal') {
-      categoryTags.push({ label: 'category:sfw', confidence: nsfwConfidence })
-    } else if (nsfwCategory === 'sexy') {
-      categoryTags.push({ label: 'category:suggestive', confidence: nsfwConfidence })
-    } else if (nsfwCategory === 'porn' || nsfwCategory === 'hentai') {
-      categoryTags.push({ label: 'category:explicit', confidence: nsfwConfidence })
+    // Subject count (CLIP zero-shot already produces "solo"/"couple"/"group"
+    // as plain atomic tags via processFrame; nothing to re-emit here. We only
+    // make sure a synonymous "duo" gets surfaced when CLIP picked "couple",
+    // because the canonical vocab includes both.)
+    if (aggregatedTags.some(t => t.label.toLowerCase() === 'couple')) {
+      derivedTags.push({ label: 'duo', confidence: 0.75 })
     }
 
-    // Content type category
+    // Body type (CLIP gives plain "slim"/"athletic"/"curvy"/"plus size"
+    // already; just ensure they survive aggregation as atomic tags rather
+    // than being filtered by the EXCLUSIVE_TAG_GROUPS dedupe later. These
+    // are passthrough — no prefix, no rewrapping.)
+    // (No code needed — CLIP output already in aggregatedTags.)
+
+    // Content type → emit "animated"/"live action" as plain atomic tags
+    // matching canonical vocabulary. These are richer than NSFWJS's
+    // category-tag set when the underlying signal is high-confidence.
     if (contentType === 'anime') {
-      categoryTags.push({ label: 'category:animated', confidence: 0.9 })
+      derivedTags.push({ label: 'animated', confidence: 0.9 })
     } else if (contentType === 'real') {
-      categoryTags.push({ label: 'category:live-action', confidence: 0.9 })
+      derivedTags.push({ label: 'live action', confidence: 0.9 })
     }
 
-    // Add category tags to the aggregated list
-    for (const cat of categoryTags) {
-      if (!aggregatedTags.some(t => t.label.toLowerCase() === cat.label.toLowerCase())) {
-        aggregatedTags.push(cat)
+    // Merge — skip duplicates against existing aggregated tags
+    for (const tag of derivedTags) {
+      if (!aggregatedTags.some(t => t.label.toLowerCase() === tag.label.toLowerCase())) {
+        aggregatedTags.push(tag)
       }
     }
 
-    console.log(`[Tier1] Generated ${categoryTags.length} category tags: ${categoryTags.map(c => c.label).join(', ')}`)
+    console.log(`[Tier1] Derived ${derivedTags.length} atomic tags: ${derivedTags.map(c => c.label).join(', ')}`)
 
     // Sort by confidence and take top 60 (increased to allow category tags)
     aggregatedTags.sort((a, b) => b.confidence - a.confidence)
-    const topTags = aggregatedTags.slice(0, 60)
+
+    // Apply exclusive-group filter — for each group of mutually-exclusive
+    // tags (e.g. hair colors, room types), keep only the single highest-
+    // confidence member. Stops the "redhead 62% + blonde 62% + black hair 62%"
+    // shotgun output WD Tagger produces.
+    const droppedFromExclusive: string[] = []
+    const keptByGroup = new WeakMap<ReadonlySet<string>, string>()
+    const exclusiveFiltered = aggregatedTags.filter((t) => {
+      const labelLower = t.label.toLowerCase().replace(/_/g, ' ')
+      for (const group of EXCLUSIVE_TAG_GROUPS) {
+        if (group.has(labelLower)) {
+          const existing = keptByGroup.get(group)
+          if (existing === undefined) {
+            keptByGroup.set(group, labelLower)
+            return true
+          } else {
+            // We sorted desc by confidence, so the first member we see is
+            // already the highest — drop this one.
+            droppedFromExclusive.push(t.label)
+            return false
+          }
+        }
+      }
+      return true
+    })
+    if (droppedFromExclusive.length > 0) {
+      console.log(`[Tier1] Dropped ${droppedFromExclusive.length} tags from exclusive groups: ${droppedFromExclusive.slice(0, 8).join(', ')}`)
+    }
+
+    const topTags = exclusiveFiltered.slice(0, 60)
 
     if (contentType === 'real') {
       console.log(`[Tier1] Real content: ${topTags.length} tags (${filteredCount} anime tags filtered, ${boostedCount} tags boosted)`)
@@ -757,25 +907,36 @@ export class Tier1OnnxTagger {
   }
 
   /**
-   * Get CLIP text embedding for a single text
+   * Get CLIP text embedding for a single text. Uses the real CLIP BPE
+   * tokenizer when the user has dropped bpe_simple_vocab_16e6.txt.gz
+   * (Apache-2.0) at <userData>/models/clip-vocab.txt.gz. Falls back
+   * to a character-code placeholder when the vocab isn't installed —
+   * the fixed CLIP_TAG_CATEGORIES set still gives useful relative
+   * ordering even with the placeholder, but arbitrary-text zero-shot
+   * scoring is only meaningful with the real tokenizer.
    */
   private async getClipTextEmbedding(text: string): Promise<Float32Array> {
-    // Simple tokenization (CLIP uses BPE, but we'll use a simplified version)
-    // This is a placeholder - ideally you'd use the proper CLIP tokenizer
     const maxLen = 77
-    const tokens = new BigInt64Array(maxLen)
+    let tokens: BigInt64Array | null = null
 
-    // Start token
-    tokens[0] = BigInt(49406)
-
-    // Very simple character-level tokenization (not ideal but works for basic cases)
-    const chars = text.toLowerCase().slice(0, maxLen - 2)
-    for (let i = 0; i < chars.length; i++) {
-      tokens[i + 1] = BigInt(chars.charCodeAt(i))
+    // Try real BPE first.
+    try {
+      const { encodeClipText } = await import('./clip-bpe-tokenizer')
+      tokens = encodeClipText(text)
+    } catch (err) {
+      console.warn('[Tier1 CLIP] BPE tokenizer load failed:', err)
     }
 
-    // End token
-    tokens[chars.length + 1] = BigInt(49407)
+    if (!tokens) {
+      // Fallback: character-code placeholder.
+      tokens = new BigInt64Array(maxLen)
+      tokens[0] = BigInt(49406)
+      const chars = text.toLowerCase().slice(0, maxLen - 2)
+      for (let i = 0; i < chars.length; i++) {
+        tokens[i + 1] = BigInt(chars.charCodeAt(i))
+      }
+      tokens[chars.length + 1] = BigInt(49407)
+    }
 
     const inputTensor = new ort.Tensor('int64', tokens, [1, maxLen])
     const feeds: Record<string, any> = { input_ids: inputTensor }
@@ -830,6 +991,12 @@ export class Tier1OnnxTagger {
       const feeds: Record<string, any> = { pixel_values: imageInput }
       const output = await this.clipVisionSession.run(feeds)
       const imageEmbedding = new Float32Array((Object.values(output)[0] as any).data)
+      // Stash the raw embedding so callers (processing-queue) can
+      // grab it and persist to media_clip_embeddings for the CLIP
+      // search box. Stored on the instance because returning it
+      // through the existing return tuple would require touching
+      // every caller's destructure pattern.
+      ;(this as any).lastImageEmbedding = imageEmbedding
 
       // Normalize image embedding
       const imageNorm = Math.sqrt(imageEmbedding.reduce((sum, val) => sum + val * val, 0))

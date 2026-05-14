@@ -210,7 +210,10 @@ OUTPUT FORMAT:
 {"tags":[{"name":"tag name","confidence":0.85}]}`
 
       const requestBody = {
-        model: 'qwen3-vl-235b-a22b',
+        // Venice's only "most_uncensored" + vision-capable model — verified
+        // 2026-05-08 via /api/v1/models. The default vision model refuses
+        // adult content, which is the entire workload here.
+        model: 'venice-uncensored-1-2',
         messages: [
           { role: 'system', content: systemPrompt },
           {
@@ -224,7 +227,9 @@ OUTPUT FORMAT:
         max_tokens: 512,
         temperature: 0.3,
         venice_parameters: {
-          include_venice_system_prompt: false
+          include_venice_system_prompt: false,
+          enable_web_search: 'off',
+          strip_thinking_response: true
         }
       }
 

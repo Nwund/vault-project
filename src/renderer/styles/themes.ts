@@ -34,6 +34,11 @@ export type ClassicThemeId =
   | 'lavender-mist'
   | 'sage'
   | 'coral-reef'
+  // Newest classic dark themes (2026 round)
+  | 'synthwave'         // 80s neon — hot pink + cyan + deep purple
+  | 'cyber-noir'        // Cyberpunk black + acid green + neon red
+  | 'liquid-mercury'    // Silvery iridescent + cool blue shifts
+  | 'tropical-storm'    // Teal + electric blue + lightning yellow
 
 // Hypersexual goon themes
 export type GoonThemeId =
@@ -1879,6 +1884,166 @@ export const themes: Record<ThemeId, Theme> = {
       glow: '0 0 35px rgba(148, 0, 211, 0.45), 0 0 70px rgba(255, 0, 255, 0.25)'
     },
     blur: { sm: '8px', md: '16px', lg: '32px' }
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 2026 ROUND — Synthwave / Cyberpunk Noir / Liquid Mercury / Tropical Storm
+  // ──────────────────────────────────────────────────────────────────────────
+
+  synthwave: {
+    id: 'synthwave',
+    name: 'Synthwave',
+    description: '80s retro neon — hot pink and cyan over deep indigo. Outrun energy.',
+    isDark: true,
+    colors: {
+      background: '#0a0420',
+      backgroundAlt: '#1a0830',
+      surface: 'rgba(255, 0, 170, 0.05)',
+      surfaceHover: 'rgba(255, 0, 170, 0.10)',
+      surfaceActive: 'rgba(255, 0, 170, 0.16)',
+      border: 'rgba(0, 240, 255, 0.18)',
+      borderHover: 'rgba(0, 240, 255, 0.32)',
+      borderActive: 'rgba(255, 0, 170, 0.45)',
+      text: '#fdf6ff',
+      textMuted: 'rgba(253, 246, 255, 0.7)',
+      textSubtle: 'rgba(253, 246, 255, 0.45)',
+      primary: '#ff2dd1',
+      primaryHover: '#ff66e0',
+      primaryMuted: 'rgba(255, 45, 209, 0.28)',
+      secondary: '#00f0ff',
+      secondaryHover: '#5cf6ff',
+      success: '#00ff9f',
+      warning: '#ffd166',
+      error: '#ff4070',
+      info: '#7cf2ff',
+      gradient: 'linear-gradient(135deg, #1a0830 0%, #6b2096 40%, #ff2dd1 80%, #00f0ff 100%)',
+      glow: 'rgba(255, 45, 209, 0.55)',
+      overlay: 'rgba(10, 4, 32, 0.88)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(0, 0, 0, 0.6)',
+      md: '0 4px 14px rgba(0, 0, 0, 0.55), 0 0 18px rgba(255, 45, 209, 0.18)',
+      lg: '0 10px 40px rgba(0, 0, 0, 0.7), 0 0 36px rgba(0, 240, 255, 0.22)',
+      glow: '0 0 30px rgba(255, 45, 209, 0.55), 0 0 60px rgba(0, 240, 255, 0.35)'
+    },
+    blur: { sm: '8px', md: '18px', lg: '36px' }
+  },
+
+  'cyber-noir': {
+    id: 'cyber-noir',
+    name: 'Cyber Noir',
+    description: 'Cyberpunk black with acid green primary and neon red accents. Dystopian and sharp.',
+    isDark: true,
+    colors: {
+      background: '#04060a',
+      backgroundAlt: '#0a0e14',
+      surface: 'rgba(57, 255, 20, 0.04)',
+      surfaceHover: 'rgba(57, 255, 20, 0.08)',
+      surfaceActive: 'rgba(255, 23, 68, 0.16)',
+      border: 'rgba(57, 255, 20, 0.14)',
+      borderHover: 'rgba(57, 255, 20, 0.28)',
+      borderActive: 'rgba(255, 23, 68, 0.4)',
+      text: '#e7ffe9',
+      textMuted: 'rgba(231, 255, 233, 0.7)',
+      textSubtle: 'rgba(231, 255, 233, 0.45)',
+      primary: '#39ff14',
+      primaryHover: '#7aff5e',
+      primaryMuted: 'rgba(57, 255, 20, 0.25)',
+      secondary: '#ff1744',
+      secondaryHover: '#ff5e7e',
+      success: '#39ff14',
+      warning: '#ffd400',
+      error: '#ff1744',
+      info: '#00e5ff',
+      gradient: 'linear-gradient(135deg, #04060a 0%, #0d2615 50%, #39ff14 100%)',
+      glow: 'rgba(57, 255, 20, 0.45)',
+      overlay: 'rgba(4, 6, 10, 0.94)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(0, 0, 0, 0.7)',
+      md: '0 4px 14px rgba(0, 0, 0, 0.7), 0 0 14px rgba(57, 255, 20, 0.18)',
+      lg: '0 12px 42px rgba(0, 0, 0, 0.85), 0 0 38px rgba(255, 23, 68, 0.22)',
+      glow: '0 0 26px rgba(57, 255, 20, 0.55), 0 0 50px rgba(255, 23, 68, 0.3)'
+    },
+    blur: { sm: '6px', md: '14px', lg: '30px' }
+  },
+
+  'liquid-mercury': {
+    id: 'liquid-mercury',
+    name: 'Liquid Mercury',
+    description: 'Silvery iridescent surfaces with cool blue undertones. Like a chrome chrome dream.',
+    isDark: true,
+    colors: {
+      background: '#0c1218',
+      backgroundAlt: '#161e28',
+      surface: 'rgba(186, 218, 255, 0.05)',
+      surfaceHover: 'rgba(186, 218, 255, 0.09)',
+      surfaceActive: 'rgba(186, 218, 255, 0.14)',
+      border: 'rgba(186, 218, 255, 0.12)',
+      borderHover: 'rgba(186, 218, 255, 0.22)',
+      borderActive: 'rgba(186, 218, 255, 0.36)',
+      text: '#f1f5fb',
+      textMuted: 'rgba(241, 245, 251, 0.7)',
+      textSubtle: 'rgba(241, 245, 251, 0.42)',
+      primary: '#bcd5ff',
+      primaryHover: '#dde9ff',
+      primaryMuted: 'rgba(188, 213, 255, 0.22)',
+      secondary: '#8ad8ff',
+      secondaryHover: '#b8e7ff',
+      success: '#7df3c4',
+      warning: '#ffe28a',
+      error: '#ff9aa8',
+      info: '#9adfff',
+      gradient: 'linear-gradient(135deg, #2c3e50 0%, #5d728a 35%, #bcd5ff 70%, #ffffff 100%)',
+      glow: 'rgba(188, 213, 255, 0.45)',
+      overlay: 'rgba(12, 18, 24, 0.85)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(8, 12, 16, 0.5)',
+      md: '0 6px 18px rgba(8, 12, 16, 0.55), 0 0 12px rgba(188, 213, 255, 0.15)',
+      lg: '0 14px 44px rgba(8, 12, 16, 0.7), 0 0 32px rgba(188, 213, 255, 0.22)',
+      glow: '0 0 24px rgba(188, 213, 255, 0.45), 0 0 60px rgba(138, 216, 255, 0.25)'
+    },
+    blur: { sm: '10px', md: '22px', lg: '44px' }
+  },
+
+  'tropical-storm': {
+    id: 'tropical-storm',
+    name: 'Tropical Storm',
+    description: 'Deep teal sea with electric blue lightning and gold sun-flares. Stormy and alive.',
+    isDark: true,
+    colors: {
+      background: '#031218',
+      backgroundAlt: '#062028',
+      surface: 'rgba(0, 200, 220, 0.05)',
+      surfaceHover: 'rgba(0, 200, 220, 0.09)',
+      surfaceActive: 'rgba(0, 200, 220, 0.14)',
+      border: 'rgba(0, 200, 220, 0.16)',
+      borderHover: 'rgba(0, 200, 220, 0.3)',
+      borderActive: 'rgba(255, 215, 64, 0.36)',
+      text: '#e8fafc',
+      textMuted: 'rgba(232, 250, 252, 0.7)',
+      textSubtle: 'rgba(232, 250, 252, 0.45)',
+      primary: '#00d4e5',
+      primaryHover: '#5cefff',
+      primaryMuted: 'rgba(0, 212, 229, 0.25)',
+      secondary: '#ffd740',
+      secondaryHover: '#ffe072',
+      success: '#3ee08e',
+      warning: '#ffd740',
+      error: '#ff6b6b',
+      info: '#00d4e5',
+      gradient: 'linear-gradient(135deg, #031218 0%, #064d5e 35%, #00d4e5 75%, #ffd740 100%)',
+      glow: 'rgba(0, 212, 229, 0.55)',
+      overlay: 'rgba(3, 18, 24, 0.9)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(0, 0, 0, 0.55)',
+      md: '0 6px 18px rgba(0, 0, 0, 0.55), 0 0 16px rgba(0, 212, 229, 0.18)',
+      lg: '0 14px 44px rgba(0, 0, 0, 0.7), 0 0 36px rgba(255, 215, 64, 0.18)',
+      glow: '0 0 28px rgba(0, 212, 229, 0.55), 0 0 60px rgba(255, 215, 64, 0.25)'
+    },
+    blur: { sm: '8px', md: '18px', lg: '36px' }
   }
 }
 

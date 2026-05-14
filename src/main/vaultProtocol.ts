@@ -115,7 +115,16 @@ function getMimeType(filePath: string): string | undefined {
     '.png': 'image/png',
     '.gif': 'image/gif',
     '.webp': 'image/webp',
-    '.bmp': 'image/bmp'
+    '.bmp': 'image/bmp',
+    // Audio — needed for the Xyrene Settings sound previews and for the
+    // future sound-engine playback layer.
+    '.mp3': 'audio/mpeg',
+    '.wav': 'audio/wav',
+    '.ogg': 'audio/ogg',
+    '.m4a': 'audio/mp4',
+    '.flac': 'audio/flac',
+    '.aac': 'audio/aac',
+    '.opus': 'audio/opus',
   }
   return mimeTypes[ext]
 }

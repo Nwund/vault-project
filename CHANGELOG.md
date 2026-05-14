@@ -3,6 +3,98 @@
 This document contains the complete development history of Vault, including all completed tasks, bug fixes, and feature implementations organized by session.
 
 For current development guidance, see **[DEVELOPMENT.md](DEVELOPMENT.md)**.
+For per-session work logs (the live ground truth), see **[SESSION_NOTES.md](SESSION_NOTES.md)**.
+
+---
+
+## 2026-05-10 — AI tagger pipeline buildout + cross-device + Spotify daylist + App.tsx split POC
+
+Day-2 shipment closing all 81 formal tasks. Builds on yesterday's foundation.
+
+### AI tagger — final pipeline shape
+- **content_analyzer audit doc** at `docs/CONTENT_ANALYZER_AUDIT.md` — port verdicts for 12 prior-art features.
+- **Filename signal layer** — 150-keyword catalog → tag hints; studio detection (Brazzers/Vixen/etc); 3-way filename assessment (`generate` / `clean` / `ok`); duration bucket sentence injected into Venice prompt.
+- **Multi-frame consensus voting** — per-tag `frameCount/totalFrames` + per-video consensus stats. Review UI shows agreement chips (12/12 green, 3/12 amber).
+- **Tagger Quality dashboard** in AI Tools → Utilities — library-wide consensus + most-disagreed tags + one-click re-analyze.
+- **Library-wide rejection patterns** — aggregates `rejection_history` across all videos, injects as soft prior into every Tier 2 call. Was per-video only.
+- **Library server-side pagination** — `media:search` returns `{items, total}`. Library fetches 60-row pages instead of 30k-row whole result.
+
+### Spotify-style daylist (#47)
+- New `ai:daily-mix` IPC with 6 hour-bucket mood profiles (Morning Soft / Daytime Casual / Afternoon Mix / Primetime / Late Night / Insomnia Hour). Sessions sidebar gradient button → materializes as a real playlist named after the current mood.
+
+### Cross-device access (#26)
+- Reused the existing mobile-sync HTTP server (range streaming + bearer auth already there).
+- Tailscale detection (100.64.0.0/10 + interface names) + LAN detection + bearer token generator.
+- New Cross-Device Access card in Settings → Services with categorized URL groups.
+
+### PMV editor polish (#20)
+- Video cards now have hover-preview (matches Brainwash + Library + Review pattern). 1.5s clips × 4, 600ms hover delay.
+
+### App.tsx split (#48)
+- Migration plan at `docs/APP_TSX_SPLIT_PLAN.md` — 5 phases covering ~45 inline components.
+- `AboutPage` extracted to `src/renderer/pages/AboutPage.tsx` as POC. App.tsx down 21,308 → 21,150 lines.
+
+### Fast Refresh round 2
+- After yesterday's `useContextMenu` un-export, the warning moved to `useGlobalTasks` and `useToast`. Both file-local now. The one external consumer (UrlDownloaderPanel) re-routed to `../contexts` (canonical source). App.tsx hot-reloads cleanly.
+
+---
+
+## 2026-05-09 — Major Xyrene + Sound Engine + Voice Commands Release
+
+Largest single-day shipment in the project so far: **65 of 75 tracked tasks completed**.
+
+### AI tagger pipeline
+- Multi-frame analysis with dynamic intro/outro tolerance + scene-change detection.
+- Smallest-first queue order with stage-weighted + queue-weighted progress bars.
+- Atomic tag system with porn-site vocabulary (`canonical-tags.ts` is ground truth).
+- Tag co-suggestions and 1→N redirects (e.g. `teen girl` → `teen` + `female`).
+- Cleanup-migration IPC that preserves user curation when renaming tags.
+- Title + description regeneration buttons in the Review queue.
+- Rejection feedback loop — auto-requeues with prior-attempt context for divergent re-analysis.
+- Venice API key encrypted via Electron `safeStorage` with masked UI.
+
+### Xyrene watch-along + sound engine (the major arc)
+- Watch-With-Xyrene voice mode — vision frames → Venice commentary → XTTS synth, primary-player-gated.
+- Sound library expanded to 18 categories with per-slot enable toggle.
+- Per-curated-sound loudness analysis (ffmpeg `volumedetect` → sidecar JSON, intensity 0-1).
+- Pattern engine (`RhythmPattern[]`) — replaces metronomic loop with realistic masturbation rhythm patterns.
+- Plap-priority sampling + vibrator vs fingering mutex.
+- Reusable `XyreneSoundEngine` class (preview / continuous modes) + `useXyreneSoundEngine` hook.
+- Phase progression driven by video position (intro / body / build / climax / cooldown).
+- Cloned-voice climax overlay — XTTS synth in selected voice on top of sample bursts.
+- Voice picker for cloned voices (XTTS server `/voices` + per-voice synth preview).
+- Voice commands via Chrome's `webkitSpeechRecognition` (no external STT server) — pause/play/next/prev/forward/rewind/louder/quieter/climax/shush/talk-to-me.
+- Editable brain (5 sex-only categories) + bootstrap from xyrene-portable bibles + auto-append session learnings + recent-learnings log panel.
+- "Goon bud" tone refactor in system prompt.
+
+### UX polish
+- Library Tools dropdown reorganized + opaque (`bg-zinc-950` + `text-white`).
+- More-Tools popup in FloatingVideoPlayer portaled to body to escape overflow clipping.
+- Vertical volume slider with pointer capture (replaces buggy horizontal `<input type="range">`).
+- HUD-aware button positioning (xy + engine pills slide with title bar visibility).
+- Feed: drip-loads next 50 when within 50 of buffer end. 500-video memory cap.
+- GoonWall: preload slider lifted from 200-cap to `videos.length`. "All (N)" shortcut.
+- Brainwash: GIF Maker tab merged into "Media Maker"; Templates panel Create New + AI Generate.
+- Sessions: "Suggest from collection" — Venice picks 5 themed playlists from your tag distribution.
+- Thumbnails: `thumbnail=120` filter fallback when timestamp captures fail; rebuild-missing IPC + Command Palette entry.
+
+### Infrastructure
+- userData path drift bug fixed in `main.ts` — was sending writes into `vault/GPUCache/vault/`. One-time startup migration pulls polluted subtrees back.
+- Vite Fast Refresh works on App.tsx (un-exported `useContextMenu` to remove mixed-export warning).
+- Bootstrap protocol (`CLAUDE.md` + `SESSION_NOTES.md`) live for cross-session continuity.
+- Vault folder consolidated to single canonical `C:\dev\vault` path.
+
+### Open follow-ups (not started this session)
+- #19 audit content_analyzer Python tool (research)
+- #20 PMV editor overhaul (4000-line file, multi-session)
+- #21 scale to 10s of thousands of videos (server-pagination + count-query split)
+- #26 cross-device collection access (Phase 2 Tailscale, needs auth + sync design)
+- #47 Spotify-style daylist (deferred)
+- #48 split App.tsx into per-page files (huge mechanical refactor)
+
+### Known issues
+- Venice API key was lost in the userData migration (safeStorage tied to OS state) — must be re-entered at Settings → AI.
+- App.tsx `[BABEL] code generator deoptimised` warning fires on every build (build-time only, runtime unaffected; #48 is the fix).
 
 ---
 

@@ -366,8 +366,8 @@ export class ImportService extends EventEmitter {
     if (options?.importStats !== false && data.mediaStats) {
       for (const stat of data.mediaStats) {
         try {
-          this.db.raw.prepare('INSERT OR REPLACE INTO media_stats (mediaId, viewCount, rating, lastViewedAt) VALUES (?, ?, ?, ?)')
-            .run(stat.mediaId, stat.viewCount, stat.rating, stat.lastViewedAt)
+          this.db.raw.prepare('INSERT OR REPLACE INTO media_stats (mediaId, views, rating, lastViewedAt, updatedAt) VALUES (?, ?, ?, ?, ?)')
+            .run(stat.mediaId, stat.viewCount, stat.rating, stat.lastViewedAt, Date.now())
         } catch { /* ignore */ }
       }
     }
@@ -451,7 +451,7 @@ export class ImportService extends EventEmitter {
     `).run(id, filePath, filename, type, stats.size, Date.now())
 
     // Initialize stats
-    this.db.raw.prepare('INSERT OR IGNORE INTO media_stats (mediaId, viewCount, rating) VALUES (?, 0, 0)').run(id)
+    this.db.raw.prepare('INSERT OR IGNORE INTO media_stats (mediaId, views, rating, updatedAt) VALUES (?, 0, 0, ?)').run(id, Date.now())
 
     return id
   }

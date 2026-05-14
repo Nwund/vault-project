@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Copy, Trash2, Check, X, HardDrive, FileText, Hash, Loader2, ChevronDown, ChevronRight, FolderOpen, Eye } from 'lucide-react'
 import { formatBytes } from '../utils/formatters'
+import { useToast } from '../contexts'
 
 interface DuplicateMedia {
   id: string
@@ -38,9 +39,10 @@ interface DuplicatesModalProps {
   onViewMedia: (mediaId: string) => void
 }
 
-type ScanType = 'exact' | 'size' | 'name'
+type ScanType = 'exact' | 'size' | 'name' | 'visual' | 'visual-mf'
 
 export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModalProps) {
+  const { showToast } = useToast()
   const [scanType, setScanType] = useState<ScanType>('size')
   const [isScanning, setIsScanning] = useState(false)
   const [scanResult, setScanResult] = useState<DuplicateScanResult | null>(null)
@@ -86,6 +88,59 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
         case 'name':
           result = await window.api.invoke('duplicates:findByName')
           break
+        case 'visual': {
+          // Visual (perceptual) duplicates — content_analyzer-style aHash on
+          // thumbnails. If the library hasn't been hashed yet, do it now;
+          // it's idempotent and skips already-hashed rows.
+          const coverage = await (window as any).api?.similar?.hashCoverage?.()
+          if (coverage && coverage.hashed < coverage.total) {
+            await (window as any).api?.similar?.computeAllHashes?.({ onlyUnhashed: true })
+          }
+          const visual = await (window as any).api?.similar?.findVisualGroups?.({ maxDistance: 5 })
+          // Normalize to the DuplicateScanResult shape the existing UI expects.
+          const groups = (visual?.groups ?? []).map((g: any) => ({
+            hash: `phash-${g.representativeId}`,
+            type: 'similar' as const,
+            count: g.members.length,
+            totalSize: 0,
+            mediaIds: g.members.map((m: any) => m.mediaId)
+          }))
+          result = {
+            type: 'similar',
+            groups,
+            totalGroups: groups.length,
+            totalDuplicates: groups.reduce((s: number, g: any) => s + g.count, 0),
+            potentialSavings: 0,  // unknown without per-file size; not the point of visual dedupe
+            scanTime: 0
+          } as DuplicateScanResult
+          break
+        }
+        case 'visual-mf': {
+          // Multi-frame video fingerprint — catches re-encodes where the
+          // single keyframe phash above misses (dominant frame shifted).
+          // 5 evenly-spaced pHashes per video, best-of-N match.
+          const coverage = await (window as any).api?.similar?.mfCoverage?.()
+          if (coverage && coverage.hashed < coverage.total) {
+            await (window as any).api?.similar?.mfComputeAll?.({ onlyUnhashed: true })
+          }
+          const mf = await (window as any).api?.similar?.mfFindGroups?.({ maxDistance: 5, minMatches: 3 })
+          const groups = (mf?.groups ?? []).map((g: any) => ({
+            hash: `mfphash-${g.representativeId}`,
+            type: 'similar' as const,
+            count: g.members.length,
+            totalSize: 0,
+            mediaIds: g.members.map((m: any) => m.mediaId)
+          }))
+          result = {
+            type: 'similar',
+            groups,
+            totalGroups: groups.length,
+            totalDuplicates: groups.reduce((s: number, g: any) => s + g.count, 0),
+            potentialSavings: 0,
+            scanTime: 0
+          } as DuplicateScanResult
+          break
+        }
         default:
           result = await window.api.invoke('duplicates:findBySize')
       }
@@ -185,8 +240,9 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
         setSelectedForDeletion(new Set())
         handleScan() // Rescan
         loadStats()
+        showToast('success', 'Duplicates removed')
       } else {
-        alert(`Error: ${result.error}`)
+        showToast('error', `Error: ${result.error}`)
       }
     } catch (e) {
       console.error('Failed to delete duplicates:', e)
@@ -257,6 +313,30 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
               <Hash className="w-4 h-4" />
               Exact Hash
             </button>
+            {/* Visual (perceptual) similarity — finds re-encodes / crops the
+                byte-hash misses. Uses 8x8 aHash on existing thumbnails. */}
+            <button
+              onClick={() => setScanType('visual')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${
+                scanType === 'visual' ? 'bg-fuchsia-600' : 'bg-zinc-700 hover:bg-zinc-600'
+              }`}
+              title="Find visually-similar duplicates (re-encodes, crops, watermarks)"
+            >
+              <Copy className="w-4 h-4" />
+              Visual (AI)
+            </button>
+            {/* Multi-frame fingerprint — videos only. Catches re-encodes the
+                single-keyframe phash above misses. 5-frame pHash + best-of-N. */}
+            <button
+              onClick={() => setScanType('visual-mf')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${
+                scanType === 'visual-mf' ? 'bg-fuchsia-600' : 'bg-zinc-700 hover:bg-zinc-600'
+              }`}
+              title="Multi-frame video fingerprint (catches re-encodes the keyframe phash misses)"
+            >
+              <Copy className="w-4 h-4" />
+              Visual (Video MF)
+            </button>
           </div>
           <div className="flex-1" />
           <button
@@ -287,6 +367,8 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
               <p className="text-sm mt-2">
                 {scanType === 'exact' && 'Exact hash scanning checks file content (slow but accurate)'}
                 {scanType === 'size' && 'File size scanning is fast but may include false positives'}
+                {scanType === 'visual' && 'Visual (perceptual) hash on thumbnails — catches re-encodes / crops / watermarks. First run hashes any unhashed media (~1-2s per 100 items).'}
+                {scanType === 'visual-mf' && 'Multi-frame video fingerprint — 5 evenly-spaced frames per video, best-of-N match. Catches re-encodes the keyframe phash misses. Videos only. First run is ~2-3s per video.'}
                 {scanType === 'name' && 'Filename scanning finds files with identical names'}
               </p>
             </div>

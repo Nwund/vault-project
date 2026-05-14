@@ -51,6 +51,7 @@ import { getSessionHistoryService, type SessionAction } from './services/session
 import { getUrlDownloaderService } from './services/url-downloader-service'
 import { getFavoriteFoldersService } from './services/favorite-folders'
 import { getDuplicatesFinderService, type DuplicateResolution } from './services/duplicates-finder'
+import { getVisualDuplicatesService } from './services/visual-duplicates-service'
 
 import {
   getSettings,
@@ -159,34 +160,70 @@ function getVoiceLineService(): VoiceLineService {
   return voiceLineService
 }
 
-// Auto-detect and organize NSFW Soundpack folder
+// Auto-detect and organize NSFW Soundpack(s). Scans BOTH the in-tree
+// `NSFW Soundpack/` folder AND the user's `~\Vault\Soundpacks\` data folder
+// (where bigger packs like OpenNSFW SFX live out of the source tree). All
+// matched sources are merged so multiple packs co-exist.
 async function autoOrganizeSoundpack(): Promise<void> {
-  const commonPaths = [
+  // Single-folder candidates (look here for one classic NSFW Soundpack folder).
+  const singleFolderCandidates = [
     path.join(process.cwd(), 'NSFW Soundpack'),
     path.join(app.getPath('userData'), 'NSFW Soundpack'),
     path.join(app.getPath('documents'), 'NSFW Soundpack'),
-    path.join(app.getPath('home'), 'Downloads', 'NSFW Soundpack')
+    path.join(app.getPath('home'), 'Downloads', 'NSFW Soundpack'),
+  ]
+  // Multi-pack containers — every subfolder here is treated as its own pack.
+  // User's Vault data dir is the canonical home for big packs (OpenNSFW SFX
+  // ~8GB lives here so it doesn't bloat the source tree).
+  const packContainerCandidates = [
+    path.join(app.getPath('home'), 'Vault', 'Soundpacks'),
+    path.join(app.getPath('userData'), 'Soundpacks'),
   ]
 
-  for (const sourcePath of commonPaths) {
-    if (fs.existsSync(sourcePath)) {
-      console.log('[Audio] Found NSFW Soundpack at:', sourcePath)
-      try {
-        const targetDir = path.join(app.getPath('userData'), 'audio', 'voice')
-        const organizer = new SoundOrganizer(sourcePath, targetDir)
-        const files = await organizer.organize()
-        const manifest = organizer.generateManifest(files)
-        organizer.saveManifest(manifest)
-        console.log(`[Audio] Organized ${files.length} sound files`)
-
-        // Reload voice line service
-        const vls = getVoiceLineService()
-        await vls.reload()
-      } catch (e) {
-        errorLogger.error('Audio', 'Failed to organize sound pack', e)
+  const sourcePaths: string[] = []
+  for (const p of singleFolderCandidates) {
+    if (fs.existsSync(p)) sourcePaths.push(p)
+  }
+  for (const container of packContainerCandidates) {
+    if (!fs.existsSync(container)) continue
+    try {
+      const entries = fs.readdirSync(container)
+      for (const entry of entries) {
+        const full = path.join(container, entry)
+        try {
+          if (fs.statSync(full).isDirectory()) sourcePaths.push(full)
+        } catch { /* skip */ }
       }
-      break
+    } catch (e) {
+      errorLogger.error('Audio', `Failed to read soundpack container ${container}`, e as Error)
     }
+  }
+
+  if (sourcePaths.length === 0) return
+
+  const targetDir = path.join(app.getPath('userData'), 'audio', 'voice')
+  let totalFiles = 0
+  for (const sourcePath of sourcePaths) {
+    console.log('[Audio] Found Soundpack at:', sourcePath)
+    try {
+      const organizer = new SoundOrganizer(sourcePath, targetDir)
+      const files = await organizer.organize()
+      const manifest = organizer.generateManifest(files)
+      organizer.saveManifest(manifest)
+      totalFiles += files.length
+      console.log(`[Audio]  · organized ${files.length} files from ${path.basename(sourcePath)}`)
+    } catch (e) {
+      errorLogger.error('Audio', `Failed to organize sound pack at ${sourcePath}`, e as Error)
+    }
+  }
+  console.log(`[Audio] Soundpack organization complete: ${totalFiles} total files across ${sourcePaths.length} pack(s)`)
+
+  // Reload voice line service once after all packs are processed.
+  try {
+    const vls = getVoiceLineService()
+    await vls.reload()
+  } catch (e) {
+    errorLogger.error('Audio', 'Failed to reload voice line service', e as Error)
   }
 }
 
@@ -195,6 +232,192 @@ function getNSFWTagger(): NSFWTagger {
     nsfwTagger = new NSFWTagger()
   }
   return nsfwTagger
+}
+
+/**
+ * Build accessor closures for the Stash shim server (#120). The shim
+ * needs read-only library access; we map its expected shape onto
+ * Vault's actual DB columns here so the shim stays DB-agnostic.
+ */
+function buildStashShimAccessors(db: DB): import('./services/stash-shim-server').StashShimAccessors {
+  const sceneRowToShape = (row: any): any => ({
+    id: row.id,
+    title: row.approved_title ?? null,
+    details: row.description ?? null,
+    date: null,
+    durationSec: row.durationSec ?? null,
+    filePath: row.path,
+    thumbPath: row.thumbPath ?? null,
+    width: row.width ?? null,
+    height: row.height ?? null,
+    phash: row.phash ?? null,
+    sha256: row.hashSha256 ?? null,
+    performers: [] as string[],
+    tags: [] as string[],
+    studio: null as string | null,
+  })
+
+  const hydrateTagsPerformersStudio = (sceneId: string, base: any): any => {
+    try {
+      const tagRows = db.raw.prepare(`
+        SELECT t.name FROM media_tags mt
+        JOIN tags t ON t.id = mt.tagId
+        WHERE mt.mediaId = ?
+      `).all(sceneId) as Array<{ name: string }>
+      for (const t of tagRows) {
+        const n = t.name
+        if (n.startsWith('performer:')) base.performers.push(n.slice('performer:'.length))
+        else if (n.startsWith('studio:')) base.studio = n.slice('studio:'.length)
+        else base.tags.push(n)
+      }
+    } catch { /* ignore */ }
+    return base
+  }
+
+  return {
+    listScenes: async ({ page, perPage, q }) => {
+      const offset = (page - 1) * perPage
+      const params: any[] = []
+      let where = `WHERE m.type = 'video'`
+      if (q && q.trim()) {
+        where += ` AND (m.filename LIKE ? OR ar.approved_title LIKE ?)`
+        const like = `%${q.trim()}%`
+        params.push(like, like)
+      }
+      const rows = db.raw.prepare(`
+        SELECT m.*, ar.approved_title, ar.description
+        FROM media m
+        LEFT JOIN ai_analysis_results ar ON ar.media_id = m.id
+        ${where}
+        ORDER BY m.addedAt DESC
+        LIMIT ? OFFSET ?
+      `).all(...params, perPage, offset) as any[]
+      const count = (db.raw.prepare(`
+        SELECT COUNT(*) as n FROM media m
+        LEFT JOIN ai_analysis_results ar ON ar.media_id = m.id
+        ${where}
+      `).get(...params) as any).n as number
+      const scenes = rows.map(sceneRowToShape).map((s) => hydrateTagsPerformersStudio(s.id, s))
+      return { count, scenes }
+    },
+
+    getScene: async (id) => {
+      const row = db.raw.prepare(`
+        SELECT m.*, ar.approved_title, ar.description
+        FROM media m
+        LEFT JOIN ai_analysis_results ar ON ar.media_id = m.id
+        WHERE m.id = ? AND m.type = 'video' LIMIT 1
+      `).get(id) as any
+      if (!row) return null
+      return hydrateTagsPerformersStudio(id, sceneRowToShape(row))
+    },
+
+    findSceneByHash: async (algorithm, hash) => {
+      const algo = algorithm.toUpperCase()
+      const column = algo === 'PHASH' ? 'phash'
+        : (algo === 'OSHASH' || algo === 'MD5' || algo === 'SHA256') ? 'hashSha256'
+        : null
+      if (!column) return null
+      const row = db.raw.prepare(`
+        SELECT m.*, ar.approved_title, ar.description
+        FROM media m
+        LEFT JOIN ai_analysis_results ar ON ar.media_id = m.id
+        WHERE m.${column} = ? AND m.type = 'video' LIMIT 1
+      `).get(hash) as any
+      if (!row) return null
+      return hydrateTagsPerformersStudio(row.id, sceneRowToShape(row))
+    },
+
+    allPerformers: async () => {
+      // Pull `performer:` tags and count their media membership.
+      const rows = db.raw.prepare(`
+        SELECT t.name, COUNT(mt.mediaId) as n
+        FROM tags t
+        JOIN media_tags mt ON mt.tagId = t.id
+        WHERE t.name LIKE 'performer:%'
+        GROUP BY t.name
+        ORDER BY n DESC
+        LIMIT 1000
+      `).all() as Array<{ name: string; n: number }>
+      return rows.map((r) => ({
+        id: `vault-perf-${r.name.slice('performer:'.length).replace(/\s+/g, '-').toLowerCase()}`,
+        name: r.name.slice('performer:'.length),
+        sampleCount: r.n,
+      }))
+    },
+
+    findPerformer: async (id) => {
+      const all = await (async () => {
+        const rows = db.raw.prepare(`
+          SELECT t.name, COUNT(mt.mediaId) as n FROM tags t
+          JOIN media_tags mt ON mt.tagId = t.id
+          WHERE t.name LIKE 'performer:%' GROUP BY t.name
+        `).all() as Array<{ name: string; n: number }>
+        return rows.map((r) => ({
+          id: `vault-perf-${r.name.slice('performer:'.length).replace(/\s+/g, '-').toLowerCase()}`,
+          name: r.name.slice('performer:'.length),
+          sampleCount: r.n,
+        }))
+      })()
+      return all.find((p) => p.id === id) ?? null
+    },
+
+    allStudios: async () => {
+      const rows = db.raw.prepare(`
+        SELECT DISTINCT t.name FROM tags t
+        JOIN media_tags mt ON mt.tagId = t.id
+        WHERE t.name LIKE 'studio:%'
+        ORDER BY t.name
+      `).all() as Array<{ name: string }>
+      return rows.map((r) => ({
+        id: `vault-studio-${r.name.slice('studio:'.length).replace(/\s+/g, '-').toLowerCase()}`,
+        name: r.name.slice('studio:'.length),
+      }))
+    },
+
+    findStudio: async (id) => {
+      const all = await (async () => {
+        const rows = db.raw.prepare(`
+          SELECT DISTINCT t.name FROM tags t
+          JOIN media_tags mt ON mt.tagId = t.id
+          WHERE t.name LIKE 'studio:%'
+        `).all() as Array<{ name: string }>
+        return rows.map((r) => ({
+          id: `vault-studio-${r.name.slice('studio:'.length).replace(/\s+/g, '-').toLowerCase()}`,
+          name: r.name.slice('studio:'.length),
+        }))
+      })()
+      return all.find((s) => s.id === id) ?? null
+    },
+
+    allTags: async () => {
+      const rows = db.raw.prepare(`
+        SELECT t.id, t.name, COUNT(mt.mediaId) as n
+        FROM tags t
+        LEFT JOIN media_tags mt ON mt.tagId = t.id
+        WHERE t.name NOT LIKE 'performer:%' AND t.name NOT LIKE 'studio:%'
+        GROUP BY t.id, t.name
+        ORDER BY n DESC
+        LIMIT 5000
+      `).all() as Array<{ id: string; name: string; n: number }>
+      return rows.map((r) => ({ id: r.id, name: r.name, count: r.n }))
+    },
+
+    stats: async () => {
+      const sceneCount = (db.raw.prepare(`SELECT COUNT(*) as n FROM media WHERE type='video'`).get() as any).n
+      const tagCount = (db.raw.prepare(`SELECT COUNT(*) as n FROM tags WHERE name NOT LIKE 'performer:%' AND name NOT LIKE 'studio:%'`).get() as any).n
+      const performerCount = (db.raw.prepare(`SELECT COUNT(*) as n FROM tags WHERE name LIKE 'performer:%'`).get() as any).n
+      const studioCount = (db.raw.prepare(`SELECT COUNT(*) as n FROM tags WHERE name LIKE 'studio:%'`).get() as any).n
+      const durationRow = db.raw.prepare(`SELECT SUM(durationSec) as total FROM media WHERE type='video'`).get() as any
+      return {
+        scene_count: sceneCount,
+        studio_count: studioCount,
+        performer_count: performerCount,
+        tag_count: tagCount,
+        total_duration: Number(durationRow?.total ?? 0),
+      }
+    },
+  }
 }
 
 export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChanged): void {
@@ -659,8 +882,33 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     const limit = opts?.limit ?? 10000 // Default to large number to get all
     const offset = opts?.offset ?? 0
     const sortBy = opts?.sortBy ?? 'newest'
-    const result = db.listMedia({ q, type, tag, limit, offset, sortBy })
-    return applyBlacklist(result.items)
+    const blacklist = getSettings().blacklist
+    const blacklistActive = !!blacklist?.enabled
+      && ((blacklist?.tags?.length ?? 0) > 0 || (blacklist?.mediaIds?.length ?? 0) > 0)
+
+    if (!blacklistActive) {
+      const result = db.listMedia({ q, type, tag, limit, offset, sortBy })
+      return { items: result.items, total: result.total }
+    }
+
+    // Blacklist is active — over-fetch unfiltered IDs, drop blacklisted
+    // ones, then slice to the requested page. Total reflects the
+    // post-filter count so the renderer's "N items" badge is accurate.
+    // The unfiltered fetch costs us roughly N additional IDs over the
+    // raw page size; at Vault's library scale (5-50k rows) this is
+    // <100ms even with the LEFT JOINs.
+    const blacklistedTags = new Set(blacklist?.tags ?? [])
+    const blacklistedIds = new Set(blacklist?.mediaIds ?? [])
+    const unpaginated = db.listMedia({ q, type, tag, limit: 1_000_000, offset: 0, sortBy })
+    const filtered = unpaginated.items.filter((item: any) => {
+      if (blacklistedIds.has(item.id)) return false
+      if (item.tags && Array.isArray(item.tags)
+          && item.tags.some((t: string) => blacklistedTags.has(t))) return false
+      return true
+    })
+    const total = filtered.length
+    const items = filtered.slice(offset, offset + limit)
+    return { items, total }
   })
 
   ipcMain.handle('media:list', async (_ev, opts: any) => {
@@ -678,6 +926,22 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('media:getById', async (_ev, id: string) => {
     return db.getMedia(id)
+  })
+
+  // Return all file hashes (md5 / phash equivalents) currently in the
+  // library. Browse uses this to flag posts that would be duplicate
+  // saves. Cached at the db layer; this just dumps the column. Roughly
+  // 30k rows in a heavy library — still single-digit ms via SQLite.
+  ipcMain.handle('media:allHashes', async () => {
+    try {
+      const rows = (db as any).db
+        ? (db as any).db.prepare(`SELECT md5 FROM media WHERE md5 IS NOT NULL AND md5 != ''`).all()
+        : []
+      return Array.isArray(rows) ? rows.map((r: any) => String(r.md5 ?? '').toLowerCase()).filter(Boolean) : []
+    } catch (err) {
+      console.warn('[media:allHashes] failed:', err)
+      return []
+    }
   })
 
   ipcMain.handle('media:randomByTags', async (_ev, tags: string[], opts?: any) => {
@@ -790,6 +1054,50 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return result
   })
 
+  // Update title — direct mutate on the media table. Used by the Library
+  // metadata editor + any manual rename flows that don't touch the
+  // filesystem (separate from media:rename which renames the on-disk file).
+  ipcMain.handle('media:setTitle', async (_ev, mediaId: string, title: string) => {
+    try {
+      db.raw.prepare(`UPDATE media SET title = ? WHERE id = ?`).run(title ?? null, mediaId)
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // Update description — stored in ai_analysis_results.description. We
+  // create a stub row if none exists so manual descriptions persist even
+  // for media that hasn't been AI-analyzed yet.
+  ipcMain.handle('media:setDescription', async (_ev, mediaId: string, description: string) => {
+    try {
+      const existing = db.raw.prepare(`SELECT 1 FROM ai_analysis_results WHERE media_id = ?`).get(mediaId)
+      if (existing) {
+        db.raw.prepare(`UPDATE ai_analysis_results SET description = ? WHERE media_id = ?`).run(description ?? null, mediaId)
+      } else {
+        // Insert a manual-only row so the description sticks. review_status
+        // 'approved' so it doesn't show up in the pending review queue.
+        db.raw.prepare(`
+          INSERT INTO ai_analysis_results (media_id, description, review_status, reviewed_at, created_at)
+          VALUES (?, ?, 'approved', datetime('now'), datetime('now'))
+        `).run(mediaId, description ?? null)
+      }
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // Fetch the saved description for a media item (returns null if none).
+  ipcMain.handle('media:getDescription', async (_ev, mediaId: string) => {
+    try {
+      const row = db.raw.prepare(`SELECT description FROM ai_analysis_results WHERE media_id = ?`).get(mediaId) as { description: string | null } | undefined
+      return row?.description ?? null
+    } catch {
+      return null
+    }
+  })
+
   // Bulk set rating for multiple media items
   ipcMain.handle('media:bulkSetRating', async (_ev, mediaIds: string[], rating: number) => {
     let updated = 0
@@ -858,6 +1166,67 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     } catch (err: any) {
       errorLogger.error('Media', 'Failed to move broken file', err)
       return { success: false, error: err.message }
+    }
+  })
+
+  // Rename a media file on disk and update the DB. Used by the AI Review
+  // pane to accept Tier 2's `suggested_filename` for gibberish-named files.
+  ipcMain.handle('media:rename', async (_ev, mediaId: string, newBaseName: string) => {
+    try {
+      const media = db.getMedia(mediaId)
+      if (!media) return { success: false, error: 'Media not found' }
+      if (!fs.existsSync(media.path)) return { success: false, error: 'File missing on disk' }
+
+      // Sanitize: strip path-like chars, collapse whitespace.
+      const safe = String(newBaseName).trim().replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim()
+      if (!safe) return { success: false, error: 'New name is empty after sanitization' }
+      if (safe.length > 200) return { success: false, error: 'New name too long' }
+
+      const dir = path.dirname(media.path)
+      const ext = path.extname(media.path)
+      let newFilename = `${safe}${ext}`
+      let newPath = path.join(dir, newFilename)
+
+      // Avoid collisions — append " (n)" if the target exists.
+      let suffix = 1
+      while (fs.existsSync(newPath) && newPath !== media.path) {
+        newFilename = `${safe} (${suffix})${ext}`
+        newPath = path.join(dir, newFilename)
+        suffix += 1
+        if (suffix > 50) return { success: false, error: 'Too many name collisions' }
+      }
+
+      if (newPath === media.path) {
+        return { success: true, renamed: false, newPath }
+      }
+
+      fs.renameSync(media.path, newPath)
+      db.updateMediaPath(mediaId, newPath, newFilename)
+
+      // Clear the suggestion so the review item no longer shows the rename prompt.
+      try {
+        db.raw.prepare(`UPDATE ai_analysis_results SET suggested_filename = NULL WHERE media_id = ?`).run(mediaId)
+      } catch {
+        // Column may not exist on very old DBs — ignore.
+      }
+
+      console.log(`[Media] Renamed: ${media.path} -> ${newPath}`)
+      broadcast('vault:changed')
+      return { success: true, renamed: true, newPath, newFilename }
+    } catch (err: any) {
+      errorLogger.error('Media', 'Failed to rename media', err)
+      return { success: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // Reject a Tier 2 filename suggestion without renaming. Just clears the column
+  // so the review UI stops nagging. Tags are still pending review separately.
+  ipcMain.handle('media:rejectRenameSuggestion', async (_ev, mediaId: string) => {
+    try {
+      db.raw.prepare(`UPDATE ai_analysis_results SET suggested_filename = NULL WHERE media_id = ?`).run(mediaId)
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? String(err) }
     }
   })
 
@@ -1572,6 +1941,216 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return db.listTags()
   })
 
+  // Preview a tag merge — counts how many media items have the source
+  // tag, how many have the target, and how many have both. Lets the
+  // UI show "Will move N items (M overlap, dropped as duplicates)"
+  // before the user clicks the irreversible Merge button.
+  ipcMain.handle('tags:merge-preview', async (_ev, args: { source: string; target: string }) => {
+    const source = (args?.source ?? '').trim()
+    const target = (args?.target ?? '').trim()
+    if (!source) return { ok: false as const, error: 'Source tag is required' }
+    const tags = db.listTags() as Array<{ id: string; name: string }>
+    const srcTag = tags.find((t) => t.name.toLowerCase() === source.toLowerCase())
+    if (!srcTag) return { ok: false as const, error: `Source tag "${source}" not found` }
+    const tgtTag = target
+      ? tags.find((t) => t.name.toLowerCase() === target.toLowerCase()) ?? null
+      : null
+    const srcCount = (db.raw.prepare(
+      `SELECT COUNT(*) AS n FROM media_tags WHERE tagId = ?`
+    ).get(srcTag.id) as { n: number }).n
+    let tgtCount = 0
+    let overlap = 0
+    if (tgtTag) {
+      tgtCount = (db.raw.prepare(
+        `SELECT COUNT(*) AS n FROM media_tags WHERE tagId = ?`
+      ).get(tgtTag.id) as { n: number }).n
+      overlap = (db.raw.prepare(`
+        SELECT COUNT(*) AS n FROM media_tags a
+        JOIN media_tags b ON a.mediaId = b.mediaId
+        WHERE a.tagId = ? AND b.tagId = ?
+      `).get(srcTag.id, tgtTag.id) as { n: number }).n
+    }
+    return {
+      ok: true as const,
+      sourceCount: srcCount,
+      targetCount: tgtCount,
+      overlap,
+      // Items that will be newly linked to target (source-only, not already
+      // tagged with target). The overlap entries collapse to a single link.
+      moved: srcCount - overlap,
+      targetExists: !!tgtTag,
+    }
+  })
+
+  // Two-level taxonomy lookup — for the Library sidebar's category
+  // group. Returns every category from tag-categories.ts annotated
+  // with which tag names currently exist in the user's tag table and
+  // their media counts.
+  ipcMain.handle('tags:categories-with-counts', async () => {
+    const { CATEGORY_META, categoryOf } = await import('./services/ai-intelligence/tag-categories')
+    // Pull all tags with media counts via listWithCounts.
+    const allTags = (db as any).listTagsWithCounts?.() as Array<{ name: string; mediaCount: number }> ?? []
+    const byCategory = new Map<string, Array<{ name: string; count: number }>>()
+    for (const cat of CATEGORY_META) {
+      byCategory.set(cat.key, [])
+    }
+    for (const tag of allTags) {
+      const cat = categoryOf(tag.name) || 'other'
+      const bucket = byCategory.get(cat) ?? byCategory.get('other')!
+      bucket.push({ name: tag.name, count: tag.mediaCount })
+    }
+    // Sort each bucket by count desc.
+    for (const bucket of byCategory.values()) {
+      bucket.sort((a, b) => b.count - a.count)
+    }
+    return CATEGORY_META.map((cat) => ({
+      id: cat.key,
+      label: cat.label,
+      color: cat.color,
+      description: cat.description,
+      tags: byCategory.get(cat.key) ?? [],
+      totalMedia: (byCategory.get(cat.key) ?? []).reduce((s, t) => s + t.count, 0),
+    }))
+  })
+
+  // Stash interop — read .stash.json sidecars next to media files
+  // and apply their tags / performers / studio to Vault. Scans every
+  // media item; sidecars that aren't present are silently skipped.
+  ipcMain.handle('stash:import-sidecars', async () => {
+    const { importStashSidecar } = await import('./services/stash-interop')
+    const allMedia = db.listMedia({ q: '', type: '', tag: '', limit: 100000, offset: 0 })
+    let scanned = 0
+    let matched = 0
+    let totalTags = 0
+    let totalPerformerTags = 0
+    let titleSets = 0
+    let descSets = 0
+    let studioSets = 0
+    for (const m of allMedia.items) {
+      scanned++
+      const result = importStashSidecar(db, m.id, m.path)
+      if (result) {
+        matched++
+        totalTags += result.importedTags
+        totalPerformerTags += result.importedPerformerTags
+        if (result.setTitle) titleSets++
+        if (result.setDescription) descSets++
+        if (result.setStudio) studioSets++
+      }
+    }
+    broadcast('vault:changed')
+    return {
+      ok: true, scanned, matched,
+      tagsImported: totalTags, performersImported: totalPerformerTags,
+      titlesSet: titleSets, descriptionsSet: descSets, studiosSet: studioSets,
+    }
+  })
+
+  // NFO sidecar export — Kodi/Jellyfin/Emby compatibility. Writes
+  // <basename>.nfo alongside each media file. tinyMediaManager-style
+  // XML, accepted by all three players. Lets the user open the same
+  // library in any of them without re-scraping.
+  ipcMain.handle('nfo:export-one', async (_ev, mediaId: string) => {
+    const { exportNfoSidecar } = await import('./services/nfo-export')
+    return exportNfoSidecar(db, mediaId)
+  })
+  ipcMain.handle('nfo:export-all', async () => {
+    const { exportAllNfoSidecars } = await import('./services/nfo-export')
+    return exportAllNfoSidecars(db)
+  })
+
+  // XMP sidecar export — darktable / Lightroom / Immich. Writes
+  // <path>.xmp with dc:subject + lr:hierarchicalSubject + digiKam:TagsList.
+  ipcMain.handle('xmp:export-one', async (_ev, mediaId: string) => {
+    const { exportXmpSidecar } = await import('./services/xmp-export')
+    return exportXmpSidecar(db, mediaId)
+  })
+  ipcMain.handle('xmp:export-all', async () => {
+    const { exportAllXmpSidecars } = await import('./services/xmp-export')
+    return exportAllXmpSidecars(db)
+  })
+
+  // Export every Vault media item as a .stash.json sidecar next to the
+  // file. Re-runs are idempotent (overwrites existing sidecars).
+  ipcMain.handle('stash:export-sidecars', async () => {
+    const { exportToStashFormat } = await import('./services/stash-interop')
+    const fsMod = await import('node:fs')
+    const allMedia = db.listMedia({ q: '', type: '', tag: '', limit: 100000, offset: 0 })
+    let written = 0
+    let failed = 0
+    for (const m of allMedia.items) {
+      const scene = exportToStashFormat(db, m.id)
+      if (!scene) { failed++; continue }
+      const sidecarPath = `${m.path}.stash.json`
+      try {
+        fsMod.writeFileSync(sidecarPath, JSON.stringify(scene, null, 2), 'utf8')
+        written++
+      } catch (err) {
+        console.warn('[StashInterop] Failed to write', sidecarPath, err)
+        failed++
+      }
+    }
+    return { ok: true, written, failed, total: allMedia.items.length }
+  })
+
+  // User-directed tag merge — re-link every media_tags row from
+  // source → target, then delete the source tag. Used for collapsing
+  // duplicates like "blowjob" + "blowjobs", "POV" + "pov", etc. The
+  // existing tags:cleanup handles patterned junk; this one is the
+  // explicit "I picked these two, merge them" path.
+  ipcMain.handle('tags:merge', async (_ev, args: { source: string; target: string }) => {
+    const source = (args?.source ?? '').trim()
+    const target = (args?.target ?? '').trim()
+    if (!source || !target) {
+      return { ok: false, error: 'Source and target tag names are required' }
+    }
+    if (source.toLowerCase() === target.toLowerCase()) {
+      return { ok: false, error: 'Source and target are the same tag' }
+    }
+    // Look up both tag IDs. Target is auto-created if missing so the
+    // user can normalize toward a canonical name that doesn't yet exist.
+    const tags = db.listTags() as Array<{ id: string; name: string }>
+    const srcTag = tags.find((t) => t.name.toLowerCase() === source.toLowerCase())
+    if (!srcTag) {
+      return { ok: false, error: `Source tag "${source}" not found` }
+    }
+    let tgtTag = tags.find((t) => t.name.toLowerCase() === target.toLowerCase())
+    if (!tgtTag) {
+      // Create target tag by attaching+removing it from a sentinel id
+      // (matches the tags:create pattern above).
+      db.addTagToMedia('__noop__', target)
+      db.removeTagFromMedia('__noop__', target)
+      const refreshed = db.listTags() as Array<{ id: string; name: string }>
+      tgtTag = refreshed.find((t) => t.name.toLowerCase() === target.toLowerCase())
+      if (!tgtTag) {
+        return { ok: false, error: 'Failed to create target tag' }
+      }
+    }
+    // Re-link in two steps to honor the (mediaId, tagId) primary key:
+    //   1. INSERT OR IGNORE — adds target to every media that had source
+    //   2. DELETE source links
+    // Net effect: every media that had source now has target, items that
+    // already had both keep only target, source is empty.
+    const txn = db.raw.transaction(() => {
+      const linked = db.raw.prepare(`
+        INSERT OR IGNORE INTO media_tags (mediaId, tagId)
+        SELECT mediaId, ? FROM media_tags WHERE tagId = ?
+      `).run(tgtTag!.id, srcTag.id)
+      const removed = db.raw.prepare(`DELETE FROM media_tags WHERE tagId = ?`).run(srcTag.id)
+      db.raw.prepare(`DELETE FROM tags WHERE id = ?`).run(srcTag.id)
+      return { added: linked.changes, removed: removed.changes }
+    })
+    const stats = txn() as { added: number; removed: number }
+    broadcast('vault:changed')
+    return {
+      ok: true,
+      moved: stats.added,
+      duplicatesCollapsed: stats.removed - stats.added,
+      sourceName: srcTag.name,
+      targetName: tgtTag.name,
+    }
+  })
+
   // Bulk delete tags matching patterns (for cleanup)
   ipcMain.handle('tags:cleanup', async (_ev, _options?: { patterns?: string[] }) => {
     const allTags = db.listTags()
@@ -1906,6 +2485,33 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return { enqueued }
   })
 
+  // Targeted rebuild — only media with NO thumb_path or whose thumb file
+  // is missing on disk. Cheap when the library is healthy (re-enqueues
+  // few or none), expensive only when there's actual damage. Use case:
+  // after a thumb-generation improvement (e.g. the thumbnail-filter
+  // fallback) lands, this lets the user retroactively fix old failures
+  // without re-processing every healthy thumb.
+  ipcMain.handle('thumbs:rebuildMissing', async () => {
+    const allMedia = db.listMedia({ limit: 100000, offset: 0 })
+    let enqueued = 0
+    let alreadyOk = 0
+    for (const m of allMedia.items) {
+      const path = (m as any).thumbPath as string | null | undefined
+      const exists = path && fs.existsSync(path)
+      if (exists) { alreadyOk++; continue }
+      db.enqueueJob('media:analyze', {
+        mediaId: m.id,
+        path: m.path,
+        type: m.type,
+        mtimeMs: m.mtimeMs,
+        size: m.size
+      }, 0)
+      enqueued++
+    }
+    console.log(`[Thumbs] rebuildMissing: enqueued=${enqueued} alreadyOk=${alreadyOk}`)
+    return { enqueued, alreadyOk }
+  })
+
   // ═══════════════════════════════════════════════════════════════════════════
   // FILE SYSTEM HELPERS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1967,6 +2573,28 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   // ═══════════════════════════════════════════════════════════════════════════
   // PMV EDITOR - Music video compilation tools
   // ═══════════════════════════════════════════════════════════════════════════
+
+  // Auto-PMV: tag-driven generator. Returns a pre-built project the editor can load.
+  ipcMain.handle('pmv:autoGenerate', async (_ev, options: {
+    tags: string[]
+    targetDurationSec?: number
+    bpm?: number
+    beatsPerClip?: number
+    maxClipSources?: number
+    generateCaptions?: boolean
+    videoActiveWindow?: number
+  }) => {
+    const { getAutoPmvService } = await import('./services/pmv/auto-pmv-service')
+    const { getTier2VisionInstance, getFrameExtractorInstance } = await import('./services/ai-intelligence')
+    const tier2 = getTier2VisionInstance()
+    const frameExtractor = getFrameExtractorInstance()
+    const svc = getAutoPmvService(db)
+    return svc.generate(
+      options,
+      tier2 && tier2.isEnabled() ? tier2 : null,
+      frameExtractor
+    )
+  })
 
   // Select music file for PMV project
   ipcMain.handle('pmv:selectMusic', async () => {
@@ -2596,6 +3224,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     // Get total file size and duration using raw SQL
     let totalSizeBytes = 0
     let totalDurationSec = 0
+    let videosMissingDuration = 0
     let topTags: Array<{ name: string; count: number }> = []
     let recentlyAdded = 0
     let avgRating = 0
@@ -2604,8 +3233,26 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       const sizeRow = db.raw.prepare('SELECT COALESCE(SUM(size), 0) as total FROM media').get() as { total: number }
       totalSizeBytes = sizeRow?.total ?? 0
 
-      const durationRow = db.raw.prepare('SELECT COALESCE(SUM(durationSec), 0) as total FROM media WHERE type = ?').get('video') as { total: number }
+      // Sum durations across all moving-image content (video + gif). Filter
+      // explicitly to non-null positive durations so corrupted/unscanned rows
+      // don't poison the SUM, then separately count how many rows STILL need
+      // a duration scan so the UI can surface a "backfill" affordance.
+      const durationRow = db.raw.prepare(`
+        SELECT COALESCE(SUM(durationSec), 0) as total
+        FROM media
+        WHERE type IN ('video', 'gif')
+          AND durationSec IS NOT NULL
+          AND durationSec > 0
+      `).get() as { total: number }
       totalDurationSec = durationRow?.total ?? 0
+
+      const missingRow = db.raw.prepare(`
+        SELECT COUNT(*) as count
+        FROM media
+        WHERE type IN ('video', 'gif')
+          AND (durationSec IS NULL OR durationSec = 0)
+      `).get() as { count: number }
+      videosMissingDuration = missingRow?.count ?? 0
 
       // Get top 10 most used tags
       topTags = db.raw.prepare(`
@@ -2640,6 +3287,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       playlistCount,
       totalSizeBytes,
       totalDurationSec,
+      videosMissingDuration,
       mediaDirs: getMediaDirs().length,
       cacheDir: getCacheDir(),
       topTags,
@@ -2647,6 +3295,31 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       avgRating,
       favoritesCount
     }
+  })
+
+  // Re-enqueue any video/gif rows whose durationSec is null or zero. This is
+  // the recovery path when an older scan left durations unpopulated and Stats
+  // ends up summing to 0. Cheap to run — analyze-job dedupe handles repeats.
+  ipcMain.handle('vault:backfillDurations', async () => {
+    const rows = db.raw.prepare(`
+      SELECT id, path, type, mtimeMs, size FROM media
+      WHERE type IN ('video', 'gif')
+        AND (durationSec IS NULL OR durationSec = 0)
+        AND analyzeError = 0
+    `).all() as Array<{ id: string; path: string; type: 'video' | 'gif'; mtimeMs: number; size: number }>
+
+    let enqueued = 0
+    for (const row of rows) {
+      db.enqueueJob('media:analyze', {
+        mediaId: row.id,
+        path: row.path,
+        type: row.type,
+        mtimeMs: row.mtimeMs,
+        size: row.size
+      }, 1)
+      enqueued++
+    }
+    return { enqueued, total: rows.length }
   })
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -7223,6 +7896,522 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return service.findSizeDuplicates()
   })
 
+  // Soundpack chromaprint dedup. Walks every audio file in the
+  // configured soundpack roots, fingerprints with ffmpeg's chromaprint
+  // muxer, groups by similarity. Caches results in
+  // <userData>/chromaprint-cache.json so re-runs skip already-hashed
+  // files. Returns clusters of duplicate files — caller decides what
+  // to do (typically delete all but one per group).
+  let _chromaprintAbort: { aborted: boolean } | null = null
+  ipcMain.handle('soundpack:chromaprint-dedup', async (_ev, opts?: { soundpackRoots?: string[] }) => {
+    if (!ffmpegBin) return { ok: false, error: 'ffmpeg not available' }
+    const { clusterByFingerprint, loadFingerprintCache, saveFingerprintCache } = await import('./services/audio/chromaprint-dedup')
+    const { app } = await import('electron')
+    const pathMod = await import('node:path')
+    const fsMod = await import('node:fs')
+
+    // Walk soundpack roots — default to userData/audio/voice/ and
+    // ~/Vault/Soundpacks/ (the two known soundpack roots per
+    // settings.ts / CLAUDE.md).
+    const roots: string[] = opts?.soundpackRoots ?? [
+      pathMod.join(app.getPath('userData'), 'audio', 'voice'),
+      pathMod.join(app.getPath('home'), 'Vault', 'Soundpacks'),
+      pathMod.join('C:', 'dev', 'vault', 'NSFW Soundpack'),
+    ]
+
+    const audioExts = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.opus'])
+    function* walk(dir: string): Generator<string> {
+      let entries: import('node:fs').Dirent[]
+      try { entries = fsMod.readdirSync(dir, { withFileTypes: true }) }
+      catch { return }
+      for (const entry of entries) {
+        const full = pathMod.join(dir, entry.name)
+        if (entry.isDirectory()) yield* walk(full)
+        else if (entry.isFile() && audioExts.has(pathMod.extname(entry.name).toLowerCase())) {
+          yield full
+        }
+      }
+    }
+
+    const files: string[] = []
+    for (const root of roots) {
+      if (!fsMod.existsSync(root)) continue
+      for (const f of walk(root)) files.push(f)
+    }
+    console.log(`[Chromaprint Dedup] Found ${files.length} audio files across ${roots.length} roots`)
+
+    const cachePath = pathMod.join(app.getPath('userData'), 'chromaprint-cache.json')
+    const cache = loadFingerprintCache(cachePath)
+    _chromaprintAbort = { aborted: false }
+
+    const result = await clusterByFingerprint(
+      ffmpegBin,
+      files,
+      (done, total, currentFile) => {
+        try {
+          const win = BrowserWindow.getAllWindows()[0]
+          win?.webContents.send('soundpack:chromaprint-progress', { done, total, currentFile })
+        } catch { /* ignore */ }
+      },
+      { concurrency: 4, existingFingerprints: cache },
+    )
+
+    // Persist updated fingerprint cache for next run.
+    saveFingerprintCache(cachePath, result.fingerprints)
+
+    let totalFiles = 0
+    let dupesIfReduced = 0
+    for (const g of result.groups) {
+      totalFiles += g.length
+      dupesIfReduced += g.length - 1
+    }
+    _chromaprintAbort = null
+
+    return {
+      ok: true,
+      scanned: files.length,
+      uniqueGroups: result.groups.length,
+      duplicateFiles: totalFiles,
+      reducibleTo: result.groups.length,
+      filesIfReduced: files.length - dupesIfReduced,
+      groups: result.groups.slice(0, 200),  // cap response size
+    }
+  })
+
+  // AV1 archival re-encode. Batch operation that transcodes a set of
+  // videos to AV1 (SVT-AV1 on CPU, av1_nvenc on RTX 40+). Replaces
+  // sources in-place by default; pass keepOriginal=true to write
+  // alongside instead. Typical savings: 50-60% vs H.264, 30-40% vs HEVC.
+  let _av1AbortSignal: { aborted: boolean } | null = null
+  ipcMain.handle('av1:reencode-batch', async (_ev, opts: {
+    mediaIds: string[]
+    crf?: number
+    preset?: number
+    preferGpu?: boolean
+    keepOriginal?: boolean
+    minSavingsRatio?: number
+    maxDurationSec?: number
+  }) => {
+    if (!ffmpegBin) return { ok: false, error: 'ffmpeg not available' }
+    if (!Array.isArray(opts?.mediaIds) || opts.mediaIds.length === 0) {
+      return { ok: false, error: 'mediaIds required' }
+    }
+    const { batchReencode } = await import('./services/av1-reencode')
+    _av1AbortSignal = { aborted: false }
+    const result = await batchReencode(
+      db, ffmpegBin, opts.mediaIds,
+      {
+        crf: opts.crf,
+        preset: opts.preset,
+        preferGpu: opts.preferGpu,
+        keepOriginal: opts.keepOriginal,
+        minSavingsRatio: opts.minSavingsRatio,
+        maxDurationSec: opts.maxDurationSec,
+      },
+      (p) => {
+        try {
+          const win = BrowserWindow.getAllWindows()[0]
+          win?.webContents.send('av1:progress', p)
+        } catch { /* sender gone */ }
+      },
+      _av1AbortSignal,
+    )
+    _av1AbortSignal = null
+    return { ok: true, ...result }
+  })
+  ipcMain.handle('av1:abort', async () => {
+    if (_av1AbortSignal) _av1AbortSignal.aborted = true
+    return { ok: true }
+  })
+
+  // Bulk rename with template DSL + dry-run preview. Pattern from
+  // mnamer — single template applies to a filter set, preview shows
+  // collisions before commit, apply path appends _2/_3 on collision.
+  ipcMain.handle('media:bulk-rename-preview', async (_ev, opts: { mediaIds: string[]; template: string }) => {
+    const { previewBulkRename } = await import('./services/bulk-rename')
+    if (!Array.isArray(opts?.mediaIds) || !opts.template) return { ok: false, error: 'mediaIds + template required', rows: [] }
+    return { ok: true, rows: previewBulkRename(db, opts.mediaIds, opts.template) }
+  })
+  ipcMain.handle('media:bulk-rename-apply', async (_ev, opts: { mediaIds: string[]; template: string }) => {
+    const { applyBulkRename } = await import('./services/bulk-rename')
+    if (!Array.isArray(opts?.mediaIds) || !opts.template) return { ok: false, error: 'mediaIds + template required' }
+    const result = applyBulkRename(db, opts.mediaIds, opts.template)
+    return { ok: true, ...result }
+  })
+
+  // ─── DeoVR / HereSphere catalog server (#119) ──────────────────
+  // Optional read-only HTTP endpoint that exposes the library to VR
+  // players in DeoVR's JSON catalog format. NO AUTH — user toggles
+  // it on/off via settings.ai.deovrServerEnabled + deovrServerPort.
+  ipcMain.handle('deovr:start', async (_ev, opts?: { port?: number }) => {
+    const { deovrServer } = await import('./services/deovr-server')
+    // Wire the library accessors so the server can fetch its data.
+    if (!deovrServer.listVideos) {
+      deovrServer.listVideos = async () => {
+        const rows = db.raw.prepare(`
+          SELECT m.id, m.filename, m.path, m.durationSec, m.thumbPath, m.width, m.height,
+                 ar.approved_title AS title
+          FROM media m
+          LEFT JOIN ai_analysis_results ar ON ar.media_id = m.id
+          WHERE m.type = 'video'
+          ORDER BY m.addedAt DESC
+          LIMIT 500
+        `).all() as Array<{
+          id: string; filename: string; path: string; durationSec: number | null
+          thumbPath: string | null; width: number | null; height: number | null
+          title: string | null
+        }>
+        return rows
+      }
+    }
+    if (!deovrServer.getVideo) {
+      deovrServer.getVideo = async (id: string) => {
+        const row = db.raw.prepare(`
+          SELECT m.id, m.filename, m.path, m.durationSec, m.thumbPath, m.width, m.height,
+                 ar.approved_title AS title
+          FROM media m
+          LEFT JOIN ai_analysis_results ar ON ar.media_id = m.id
+          WHERE m.id = ? AND m.type = 'video'
+          LIMIT 1
+        `).get(id) as any
+        return row ?? null
+      }
+    }
+    const { getSettings } = await import('./settings')
+    const aiSettings = (getSettings().ai as any) || {}
+    const port = opts?.port ?? aiSettings.deovrServerPort ?? 9999
+    return await deovrServer.start({ port })
+  })
+  ipcMain.handle('deovr:stop', async () => {
+    const { deovrServer } = await import('./services/deovr-server')
+    await deovrServer.stop()
+    return { ok: true }
+  })
+  ipcMain.handle('deovr:status', async () => {
+    const { deovrServer } = await import('./services/deovr-server')
+    return deovrServer.getStatus()
+  })
+
+  // ─── Stash plugin-API GraphQL shim (#120) ──────────────────────
+  // Read-only POST /graphql endpoint exposing a small subset of
+  // Stash's GraphQL API so Stash plugins can browse Vault's library.
+  // NO AUTH. User toggles via settings.ai.stashShimEnabled.
+  ipcMain.handle('stash:start', async (_ev, opts?: { port?: number }) => {
+    const { stashShimServer } = await import('./services/stash-shim-server')
+    if (!stashShimServer.accessors) {
+      stashShimServer.accessors = buildStashShimAccessors(db)
+    }
+    const { getSettings } = await import('./settings')
+    const aiSettings = (getSettings().ai as any) || {}
+    const port = opts?.port ?? aiSettings.stashShimPort ?? 9998
+    return await stashShimServer.start({ port })
+  })
+  ipcMain.handle('stash:stop', async () => {
+    const { stashShimServer } = await import('./services/stash-shim-server')
+    await stashShimServer.stop()
+    return { ok: true }
+  })
+  ipcMain.handle('stash:status', async () => {
+    const { stashShimServer } = await import('./services/stash-shim-server')
+    return stashShimServer.getStatus()
+  })
+
+  // ─── Performer watchlist (#56) ─────────────────────────────────
+  // Whisparr-style: user flags performers, periodic poll surfaces new
+  // uploads as pending hits. CRUD handlers below; the actual polling
+  // is triggered manually for now (a future cron job will tick it).
+  ipcMain.handle('watchlist:add', async (_ev, opts: {
+    performerName: string
+    faceClusterId?: string | null
+    sources?: string[]
+    pollIntervalHours?: number
+    notes?: string
+  }) => {
+    const { addWatchlistEntry } = await import('./services/performer-watchlist')
+    try {
+      const entry = addWatchlistEntry(db, opts as any)
+      return { ok: true, entry }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('watchlist:list', async (_ev, opts?: { enabledOnly?: boolean }) => {
+    const { listWatchlistEntries } = await import('./services/performer-watchlist')
+    return listWatchlistEntries(db, opts)
+  })
+  ipcMain.handle('watchlist:remove', async (_ev, performerName: string) => {
+    const { removeWatchlistEntry } = await import('./services/performer-watchlist')
+    removeWatchlistEntry(db, performerName)
+    return { ok: true }
+  })
+  ipcMain.handle('watchlist:set-enabled', async (_ev, opts: { performerName: string; enabled: boolean }) => {
+    const { setWatchlistEnabled } = await import('./services/performer-watchlist')
+    setWatchlistEnabled(db, opts.performerName, opts.enabled)
+    return { ok: true }
+  })
+  ipcMain.handle('watchlist:hits', async (_ev, opts?: {
+    performerName?: string
+    status?: 'pending' | 'queued' | 'dismissed' | 'downloaded'
+    limit?: number
+    offset?: number
+  }) => {
+    const { listHits } = await import('./services/performer-watchlist')
+    return listHits(db, opts)
+  })
+  ipcMain.handle('watchlist:hit-status', async (_ev, opts: {
+    hitId: string
+    status: 'pending' | 'queued' | 'dismissed' | 'downloaded'
+  }) => {
+    const { setHitStatus } = await import('./services/performer-watchlist')
+    setHitStatus(db, opts.hitId, opts.status)
+    return { ok: true }
+  })
+  // Trigger an immediate poll cycle. The dispatcher is a thin
+  // closure that maps each source name onto the existing Browse
+  // adapters in ai-intelligence/index.ts. Returns stats so the user
+  // can see "we tried Reddit, found 3 new posts" feedback.
+  ipcMain.handle('watchlist:poll-now', async (_ev, opts?: { maxPerformers?: number }) => {
+    const { runPollCycle } = await import('./services/performer-watchlist')
+    return runPollCycle(db, async (entry, source) => {
+      // Dispatcher routes each (entry, source) pair to the matching
+      // Browse-source adapter. Returns Omit<WatchlistHit, 'id' |
+      // 'discoveredAt' | 'status'>[] — the caller persists with
+      // status='pending'. Unimplemented sources return [] silently.
+      const sinceSec = entry.lastPolledAt ?? (Date.now() / 1000 - 30 * 86400)
+      switch (source) {
+        case 'reddit': {
+          const { pullpushSearchSubmissions } = await import('./services/ai-intelligence/pullpush-client')
+          const res = await pullpushSearchSubmissions({
+            query: entry.performerName,
+            after: Math.floor(sinceSec),
+            size: 100,
+            over18Only: true,
+          })
+          if (!res.ok) return []
+          return res.items
+            .filter((it) => it.url && (it.over_18 ?? true))
+            .map((it) => ({
+              performerName: entry.performerName,
+              sourceName: 'reddit',
+              sourceId: it.id,
+              url: it.url ?? `https://www.reddit.com${it.permalink ?? ''}`,
+              title: it.title ?? null,
+              thumbUrl: (it.thumbnail && it.thumbnail !== 'nsfw' && it.thumbnail !== 'self')
+                ? it.thumbnail : null,
+              releasedAt: it.created_utc ?? null,
+              notes: it.subreddit ? `r/${it.subreddit}` : null,
+            }))
+        }
+        case 'tpdb': {
+          const { getTpDBClient } = await import('./services/ai-intelligence/tpdb-client')
+          const client = await getTpDBClient()
+          if (!client) return []
+          const scenes = await client.searchScenesByPerformer(entry.performerName, {
+            perPage: 50,
+            dateFromUnix: Math.floor(sinceSec),
+          })
+          return scenes
+            .filter((s) => s.url || s.id)
+            .map((s) => ({
+              performerName: entry.performerName,
+              sourceName: 'tpdb',
+              sourceId: s.id,
+              url: s.url ?? `https://theporndb.net/scenes/${s.id}`,
+              title: s.title ?? null,
+              thumbUrl: null,
+              releasedAt: s.date ? Date.parse(s.date) / 1000 : null,
+              notes: s.site?.name ? `studio:${s.site.name.toLowerCase()}` : null,
+            }))
+        }
+        case 'bluesky': {
+          const { searchBlueskyForWatchlist } = await import('./services/ai-intelligence/bluesky-watchlist')
+          const hits = await searchBlueskyForWatchlist(entry.performerName, {
+            sinceUnix: Math.floor(sinceSec),
+            limit: 50,
+          })
+          return hits
+            .filter((h) => h.url)
+            .map((h) => ({
+              performerName: entry.performerName,
+              sourceName: 'bluesky',
+              sourceId: h.sourceId,
+              url: h.url,
+              title: h.title,
+              thumbUrl: h.thumbUrl,
+              releasedAt: h.releasedAt,
+              notes: null,
+            }))
+        }
+        case 'redgifs':
+        case 'e621':
+        case 'danbooru':
+        case 'gelbooru': {
+          // Booru sources don't expose date filters in their search
+          // APIs, so we rely on the hits table's unique index
+          // (performer, source, sourceId) to dedup against past polls.
+          // The user sees only NEW posts despite the absence of a
+          // server-side `since` filter.
+          const { searchBooru } = await import('./services/ai-intelligence/booru-client')
+          const sourceMap = {
+            redgifs: 'redgifs', e621: 'e621',
+            danbooru: 'danbooru', gelbooru: 'gelbooru',
+          } as const
+          const booruSource = (sourceMap as any)[source]
+          if (!booruSource) return []
+          try {
+            const result = await searchBooru(booruSource, entry.performerName, { perPage: 30, page: 0 })
+            return result.posts.map((p) => ({
+              performerName: entry.performerName,
+              sourceName: source,
+              sourceId: String(p.id ?? p.hash ?? p.file_url),
+              url: p.source || p.file_url,
+              title: null,
+              thumbUrl: p.preview_url ?? p.sample_url ?? null,
+              releasedAt: null,
+              notes: p.tags ? p.tags.split(/\s+/).slice(0, 8).join(' ') : null,
+            }))
+          } catch (err) {
+            console.warn(`[watchlist:${source}] search failed:`, err)
+            return []
+          }
+        }
+      }
+    }, opts)
+  })
+
+  // Audio-peak highlight detector. Runs ffmpeg with astats over
+  // 5-second windows, computes per-window z-score relative to the
+  // video's own RMS distribution, merges adjacent peaks into runs,
+  // returns the top N highlight candidates. Minimum-viable version
+  // of #62 — no ML model required, works on any video with an audio
+  // track. With autoApplyMarkers=true the highlights get inserted
+  // into the markers table so they show up on the timeline.
+  ipcMain.handle('media:audio-highlights', async (_ev, opts: {
+    mediaId: string
+    topN?: number
+    minZ?: number
+    maxLenSec?: number
+    windowSec?: number
+    autoApplyMarkers?: boolean
+  }) => {
+    if (!opts?.mediaId) return { ok: false, error: 'mediaId required', candidates: [] }
+    if (!ffmpegBin) return { ok: false, error: 'ffmpeg not available', candidates: [] }
+    let media: any
+    try { media = (db as any).getMedia?.(opts.mediaId) } catch { /* ignore */ }
+    if (!media?.path) return { ok: false, error: 'media not found', candidates: [] }
+    const { detectHighlightsFromAudio } = await import('./services/ai-intelligence/audio-peak-detector')
+    const candidates = await detectHighlightsFromAudio(media.path, ffmpegBin, {
+      topN: opts.topN,
+      minZ: opts.minZ,
+      maxLenSec: opts.maxLenSec,
+      windowSec: opts.windowSec,
+    })
+    let markersAdded = 0
+    if (opts.autoApplyMarkers && candidates.length > 0) {
+      for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i]
+        try {
+          db.addMarker(
+            opts.mediaId,
+            c.startSec,
+            `Highlight ${i + 1} (${(c.score * 100).toFixed(0)}%)`
+          )
+          markersAdded++
+        } catch (err) {
+          console.warn('[AudioHighlights] addMarker failed:', err)
+        }
+      }
+      broadcast('vault:changed')
+    }
+    return { ok: true, candidates, markersAdded }
+  })
+
+  // Anitomy-style filename inspector. Exposes the structured parse
+  // (studio / performers / date / resolution / codec / title / etc.)
+  // so the UI can show "we'll resolve {performer} to X, {date} to Y"
+  // before the user commits a bulk-rename template.
+  ipcMain.handle('media:parse-filename', async (_ev, filename: string) => {
+    if (typeof filename !== 'string' || filename.length === 0) {
+      return { ok: false, error: 'filename required' }
+    }
+    const { parseFilename } = await import('./services/ai-intelligence/filename-tokenizer')
+    try {
+      const parsed = parseFilename(filename)
+      // Strip rawTokens before returning — internal tokenizer state,
+      // not useful to the renderer and adds payload weight.
+      const { rawTokens, ...lean } = parsed
+      void rawTokens
+      return { ok: true, parsed: lean }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // Transcript FTS search — find videos whose whisper transcript
+  // contains a phrase. Uses the FTS5 virtual table created in
+  // migration v21. Empty query returns the most-recently-transcribed
+  // items (handy for "show me what was just transcribed").
+  ipcMain.handle('transcripts:search', async (_ev, opts: { query: string; limit?: number }) => {
+    const query = String(opts?.query ?? '').trim()
+    const limit = Math.max(1, Math.min(500, opts?.limit ?? 50))
+    try {
+      if (!query) {
+        const rows = db.raw.prepare(`
+          SELECT mt.media_id, mt.text, mt.language, mt.created_at,
+                 m.filename, m.thumbPath
+          FROM media_transcripts mt
+          INNER JOIN media m ON m.id = mt.media_id
+          ORDER BY mt.created_at DESC
+          LIMIT ?
+        `).all(limit) as any[]
+        return { ok: true, items: rows, total: rows.length }
+      }
+      // FTS5 MATCH with phrase quoting; let SQLite's tokenizer split.
+      // Escape any quote chars that would break the MATCH literal.
+      const ftsQuery = `"${query.replace(/"/g, '""')}"`
+      const rows = db.raw.prepare(`
+        SELECT mt.media_id, mt.text, mt.language, mt.created_at,
+               m.filename, m.thumbPath,
+               snippet(media_transcripts_fts, 0, '<mark>', '</mark>', '…', 24) AS snippet
+        FROM media_transcripts_fts fts
+        INNER JOIN media_transcripts mt ON mt.rowid = fts.rowid
+        INNER JOIN media m ON m.id = mt.media_id
+        WHERE media_transcripts_fts MATCH ?
+        ORDER BY rank
+        LIMIT ?
+      `).all(ftsQuery, limit) as any[]
+      return { ok: true, items: rows, total: rows.length }
+    } catch (err: any) {
+      console.warn('[transcripts:search] failed:', err)
+      return { ok: false, error: err?.message ?? String(err), items: [], total: 0 }
+    }
+  })
+
+  ipcMain.handle('transcripts:get-for-media', async (_ev, mediaId: string) => {
+    try {
+      const row = db.raw.prepare(`
+        SELECT text, language, source, created_at FROM media_transcripts WHERE media_id = ?
+      `).get(mediaId) as any
+      return { ok: !!row, transcript: row ?? null }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), transcript: null }
+    }
+  })
+
+  // Czkawka-style staged scan — runs size → name → exact stages in
+  // sequence, emitting `duplicates:stage` per stage so the renderer
+  // can show progress + partial results without waiting for the slow
+  // exact-hash pass at the end.
+  ipcMain.handle('duplicates:stagedScan', async () => {
+    const service = getDuplicatesFinderService(db)
+    return service.stagedScan((stage) => {
+      try {
+        const win = BrowserWindow.getAllWindows()[0]
+        win?.webContents.send('duplicates:stage', stage)
+      } catch { /* sender gone */ }
+    })
+  })
+
   ipcMain.handle('duplicates:findByName', async () => {
     const service = getDuplicatesFinderService(db)
     return service.findNameDuplicates()
@@ -7261,6 +8450,90 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('duplicates:findSimilarTo', async (_ev, mediaId: string) => {
     const service = getDuplicatesFinderService(db)
     return service.findSimilarTo(mediaId)
+  })
+
+  // Visual (perceptual) duplicates — uses 8x8 aHash on thumbnails to find
+  // re-encodes / cropped / re-bitrated copies that byte-hash misses. Ported
+  // from content_analyzer/advanced_features.py:VisualDuplicateScanner.
+  ipcMain.handle('visualDuplicates:hashCoverage', async () => {
+    return getVisualDuplicatesService(db).getHashCoverage()
+  })
+
+  ipcMain.handle('visualDuplicates:computeAllHashes', async (_ev, opts?: { onlyUnhashed?: boolean }) => {
+    const service = getVisualDuplicatesService(db)
+    return service.computeAllHashes(
+      (p) => {
+        try {
+          const win = BrowserWindow.getAllWindows()[0]
+          win?.webContents.send('visualDuplicates:progress', p)
+        } catch {}
+      },
+      opts
+    )
+  })
+
+  ipcMain.handle('visualDuplicates:abort', async () => {
+    getVisualDuplicatesService(db).abort()
+    return { ok: true }
+  })
+
+  ipcMain.handle('visualDuplicates:findGroups', async (_ev, opts?: { maxDistance?: number }) => {
+    const service = getVisualDuplicatesService(db)
+    const maxDistance = Math.max(0, Math.min(20, opts?.maxDistance ?? 5))
+    return { groups: service.findVisualGroups(maxDistance), maxDistance }
+  })
+
+  ipcMain.handle('visualDuplicates:hashOne', async (_ev, mediaId: string) => {
+    const row = db.raw.prepare(`SELECT thumbPath, path, type FROM media WHERE id = ?`).get(mediaId) as
+      { thumbPath: string | null; path: string; type: string } | undefined
+    if (!row) return { ok: false, error: 'Media not found' }
+    const target = row.thumbPath && fs.existsSync(row.thumbPath)
+      ? row.thumbPath
+      : (row.type === 'image' ? row.path : null)
+    if (!target) return { ok: false, error: 'No thumbnail or image to hash' }
+    const service = getVisualDuplicatesService(db)
+    const hash = await service.computePerceptualHash(target)
+    if (!hash) return { ok: false, error: 'Hash computation failed' }
+    db.raw.prepare(`UPDATE media SET phash = ? WHERE id = ?`).run(hash, mediaId)
+    return { ok: true, phash: hash }
+  })
+
+  // Multi-frame video fingerprint — 5 evenly-spaced pHashes per video,
+  // matched best-of-N. Catches re-encodes where the single-keyframe phash
+  // above doesn't because the dominant keyframe shifted. Video-only by
+  // design (image/gif covered by single-frame aHash).
+  ipcMain.handle('visualDuplicates:mfCoverage', async () => {
+    return getVisualDuplicatesService(db).getMultiFrameCoverage()
+  })
+
+  ipcMain.handle('visualDuplicates:mfComputeAll', async (_ev, opts?: { onlyUnhashed?: boolean }) => {
+    if (!ffmpegBin) return { hashed: 0, skipped: 0, error: 'ffmpeg not available' }
+    const service = getVisualDuplicatesService(db)
+    return service.computeAllMultiFrameHashes(
+      ffmpegBin,
+      (p) => {
+        try {
+          const win = BrowserWindow.getAllWindows()[0]
+          win?.webContents.send('visualDuplicates:mfProgress', p)
+        } catch {}
+      },
+      opts
+    )
+  })
+
+  ipcMain.handle('visualDuplicates:mfFindGroups', async (_ev, opts?: { maxDistance?: number; minMatches?: number }) => {
+    const service = getVisualDuplicatesService(db)
+    const maxDistance = Math.max(0, Math.min(20, opts?.maxDistance ?? 5))
+    const minMatches = Math.max(1, Math.min(10, opts?.minMatches ?? 3))
+    return { groups: service.findMultiFrameGroups(maxDistance, minMatches), maxDistance, minMatches }
+  })
+
+  ipcMain.handle('visualDuplicates:mfHashOne', async (_ev, mediaId: string) => {
+    if (!ffmpegBin) return { ok: false, error: 'ffmpeg not available' }
+    const service = getVisualDuplicatesService(db)
+    const fp = await service.computeMultiFrameHash(mediaId, ffmpegBin)
+    if (!fp) return { ok: false, error: 'Fingerprint failed (no duration / not a video / extraction error)' }
+    return { ok: true, fingerprint: fp }
   })
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -7477,6 +8750,19 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   // Get server status
   ipcMain.handle('mobileSync:getStatus', async () => {
     return mobileSyncService.getStatus()
+  })
+
+  // Cross-device access URLs (#26). Categorizes the running server's
+  // bind addresses into LAN / Tailscale / other so the user can pick
+  // the right one to share with another device. Also generates pairing
+  // tokens on demand for cross-device clients (the existing pairing-
+  // CODE flow is mobile-only; tokens here are for any HTTP client).
+  ipcMain.handle('crossDevice:getAccessUrls', async () => {
+    return (mobileSyncService as any).getAccessUrls?.() ?? { running: false, port: 8765, lan: [], tailscale: [], other: [] }
+  })
+  ipcMain.handle('crossDevice:generateToken', async (_ev, deviceLabel?: string) => {
+    return (mobileSyncService as any).generatePairingToken?.(deviceLabel ?? 'Cross-device client')
+      ?? { id: '', token: '', deviceId: '' }
   })
 
   // Generate pairing code

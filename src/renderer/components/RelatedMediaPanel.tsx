@@ -24,6 +24,17 @@ interface SeriesItem {
   order?: number
 }
 
+interface SimilarItem {
+  mediaId: string
+  filename: string
+  thumbPath: string | null
+  type: string
+  durationSec: number | null
+  similarity: number
+  sharedTags: string[]
+  matchCount: number
+}
+
 interface RelatedMediaPanelProps {
   mediaId: string
   onPlayMedia: (mediaId: string) => void
@@ -52,6 +63,9 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
   const [showSeriesModal, setShowSeriesModal] = useState(false)
   const [seriesItems, setSeriesItems] = useState<SeriesItem[]>([])
   const [loadingSeries, setLoadingSeries] = useState(false)
+  // AI similarity ("More like this") — populated from rich-tag cosine similarity.
+  const [similar, setSimilar] = useState<SimilarItem[]>([])
+  const [loadingSimilar, setLoadingSimilar] = useState(true)
 
   const loadRelated = useCallback(async () => {
     try {
@@ -76,6 +90,27 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
   useEffect(() => {
     loadRelated()
   }, [loadRelated])
+
+  // Load AI similarity matches whenever the source media changes. Driven by the
+  // rich_tags vectors in ai_analysis_results. Returns [] if the source hasn't
+  // been analyzed yet — UI hides the section in that case.
+  useEffect(() => {
+    let cancelled = false
+    setLoadingSimilar(true)
+    ;(async () => {
+      try {
+        const res = await (window as any).api.ai?.similar?.({ mediaId, limit: 12 })
+        if (cancelled) return
+        setSimilar(Array.isArray(res?.items) ? res.items : [])
+      } catch (err) {
+        console.warn('[RelatedMedia] AI similarity fetch failed:', err)
+        if (!cancelled) setSimilar([])
+      } finally {
+        if (!cancelled) setLoadingSimilar(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [mediaId])
 
   const handleRemoveRelationship = async (relationshipId: string) => {
     try {
@@ -304,6 +339,57 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
             <Link2 className="w-3 h-3" />
             View Full Series
           </button>
+        </div>
+      )}
+
+      {/* AI similarity — "More like this" via rich-tag cosine. Hidden when no
+          source analysis exists or no candidates cleared the threshold. */}
+      {!loadingSimilar && similar.length > 0 && (
+        <div className="border-t border-zinc-700">
+          <div className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-fuchsia-900/20 to-cyan-900/20">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-fuchsia-400" />
+              <span className="text-xs font-medium">More like this (AI)</span>
+              <span className="text-[10px] text-zinc-500">{similar.length}</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5 p-2 max-h-[360px] overflow-y-auto">
+            {similar.map((s) => (
+              <button
+                key={s.mediaId}
+                onClick={() => onPlayMedia(s.mediaId)}
+                className="group relative aspect-video rounded-md overflow-hidden border border-zinc-700 hover:border-fuchsia-500/60 transition bg-black"
+                title={`${s.filename} — ${(s.similarity * 100).toFixed(0)}% match · ${s.matchCount} shared tags`}
+              >
+                {s.thumbPath ? (
+                  <img
+                    src={`file:///${(s.thumbPath || '').replace(/\\/g, '/')}`}
+                    alt={s.filename}
+                    className="absolute inset-0 w-full h-full object-cover"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-zinc-600">
+                    {getMediaIcon(s.type)}
+                  </div>
+                )}
+                {/* Similarity badge */}
+                <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-fuchsia-500/85 text-white tabular-nums">
+                  {Math.round(s.similarity * 100)}%
+                </div>
+                {/* Filename + shared tags */}
+                <div className="absolute bottom-0 left-0 right-0 p-1.5 bg-gradient-to-t from-black/95 via-black/70 to-transparent">
+                  <p className="text-[10px] truncate text-white/90 leading-tight">{s.filename}</p>
+                  {s.sharedTags.length > 0 && (
+                    <p className="text-[9px] text-zinc-400 truncate leading-tight">
+                      {s.sharedTags.slice(0, 3).join(' · ')}
+                    </p>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

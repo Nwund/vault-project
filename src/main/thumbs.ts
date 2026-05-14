@@ -91,6 +91,37 @@ function captureScreenshot(
   })
 }
 
+/**
+ * Fallback when fixed-timestamp captures all yield black/invalid frames.
+ * Uses ffmpeg's `thumbnail` filter to score every frame in a window and
+ * pick the most "distinctive" one (highest histogram-based saliency).
+ * Much more likely to hit a non-black, content-rich frame than blind
+ * percentage seeks. Slower (full decode of N frames) so it's a fallback,
+ * not the default.
+ *
+ * The `seekStartSec` lets us skip past intros/fades — start the search
+ * 5% into the video so the filter doesn't waste effort on opening logos.
+ */
+function captureWithThumbnailFilter(
+  filePath: string,
+  outFile: string,
+  durationSec: number | null,
+): Promise<string> {
+  const size = getThumbSize()
+  const seekStartSec = durationSec && durationSec > 60 ? Math.max(5, durationSec * 0.05) : 0
+  return new Promise((resolve, reject) => {
+    let cmd = ffmpeg(filePath)
+    if (seekStartSec > 0) cmd = cmd.seekInput(seekStartSec)
+    cmd
+      .videoFilters([`thumbnail=120`, `scale=${size}:-1`])
+      .frames(1)
+      .outputOptions(['-q:v', '4'])  // moderate JPEG quality
+      .on('error', (e) => reject(e))
+      .on('end', () => resolve(outFile))
+      .save(outFile)
+  })
+}
+
 export async function makeVideoThumb(params: {
   mediaId: string
   filePath: string
@@ -119,7 +150,20 @@ export async function makeVideoThumb(params: {
     }
   }
 
-  console.error(`[Thumbs] Video thumb failed for ${params.filePath}: all timestamps produced invalid frames`)
+  // All percentage timestamps came back black/corrupt. Last resort: ask
+  // ffmpeg's thumbnail filter to score frames and pick the most
+  // distinctive one. Slower (full decode of ~120 frames) but reliable
+  // for files with long fades, frequent black cuts, or heavy intros.
+  try {
+    await captureWithThumbnailFilter(params.filePath, outFile, dur)
+    if (isValidThumb(outFile)) return outFile
+    try { fs.unlinkSync(outFile) } catch {}
+  } catch (err) {
+    try { fs.unlinkSync(outFile) } catch {}
+    console.warn(`[Thumbs] thumbnail-filter fallback failed for ${params.filePath}:`, (err as any)?.message ?? err)
+  }
+
+  console.error(`[Thumbs] Video thumb failed for ${params.filePath}: all timestamps + thumbnail filter produced invalid frames`)
   return null
 }
 

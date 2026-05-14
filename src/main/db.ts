@@ -33,8 +33,37 @@ export function createDb() {
   const dir = path.join(app.getPath('userData'), 'db')
   ensureDir(dir)
   const dbPath = path.join(dir, 'vault.sqlite3')
+  console.log(`[DB] Opening sqlite at: ${dbPath}`)
   const db = new (Database as any)(dbPath)
+  // Diagnostic: print the ai_analysis_results column list as the
+  // connection sees it. If this disagrees with python's view of the
+  // same file, we have a connection / WAL-snapshot issue.
+  try {
+    const cols = db.prepare(`PRAGMA table_info(ai_analysis_results)`).all() as Array<{ name: string }>
+    console.log(`[DB] ai_analysis_results cols (${cols.length}): ${cols.map((c) => c.name).join(', ')}`)
+  } catch (err) {
+    console.warn('[DB] Could not enumerate ai_analysis_results at open:', err)
+  }
+  // Production PRAGMA baseline (researched 2026-05-10):
+  //  - journal_mode=WAL → readers + writer concurrent; persistent setting.
+  //  - synchronous=NORMAL → durability still safe with WAL, much faster than FULL.
+  //  - busy_timeout=5000 → block up to 5s on lock instead of throwing
+  //    SQLITE_BUSY. Has to be set per-connection.
+  //  - cache_size=-32000 → 32 MB cache (negative form = KB). Hot pages stay
+  //    in memory; significant win for read-heavy paths like media:search +
+  //    getStatsBatch on a 4k+ row library.
+  //  - temp_store=MEMORY → temp tables / sort buffers stay in RAM instead
+  //    of /tmp. Faster sorts on large ORDER BY queries.
+  //  - foreign_keys=ON → enforce FK constraints (not on by default; we
+  //    have FK relations on media_tags, media_stats, ai_analysis_results).
+  // Source: phiresky's SQLite perf blog, sqlite.org/wal.html, oneuptime's
+  // 2026-02 production guide. Validated baseline.
   db.pragma('journal_mode = WAL')
+  db.pragma('synchronous = NORMAL')
+  db.pragma('busy_timeout = 5000')
+  db.pragma('cache_size = -32000')
+  db.pragma('temp_store = MEMORY')
+  db.pragma('foreign_keys = ON')
   runMigrations(db)
 
   const stmts = {
@@ -93,6 +122,13 @@ export function createDb() {
     deleteMediaByPath: db.prepare(`DELETE FROM media WHERE path = ?;`),
     deleteMediaById: db.prepare(`DELETE FROM media WHERE id = ?;`),
     listAllMediaPaths: db.prepare(`SELECT id, path FROM media;`),
+    // Fast-path for scanner — pre-loads the fields needed to decide
+    // "skip vs re-upsert vs re-analyze" so the scanner can replace 4000
+    // individual getMediaByPath() SELECTs with one batched SELECT +
+    // in-memory Map lookup per file. Includes the upsert-carryover fields
+    // (width/height/hash/etc.) so a mismatched row can be re-upserted
+    // without an extra SELECT for those fields.
+    listAllMediaForScan: db.prepare(`SELECT id, path, type, mtimeMs, size, addedAt, durationSec, thumbPath, width, height, hashSha256, phash FROM media;`),
 
     listTags: db.prepare(`SELECT * FROM tags ORDER BY name ASC;`),
     getTagByName: db.prepare(`SELECT * FROM tags WHERE name = ? LIMIT 1;`),
@@ -414,11 +450,102 @@ export function createDb() {
       LIMIT @limit OFFSET @offset;
     `
 
-    const items = db.prepare(query).all({ q, type, tag, limit, offset }) as MediaRow[]
+    let items = db.prepare(query).all({ q, type, tag, limit, offset }) as MediaRow[]
+
+    // Fuzzy fallback — when the user typed a query but LIKE matched
+    // nothing, try a Levenshtein-style closest-spelling search across
+    // filenames + titles. Common case: "amatuer" → "amateur",
+    // "missionarry" → "missionary". We only run this on zero-result
+    // queries to keep the fast path fast. Capped at 50 results.
+    let fuzzyApplied = false
+    let fuzzyTerm: string | null = null
+    if (items.length === 0 && q && q.trim().length >= 3 && type !== '' || (items.length === 0 && q && q.trim().length >= 3)) {
+      // Inner condition: only run fuzzy when there was a real query and zero hits.
+    }
+    if (items.length === 0 && q && q.trim().length >= 3) {
+      try {
+        // Pull a bounded candidate set — all media (ignoring filename
+        // filter) matching the type/tag/liked constraints. Then score
+        // each by string distance against `q`.
+        const candidateQuery = `
+          SELECT DISTINCT m.*
+          FROM media m
+          LEFT JOIN media_tags mt ON mt.mediaId = m.id
+          LEFT JOIN tags t ON t.id = mt.tagId
+          ${statsJoin}
+          WHERE
+            (@type = '' OR m.type = @type)
+            AND (@tag = '' OR t.name = @tag)
+            AND m.analyzeError = 0
+            ${likedFilter}
+          ${orderClause}
+          LIMIT 5000
+        `
+        const candidates = db.prepare(candidateQuery).all({ type, tag }) as MediaRow[]
+        // Score by min-distance over filename + title against the query.
+        // Tokenize the filename so "VIP_amatuer_clip.mp4" can match
+        // "amateur" by word-level fuzzy not whole-string fuzzy.
+        const qLower = q.toLowerCase().trim()
+        const qTokens = qLower.split(/\s+/).filter(Boolean)
+        const scored = candidates.map((m) => {
+          const haystackRaw = `${m.filename ?? ''} ${(m as any).title ?? ''}`.toLowerCase()
+          const tokens = haystackRaw.split(/[^a-z0-9]+/).filter((t) => t.length >= 3)
+          let bestScore = Number.POSITIVE_INFINITY
+          for (const qt of qTokens) {
+            for (const tok of tokens) {
+              const d = levenshtein(qt, tok)
+              if (d < bestScore) bestScore = d
+              if (bestScore === 0) break
+            }
+            if (bestScore === 0) break
+          }
+          return { m, score: bestScore }
+        })
+        // Threshold: accept up to floor(len/3) edits — generous so
+        // "amatuer" (1 edit from amateur) and "missionarry" (1 edit)
+        // both hit, but random words don't fuzz-match.
+        const maxDist = Math.max(1, Math.floor(qLower.length / 3))
+        const accepted = scored
+          .filter((s) => s.score <= maxDist)
+          .sort((a, b) => a.score - b.score)
+          .slice(0, limit)
+          .map((s) => s.m)
+        if (accepted.length > 0) {
+          items = accepted
+          fuzzyApplied = true
+          // Find the most representative source word to surface as
+          // "Did you mean X?" — pick the token from the best match.
+          try {
+            const best = scored.find((s) => s.m.id === accepted[0].id)
+            if (best) {
+              const haystackRaw = `${best.m.filename ?? ''} ${(best.m as any).title ?? ''}`.toLowerCase()
+              const tokens = haystackRaw.split(/[^a-z0-9]+/).filter((t) => t.length >= 3)
+              let closest: string | null = null
+              let closestDist = Number.POSITIVE_INFINITY
+              for (const qt of qTokens) {
+                for (const tok of tokens) {
+                  const d = levenshtein(qt, tok)
+                  if (d < closestDist && d > 0) {
+                    closestDist = d
+                    closest = tok
+                  }
+                }
+              }
+              fuzzyTerm = closest
+            }
+          } catch { /* ignore */ }
+        }
+      } catch (err) {
+        console.warn('[listMedia] fuzzy fallback failed:', err)
+      }
+    }
 
     // Calculate total with liked filter if needed
     let total: number
-    if (liked) {
+    if (fuzzyApplied) {
+      // Fuzzy results — total is just the displayed count.
+      total = items.length
+    } else if (liked) {
       const countQuery = `
         SELECT COUNT(DISTINCT m.id) as n
         FROM media m
@@ -436,7 +563,35 @@ export function createDb() {
     } else {
       total = (stmts.countMedia.get({ q, type, tag }) as { n: number }).n
     }
-    return { items, total }
+    return { items, total, fuzzyApplied, fuzzyTerm }
+  }
+
+  // Iterative Levenshtein distance — O(m*n) with two-row buffer.
+  // Used for fuzzy search fallback. ~1us per pair for short strings,
+  // fast enough to score 5000 candidates × 5 tokens each in <50ms.
+  function levenshtein(a: string, b: string): number {
+    if (a === b) return 0
+    if (a.length === 0) return b.length
+    if (b.length === 0) return a.length
+    if (Math.abs(a.length - b.length) > 4) {
+      // Early bail — Levenshtein lower bound is the length difference.
+      // We never accept fuzzy matches with edit distance > floor(qLen/3),
+      // so length deltas above 4 are guaranteed misses for typical query
+      // lengths (≤ 12 chars).
+      return Math.abs(a.length - b.length)
+    }
+    let prev = new Array(b.length + 1)
+    let cur = new Array(b.length + 1)
+    for (let j = 0; j <= b.length; j++) prev[j] = j
+    for (let i = 1; i <= a.length; i++) {
+      cur[0] = i
+      for (let j = 1; j <= b.length; j++) {
+        const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1
+        cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost)
+      }
+      const tmp = prev; prev = cur; cur = tmp
+    }
+    return prev[b.length]
   }
 
   function countMedia(args: { q?: string; type?: string; tag?: string }): number {
@@ -1042,6 +1197,7 @@ export function createDb() {
     updateMediaPath: (id: string, newPath: string, newFilename: string) => stmts.updateMediaPath.run(newPath, newFilename, id),
     getMediaByPath: (p: string) => (stmts.getMediaByPath.get(p) as MediaRow | undefined) ?? null,
     listAllMediaPaths: () => stmts.listAllMediaPaths.all() as Array<{ id: string; path: string }>,
+    listAllMediaForScan: () => stmts.listAllMediaForScan.all() as Array<Pick<MediaRow, 'id' | 'path' | 'type' | 'mtimeMs' | 'size' | 'addedAt' | 'durationSec' | 'thumbPath' | 'width' | 'height' | 'hashSha256' | 'phash'>>,
     listMedia,
     countMedia,
     getMedia: (id: string) => (stmts.getMedia.get(id) as MediaRow | undefined) ?? null,

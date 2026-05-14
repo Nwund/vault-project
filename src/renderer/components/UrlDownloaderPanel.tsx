@@ -23,7 +23,7 @@ import {
   Music
 } from 'lucide-react'
 import { formatDuration } from '../utils/formatters'
-import { useToast } from '../App'
+import { useToast } from '../contexts'
 
 type VideoQuality = 'best' | '1080p' | '720p' | '480p' | 'audio'
 

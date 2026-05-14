@@ -8,6 +8,7 @@ import { formatDuration } from '../utils/formatters'
 interface MediaData {
   id: string
   title: string
+  description: string
   tags: string[]
   performers: string[]
   rating: number
@@ -25,7 +26,7 @@ interface MetadataEditorProps {
 export function MetadataEditor({ media, mediaId, onSave, onClose, className = '' }: MetadataEditorProps) {
   const [loading, setLoading] = useState(!media)
   const [saving, setSaving] = useState(false)
-  const [data, setData] = useState<MediaData>(media || { id: mediaId || '', title: '', tags: [], performers: [], rating: 0, customFields: {} })
+  const [data, setData] = useState<MediaData>(media || { id: mediaId || '', title: '', description: '', tags: [], performers: [], rating: 0, customFields: {} })
   const [originalData, setOriginalData] = useState<MediaData | null>(null)
   const [newTag, setNewTag] = useState('')
   const [newPerformer, setNewPerformer] = useState('')
@@ -42,9 +43,13 @@ export function MetadataEditor({ media, mediaId, onSave, onClose, className = ''
         const result = await window.api.invoke('media:getById', mediaId)
         if (result) {
           const tags = await window.api.invoke('tags:getForMedia', mediaId) || []
+          // Pull description in parallel — falls back to '' when no AI
+          // analysis exists for this item (i.e. metadata-only entry).
+          const description = await window.api.media?.getDescription?.(mediaId) ?? ''
           const loaded: MediaData = {
             id: mediaId,
-            title: result.filename || '',
+            title: result.title || result.filename || '',
+            description: description || '',
             tags: tags.map((t: any) => t.name || t),
             performers: [],
             rating: result.rating || 0,
@@ -73,6 +78,18 @@ export function MetadataEditor({ media, mediaId, onSave, onClose, className = ''
       // Save rating
       if (data.rating !== originalData?.rating) {
         await window.api.media?.setRating?.(data.id, data.rating)
+      }
+
+      // Save title — uses media:setTitle (not media:rename, which would
+      // also rename the on-disk file).
+      if (data.title !== originalData?.title) {
+        await window.api.media?.setTitle?.(data.id, data.title)
+      }
+
+      // Save description — stored in ai_analysis_results.description.
+      // Creates a stub row when none exists so manual descriptions persist.
+      if (data.description !== originalData?.description) {
+        await window.api.media?.setDescription?.(data.id, data.description)
       }
 
       // Update tags - add new, remove old
@@ -180,7 +197,18 @@ export function MetadataEditor({ media, mediaId, onSave, onClose, className = ''
               <input
                 value={data.title}
                 onChange={e => update({ title: e.target.value })}
+                placeholder="Display title (does NOT rename the file)"
                 className="w-full mt-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-zinc-500">Description</label>
+              <textarea
+                value={data.description}
+                onChange={e => update({ description: e.target.value })}
+                placeholder="What's this video about — anything you want to remember about it"
+                rows={4}
+                className="w-full mt-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm resize-y"
               />
             </div>
             <div>

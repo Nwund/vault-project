@@ -501,7 +501,7 @@ export class CustomFiltersService {
         }
         return this.buildNumericCondition('m.addedAt', operator, value, value2)
       case 'viewCount':
-        return this.buildNumericCondition('COALESCE(ms.playCount, 0)', operator, value, value2)
+        return this.buildNumericCondition('COALESCE(ms.views, 0)', operator, value, value2)
       case 'filename':
         return this.buildStringCondition('m.filename', operator, value)
       case 'path':
@@ -569,7 +569,7 @@ export class CustomFiltersService {
       rating: 'COALESCE(ms.rating, 0)',
       duration: 'COALESCE(m.durationSec, 0)',
       size: 'COALESCE(m.size, 0)',
-      viewCount: 'COALESCE(ms.playCount, 0)',
+      viewCount: 'COALESCE(ms.views, 0)',
       filename: 'm.filename',
       resolution: 'COALESCE(m.height, 0)'
     }

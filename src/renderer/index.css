@@ -3,6 +3,14 @@
    Vault - Apple-Like Design System
    ===============================*/
 
+/* Caption-preset fonts are imported via @fontsource in main.tsx (offline-safe). */
+
+/* Shimmer keyframe used by the goonwall preload progress bar */
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -92,6 +100,13 @@
   --padding-scale: 1;
   --animation-duration: 200ms;
   --accent-color: var(--primary);
+
+  /* Bottom safe-area: keeps page content from being hidden behind the
+     Windows taskbar when the app window doesn't quite respect the work
+     area (frameless / hiddenInset). 96px covers larger / pinned-app
+     taskbars + breathing room. Applied via .pb-safe and to scrollable page
+     containers + modal heights. */
+  --bottom-safe-area: 96px;
 }
 
 /* Apply font size to body */
@@ -103,14 +118,32 @@ body {
    FONT STYLES - App-wide typography themes
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* Single source of truth for the app-wide font: each style declares
+   --app-font, body reads it via var(). This breaks the specificity tie with
+   the body { font-family: ... } rule and makes the picker actually take
+   effect on every element that inherits font-family from body. */
+[data-font-style="default"]     { --app-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif; }
+[data-font-style="degrading"]   { --app-font: 'Bowlby One', 'Impact', 'Arial Black', sans-serif; }
+[data-font-style="80s-hacker"]  { --app-font: 'VT323', 'Courier New', 'Monaco', 'Lucida Console', monospace; }
+[data-font-style="perverse"]    { --app-font: 'Sacramento', 'Pacifico', 'Brush Script MT', cursive; }
+[data-font-style="neon"]        { --app-font: 'Audiowide', 'Century Gothic', 'Futura', 'Trebuchet MS', sans-serif; }
+[data-font-style="retro"]       { --app-font: 'Inter', 'Roboto', 'Segoe UI', sans-serif; }
+[data-font-style="gothic"]      { --app-font: 'Cinzel', 'Palatino Linotype', 'Book Antiqua', serif; }
+[data-font-style="cyberpunk"]   { --app-font: 'Inter', 'Segoe UI', sans-serif; }
+[data-font-style="horror"]      { --app-font: 'Inter', 'Segoe UI', sans-serif; }
+[data-font-style="comic"]       { --app-font: 'Fredoka', 'Inter', 'Segoe UI', sans-serif; }
+[data-font-style="elegant"]     { --app-font: 'Playfair Display', 'Georgia', 'Times New Roman', serif; }
+
+/* Style-specific overrides — letter-spacing, text-transform, headers. */
+
 /* Default - System fonts */
 [data-font-style="default"] {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+  font-family: var(--app-font);
 }
 
-/* Degrading - Bold, harsh typography */
+/* Degrading - Heavy condensed display, all-caps. Bowlby One via @fontsource. */
 [data-font-style="degrading"] {
-  font-family: 'Impact', 'Arial Black', 'Helvetica Neue', sans-serif;
+  font-family: var(--app-font);
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
@@ -121,11 +154,20 @@ body {
 [data-font-style="degrading"] .font-bold {
   text-shadow: 2px 2px 0 rgba(0,0,0,0.5);
 }
+/* Inputs/selects revert to a readable system font so forms stay usable */
+[data-font-style="degrading"] input,
+[data-font-style="degrading"] select,
+[data-font-style="degrading"] textarea {
+  font-family: -apple-system, 'Segoe UI', sans-serif;
+  text-transform: none;
+  letter-spacing: 0;
+}
 
-/* 80s Hacker - Terminal/monospace style */
+/* 80s Hacker - Terminal/CRT pixels via VT323 */
 [data-font-style="80s-hacker"] {
-  font-family: 'Courier New', 'Monaco', 'Lucida Console', monospace;
+  font-family: 'VT323', 'Courier New', 'Monaco', 'Lucida Console', monospace;
   letter-spacing: 1px;
+  font-size: 1.05em; /* VT323 reads slightly small at default sizes */
 }
 [data-font-style="80s-hacker"] * {
   text-shadow: 0 0 5px currentColor;
@@ -135,22 +177,26 @@ body {
   color: #000;
 }
 
-/* Perverse - Cursive, sensual typography */
+/* Perverse - Romantic cursive via Sacramento */
 [data-font-style="perverse"] {
-  font-family: 'Brush Script MT', 'Lucida Handwriting', 'Segoe Script', cursive;
-  font-style: italic;
+  font-family: 'Sacramento', 'Pacifico', 'Brush Script MT', cursive;
+  /* font-style: italic was here; Sacramento is already a script — let its
+     designed forms do the work instead of synthetic italics. */
 }
 [data-font-style="perverse"] button,
 [data-font-style="perverse"] input,
-[data-font-style="perverse"] select {
-  font-family: 'Georgia', 'Times New Roman', serif;
+[data-font-style="perverse"] select,
+[data-font-style="perverse"] textarea {
+  /* Inputs need horizontal rhythm — fall back to readable serif */
+  font-family: 'Playfair Display', 'Georgia', 'Times New Roman', serif;
   font-style: normal;
 }
 
-/* Neon - Modern, glowing typography */
+/* Neon - Futuristic round display via Audiowide */
 [data-font-style="neon"] {
-  font-family: 'Century Gothic', 'Futura', 'Trebuchet MS', sans-serif;
-  font-weight: 300;
+  font-family: 'Audiowide', 'Century Gothic', 'Futura', 'Trebuchet MS', sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.4px;
 }
 [data-font-style="neon"] h1,
 [data-font-style="neon"] h2,
@@ -160,26 +206,93 @@ body {
     0 0 10px var(--primary),
     0 0 20px var(--primary);
 }
+[data-font-style="neon"] input,
+[data-font-style="neon"] select,
+[data-font-style="neon"] textarea {
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+}
 
-/* Retro - Typewriter style */
+/* Retro - 80s synthwave display via Monoton (display only — paragraphs stay readable) */
 [data-font-style="retro"] {
-  font-family: 'American Typewriter', 'Courier Prime', 'Courier New', monospace;
-  letter-spacing: 0.5px;
+  font-family: 'Inter', 'Roboto', 'Segoe UI', sans-serif;
+  letter-spacing: 0.3px;
 }
-[data-font-style="retro"] * {
-  text-shadow: 1px 1px 0 rgba(100,80,60,0.3);
+[data-font-style="retro"] h1,
+[data-font-style="retro"] h2,
+[data-font-style="retro"] h3,
+[data-font-style="retro"] .font-bold,
+[data-font-style="retro"] .font-semibold {
+  font-family: 'Monoton', 'American Typewriter', 'Courier Prime', monospace;
+  letter-spacing: 1px;
+  text-shadow: 2px 2px 0 rgba(255, 0, 200, 0.35), 4px 4px 0 rgba(0, 240, 255, 0.25);
 }
 
-/* Gothic - Dark, dramatic typography */
+/* Gothic - Dramatic horror display via Creepster (dripping melt) */
 [data-font-style="gothic"] {
-  font-family: 'Old English Text MT', 'UnifrakturMaguntia', 'Times New Roman', serif;
+  font-family: 'Cinzel', 'Palatino Linotype', 'Book Antiqua', serif;
+  letter-spacing: 0.4px;
 }
-[data-font-style="gothic"] button,
-[data-font-style="gothic"] input,
-[data-font-style="gothic"] select,
-[data-font-style="gothic"] .text-xs,
-[data-font-style="gothic"] .text-sm {
-  font-family: 'Palatino Linotype', 'Book Antiqua', serif;
+[data-font-style="gothic"] h1,
+[data-font-style="gothic"] h2,
+[data-font-style="gothic"] h3,
+[data-font-style="gothic"] .font-bold {
+  font-family: 'Creepster', 'Old English Text MT', 'UnifrakturMaguntia', cursive;
+  letter-spacing: 1.5px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+/* New 2026 round — adds 4 fresh styles. Type union updated in App.tsx. */
+
+/* Cyberpunk - Tech blocks via Wallpoet */
+[data-font-style="cyberpunk"] {
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  letter-spacing: 0.3px;
+}
+[data-font-style="cyberpunk"] h1,
+[data-font-style="cyberpunk"] h2,
+[data-font-style="cyberpunk"] h3,
+[data-font-style="cyberpunk"] .font-bold {
+  font-family: 'Wallpoet', 'Audiowide', monospace;
+  letter-spacing: 1.2px;
+  text-shadow: 0 0 6px var(--primary), 0 0 14px var(--primary);
+}
+
+/* Horror - Drippy menace via Nosifer */
+[data-font-style="horror"] {
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+[data-font-style="horror"] h1,
+[data-font-style="horror"] h2,
+[data-font-style="horror"] h3,
+[data-font-style="horror"] .font-bold,
+[data-font-style="horror"] .font-semibold {
+  font-family: 'Nosifer', 'Creepster', 'Bowlby One', cursive;
+  text-shadow: 0 0 6px rgba(255, 0, 0, 0.6);
+}
+
+/* Comic - Punchy comic-book Bangers */
+[data-font-style="comic"] {
+  font-family: 'Fredoka', 'Inter', 'Segoe UI', sans-serif;
+}
+[data-font-style="comic"] h1,
+[data-font-style="comic"] h2,
+[data-font-style="comic"] h3,
+[data-font-style="comic"] .font-bold {
+  font-family: 'Bangers', 'Bowlby One', 'Arial Black', cursive;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+}
+
+/* Elegant - Refined editorial via Playfair Display */
+[data-font-style="elegant"] {
+  font-family: 'Playfair Display', 'Georgia', 'Times New Roman', serif;
+  letter-spacing: 0.2px;
+}
+[data-font-style="elegant"] button,
+[data-font-style="elegant"] input,
+[data-font-style="elegant"] select {
+  font-family: 'Inter', 'Segoe UI', sans-serif;
 }
 
 /* Compact mode adjustments */
@@ -615,6 +728,17 @@ body {
   box-sizing: border-box;
 }
 
+/* Bottom safe-area helpers ────────────────────────────────────────────────
+   .pb-safe → scrollable page containers add the safe-area as bottom padding.
+   .max-h-safe → modals/popovers cap their height so they never extend into
+   the taskbar even when triggered from a bottom-edge button. */
+.pb-safe {
+  padding-bottom: calc(var(--bottom-safe-area, 64px) + 16px) !important;
+}
+.max-h-safe {
+  max-height: calc(100vh - var(--bottom-safe-area, 64px) - 24px);
+}
+
 html {
   height: 100%;
   -webkit-font-smoothing: antialiased;
@@ -628,8 +752,11 @@ body {
   background: linear-gradient(160deg, var(--background) 0%, var(--background-alt) 50%, var(--background) 100%);
   min-height: 100vh;
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
-    'Helvetica Neue', 'Segoe UI', Roboto, sans-serif;
+  /* The actual font is driven by --app-font, which is set per data-font-style.
+     This is the only place app-wide typography enters the cascade — without the
+     variable indirection, body's hardcoded font-family wins over the
+     [data-font-style] rules on <html> and the picker has no effect. */
+  font-family: var(--app-font, -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', 'Segoe UI', Roboto, sans-serif);
   font-size: 14px;
   line-height: 1.5;
   letter-spacing: -0.01em;
@@ -873,7 +1000,7 @@ input[type="range"]::-webkit-slider-thumb:active {
 .volume-slider {
   appearance: none;
   -webkit-appearance: none;
-  height: 6px;
+  height: 8px;
   background: rgba(255, 255, 255, 0.2);
   border: none;
   border-radius: 9999px;
@@ -882,7 +1009,7 @@ input[type="range"]::-webkit-slider-thumb:active {
 }
 
 .volume-slider::-webkit-slider-runnable-track {
-  height: 6px;
+  height: 8px;
   border-radius: 9999px;
   background: transparent;
 }
@@ -890,23 +1017,25 @@ input[type="range"]::-webkit-slider-thumb:active {
 .volume-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   background: #fff;
   border: none;
   border-radius: 50%;
   cursor: grab;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
-  margin-top: -4px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  margin-top: -5px;
+  transition: transform 0.12s ease;
 }
 
 .volume-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
+  transform: scale(1.15);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
 }
 
 .volume-slider::-webkit-slider-thumb:active {
   cursor: grabbing;
-  transform: scale(1.0);
+  transform: scale(1.05);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -2037,6 +2166,60 @@ button:focus-visible,
 [data-theme-mode="light"] .glass-strong {
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+/* ───────────────────────────────────────────────────────────────────────
+   GLASS POLISH — noise overlay + 1px inset border
+   These extend the .glass family without breaking existing usage. Apply
+   to any panel that wants the "premium" feel (lightbox chrome, primary
+   modals). Skip on cards rendered hundreds of times (cost: noise PNG
+   compositing per element).
+   ─────────────────────────────────────────────────────────────────────── */
+.glass-polished {
+  position: relative;
+  isolation: isolate;
+}
+.glass-polished::before {
+  /* 4% opacity SVG noise — kills banding on large blurs without
+     burning bandwidth. Inline data: URL → no extra request. The
+     fractal-noise filter is supported by all Chromium versions
+     Electron 32+ ships. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  z-index: 1;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='160' height='160' filter='url(%23n)' opacity='1'/></svg>");
+  border-radius: inherit;
+  mix-blend-mode: overlay;
+}
+.glass-polished::after {
+  /* 1px inset light-border for the depth illusion. Inside the
+     glass element, so it doesn't interfere with click targets. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  border-radius: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Layered blur — outer panel + inner card pattern. Apply
+   .glass-layered to a container, .glass-layered > .glass-card-inner
+   gets a lighter blur on top of the parent for visual depth. */
+.glass-layered {
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+}
+.glass-layered > .glass-card-inner {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

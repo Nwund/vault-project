@@ -2,9 +2,11 @@
 // Floating Picture-in-Picture style video player with fullscreen support
 
 
-import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2, RectangleHorizontal, Crop, Minus, Square, Scissors, Check, Download, Library, Palette, Sliders, Activity, Gauge, Repeat } from 'lucide-react'
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2, RectangleHorizontal, Crop, Minus, Square, Scissors, Check, Download, Library, Palette, Sliders, Activity, Gauge, Repeat, Wrench, Mic } from 'lucide-react'
 import { RelatedMediaPanel } from './RelatedMediaPanel'
+import { WatchWithXy } from './WatchWithXy'
 import { MediaNotesPanel } from './MediaNotesPanel'
 import { BookmarksPanel } from './BookmarksPanel'
 import { ColorGrading } from './ColorGrading'
@@ -15,6 +17,9 @@ import { ThumbnailStrip } from './ThumbnailStrip'
 import { LoopRegion } from './LoopRegion'
 import { formatDuration } from '../utils/formatters'
 import { toFileUrlCached } from '../hooks/usePerformance'
+import { useXyreneSoundEngine } from '../hooks/useXyreneSoundEngine'
+import { useVoiceCommands } from '../hooks/useVoiceCommands'
+import { VerticalVolumeSlider } from './VerticalVolumeSlider'
 
 interface MediaRow {
   id: string
@@ -62,7 +67,6 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [showVolumeSlider, setShowVolumeSlider] = useState(false)
-  const [volumeDragging, setVolumeDragging] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisResult, setAnalysisResult] = useState<string | null>(null)
   const [isLiked, setIsLiked] = useState(false)
@@ -104,6 +108,54 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [showSpeedRamp, setShowSpeedRamp] = useState(false)
   const [showThumbnailStrip, setShowThumbnailStrip] = useState(false)
   const [showLoopRegion, setShowLoopRegion] = useState(false)
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
+
+  // Position the More-Tools popup above the trigger button. useLayoutEffect
+  // so the position is set before paint, avoiding a flash at (0,0).
+  useLayoutEffect(() => {
+    if (!showMoreMenu) return
+    const trigger = moreMenuTriggerRef.current
+    if (!trigger) return
+    const rect = trigger.getBoundingClientRect()
+    const POPUP_W = 260
+    const ESTIMATED_H = Math.min(window.innerHeight * 0.6, 520)
+    let top = rect.top - ESTIMATED_H - 8  // open upward by default
+    if (top < 8) top = rect.bottom + 8    // not enough room above → flip downward
+    let left = rect.right - POPUP_W       // right-align to trigger
+    if (left < 8) left = 8
+    if (left + POPUP_W > window.innerWidth - 8) left = window.innerWidth - POPUP_W - 8
+    setMoreMenuPos({ top, left })
+  }, [showMoreMenu])
+
+  // Click-outside to dismiss (replaces the old onMouseLeave on the popup).
+  useEffect(() => {
+    if (!showMoreMenu) return
+    const handler = (e: MouseEvent) => {
+      const trigger = moreMenuTriggerRef.current
+      const popup = moreMenuRef.current
+      const target = e.target as Node
+      if (trigger?.contains(target)) return
+      if (popup?.contains(target)) return
+      setShowMoreMenu(false)
+    }
+    // Defer one tick so the click that opened the menu doesn't immediately close it.
+    const t = setTimeout(() => document.addEventListener('mousedown', handler), 0)
+    return () => {
+      clearTimeout(t)
+      document.removeEventListener('mousedown', handler)
+    }
+  }, [showMoreMenu])
+
+  // Xyrene watch-along — toggle, current caption, history of recent lines
+  // (so the prompt can avoid repetition), and tunable frequency.
+  const [xyMode, setXyMode] = useState(false)
+  const [xyCurrentLine, setXyCurrentLine] = useState<string | null>(null)
+  const [xyHistory, setXyHistory] = useState<string[]>([])
+  const [xyFrequencySec, setXyFrequencySec] = useState(8)
+  const [xyMuted, setXyMuted] = useState(false)
+  const xyAudioRef = useRef<HTMLAudioElement | null>(null)
+  const xyBusyRef = useRef(false)
+  const xyCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const [videoFilterStyle, setVideoFilterStyle] = useState<string>('none')
   const [colorGradeStyle, setColorGradeStyle] = useState<{ brightness: number; contrast: number; saturation: number; hue: number; temperature: number; tint: number; shadows: number; highlights: number; vibrance: number }>({ brightness: 100, contrast: 100, saturation: 100, hue: 0, temperature: 0, tint: 0, shadows: 0, highlights: 0, vibrance: 0 })
   const [resumePosition, setResumePosition] = useState<number | null>(null)
@@ -132,6 +184,10 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [trimResult, setTrimResult] = useState<{ success: boolean; message: string; outputPath?: string } | null>(null)
   // Progress bar hover tooltip
   const [progressHover, setProgressHover] = useState<{ x: number; time: number } | null>(null)
+  // More-tools popup is portaled to body — needs trigger ref + computed pos.
+  const moreMenuTriggerRef = useRef<HTMLButtonElement>(null)
+  const moreMenuRef = useRef<HTMLDivElement>(null)
+  const [moreMenuPos, setMoreMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
   const imageContainerRef = useRef<HTMLDivElement>(null)
   const errorHandled = useRef(false) // Prevent duplicate error handling
   const isMountedRef = useRef(true) // Track if component is mounted for async operations
@@ -272,6 +328,115 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       videoRef.current.muted = isMuted
     }
   }, [volume, isMuted])
+
+  // Xyrene watch-along loop. While xyMode is on AND the video is playing,
+  // every xyFrequencySec we capture a frame, send it to xyrene:comment,
+  // and play the returned audio + show the caption. Cleans up cleanly
+  // when toggled off / unmounted / video paused.
+  useEffect(() => {
+    if (!xyMode || media.type !== 'video') return
+    let cancelled = false
+
+    const captureFrame = (): string | null => {
+      const v = videoRef.current
+      if (!v || v.videoWidth === 0) return null
+      let canvas = xyCanvasRef.current
+      if (!canvas) {
+        canvas = document.createElement('canvas')
+        xyCanvasRef.current = canvas
+      }
+      // Cap at 720p — Tier 2 doesn't need more, smaller payloads land faster.
+      const maxW = 1280
+      const ratio = v.videoWidth > maxW ? maxW / v.videoWidth : 1
+      canvas.width = Math.round(v.videoWidth * ratio)
+      canvas.height = Math.round(v.videoHeight * ratio)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return null
+      try {
+        ctx.drawImage(v, 0, 0, canvas.width, canvas.height)
+        return canvas.toDataURL('image/jpeg', 0.85)
+      } catch (err) {
+        // Cross-origin / tainted canvas — give up silently.
+        console.warn('[Xy] frame capture failed:', err)
+        return null
+      }
+    }
+
+    const tick = async () => {
+      if (cancelled) return
+      const v = videoRef.current
+      if (!v || v.paused || v.ended) return
+      if (xyBusyRef.current) return        // last call still in flight
+      const dataUrl = captureFrame()
+      if (!dataUrl) return
+      xyBusyRef.current = true
+      try {
+        const result = await (window as any).api?.ai?.xyreneComment?.({
+          mediaId: media.id,
+          currentTimeSec: v.currentTime,
+          durationSec: v.duration,
+          frameDataUrl: dataUrl,
+          recentComments: xyHistory.slice(-5),
+          speak: !xyMuted
+        })
+        if (cancelled || !result?.text) return
+        setXyCurrentLine(result.text)
+        setXyHistory((h) => [...h.slice(-19), result.text])
+        // Play audio if present (and Xy isn't muted by user)
+        if (result.audioBase64 && !xyMuted) {
+          try {
+            const blob = new Blob(
+              [Uint8Array.from(atob(result.audioBase64), (c) => c.charCodeAt(0))],
+              { type: result.audioMime ?? 'audio/wav' }
+            )
+            const url = URL.createObjectURL(blob)
+            // Stop any in-flight clip before starting the next.
+            if (xyAudioRef.current) {
+              try { xyAudioRef.current.pause() } catch {}
+              try { URL.revokeObjectURL(xyAudioRef.current.src) } catch {}
+            }
+            const audio = new Audio(url)
+            audio.volume = 0.85
+            xyAudioRef.current = audio
+            audio.onended = () => {
+              try { URL.revokeObjectURL(url) } catch {}
+              if (xyAudioRef.current === audio) {
+                // Clear caption ~500ms after audio ends so it doesn't pop too quick.
+                setTimeout(() => {
+                  if (!cancelled) setXyCurrentLine((cur) => cur === result.text ? null : cur)
+                }, 500)
+              }
+            }
+            audio.play().catch((err) => console.warn('[Xy] audio play failed:', err))
+          } catch (err) {
+            console.warn('[Xy] audio decode failed:', err)
+          }
+        } else {
+          // No audio — just clear caption after a few seconds.
+          setTimeout(() => {
+            if (!cancelled) setXyCurrentLine((cur) => cur === result.text ? null : cur)
+          }, 6000)
+        }
+      } catch (err) {
+        console.warn('[Xy] commentary call failed:', err)
+      } finally {
+        xyBusyRef.current = false
+      }
+    }
+
+    // Fire one immediately on toggle, then on the interval.
+    tick()
+    const id = window.setInterval(tick, Math.max(3000, xyFrequencySec * 1000))
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+      if (xyAudioRef.current) {
+        try { xyAudioRef.current.pause() } catch {}
+      }
+    }
+    // Intentionally not dependent on xyHistory — we re-read it in tick().
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [xyMode, xyFrequencySec, xyMuted, media.id, media.type])
 
   // Navigation functions (declared before hooks that reference them)
   const goToPrev = useCallback(() => {
@@ -1072,6 +1237,9 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   }, [media.id])
 
   // Load playback settings for quality mode
+  // Also pulls the xyrene goonWallMasturbationMode flag — when on, the
+  // sound engine layers Xyrene's curated picks over this video.
+  const [xyreneEngineEnabled, setXyreneEngineEnabled] = useState(false)
   useEffect(() => {
     ;(async () => {
       try {
@@ -1082,9 +1250,51 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         if (playback.defaultResolution && playback.defaultResolution !== 'original') {
           setCurrentResolution(playback.defaultResolution)
         }
+        const xyrene = settings?.xyrene || {}
+        setXyreneEngineEnabled(!!xyrene.goonWallMasturbationMode)
       } catch {}
     })()
   }, [])
+
+  // Mount the Xyrene sound engine. Hook handles play/pause/timeupdate/end
+  // and drives phase progression off video position. No-ops when disabled.
+  const xyreneEngine = useXyreneSoundEngine(videoRef, {
+    enabled: xyreneEngineEnabled,
+    masterVolume: 0.85,
+  })
+
+  // Voice commands — listens to mic and dispatches phrase-matched actions.
+  // Gated on the same xyrene settings flag the user already toggles in
+  // Settings → Xyrene → "Listen for voice commands". Only the primary
+  // player listens (instanceIndex 0) so we don't run multiple recognizers.
+  const [voiceCommandsEnabled, setVoiceCommandsEnabled] = useState(false)
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const s = await window.api.settings.get()
+        setVoiceCommandsEnabled(!!(s as any)?.xyrene?.voiceCommandsEnabled)
+      } catch { /* ignore */ }
+    })()
+  }, [])
+  const voice = useVoiceCommands(voiceCommandsEnabled && instanceIndex === 0, {
+    onPause: () => { try { videoRef.current?.pause() } catch { /* ignore */ } },
+    onPlay: () => { try { void videoRef.current?.play() } catch { /* ignore */ } },
+    onNext: () => { try { goToNext?.() } catch { /* ignore */ } },
+    onPrev: () => { try { goToPrev?.() } catch { /* ignore */ } },
+    onSeekForward: (s) => { if (videoRef.current) videoRef.current.currentTime = Math.min(videoRef.current.duration ?? 0, videoRef.current.currentTime + s) },
+    onSeekBack: (s) => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - s) },
+    onVolumeUp: () => setVolume((v) => Math.min(1, v + 0.1)),
+    onVolumeDown: () => setVolume((v) => Math.max(0, v - 0.1)),
+    onClimax: () => { /* engine reads phase from video position; nudge it forward */
+      if (videoRef.current && videoRef.current.duration) {
+        videoRef.current.currentTime = Math.max(videoRef.current.currentTime, videoRef.current.duration * 0.9)
+      }
+    },
+    // Mute/unmute "xy" — flips the engine off/on quickly. Same control
+    // surface as the HUD pill, just spoken instead of clicked.
+    onMuteXy: () => setXyreneEngineEnabled(false),
+    onUnmuteXy: () => setXyreneEngineEnabled(true),
+  })
 
   // Handle resolution change - persists across all videos
   const handleResolutionChange = useCallback(async (resolution: string) => {
@@ -1476,9 +1686,11 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         </div>
       )}
 
-      {/* Loading indicator */}
+      {/* Loading indicator — purely informational; pointer-events-none so
+          a stuck loading state doesn't lock the user out of close / next /
+          prev controls. Clicks pass through to the video underneath. */}
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-20">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-20 pointer-events-none">
           <div className="w-10 h-10 border-3 border-white/20 border-t-white rounded-full animate-spin" />
         </div>
       )}
@@ -1493,9 +1705,10 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         </div>
       )}
 
-      {/* AI Analyzing Overlay */}
+      {/* AI Analyzing Overlay — informational; pointer-events-none so it
+          doesn't hijack interaction with the player controls. */}
       {isAnalyzing && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-25">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-25 pointer-events-none">
           <div className="flex flex-col items-center gap-3">
             <Sparkles size={32} className="text-purple-400 animate-pulse" />
             <div className="text-white text-sm">AI Analyzing...</div>
@@ -1570,6 +1783,54 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               onWaiting={() => setIsLoading(true)}
               onPlaying={() => setIsLoading(false)}
             />
+
+            {/* Watch With Xyrene — vision-grounded commentary in her voice
+                while the video plays. Self-contained component; renders its
+                own toggle, transcript, and audio queue. Disables itself if
+                Tier 2 / XTTS / character bible aren't reachable.
+                Gated to instanceIndex 0 so a Library full of multiple open
+                players doesn't spawn a button on every one — only the
+                primary player gets her attention. */}
+            {instanceIndex === 0 && (
+              <WatchWithXy
+                videoRef={videoRef}
+                mediaId={media.id}
+                durationSec={media.durationSec ?? null}
+                titleVisible={showControls}
+              />
+            )}
+
+            {/* Xyrene sound engine HUD — only on the primary player
+                (instanceIndex 0). When the title bar is visible (showControls)
+                we drop the button below it; when controls fade out the title
+                disappears too, so the button slides back up to the top.
+                Tween matches the title bar's 300ms opacity transition. */}
+            {instanceIndex === 0 && (
+              <div className={`absolute right-2 z-20 pointer-events-none transition-all duration-300 flex items-center gap-1.5 ${showControls ? 'top-9' : 'top-2'}`}>
+                {voice.listening && (
+                  <div
+                    className="pointer-events-auto px-2 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider border bg-emerald-500/25 text-emerald-200 border-emerald-400/40 backdrop-blur flex items-center gap-1"
+                    title={voice.error ? voice.error : voice.lastCommand ? `Last: ${voice.lastCommand}` : 'Listening for voice commands'}
+                  >
+                    <Mic size={10} className="animate-pulse" />
+                    {voice.lastCommand ?? 'listening'}
+                  </div>
+                )}
+                <button
+                  data-no-ui-sound
+                  onClick={() => setXyreneEngineEnabled((v) => !v)}
+                  className={`pointer-events-auto px-2 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider border transition flex items-center gap-1 backdrop-blur ${
+                    xyreneEngineEnabled
+                      ? 'bg-pink-500/30 hover:bg-pink-500/40 text-pink-100 border-pink-400/40'
+                      : 'bg-black/40 hover:bg-black/60 text-white/50 border-white/10'
+                  }`}
+                  title={xyreneEngineEnabled ? `Sound engine on — phase: ${xyreneEngine.phase}` : 'Sound engine off — click to enable'}
+                >
+                  <Sparkles size={10} />
+                  {xyreneEngineEnabled ? xyreneEngine.phase : 'off'}
+                </button>
+              </div>
+            )}
             {/* Crop mode overlay with handles */}
             {isCropMode && (
               <div className="absolute inset-0 z-10">
@@ -1731,6 +1992,43 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         ) : (
           <div className="w-full h-full bg-black" />
         )
+      )}
+
+      {/* Xyrene caption overlay — fades in when xyMode produces a new line.
+          Click anywhere on the bubble to dismiss; little speaker icon mutes
+          the next clip without leaving watch mode. Outside the controls
+          block so it's not gated on isMiniMode. */}
+      {xyMode && xyCurrentLine && (
+        <div
+          className="absolute left-1/2 -translate-x-1/2 z-30 pointer-events-auto cursor-pointer max-w-[80%]"
+          style={{ bottom: isFullscreen ? '12%' : '90px' }}
+          onClick={() => {
+            if (xyAudioRef.current) try { xyAudioRef.current.pause() } catch {}
+            setXyCurrentLine(null)
+          }}
+          title="Click to dismiss"
+        >
+          <div className="px-4 py-2.5 rounded-2xl bg-black/80 backdrop-blur-md border border-fuchsia-500/40 shadow-[0_0_20px_rgba(217,70,239,0.35)]">
+            <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-fuchsia-300/80 mb-1">
+              <Sparkles size={10} className="animate-pulse" />
+              <span>Xyrene</span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setXyMuted((m) => !m)
+                  if (!xyMuted && xyAudioRef.current) {
+                    try { xyAudioRef.current.pause() } catch {}
+                  }
+                }}
+                className="ml-auto text-fuchsia-300/70 hover:text-fuchsia-200"
+                title={xyMuted ? 'Unmute Xy voice' : 'Mute Xy voice'}
+              >
+                {xyMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+              </button>
+            </div>
+            <p className="text-sm text-white leading-snug">{xyCurrentLine}</p>
+          </div>
+        </div>
       )}
 
       {/* Bottom controls (hidden in mini mode) */}
@@ -1922,85 +2220,47 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
           {/* Right: Actions */}
           <div className="flex items-center gap-1 no-drag">
             {media.type === 'video' && (
-              <div
-                className="relative flex items-center"
-                onMouseLeave={() => { if (!volumeDragging) setShowVolumeSlider(false) }}
-              >
+              <div className="relative flex items-center">
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    // Click toggles the slider open/closed. Mute is now a
+                    // separate right-click (or you can drag the slider to
+                    // 0 yourself). Earlier hover-based open + mouseLeave-
+                    // close was unreliable: tiny cursor wobbles dismissed
+                    // it mid-drag, and the slider sometimes refused to
+                    // climb back from 0.
+                    setShowVolumeSlider((v) => !v)
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
                     if (isMuted || volume === 0) {
-                      // Unmute: restore previous volume
                       const restored = prevVolumeRef.current > 0 ? prevVolumeRef.current : 0.5
                       setVolume(restored)
                       setIsMuted(false)
                     } else {
-                      // Mute: save current volume and mute
                       prevVolumeRef.current = volume
                       setIsMuted(true)
                     }
                   }}
-                  onMouseEnter={() => setShowVolumeSlider(true)}
                   className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition"
-                  title={isMuted || volume === 0 ? 'Click to unmute (M)' : 'Click to mute (M)'}
+                  title={isMuted || volume === 0 ? 'Click for slider · right-click to unmute' : 'Click for slider · right-click to mute'}
                 >
                   {isMuted || volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
                 </button>
-                {/* Volume slider */}
+                {/* Vertical volume slider — custom-built so dragging works
+                    both directions reliably, doesn't disappear on tiny
+                    cursor jitter, and stays open until clicked outside. */}
                 {showVolumeSlider && (
-                  <div
-                    className="no-drag absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-3 py-3 bg-black/90 rounded-lg border border-white/20"
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onMouseMove={(e) => e.stopPropagation()}
-                    onMouseUp={(e) => e.stopPropagation()}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onPointerMove={(e) => e.stopPropagation()}
-                    onPointerUp={(e) => e.stopPropagation()}
-                  >
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={volume}
-                      onInput={(e) => {
-                        const v = parseFloat((e.target as HTMLInputElement).value)
-                        if (v > 0) prevVolumeRef.current = v
-                        setVolume(v)
-                        if (v > 0 && isMuted) setIsMuted(false)
-                      }}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value)
-                        if (v > 0) prevVolumeRef.current = v
-                        setVolume(v)
-                        if (v > 0 && isMuted) setIsMuted(false)
-                      }}
-                      onMouseDown={(e) => {
-                        e.stopPropagation()
-                        setVolumeDragging(true)
-                      }}
-                      onMouseUp={() => setVolumeDragging(false)}
-                      onPointerDown={(e) => {
-                        e.stopPropagation()
-                        e.currentTarget.setPointerCapture(e.pointerId)
-                        setVolumeDragging(true)
-                      }}
-                      onPointerUp={(e) => {
-                        e.currentTarget.releasePointerCapture(e.pointerId)
-                        setVolumeDragging(false)
-                      }}
-                      onLostPointerCapture={() => setVolumeDragging(false)}
-                      className="volume-slider w-24 cursor-pointer"
-                      style={{
-                        writingMode: 'horizontal-tb',
-                        background: `linear-gradient(to right, rgba(255,255,255,0.8) ${volume * 100}%, rgba(255,255,255,0.2) ${volume * 100}%)`
-                      }}
-                    />
-                    <div className="text-[10px] text-white/60 text-center mt-1">{Math.round(volume * 100)}%</div>
-                  </div>
-                )}
-                {/* Transparent bridge to prevent mouseLeave gap */}
-                {showVolumeSlider && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 w-12 h-2" />
+                  <VerticalVolumeSlider
+                    value={isMuted ? 0 : volume}
+                    onChange={(v) => {
+                      if (v > 0) prevVolumeRef.current = v
+                      setVolume(v)
+                      if (v > 0 && isMuted) setIsMuted(false)
+                    }}
+                    onClose={() => setShowVolumeSlider(false)}
+                  />
                 )}
               </div>
             )}
@@ -2031,66 +2291,9 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               </div>
             )}
 
-            {/* Crop control */}
-            {media.type === 'video' && (
-              <div className="relative">
-                <button
-                  onClick={() => setShowCropMenu(prev => !prev)}
-                  className={`p-2 rounded-lg transition ${(cropValues.top > 0 || cropValues.right > 0 || cropValues.bottom > 0 || cropValues.left > 0) ? 'bg-yellow-500/80 text-white' : 'bg-white/10 hover:bg-white/20'}`}
-                  title="Crop Video (C)"
-                >
-                  <Crop size={16} />
-                </button>
-                {showCropMenu && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 py-1 bg-black/95 rounded-lg border border-white/20 min-w-[120px]">
-                    <button
-                      onClick={() => { setIsCropMode(true); setShowCropMenu(false) }}
-                      className="w-full px-3 py-1.5 text-[11px] text-left hover:bg-white/10 transition text-white/80"
-                    >
-                      Edit Crop...
-                    </button>
-                    <button
-                      onClick={() => { setCropValues({ top: 5, right: 5, bottom: 5, left: 5 }); setShowCropMenu(false) }}
-                      className="w-full px-3 py-1.5 text-[11px] text-left hover:bg-white/10 transition text-white/80"
-                    >
-                      Light (5%)
-                    </button>
-                    <button
-                      onClick={() => { setCropValues({ top: 10, right: 10, bottom: 10, left: 10 }); setShowCropMenu(false) }}
-                      className="w-full px-3 py-1.5 text-[11px] text-left hover:bg-white/10 transition text-white/80"
-                    >
-                      Medium (10%)
-                    </button>
-                    <button
-                      onClick={() => { setCropValues({ top: 15, right: 15, bottom: 15, left: 15 }); setShowCropMenu(false) }}
-                      className="w-full px-3 py-1.5 text-[11px] text-left hover:bg-white/10 transition text-white/80"
-                    >
-                      Heavy (15%)
-                    </button>
-                    {(cropValues.top > 0 || cropValues.right > 0 || cropValues.bottom > 0 || cropValues.left > 0) && (
-                      <button
-                        onClick={() => { setCropValues({ top: 0, right: 0, bottom: 0, left: 0 }); setShowCropMenu(false) }}
-                        className="w-full px-3 py-1.5 text-[11px] text-left hover:bg-white/10 transition text-red-400 border-t border-white/10"
-                      >
-                        Reset Crop
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+            {/* ─── PRIMARY ACTIONS ─── */}
 
-            {/* Trim button */}
-            {media.type === 'video' && (
-              <button
-                onClick={handleOpenTrimModal}
-                className={`p-2 rounded-lg transition ${(loopStart !== null && loopEnd !== null) ? 'bg-green-500/80 text-white' : 'bg-white/10 hover:bg-green-500/60'}`}
-                title={loopStart !== null && loopEnd !== null ? `Trim ${formatDuration(loopStart)} - ${formatDuration(loopEnd)}` : 'Trim Video'}
-              >
-                <Scissors size={16} />
-              </button>
-            )}
-
+            {/* Like / Favorite */}
             <button
               onClick={handleToggleLike}
               disabled={isLikeLoading}
@@ -2100,6 +2303,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               <Heart size={16} className={`${isLiked ? 'fill-current' : ''} ${isLikeLoading ? 'animate-pulse' : ''}`} />
             </button>
 
+            {/* Quick Bookmark add */}
             {media.type === 'video' && (
               <button
                 onClick={() => {
@@ -2123,50 +2327,19 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               </button>
             )}
 
-            <button
-              onClick={() => {
-                window.api.invoke('watchLater:add', media.id)
-                  .then(() => {
-                    setBookmarkFeedback('Added to Watch Later')
-                    setTimeout(() => setBookmarkFeedback(null), 2000)
-                  })
-                  .catch(() => {
-                    setBookmarkFeedback('Failed to add to Watch Later')
-                    setTimeout(() => setBookmarkFeedback(null), 2000)
-                  })
-              }}
-              className="p-2 rounded-lg bg-white/10 hover:bg-cyan-500/60 transition"
-              title="Add to Watch Later"
-            >
-              <Clock size={16} />
-            </button>
+            {/* AI Deep Analysis */}
+            {media.type === 'video' && (
+              <button
+                onClick={handleAiAnalyze}
+                disabled={isAnalyzing}
+                className={`p-2 rounded-lg transition ${isAnalyzing ? 'bg-purple-500/50 animate-pulse' : 'bg-purple-500/60 hover:bg-purple-500/80'}`}
+                title="AI Deep Analysis"
+              >
+                <Sparkles size={16} className={isAnalyzing ? 'animate-spin' : ''} />
+              </button>
+            )}
 
-            <button
-              onClick={handleBlacklist}
-              className="p-2 rounded-lg bg-white/10 hover:bg-red-500/60 transition"
-              title="Blacklist this item"
-            >
-              <Ban size={16} />
-            </button>
-
-            <button
-              onClick={handleRevealInFolder}
-              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition"
-              title="Show in folder"
-            >
-              <FolderOpen size={16} />
-            </button>
-
-            {/* Low Quality Mode Toggle */}
-            <button
-              onClick={toggleLowQualityMode}
-              className={`p-2 rounded-lg transition ${lowQualityMode ? 'bg-amber-500/70 shadow-[0_0_10px_rgba(245,158,11,0.4)]' : 'bg-white/10 hover:bg-white/20'}`}
-              title={lowQualityMode ? 'Low Quality Mode ON (click to disable)' : 'Enable Low Quality Mode'}
-            >
-              <Tv size={16} />
-            </button>
-
-            {/* Quality/Resolution Selector */}
+            {/* Quality / Resolution */}
             {media.type === 'video' && (
               <div className="relative">
                 <button
@@ -2207,7 +2380,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               </div>
             )}
 
-            {/* DLNA Cast Button */}
+            {/* DLNA Cast */}
             {media.type === 'video' && (
               <div className="relative">
                 {isCasting && activeDevice ? (
@@ -2230,111 +2403,197 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               </div>
             )}
 
-            {media.type === 'video' && (
+            {/* ─── MORE TOOLS POPUP ───
+                Portaled to document.body so it escapes the FloatingVideoPlayer's
+                `overflow-hidden`. Position computed from the trigger button's
+                bounding rect on every open. max-h-[60vh] + overflow-y-auto
+                guarantees scroll even when player + popup don't fit on screen. */}
+            <div className="relative">
               <button
-                onClick={handleAiAnalyze}
-                disabled={isAnalyzing}
-                className={`p-2 rounded-lg transition ${isAnalyzing ? 'bg-purple-500/50 animate-pulse' : 'bg-purple-500/60 hover:bg-purple-500/80'}`}
-                title="AI Deep Analysis"
+                ref={moreMenuTriggerRef}
+                onClick={() => setShowMoreMenu((v) => !v)}
+                className={`p-2 rounded-lg transition ${showMoreMenu ? 'bg-white/30' : 'bg-white/10 hover:bg-white/20'}`}
+                title="More Tools"
               >
-                <Sparkles size={16} className={isAnalyzing ? 'animate-spin' : ''} />
+                <Wrench size={16} />
               </button>
-            )}
+              {showMoreMenu && createPortal(
+                <div
+                  ref={moreMenuRef}
+                  className="fixed p-2 bg-black/95 rounded-xl border border-white/20 shadow-2xl z-[9999] w-[260px] max-h-[60vh] overflow-y-auto"
+                  style={{ top: moreMenuPos.top, left: moreMenuPos.left }}
+                >
+                  {/* Organize */}
+                  <div className="text-[10px] text-white/40 uppercase tracking-wider px-1 mb-1.5">Organize</div>
+                  <div className="grid grid-cols-3 gap-1.5 mb-3">
+                    <button
+                      onClick={() => {
+                        window.api.invoke('watchLater:add', media.id)
+                          .then(() => { setBookmarkFeedback('Added to Watch Later'); setTimeout(() => setBookmarkFeedback(null), 2000) })
+                          .catch(() => { setBookmarkFeedback('Failed to add to Watch Later'); setTimeout(() => setBookmarkFeedback(null), 2000) })
+                        setShowMoreMenu(false)
+                      }}
+                      className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white/5 hover:bg-cyan-500/60 transition"
+                      title="Add to Watch Later"
+                    >
+                      <Clock size={16} />
+                      <span className="text-[9px] text-white/70">Watch Later</span>
+                    </button>
+                    <button
+                      onClick={() => { handleRevealInFolder(); setShowMoreMenu(false) }}
+                      className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white/5 hover:bg-white/20 transition"
+                      title="Show in folder"
+                    >
+                      <FolderOpen size={16} />
+                      <span className="text-[9px] text-white/70">Reveal</span>
+                    </button>
+                    <button
+                      onClick={() => { setShowNotesPanel(!showNotesPanel); setShowMoreMenu(false) }}
+                      className={`flex flex-col items-center gap-1 p-2 rounded-lg transition ${showNotesPanel ? 'bg-yellow-500/80' : 'bg-white/5 hover:bg-yellow-500/60'}`}
+                      title="Notes (N)"
+                    >
+                      <StickyNote size={16} />
+                      <span className="text-[9px] text-white/70">Notes</span>
+                    </button>
+                    <button
+                      onClick={() => { setShowRelatedPanel(!showRelatedPanel); setShowMoreMenu(false) }}
+                      className={`flex flex-col items-center gap-1 p-2 rounded-lg transition ${showRelatedPanel ? 'bg-cyan-500/80' : 'bg-white/5 hover:bg-cyan-500/60'}`}
+                      title="Related Media (R)"
+                    >
+                      <Link2 size={16} />
+                      <span className="text-[9px] text-white/70">Related</span>
+                    </button>
+                    {media.type === 'video' && (
+                      <button
+                        onClick={() => { setShowBookmarksPanel(!showBookmarksPanel); setShowMoreMenu(false) }}
+                        className={`flex flex-col items-center gap-1 p-2 rounded-lg transition ${showBookmarksPanel ? 'bg-blue-500/80' : 'bg-white/5 hover:bg-blue-500/60'}`}
+                        title="Bookmarks List (Shift+B)"
+                      >
+                        <ListOrdered size={16} />
+                        <span className="text-[9px] text-white/70">Bookmarks</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { handleBlacklist(); setShowMoreMenu(false) }}
+                      className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white/5 hover:bg-red-500/60 transition"
+                      title="Blacklist this item"
+                    >
+                      <Ban size={16} />
+                      <span className="text-[9px] text-white/70">Blacklist</span>
+                    </button>
+                  </div>
 
-            {/* Related Media Toggle */}
-            <button
-              onClick={() => setShowRelatedPanel(!showRelatedPanel)}
-              className={`p-2 rounded-lg transition ${showRelatedPanel ? 'bg-cyan-500/80' : 'bg-white/10 hover:bg-cyan-500/60'}`}
-              title="Related Media (R)"
-            >
-              <Link2 size={16} />
-            </button>
+                  {/* Edit (video only) */}
+                  {media.type === 'video' && (
+                    <>
+                      <div className="text-[10px] text-white/40 uppercase tracking-wider px-1 mb-1.5">Edit</div>
+                      <div className="grid grid-cols-3 gap-1.5 mb-3">
+                        <button
+                          onClick={() => { setIsCropMode(true); setShowMoreMenu(false) }}
+                          className={`flex flex-col items-center gap-1 p-2 rounded-lg transition ${(cropValues.top > 0 || cropValues.right > 0 || cropValues.bottom > 0 || cropValues.left > 0) ? 'bg-yellow-500/80' : 'bg-white/5 hover:bg-yellow-500/60'}`}
+                          title="Crop Video (C)"
+                        >
+                          <Crop size={16} />
+                          <span className="text-[9px] text-white/70">Crop</span>
+                        </button>
+                        <button
+                          onClick={() => { handleOpenTrimModal(); setShowMoreMenu(false) }}
+                          className={`flex flex-col items-center gap-1 p-2 rounded-lg transition ${(loopStart !== null && loopEnd !== null) ? 'bg-green-500/80' : 'bg-white/5 hover:bg-green-500/60'}`}
+                          title="Trim Video"
+                        >
+                          <Scissors size={16} />
+                          <span className="text-[9px] text-white/70">Trim</span>
+                        </button>
+                        <button
+                          onClick={() => { setShowColorGrading(!showColorGrading); setShowMoreMenu(false) }}
+                          className={`flex flex-col items-center gap-1 p-2 rounded-lg transition ${showColorGrading ? 'bg-orange-500/80' : 'bg-white/5 hover:bg-orange-500/60'}`}
+                          title="Color Grading"
+                        >
+                          <Palette size={16} />
+                          <span className="text-[9px] text-white/70">Color</span>
+                        </button>
+                        <button
+                          onClick={() => { setShowVideoFilters(!showVideoFilters); setShowMoreMenu(false) }}
+                          className={`flex flex-col items-center gap-1 p-2 rounded-lg transition ${showVideoFilters ? 'bg-purple-500/80' : 'bg-white/5 hover:bg-purple-500/60'}`}
+                          title="Video Filters"
+                        >
+                          <Sliders size={16} />
+                          <span className="text-[9px] text-white/70">Filters</span>
+                        </button>
+                        <button
+                          onClick={() => { setShowSpeedRamp(!showSpeedRamp); setShowMoreMenu(false) }}
+                          className={`flex flex-col items-center gap-1 p-2 rounded-lg transition ${showSpeedRamp ? 'bg-red-500/80' : 'bg-white/5 hover:bg-red-500/60'}`}
+                          title="Speed Ramp"
+                        >
+                          <Gauge size={16} />
+                          <span className="text-[9px] text-white/70">Speed Ramp</span>
+                        </button>
+                        <button
+                          onClick={() => { setShowLoopRegion(!showLoopRegion); setShowMoreMenu(false) }}
+                          className={`flex flex-col items-center gap-1 p-2 rounded-lg transition ${showLoopRegion ? 'bg-cyan-500/80' : 'bg-white/5 hover:bg-cyan-500/60'}`}
+                          title="Loop Region (A-B)"
+                        >
+                          <Repeat size={16} />
+                          <span className="text-[9px] text-white/70">Loop</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
 
-            {/* Notes Toggle */}
-            <button
-              onClick={() => setShowNotesPanel(!showNotesPanel)}
-              className={`p-2 rounded-lg transition ${showNotesPanel ? 'bg-yellow-500/80' : 'bg-white/10 hover:bg-yellow-500/60'}`}
-              title="Notes (N)"
-            >
-              <StickyNote size={16} />
-            </button>
-
-            {/* Bookmarks List Toggle - Video only */}
-            {media.type === 'video' && (
-              <button
-                onClick={() => setShowBookmarksPanel(!showBookmarksPanel)}
-                className={`p-2 rounded-lg transition ${showBookmarksPanel ? 'bg-blue-500/80' : 'bg-white/10 hover:bg-blue-500/60'}`}
-                title="Bookmarks List (Shift+B)"
-              >
-                <ListOrdered size={16} />
-              </button>
-            )}
-
-            {/* Color Grading - Video only */}
-            {media.type === 'video' && (
-              <button
-                onClick={() => setShowColorGrading(!showColorGrading)}
-                className={`p-2 rounded-lg transition ${showColorGrading ? 'bg-orange-500/80' : 'bg-white/10 hover:bg-orange-500/60'}`}
-                title="Color Grading"
-              >
-                <Palette size={16} />
-              </button>
-            )}
-
-            {/* Video Filters - Video only */}
-            {media.type === 'video' && (
-              <button
-                onClick={() => setShowVideoFilters(!showVideoFilters)}
-                className={`p-2 rounded-lg transition ${showVideoFilters ? 'bg-purple-500/80' : 'bg-white/10 hover:bg-purple-500/60'}`}
-                title="Video Filters"
-              >
-                <Sliders size={16} />
-              </button>
-            )}
-
-            {/* Audio Visualizer - Video only */}
-            {media.type === 'video' && (
-              <button
-                onClick={() => setShowAudioVisualizer(!showAudioVisualizer)}
-                className={`p-2 rounded-lg transition ${showAudioVisualizer ? 'bg-green-500/80' : 'bg-white/10 hover:bg-green-500/60'}`}
-                title="Audio Visualizer"
-              >
-                <Activity size={16} />
-              </button>
-            )}
-
-            {/* Speed Ramp - Video only */}
-            {media.type === 'video' && (
-              <button
-                onClick={() => setShowSpeedRamp(!showSpeedRamp)}
-                className={`p-2 rounded-lg transition ${showSpeedRamp ? 'bg-red-500/80' : 'bg-white/10 hover:bg-red-500/60'}`}
-                title="Speed Ramp"
-              >
-                <Gauge size={16} />
-              </button>
-            )}
-
-            {/* Loop Region - Video only */}
-            {media.type === 'video' && (
-              <button
-                onClick={() => setShowLoopRegion(!showLoopRegion)}
-                className={`p-2 rounded-lg transition ${showLoopRegion ? 'bg-cyan-500/80' : 'bg-white/10 hover:bg-cyan-500/60'}`}
-                title="Loop Region (A-B)"
-              >
-                <Repeat size={16} />
-              </button>
-            )}
-
-            {/* Thumbnail Strip - Video only (fullscreen) */}
-            {isFullscreen && media.type === 'video' && (
-              <button
-                onClick={() => setShowThumbnailStrip(!showThumbnailStrip)}
-                className={`p-2 rounded-lg transition ${showThumbnailStrip ? 'bg-pink-500/80' : 'bg-white/10 hover:bg-pink-500/60'}`}
-                title="Thumbnail Timeline"
-              >
-                <RectangleHorizontal size={16} />
-              </button>
-            )}
+                  {/* Display */}
+                  <div className="text-[10px] text-white/40 uppercase tracking-wider px-1 mb-1.5">Display</div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      onClick={() => { toggleLowQualityMode(); setShowMoreMenu(false) }}
+                      className={`flex flex-col items-center gap-1 p-2 rounded-lg transition ${lowQualityMode ? 'bg-amber-500/70' : 'bg-white/5 hover:bg-white/20'}`}
+                      title={lowQualityMode ? 'Low Quality Mode ON' : 'Enable Low Quality Mode'}
+                    >
+                      <Tv size={16} />
+                      <span className="text-[9px] text-white/70">Low Q</span>
+                    </button>
+                    {media.type === 'video' && (
+                      <button
+                        onClick={() => { setShowAudioVisualizer(!showAudioVisualizer); setShowMoreMenu(false) }}
+                        className={`flex flex-col items-center gap-1 p-2 rounded-lg transition ${showAudioVisualizer ? 'bg-green-500/80' : 'bg-white/5 hover:bg-green-500/60'}`}
+                        title="Audio Visualizer"
+                      >
+                        <Activity size={16} />
+                        <span className="text-[9px] text-white/70">Visualizer</span>
+                      </button>
+                    )}
+                    {isFullscreen && media.type === 'video' && (
+                      <button
+                        onClick={() => { setShowThumbnailStrip(!showThumbnailStrip); setShowMoreMenu(false) }}
+                        className={`flex flex-col items-center gap-1 p-2 rounded-lg transition ${showThumbnailStrip ? 'bg-pink-500/80' : 'bg-white/5 hover:bg-pink-500/60'}`}
+                        title="Thumbnail Timeline"
+                      >
+                        <RectangleHorizontal size={16} />
+                        <span className="text-[9px] text-white/70">Timeline</span>
+                      </button>
+                    )}
+                    {/* Xyrene watch-along — vision commentary in her voice */}
+                    {media.type === 'video' && (
+                      <button
+                        onClick={() => {
+                          setXyMode((v) => !v)
+                          if (xyMode) {
+                            setXyCurrentLine(null)
+                            if (xyAudioRef.current) try { xyAudioRef.current.pause() } catch {}
+                          }
+                          setShowMoreMenu(false)
+                        }}
+                        className={`flex flex-col items-center gap-1 p-2 rounded-lg transition ${xyMode ? 'bg-fuchsia-500/80 shadow-[0_0_12px_rgba(217,70,239,0.5)]' : 'bg-white/5 hover:bg-fuchsia-500/60'}`}
+                        title={xyMode ? 'Watch with Xy is ON — toggle off' : 'Watch with Xy — vision commentary in her voice'}
+                      >
+                        <Sparkles size={16} className={xyMode ? 'animate-pulse' : ''} />
+                        <span className="text-[9px] text-white/70">Watch w/ Xy</span>
+                      </button>
+                    )}
+                  </div>
+                </div>,
+                document.body,
+              )}
+            </div>
 
             {isFullscreen && (
               <button

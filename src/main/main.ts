@@ -1,5 +1,5 @@
 // File: src/main/main.ts
-import { app, BrowserWindow, globalShortcut, ipcMain, Menu } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, screen } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -60,9 +60,20 @@ function resolvePreloadPath(): string {
 async function createMainWindow(): Promise<BrowserWindow> {
   const preloadPath = resolvePreloadPath()
 
+  // Sit inside the OS work area on first launch so the bottom of the window
+  // never extends behind the Windows taskbar. workAreaSize already excludes
+  // taskbar height; pin the position to the work area's origin too in case the
+  // primary display has a top/left taskbar.
+  const primary = screen.getPrimaryDisplay()
+  const wa = primary.workArea
+  const initialWidth = Math.min(1200, wa.width)
+  const initialHeight = Math.min(800, wa.height)
+
   const win = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: initialWidth,
+    height: initialHeight,
+    x: wa.x + Math.max(0, Math.floor((wa.width - initialWidth) / 2)),
+    y: wa.y + Math.max(0, Math.floor((wa.height - initialHeight) / 2)),
     show: false,
     backgroundColor: '#0B0B0C',
     titleBarStyle: 'hiddenInset',
@@ -262,10 +273,121 @@ async function main() {
       logMain('error', 'AI Intelligence initialization failed - continuing without AI', { error: String(err) })
       errorLogger.error('Main', 'AI Intelligence initialization failed - app will continue without AI features', err)
     }
+
+    // Background: kick off XTTS server auto-start. Fire-and-forget so it
+    // doesn't block app startup; the server itself takes 15-60s to load
+    // the model. If xyrene-portable isn't installed at a known path,
+    // findXttsServerDir returns null and we skip silently. If it IS
+    // installed, the server warms up while the user is loading the UI.
+    //
+    // Using console.log here so the dev terminal shows what happened.
+    // logMain only goes to the in-app diagnostics overlay, which is no
+    // help when triaging "why didn't the server start".
+    void (async () => {
+      try {
+        const { startXttsServer, findXttsServerDir } = await import('./services/xyrene/server-launcher')
+        const dir = findXttsServerDir(null)
+        if (!dir) {
+          console.log('[XTTS auto-start] skipped — xyrene-portable not found at known paths')
+          return
+        }
+        console.log(`[XTTS auto-start] launching server from ${dir}`)
+        const ok = await startXttsServer({ maxWaitMs: 120000 })
+        console.log(`[XTTS auto-start] ${ok ? 'ready' : 'failed (see python console)'}`)
+      } catch (err) {
+        console.warn('[XTTS auto-start] threw (non-fatal):', err)
+      }
+    })()
+
+    // JoyCaption auto-start. Same pattern as XTTS — if the sidecar dir
+    // is installed AND the user hasn't explicitly disabled auto-start
+    // (settings.ai.joycaptionAutoStart, default true), spawn the
+    // sidecar so it's warming the model while the UI loads. Skipped
+    // silently when not installed. First /caption request triggers
+    // the actual model load (~30-60s), so getting the process up
+    // early is a real UX win — but starting the model load with
+    // mode=bf16 takes 8-12GB of VRAM, so we let the user opt out.
+    void (async () => {
+      try {
+        const { getAISettings } = await import('./settings')
+        const aiSettings = getAISettings() as any
+        const autoStart = aiSettings?.joycaptionAutoStart !== false  // default true
+        if (!autoStart) {
+          console.log('[JoyCaption auto-start] skipped — user opted out (settings.ai.joycaptionAutoStart)')
+          return
+        }
+        const { startJoyCaptionSidecar, findJoyCaptionSidecarDir } = await import(
+          './services/ai-intelligence/joycaption-launcher'
+        )
+        const dir = findJoyCaptionSidecarDir(null)
+        if (!dir) {
+          console.log('[JoyCaption auto-start] skipped — joycaption-sidecar not found at known paths')
+          return
+        }
+        const mode = (aiSettings?.joycaptionMode === '4bit' ? '4bit' : 'bf16') as 'bf16' | '4bit'
+        console.log(`[JoyCaption auto-start] launching sidecar from ${dir} (mode=${mode})`)
+        const ok = await startJoyCaptionSidecar({ mode, maxWaitMs: 180000 })
+        console.log(`[JoyCaption auto-start] ${ok ? 'ready' : 'failed (see python console)'}`)
+      } catch (err) {
+        console.warn('[JoyCaption auto-start] threw (non-fatal):', err)
+      }
+    })()
   } else {
     logMain('warn', 'FFmpeg not found, AI Intelligence system disabled')
     errorLogger.warn('Main', 'FFmpeg not found - AI features disabled')
   }
+
+  // DeoVR / HereSphere catalog server auto-start (#119). Only fires
+  // when the user explicitly enables settings.ai.deovrServerEnabled —
+  // default off because the server is NO AUTH and binds to 0.0.0.0
+  // (so VR headsets on the LAN can reach it). User picks port via
+  // settings.ai.deovrServerPort, default 9999.
+  void (async () => {
+    try {
+      const { getAISettings } = await import('./settings')
+      const aiSettings = getAISettings() as any
+      if (!aiSettings?.deovrServerEnabled) return
+      const port = Number(aiSettings?.deovrServerPort) || 9999
+      const { deovrServer } = await import('./services/deovr-server')
+      // Wire the library accessors. Identical to ipc.ts's deovr:start
+      // handler — duplicated so the auto-start path doesn't depend on
+      // IPC being invoked first.
+      if (!deovrServer.listVideos) {
+        deovrServer.listVideos = async () => {
+          const rows = db.raw.prepare(`
+            SELECT m.id, m.filename, m.path, m.durationSec, m.thumbPath, m.width, m.height,
+                   ar.approved_title AS title
+            FROM media m
+            LEFT JOIN ai_analysis_results ar ON ar.media_id = m.id
+            WHERE m.type = 'video'
+            ORDER BY m.addedAt DESC
+            LIMIT 500
+          `).all() as any[]
+          return rows
+        }
+      }
+      if (!deovrServer.getVideo) {
+        deovrServer.getVideo = async (id: string) => {
+          const row = db.raw.prepare(`
+            SELECT m.id, m.filename, m.path, m.durationSec, m.thumbPath, m.width, m.height,
+                   ar.approved_title AS title
+            FROM media m
+            LEFT JOIN ai_analysis_results ar ON ar.media_id = m.id
+            WHERE m.id = ? AND m.type = 'video' LIMIT 1
+          `).get(id) as any
+          return row ?? null
+        }
+      }
+      const result = await deovrServer.start({ port })
+      if (result.success) {
+        console.log(`[DeoVR auto-start] catalog ready at ${result.addresses?.[0] ?? `http://localhost:${port}/deovr/`}`)
+      } else {
+        console.warn('[DeoVR auto-start] failed:', result.error)
+      }
+    } catch (err) {
+      console.warn('[DeoVR auto-start] threw (non-fatal):', err)
+    }
+  })()
 
   // ═══════════════════════════════════════════════════════════════════════════
   // DEFERRED STARTUP OPERATIONS
@@ -341,6 +463,20 @@ async function main() {
   app.on('before-quit', () => {
     jobRunner.stop()
     closeAllWatchers(watchers)
+    // Best-effort: stop any XTTS server WE launched. If the user started
+    // it manually, isManagingServer() returns false and stopXttsServer
+    // no-ops, leaving their process alone.
+    try {
+      // Synchronous require to avoid awaiting in before-quit (electron
+      // kills the event loop quickly once this returns).
+      const { stopXttsServer } = require('./services/xyrene/server-launcher')
+      stopXttsServer()
+    } catch { /* ignore — already torn down */ }
+    // Same pattern for JoyCaption — no-ops if the user started it manually.
+    try {
+      const { stopJoyCaptionSidecar } = require('./services/ai-intelligence/joycaption-launcher')
+      stopJoyCaptionSidecar()
+    } catch { /* ignore — already torn down */ }
   })
 }
 
@@ -348,14 +484,60 @@ async function main() {
 errorLogger.initialize()
 setupGlobalErrorHandlers()
 
-// Fix GPU cache access denied errors by setting a custom cache directory
-// This must be done before app.whenReady()
+// Fix GPU cache access denied errors by setting a custom cache directory.
+// MUST be done before app.whenReady().
+//
+// CRITICAL: setPath('cache', ...) causes Electron to re-derive userData from
+// the cache path's parent + appName on subsequent app.getPath('userData')
+// calls. That made everything we write to userData (ai-models, audio/voice,
+// xyrene_curated, etc.) land at <userData>/GPUCache/vault/ instead of
+// <userData>/. Pinning userData explicitly AFTER the cache change keeps
+// path resolution honest.
 try {
-  const customCachePath = path.join(app.getPath('userData'), 'GPUCache')
+  const correctUserData = app.getPath('userData')
+  const customCachePath = path.join(correctUserData, 'GPUCache')
   if (!fs.existsSync(customCachePath)) {
     fs.mkdirSync(customCachePath, { recursive: true })
   }
   app.setPath('cache', customCachePath)
+  app.setPath('userData', correctUserData)
+
+  // One-time migration: prior versions wrote into <userData>/GPUCache/vault/
+  // due to the bug above. Move those subtrees up so existing curated sounds,
+  // models, and voice samples are visible at the correct path.
+  const pollutedRoot = path.join(customCachePath, 'vault')
+  if (fs.existsSync(pollutedRoot)) {
+    try {
+      const entries = fs.readdirSync(pollutedRoot)
+      for (const entry of entries) {
+        const src = path.join(pollutedRoot, entry)
+        const dest = path.join(correctUserData, entry)
+        if (fs.existsSync(dest)) {
+          // Destination already exists — merge directory contents shallowly
+          // (only top-level files/folders that don't collide). Skip rather
+          // than overwrite so we never clobber freshly-written data.
+          try {
+            const srcStat = fs.statSync(src)
+            if (!srcStat.isDirectory()) continue
+            const subEntries = fs.readdirSync(src)
+            for (const sub of subEntries) {
+              const srcSub = path.join(src, sub)
+              const destSub = path.join(dest, sub)
+              if (!fs.existsSync(destSub)) {
+                try { fs.renameSync(srcSub, destSub) } catch { /* ignore */ }
+              }
+            }
+          } catch { /* ignore */ }
+        } else {
+          try { fs.renameSync(src, dest) } catch { /* ignore */ }
+        }
+      }
+      // Best-effort cleanup of empty polluted root
+      try { fs.rmdirSync(pollutedRoot) } catch { /* dir may still have leftovers — leave alone */ }
+    } catch (mErr) {
+      errorLogger.warn('Main', 'userData migration: scan failed', { error: String(mErr) })
+    }
+  }
 } catch (err) {
   errorLogger.warn('Main', 'Failed to set custom cache path', { error: String(err) })
 }

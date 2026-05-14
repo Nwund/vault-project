@@ -107,6 +107,13 @@ function fadeOutAudio(audio: HTMLAudioElement, duration: number = FADE_DURATION)
   }, stepTime)
 }
 
+// Track the currently-playing click audio + its fade timeout so the next
+// click can cancel them cleanly. The previous "pool of 4" approach
+// stacked canplay listeners and pending timeouts in ways that destabilised
+// the renderer after rapid clicking — single-element + explicit cleanup
+// is simpler and avoids that.
+let currentFadeTimeout: ReturnType<typeof setTimeout> | null = null
+
 function playSound(
   category: 'moan' | 'wet' | 'soft' | 'random' = 'random',
   options: { volume?: number; pitch?: number; maxDuration?: number } = {}
@@ -132,7 +139,6 @@ function playSound(
   if (urls.length === 1) {
     index = 0
   } else if (categoryInfo && urls.length > 2) {
-    // Avoid last 2 sounds for better variety
     do {
       index = Math.floor(Math.random() * urls.length)
     } while (index === categoryInfo.lastIndex)
@@ -144,19 +150,23 @@ function playSound(
   const url = urls[index]
 
   try {
-    // STOP previous sound immediately (no overlap/clipping)
+    // Tear down the previous play in full — release the file handle so
+    // Chromium doesn't accumulate unreleased <audio> instances (the
+    // 10-seconds-then-silent throttle fires when handles aren't released).
     if (currentAudio) {
-      if (fadeInterval) {
-        clearInterval(fadeInterval)
-        fadeInterval = null
-      }
-      currentAudio.pause()
-      currentAudio.currentTime = 0
+      if (fadeInterval) { clearInterval(fadeInterval); fadeInterval = null }
+      if (currentFadeTimeout) { clearTimeout(currentFadeTimeout); currentFadeTimeout = null }
+      try {
+        currentAudio.onended = null
+        currentAudio.onerror = null
+        currentAudio.pause()
+        currentAudio.removeAttribute('src')
+        currentAudio.load()  // forces release of the network/decoder resources
+      } catch { /* ignore */ }
       currentAudio = null
     }
 
     const audio = new Audio(url)
-    currentAudio = audio
 
     // Quieter base volume with random variation (±20%)
     const baseVolume = options.volume ?? 0.12
@@ -168,33 +178,37 @@ function playSound(
     const pitchVariation = 0.85 + Math.random() * 0.3
     audio.playbackRate = basePitch * pitchVariation
 
-    // Start slightly into the audio to skip initial silence
+    // Skip initial silence. Safe to set BEFORE play because the Audio
+    // constructor with a URL begins loading immediately.
     audio.currentTime = START_OFFSET
 
-    // Set up auto-fade after max duration
+    currentAudio = audio
+
+    // Schedule fade-out after max duration. Tracked so the NEXT click can
+    // cancel it before it fires on the wrong audio.
     const maxDuration = options.maxDuration ?? MAX_PLAY_DURATION
-    const fadeTimeout = setTimeout(() => {
+    currentFadeTimeout = setTimeout(() => {
       if (currentAudio === audio && !audio.paused) {
         fadeOutAudio(audio, FADE_DURATION)
       }
+      currentFadeTimeout = null
     }, maxDuration * 1000)
 
-    // Clean up timeout if audio ends naturally
-    audio.addEventListener('ended', () => {
-      clearTimeout(fadeTimeout)
-    }, { once: true })
+    audio.onended = () => {
+      // Release handles when natural end of clip is reached.
+      try { audio.removeAttribute('src'); audio.load() } catch { /* ignore */ }
+      if (currentAudio === audio) currentAudio = null
+    }
 
     audio.play().catch((err) => {
-      console.warn('[UiSounds] Failed to play sound:', err)
-      clearTimeout(fadeTimeout)
+      if (err?.name !== 'AbortError') {
+        console.warn('[UiSounds] Failed to play sound:', err)
+      }
     })
 
-    // Update last played time for category
-    if (categoryInfo) {
-      categoryInfo.lastPlayed = Date.now()
-    }
+    if (categoryInfo) categoryInfo.lastPlayed = Date.now()
   } catch (err) {
-    console.warn('[UiSounds] Error creating audio:', err)
+    console.warn('[UiSounds] Error playing audio:', err)
   }
 }
 
@@ -225,6 +239,11 @@ export function useUiSounds(enabled: boolean) {
 
     const clickHandler = (e: MouseEvent) => {
       const target = e.target as HTMLElement
+      // Opt-out: any element / ancestor with `data-no-ui-sound` suppresses
+      // the click chime. Used by the Xyrene Settings sound picker so the
+      // preview audio isn't drowned out by the global click moan.
+      if (target.closest('[data-no-ui-sound]')) return
+
       // Play on button/clickable element clicks
       const isClickable =
         target.closest('button') ||

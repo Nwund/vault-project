@@ -36,8 +36,12 @@ const MODELS: Omit<ModelInfo, 'downloaded'>[] = [
   },
 
   // === WD Tagger - Anime/booru tagging ===
+  // SwinV2 variant (current default). User can switch to ViT-v3 variant
+  // below via settings.ai.wdTaggerVariant if desired (Deiwulf/AI-image-
+  // auto-tagger reference, 2026-05-12). Both are SmilingWolf v3
+  // generation — accuracy is comparable; ViT is slightly smaller.
   {
-    name: 'WD Tagger v3',
+    name: 'WD Tagger v3 (SwinV2)',
     filename: 'wd-tagger-v3.onnx',
     url: 'https://huggingface.co/SmilingWolf/wd-swinv2-tagger-v3/resolve/main/model.onnx',
     size: 467 * 1024 * 1024 // ~467MB
@@ -47,6 +51,22 @@ const MODELS: Omit<ModelInfo, 'downloaded'>[] = [
     filename: 'wd-tags.json',
     url: 'https://huggingface.co/SmilingWolf/wd-swinv2-tagger-v3/resolve/main/selected_tags.csv',
     size: 308 * 1024 // ~308KB
+  },
+  // Alternative WD tagger ViT variant. Downloaded on demand when the
+  // user opts into it in AI Tools → Setup → Tagger variant. Smaller
+  // file, comparable accuracy to SwinV2 — matches the Deiwulf
+  // reference for digiKam-style tagging.
+  {
+    name: 'WD Tagger v3 (ViT)',
+    filename: 'wd-vit-tagger-v3.onnx',
+    url: 'https://huggingface.co/SmilingWolf/wd-vit-tagger-v3/resolve/main/model.onnx',
+    size: 343 * 1024 * 1024  // ~343MB
+  },
+  {
+    name: 'WD ViT Tag Labels',
+    filename: 'wd-vit-tags.csv',
+    url: 'https://huggingface.co/SmilingWolf/wd-vit-tagger-v3/resolve/main/selected_tags.csv',
+    size: 308 * 1024
   },
 
   // === NudeNet - Body part detection for real content ===
@@ -73,7 +93,17 @@ const MODELS: Omit<ModelInfo, 'downloaded'>[] = [
     filename: 'clip-text.onnx',
     url: 'https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/text_model.onnx',
     size: 64 * 1024 * 1024 // ~64MB
-  }
+  },
+
+  // === MoveNet + YuNet were previously listed here for auto-download
+  // but the community ONNX mirrors are unreliable (HF repos rename,
+  // GitHub raw URLs get rate-limited). Both moved to manual-install
+  // pattern — drop the ONNX at:
+  //   <userData>/models/movenet-multipose-lightning.onnx
+  //   <userData>/models/face-detection-yunet.onnx
+  // Setup tab cards show the expected paths + install instructions.
+  // The pose/face detector modules use isAvailable() guards so the
+  // queue silently skips when missing.
 ]
 
 export class ModelDownloader {

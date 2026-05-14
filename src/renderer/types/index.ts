@@ -194,11 +194,15 @@ export type VaultSettings = {
     thumbnailSize?: 'small' | 'medium' | 'large'
     colorBlindMode?: 'none' | 'protanopia' | 'deuteranopia' | 'tritanopia' | 'highContrast'
     fontSize?: 'small' | 'medium' | 'large'
-    fontStyle?: 'default' | 'degrading' | '80s-hacker' | 'perverse' | 'neon' | 'retro' | 'gothic'
+    fontStyle?: 'default' | 'degrading' | '80s-hacker' | 'perverse' | 'neon' | 'retro' | 'gothic' | 'cyberpunk' | 'horror' | 'comic' | 'elegant'
     animationSpeed?: 'none' | 'reduced' | 'full'
     accentColor?: string
     compactMode?: boolean
     reduceAnimations?: boolean
+    backgroundOrbs?: boolean
+    auroraBands?: boolean
+    neonRain?: boolean
+    lightningVeil?: boolean
   }
   playback?: {
     defaultVolume?: number
@@ -238,6 +242,7 @@ export type VaultSettings = {
     startAtClimaxPoint?: boolean // Start videos at 70-80% through
     visualEffects?: {
       vignetteIntensity?: number
+      bloomIntensity?: number
       saturationBoost?: number
       contrastBoost?: number
       heatOverlay?: boolean

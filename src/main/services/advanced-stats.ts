@@ -313,11 +313,11 @@ export class AdvancedStatsService {
 
     // Most viewed
     const mostViewed = this.db.raw.prepare(`
-      SELECT m.id, m.filename, m.thumbPath, ms.viewCount as views
+      SELECT m.id, m.filename, m.thumbPath, ms.views as views
       FROM media m
       JOIN media_stats ms ON m.id = ms.mediaId
-      WHERE ms.viewCount > 0
-      ORDER BY ms.viewCount DESC
+      WHERE ms.views > 0
+      ORDER BY ms.views DESC
       LIMIT 10
     `).all() as Array<{ id: string; filename: string; thumbPath?: string; views: number }>
 
@@ -542,11 +542,11 @@ export class AdvancedStatsService {
 
     // Most viewed
     const mostViewed = this.db.raw.prepare(`
-      SELECT m.id, m.filename, m.thumbPath, ms.viewCount as views
+      SELECT m.id, m.filename, m.thumbPath, ms.views as views
       FROM media m
       JOIN media_stats ms ON m.id = ms.mediaId
-      WHERE ms.viewCount > 0
-      ORDER BY ms.viewCount DESC
+      WHERE ms.views > 0
+      ORDER BY ms.views DESC
       LIMIT 10
     `).all() as Array<{ id: string; filename: string; thumbPath?: string; views: number }>
 

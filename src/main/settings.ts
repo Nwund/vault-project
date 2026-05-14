@@ -310,6 +310,12 @@ export interface AppearanceSettings {
   compactMode: boolean
   useSystemTheme: boolean
   colorBlindMode: ColorBlindMode
+  // Background ambient overlays (renderer-only — persisted but not used by main).
+  // All optional + default OFF except backgroundOrbs which defaults ON.
+  backgroundOrbs?: boolean
+  auroraBands?: boolean
+  neonRain?: boolean
+  lightningVeil?: boolean
 }
 
 export interface PrivacySettings {
@@ -374,6 +380,195 @@ export interface AISettings {
   veniceApiKey: string
   tier2Enabled: boolean
   protectedTags: string[]  // Tags that should never be deleted during cleanup
+  // Path to a user-supplied porn-domains blocklist (Bon-Appetit format
+  // or similar). When set, the file is re-loaded into the domain
+  // detector on every app start so filename platform-tagging covers
+  // sites beyond the bundled ~50-domain set.
+  userDomainsListPath?: string
+  // Opt-in flag for whisper.cpp transcription during AI tagging.
+  // Even when the binary is installed, transcription only runs when
+  // this is true — it adds 10-30s per video and is wasted on
+  // visual-only / music-only content.
+  whisperEnabled?: boolean
+  // WD Tagger variant. Five variants now supported — see
+  // tier1-onnx-tagger.ts for the file-name → model mapping.
+  // Switch takes effect on next Tier 1 init (e.g., after restart).
+  wdTaggerVariant?: 'swinv2' | 'vit' | 'pixai' | 'joytag' | 'idolsankaku'
+  /** Probability threshold for the deepfake (face-level) detector to
+   *  emit a `deepfake` / `ai-generated` tag prior. Default 0.75.
+   *  Higher = fewer tags but more precision. Clamped 0..1. */
+  deepfakeThreshold?: number
+  /** Probability threshold for the SigLIP/DINOv2 image-level AI-content
+   *  detector. Default 0.70. Same precision/recall trade-off as
+   *  deepfakeThreshold. */
+  aiImageThreshold?: number
+  // Multi-hypothesis Venice sampling — N independent runs per item,
+  // tags aggregated by voting. 1 = current behavior, 2-3 = N× cost
+  // but reduces hallucination via consensus. Clamped server-side.
+  veniceMultiSample?: number
+  // ThePornDB (TpDB) API key. Used for scene-fingerprint lookups —
+  // when a video matches a commercial scene in TpDB, the queue can
+  // skip Venice and get exact performer + studio + tags. Same
+  // encryption flow as veniceApiKey (safeStorage → enc:v1:... ciphertext).
+  tpdbApiKey?: string
+  // StashDB API key — community-curated alternative metadata DB
+  // (the one Stash itself uses). Headers use ApiKey:<token>; free
+  // with account at stashdb.org. Same safeStorage encryption flow.
+  stashdbApiKey?: string
+  // e621 API key + username — e621 uses HTTP Basic auth so BOTH are
+  // needed. Used for furry / anthro tag lookups + vocab expansion.
+  // Username is plaintext (not sensitive); key is encrypted via the
+  // same safeStorage path as Venice / TpDB.
+  e621ApiKey?: string
+  e621Username?: string
+  // rule34.xxx API credentials. rule34 uses URL-param auth, both fields
+  // required (api_key + user_id). userId is plaintext; key is encrypted.
+  rule34ApiKey?: string
+  rule34UserId?: string
+  // Gelbooru.com — same schema as rule34 but distinct account. Required
+  // since mid-2024; previously unauth requests worked.
+  gelbooruApiKey?: string
+  gelbooruUserId?: string
+  // Realbooru.com — gelbooru-schema clone for real photos.
+  realbooruApiKey?: string
+  realbooruUserId?: string
+  // Danbooru.donmai.us — e621-fork schema; login+api_key auth.
+  danbooruApiKey?: string
+  danbooruUsername?: string
+  // AIBooru.online — Danbooru software clone for AI-anime; separate account.
+  aibooruApiKey?: string
+  aibooruUsername?: string
+  // Civitai — AI-image gallery. Optional API key (free; raises rate limits).
+  civitaiApiKey?: string
+  // Reddit OAuth (script app) — clientId/secret/username/password.
+  // Used by the Reddit Browse source. Configure at reddit.com/prefs/apps,
+  // type=script. Sub list is comma-separated plaintext.
+  redditClientId?: string
+  redditClientSecret?: string
+  redditUsername?: string
+  redditPassword?: string
+  /** Comma-separated subreddit names to crawl (e.g. "gonewild,milf,nsfw"). */
+  redditSubList?: string
+  /** Auto-start the JoyCaption Python sidecar on app boot when its
+   *  install dir is detected. Default true. Set false to skip (the
+   *  user can still start it manually via the Setup card). */
+  joycaptionAutoStart?: boolean
+  /** Quantization mode for the auto-start path. bf16 = 8-12GB VRAM,
+   *  4bit = ~6GB. Default bf16. */
+  joycaptionMode?: 'bf16' | '4bit'
+  /** Freesound.org API key (free, register at freesound.org/apiv2/apply).
+   *  Used by the foley:freesound-search IPC for CC0/BY soundpack search. */
+  freesoundApiKey?: string
+  /** Pixiv PHPSESSID cookie. Optional but recommended — without it,
+   *  R-18 results return empty from Pixiv's public ajax search.
+   *  Get the value from your browser's DevTools → Application → Cookies
+   *  on pixiv.net after logging in. Encrypted at rest. */
+  pixivSessionId?: string
+  /** DeoVR / HereSphere / SkyBox VR HTTP catalog endpoint port.
+   *  When enabled (deovrServerEnabled true), the server binds to
+   *  0.0.0.0 so VR headsets on the LAN can hit
+   *  http://<host>:<port>/deovr/ for the scene catalog. NO AUTH —
+   *  leave disabled when not actively casting. Default port 9999. */
+  deovrServerEnabled?: boolean
+  deovrServerPort?: number
+  /** Stash plugin-API compatibility shim (#120). Exposes a read-only
+   *  GraphQL endpoint at POST /graphql so Stash plugins can browse
+   *  Vault's library. Default port 9998 to avoid clashing with the
+   *  DeoVR server on 9999. NO AUTH (same caveat as DeoVR). */
+  stashShimEnabled?: boolean
+  stashShimPort?: number
+  // RapidAPI key — gateway for several paid adult APIs (xnxx download,
+  // pornhub trending). Same key works across all subscribed endpoints
+  // on the user's account. Encrypted at rest.
+  rapidApiKey?: string
+  // Host override for the xnxx download endpoint specifically
+  // (porn-xnxx-api-v2-sale vs older v1). Plaintext.
+  rapidApiXnxxHost?: string
+}
+
+/**
+ * Watch With Xyrene + sound-engine settings. Configurable from the
+ * "Xyrene" tab in Settings; consumed by `services/xyrene/*`,
+ * `WatchWithXy.tsx`, and the (planned) sound-layering engine.
+ */
+export interface XyreneSettings {
+  // Where her character bible lives (PERSONALITY.md + SYSTEM_PROMPT_v0.1.md).
+  // Empty = use the auto-detected default.
+  charactersDir: string
+  // Comment cadence for the watch-along loop (seconds between vision calls).
+  cadenceSec: number
+  // Voice cloning reference filename inside the XTTS server's
+  // voice_samples folder. Default = `xyrene.wav`. Future: per-mood references
+  // (xyrene_calm.wav / xyrene_aroused.wav / xyrene_climax.wav).
+  voiceSample: string
+  // Master arousal sensitivity (0-1). How quickly her commentary + sound
+  // patterns escalate based on visual cues + user voice commands.
+  arousalSensitivity: number
+  // Masturbation mode — wherever video plays (Library popup, Feed,
+  // GoonWall), blend her vision-grounded commentary with rhythmic
+  // plap+moan layering that simulates her getting off alongside.
+  // (Field name kept for back-compat; user-facing label is "Masturbation mode".)
+  goonWallMasturbationMode: boolean
+  // Respect user voice commands during watch-along (gates STT use).
+  voiceCommandsEnabled: boolean
+  // Sound selection — relative paths under the organized userData/audio/voice
+  // tree. Multi-select per category so the engine can rotate through them
+  // for variety / realism. Empty arrays = engine picks at random from the
+  // category. (See task #38 for the engine that consumes these.)
+  sounds: {
+    plaps: string[]          // impact during sex — keep 3+ for layering
+    wet: string[]            // sloppy / squelch sounds
+    climax: string[]         // orgasm vocals
+    masturbation: string[]   // jerk / stroke sounds
+    fingering_long: string[] // sustained fingering / wet rubbing sounds
+    spank: string[]          // sharp slaps (separate from sex-impact plaps)
+    squirt: string[]         // female ejaculation
+    vibrator: string[]       // toy buzz (continuous)
+    vibrator_start: string[] // motor click + ramp on
+    vibrator_stop: string[]  // ramp off + click
+    gasp: string[]           // sudden inhales / breath catches
+    heavy_breathing: string[]// sustained heavy breaths (distinct from sudden gasps)
+    kiss: string[]           // smooches / suction
+    giggle: string[]         // playful laughs / teasing chuckles
+    // Long moans serve double-duty: (a) playback samples in their own right,
+    // (b) reference audio for XTTS voice cloning so Xyrene's synthesized
+    // moans match the timbre of the source. The voice-cloning leg is wired
+    // up by task #45.
+    long_moan: string[]
+    build_up: string[]       // escalating moans/breath leading into climax
+    post_climax: string[]    // cooldown — soft moans / heavy breath / aftercare
+    extras: string[]         // catch-all for anything else
+  }
+  // Climax voice — when enabled, the engine fires an XTTS synth in
+  // Xyrene's cloned voice on top of the sample-based climax burst. Lines
+  // are picked at random from this list. Empty list / disabled = no
+  // synth (just the sample burst).
+  climaxVoice: {
+    enabled: boolean
+    lines: string[]
+  }
+  // Per-category enable flag. False = engine MUST NOT play this category at
+  // all, even if the slot has picks. Default true.
+  soundsEnabled: {
+    plaps: boolean
+    wet: boolean
+    climax: boolean
+    masturbation: boolean
+    fingering_long: boolean
+    spank: boolean
+    squirt: boolean
+    vibrator: boolean
+    vibrator_start: boolean
+    vibrator_stop: boolean
+    gasp: boolean
+    heavy_breathing: boolean
+    kiss: boolean
+    giggle: boolean
+    long_moan: boolean
+    build_up: boolean
+    post_climax: boolean
+    extras: boolean
+  }
 }
 
 export interface SoundSettings {
@@ -445,6 +640,7 @@ export interface VaultSettings {
   goonStats: GoonStats
   activeSessionMode: SessionModeId
   ai: AISettings  // AI Intelligence settings (Venice API, protected tags, etc.)
+  xyrene: XyreneSettings  // Watch With Xyrene + sound-engine config
   performance: PerformanceSettings  // Memory and performance tuning
   mobileSync: MobileSyncSettings  // Mobile sync server settings
   hasSeenWelcome: boolean  // First-time welcome tutorial completed
@@ -535,6 +731,57 @@ const DEFAULTS: VaultSettings = {
     tier2Enabled: false,
     protectedTags: [],  // Tags that should never be deleted during cleanup
   } as AISettings,
+  // Watch With Xyrene defaults — sound slots empty so the engine picks at
+  // random from each category by default. User narrows them via the
+  // settings panel when they want specific samples.
+  xyrene: {
+    charactersDir: '',
+    cadenceSec: 8,
+    voiceSample: 'xyrene.wav',
+    arousalSensitivity: 0.6,
+    goonWallMasturbationMode: false,
+    voiceCommandsEnabled: false,
+    sounds: {
+      plaps: [],
+      wet: [],
+      spank: [],
+      squirt: [],
+      vibrator: [],
+      vibrator_start: [],
+      vibrator_stop: [],
+      gasp: [],
+      heavy_breathing: [],
+      kiss: [],
+      giggle: [],
+      long_moan: [],
+      build_up: [],
+      post_climax: [],
+      climax: [],
+      masturbation: [],
+      fingering_long: [],
+      extras: [],
+    },
+    climaxVoice: {
+      enabled: true,
+      lines: [
+        'mmmmm fuck im cumming',
+        'oh god yes baby dont stop',
+        'fuck yes right there',
+        'im gonna cum baby',
+        'oh fuck oh fuck oh fuck',
+        'mmmmmmmm yes',
+      ],
+    },
+    soundsEnabled: {
+      plaps: true, wet: true, climax: true, masturbation: true,
+      fingering_long: true,
+      spank: true, squirt: true,
+      vibrator: true, vibrator_start: true, vibrator_stop: true,
+      gasp: true, heavy_breathing: true, kiss: true, giggle: true,
+      long_moan: true, build_up: true, post_climax: true,
+      extras: true,
+    },
+  } as XyreneSettings,
   appearance: {
     themeId: 'afterglow',  // Default to erotic theme
     animationSpeed: 'full',

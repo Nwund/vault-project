@@ -179,6 +179,83 @@ class MobileSyncService extends EventEmitter {
     return addresses
   }
 
+  /**
+   * Cross-device-friendly access info (#26). Categorizes the available
+   * URLs so the user can pick the right one for their context:
+   *   - lan: standard LAN IPs (192.168.x / 10.x / 172.16-31.x)
+   *   - tailscale: 100.64.0.0/10 range (Tailscale tailnet) — works from
+   *     anywhere the user's Tailscale is online
+   *   - other: everything else (CGNAT, VPNs, Docker bridges, etc.)
+   *
+   * Tailscale on Windows reports interface names containing "Tailscale".
+   * We match on the IP range first (deterministic) and fall back to
+   * interface name (catches edge cases on Linux/Mac).
+   */
+  getAccessUrls(): {
+    running: boolean
+    port: number
+    lan: string[]
+    tailscale: string[]
+    other: string[]
+  } {
+    const lan: string[] = []
+    const tailscale: string[] = []
+    const other: string[] = []
+
+    if (!this.isRunning) {
+      return { running: false, port: this.port, lan, tailscale, other }
+    }
+
+    const interfaces = os.networkInterfaces()
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name] || []) {
+        if (iface.family !== 'IPv4' || iface.internal) continue
+        const addr = iface.address
+        const url = `http://${addr}:${this.port}`
+        // Tailscale: 100.64.0.0/10 (CGNAT range Tailscale uses)
+        const isTailscaleIp = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(addr)
+        const isTailscaleInterface = /tailscale|tailnet/i.test(name)
+        if (isTailscaleIp || isTailscaleInterface) {
+          tailscale.push(url)
+          continue
+        }
+        // Standard private LAN ranges
+        const isLan = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(addr)
+        if (isLan) {
+          lan.push(url)
+        } else {
+          other.push(url)
+        }
+      }
+    }
+
+    return { running: this.isRunning, port: this.port, lan, tailscale, other }
+  }
+
+  /**
+   * Generate (or rotate) a fresh device-pairing token. Used by the
+   * Cross-Device Settings card — user generates a token, copies it to
+   * their other device, pastes it into the Vault client. Token is
+   * stored in the standard pairedDevices map so existing auth flows
+   * accept it without modification.
+   */
+  generatePairingToken(deviceLabel: string): { id: string; token: string; deviceId: string } {
+    const id = crypto.randomBytes(8).toString('hex')
+    const token = crypto.randomBytes(24).toString('base64url')
+    const deviceId = `manual-${id}`
+    const device: PairedDevice = {
+      id: deviceId,
+      name: deviceLabel || `Device ${id.slice(0, 4)}`,
+      platform: 'android',  // platform is mobile-only enum; doesn't matter for cross-device
+      token,
+      pairedAt: Date.now(),
+      lastSeen: 0,
+    }
+    this.pairedDevices.set(deviceId, device)
+    this.tokenToDeviceId.set(token, deviceId)
+    return { id, token, deviceId }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // REQUEST HANDLING
   // ─────────────────────────────────────────────────────────────────────────

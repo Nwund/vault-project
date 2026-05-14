@@ -448,9 +448,12 @@ export class DuplicatesFinderService {
     if (mediaIds.length === 0) return []
 
     const placeholders = mediaIds.map(() => '?').join(',')
+    // media_stats uses `views`, not `playCount` — old column name from a prior schema.
+    // The view count surfaced via this query feeds the keep-which-copy heuristic,
+    // so getting the right number here matters for the suggestKeep choice.
     const rows = this.db.raw.prepare(`
       SELECT m.id, m.filename, m.path, m.thumbPath, m.size, m.addedAt,
-             ms.rating, COALESCE(ms.playCount, 0) as viewCount
+             ms.rating, COALESCE(ms.views, 0) as viewCount
       FROM media m
       LEFT JOIN media_stats ms ON m.id = ms.mediaId
       WHERE m.id IN (${placeholders})
@@ -466,6 +469,48 @@ export class DuplicatesFinderService {
       rating: row.rating,
       viewCount: row.viewCount
     }))
+  }
+
+  /**
+   * Czkawka-inspired staged dedup scan. Walks size → name → exact-hash
+   * stages in order, emitting onProgress between each so the UI can
+   * show partial results in real time instead of waiting for a single
+   * monolithic scan. Each stage's output narrows the candidate set
+   * passed to the next, so total work is much less than running every
+   * scan separately and merging at the end.
+   *
+   * Stages (in order):
+   *   1. size — instant SQL group-by. Ultra-cheap pre-filter.
+   *   2. name — instant SQL group-by on lowercased filename.
+   *   3. exact — SHA-256 of file bytes. Only runs on size-match candidates.
+   *      This is the slowest stage; the prior stages reduce the set
+   *      by ~99% so the user only waits on real candidates.
+   *
+   * Visual + multi-frame are deliberately NOT here — those have their
+   * own batch-hash workflow via VisualDuplicatesService that takes
+   * hours on a 50k library and shouldn't block this fast dedup pass.
+   */
+  async stagedScan(
+    onStage?: (stage: { name: string; idx: number; total: number; result: DuplicateScanResult }) => void
+  ): Promise<{
+    bySize: DuplicateScanResult
+    byName: DuplicateScanResult
+    exact: DuplicateScanResult
+  }> {
+    const total = 3
+    const bySize = this.findSizeDuplicates()
+    onStage?.({ name: 'size', idx: 1, total, result: bySize })
+
+    const byName = this.findNameDuplicates()
+    onStage?.({ name: 'name', idx: 2, total, result: byName })
+
+    // exact-hash stage only walks files whose size has at least one
+    // collision. Hashes for fresh rows are computed inside
+    // findExactDuplicates → computeMissingHashes.
+    const exact = await this.findExactDuplicates()
+    onStage?.({ name: 'exact', idx: 3, total, result: exact })
+
+    return { bySize, byName, exact }
   }
 }
 
