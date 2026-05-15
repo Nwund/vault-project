@@ -29,10 +29,16 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        # `npm ci` is strict about lockfile. `--legacy-peer-deps` swallows
-        # peer-conflicts from optional packages (motion/hls.js/etc) so the
-        # install doesn't abort over compatibility warnings.
-        run: npm ci --legacy-peer-deps
+        # Using `npm install` instead of `npm ci` here. `npm ci` enforces
+        # a strict lockfile match which fails on WASM-only optional deps
+        # (@emnapi/runtime + @emnapi/core, deps-of-deps from
+        # @napi-rs/wasm-runtime) that npm intentionally skips on Node
+        # platforms where they're never used. `npm install` is permissive
+        # about that mismatch while still respecting locked versions
+        # for everything that IS installed.
+        # `--legacy-peer-deps` swallows peer-conflicts from optional
+        # packages (motion/hls.js/etc).
+        run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Build renderer + main
         run: npx electron-vite build
