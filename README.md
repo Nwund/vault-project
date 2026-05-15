@@ -330,7 +330,27 @@ Create professional-quality beat-synced videos:
 
 ## 📝 Recent Updates
 
-### v2.4.0 *(Latest)*
+### v2.6.0 *(Latest)*
+
+**🌐 Browse Aggregator + 🧠 ML Detector Stack + 👤 Performers UI**
+
+- ✨ **Browse Aggregator** - 26 sources parallel-searched: e621, rule34, Danbooru, AIBooru, Civitai, Gelbooru, Pixiv R-18, RedGifs, PornHub, RedTube, Eporner, xnxx, Bluesky, Reddit, and more
+- ✨ **Multi-select + bulk save** with floating action bar and spring animations
+- ✨ **Tag autocomplete** from Vault's canonical-tag vocabulary, with ↑↓ Tab Enter keyboard nav
+- ✨ **Recent + saved searches** dropdown with star-to-pin
+- ✨ **Source family tabs** (Booru / Tube / AI-gen / Social) narrow both the chip list and the fan-out
+- ✨ **HLS-aware lightbox** via hls.js + universal yt-dlp fallback for all tube URLs
+- ✨ **Filter chips**: rating, min-resolution (720p+/1080p+/4K), min-score, SFW-only, Vault-blacklist
+- ✨ **6 ML detectors** - YuNet face + SFace recognition + Person ReID body + MoveNet pose + NudeNet v3 + gender classifier, all folding into the AI tagging queue
+- ✨ **Performers page** - SFace face clusters, inline rename auto-applies `performer:NAME` tags
+- ✨ **Whisper.cpp transcription** (opt-in) with FTS5-indexed dialogue search
+- ✨ **JoyCaption sidecar** for high-quality VLM captioning
+- ✨ **8 new achievements** for Browse + Performers + AI usage (First Crate Dig, Browse Explorer, Face Namer, AI Pioneer, Tag Curator, Performer Dossier, Bulk Dropper, Crate Digger)
+- ✨ **XMP sidecar export** for Darktable / Lightroom / Immich interop
+- ✨ **Stash interop** (`.stash.json` import/export)
+- ✨ **Custom filename templates** + in-library duplicate badges + auto-tag `source:browse` on save
+
+### v2.4.0
 
 **🚀 Stability, Performance & Polish Release**
 
@@ -455,8 +475,10 @@ Create professional-quality beat-synced videos:
 
 | Version | Features |
 |:---:|---|
-| **v2.5** | Plugin System • Cloud Sync • Watch Parties • Multi-language |
-| **v3.0** | AI Scene Intelligence • Multi-user • Cloud Library • Mobile App |
+| **v2.7** | JoyTag + idolsankaku second-opinion taggers • InsightFace ArcFace face ID upgrade • TransNet V2 + VideoMAE action labels |
+| **v2.8** | WhisperX word-level timestamps • Demucs vocal isolation • LAION CLAP zero-shot audio search |
+| **v2.9** | F5-TTS voice cloning UI • Vidstack player core • dnd-kit reorder • ECharts analytics |
+| **v3.0** | Plugin system • Cloud sync • Watch parties • Multi-user library |
 
 <br/>
 
@@ -470,7 +492,7 @@ Create professional-quality beat-synced videos:
 
 <br/>
 
-[![Download Latest](https://img.shields.io/badge/Download-v2.4.0-success?style=for-the-badge&logo=windows)](https://github.com/Nwund/vault-project/releases/latest)
+[![Download Latest](https://img.shields.io/badge/Download-v2.6.0-success?style=for-the-badge&logo=windows)](https://github.com/Nwund/vault-project/releases/latest)
 
 <br/>
 
@@ -485,7 +507,7 @@ Create professional-quality beat-synced videos:
 *Built with obsession by developers who understand the mission.*
 
 <sub>
-🔐 Vault v2.4.0 • 61 services • 73 modules • 94 components
+🔐 Vault v2.6.0 • 61 AI services • 26 Browse sources • 112 components • 6 ML detectors
 </sub>
 
 <br/>
