@@ -50,15 +50,32 @@ jobs:
         # electron-builder fails with `NODE_MODULE_VERSION mismatch`.
         run: npx electron-builder install-app-deps
 
+      - name: Download yt-dlp binary
+        # yt-dlp.exe is excluded from the repo via .gitignore's `*.exe`
+        # rule. electron-builder's `extraResources` config expects it
+        # at resources/bin/yt-dlp.exe — pull the latest release stable
+        # build before packaging so the resulting installer ships with
+        # a working tube-resolver / downloader.
+        shell: pwsh
+        run: |
+          $url = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
+          New-Item -ItemType Directory -Force -Path resources\bin | Out-Null
+          Invoke-WebRequest -Uri $url -OutFile resources\bin\yt-dlp.exe
+          "yt-dlp size: $((Get-Item resources\bin\yt-dlp.exe).Length / 1MB) MB"
+
       - name: Package Windows installer
         run: npx electron-builder --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # electron-builder reads CSC_LINK / CSC_KEY_PASSWORD when present
-          # for code signing. We don't sign; explicitly clearing so the
-          # tool doesn't try and fail on missing cert env vars.
+          # All code-signing env vars cleared. electron-builder respects
+          # CSC_* AND WIN_CSC_* — Windows runners auto-populate
+          # WIN_CSC_LINK with a path that doesn't actually exist, which
+          # makes the build fail trying to load a cert from a non-file.
+          # We don't sign at all; explicit empty wins.
           CSC_LINK: ''
           CSC_KEY_PASSWORD: ''
+          WIN_CSC_LINK: ''
+          WIN_CSC_KEY_PASSWORD: ''
 
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v2
