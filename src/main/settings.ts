@@ -2423,6 +2423,18 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'matrix_mode', name: 'Matrix Mode', description: 'Enable the Matrix Rain overlay', icon: '🖥️', category: 'features', target: 1, secret: true },
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // BROWSE + AI (v2.6.0 — 8 new)
+  // ═══════════════════════════════════════════════════════════════════════════
+  { id: 'first_browse_save', name: 'First Crate Dig', description: 'Save your first post from the Browse aggregator', icon: '🛒', category: 'features', target: 1 },
+  { id: 'browse_explorer', name: 'Browse Explorer', description: 'Save posts from 10 different Browse sources', icon: '🗺️', category: 'features', target: 10 },
+  { id: 'crate_digger', name: 'Crate Digger', description: 'Save 100 posts from Browse', icon: '⛏️', category: 'features', target: 100 },
+  { id: 'face_namer', name: 'Face Namer', description: 'Name 10 face clusters on the Performers page', icon: '🎭', category: 'features', target: 10 },
+  { id: 'ai_pioneer', name: 'AI Pioneer', description: 'Run Venice AI analysis on your first video', icon: '🤖', category: 'features', target: 1 },
+  { id: 'tag_curator', name: 'Tag Curator', description: 'Approve 1,000 AI-suggested tags in Review', icon: '✅', category: 'features', target: 1000 },
+  { id: 'performer_dossier', name: 'Performer Dossier', description: 'Have 50 named face clusters', icon: '📇', category: 'features', target: 50 },
+  { id: 'bulk_dropper', name: 'Bulk Dropper', description: 'Use Browse multi-select to save 50 posts in one go', icon: '📦', category: 'features', target: 50, secret: true },
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // SOCIAL & SHARING (5)
   // ═══════════════════════════════════════════════════════════════════════════
   { id: 'playlist_sharer', name: 'Playlist Sharer', description: 'Export a playlist', icon: '📤', category: 'social', target: 1 },

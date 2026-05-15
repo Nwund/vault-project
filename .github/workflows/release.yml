@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+  # Also allow manual trigger from the Actions tab — useful for rebuilding
+  # a tag without pushing a new one.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -19,19 +22,37 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 22 LTS — Node 20 will be removed from the runner 2026-09-16.
+          # Sticking with LTS rather than 24 to stay matched to what most
+          # contributors run locally.
+          node-version: '22'
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # `npm ci` is strict about lockfile. `--legacy-peer-deps` swallows
+        # peer-conflicts from optional packages (motion/hls.js/etc) so the
+        # install doesn't abort over compatibility warnings.
+        run: npm ci --legacy-peer-deps
 
-      - name: Build app
+      - name: Build renderer + main
         run: npx electron-vite build
 
-      - name: Package installer
+      - name: Rebuild native modules for Electron
+        # better-sqlite3 + sharp ship as .node ABI builds for the system
+        # Node. They need to be re-compiled for the bundled Electron
+        # before electron-builder can package them. Without this step
+        # electron-builder fails with `NODE_MODULE_VERSION mismatch`.
+        run: npx electron-builder install-app-deps
+
+      - name: Package Windows installer
         run: npx electron-builder --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # electron-builder reads CSC_LINK / CSC_KEY_PASSWORD when present
+          # for code signing. We don't sign; explicitly clearing so the
+          # tool doesn't try and fail on missing cert env vars.
+          CSC_LINK: ''
+          CSC_KEY_PASSWORD: ''
 
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v2
