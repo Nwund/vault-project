@@ -64,18 +64,22 @@ jobs:
           "yt-dlp size: $((Get-Item resources\bin\yt-dlp.exe).Length / 1MB) MB"
 
       - name: Package Windows installer
-        run: npx electron-builder --win --publish never
+        # Setting CSC_* / WIN_CSC_* to empty string in YAML's env block
+        # does NOT work — electron-builder still sees them as "set" and
+        # tries to resolve the empty path against cwd, ending up with
+        # the workspace dir (which isn't a file). We have to actually
+        # unset the env vars via PowerShell before invoking the build,
+        # then disable signing-auto-discovery for good measure.
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # All code-signing env vars cleared. electron-builder respects
-          # CSC_* AND WIN_CSC_* — Windows runners auto-populate
-          # WIN_CSC_LINK with a path that doesn't actually exist, which
-          # makes the build fail trying to load a cert from a non-file.
-          # We don't sign at all; explicit empty wins.
-          CSC_LINK: ''
-          CSC_KEY_PASSWORD: ''
-          WIN_CSC_LINK: ''
-          WIN_CSC_KEY_PASSWORD: ''
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          Remove-Item Env:CSC_LINK -ErrorAction SilentlyContinue
+          Remove-Item Env:CSC_KEY_PASSWORD -ErrorAction SilentlyContinue
+          Remove-Item Env:WIN_CSC_LINK -ErrorAction SilentlyContinue
+          Remove-Item Env:WIN_CSC_KEY_PASSWORD -ErrorAction SilentlyContinue
+          npx electron-builder --win --publish never
 
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v2
