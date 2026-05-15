@@ -7,6 +7,82 @@ For per-session work logs (the live ground truth), see **[SESSION_NOTES.md](SESS
 
 ---
 
+## v2.6.0 — 2026-05-14 — Browse aggregator + ML detector stack + Performers UI + xnxx HLS playback
+
+The largest single release since v2.0. Three brand-new surfaces, full ML detector pipeline, and a robust xnxx playback story.
+
+### Three new surfaces
+
+#### 1. Browse aggregator (`src/renderer/pages/Rule34Page.tsx`)
+- **26 sources** parallel-fetched: e621, rule34.xxx, safebooru, yande.re, konachan, tbib, xbooru, hypnohub, Danbooru, AIBooru, e926, Gelbooru, realbooru, paheal, Pixiv R-18, Bluesky, Reddit, plus tubes (Eporner, RedTube, PornHub, xnxx, RedGifs, Spankbang, Erome, Motherless) and Civitai (AI-gen).
+- **Multi-select + bulk save** with floating action bar (Motion spring entrance/exit).
+- **Tag autocomplete** lazily-loaded from Vault's canonical-tags vocabulary; ↑↓ Tab Enter to navigate.
+- **Recent + saved searches** dropdown with star-to-pin.
+- **Filters**: rating (Safe / Questionable / Explicit), min-resolution (720p+ / 1080p+ / 4K), min-score (50+ / 200+ / 1k+), SFW-only, Vault-tag-blacklist application.
+- **Source family tabs** (All / Booru / Tube / AI-gen / Social) narrow both the chip list and the fan-out.
+- **Per-source health dots** + retry / mute per error + auto-skip exhausted sources on subsequent pages.
+- **HLS-aware lightbox** via `hls.js` with `yt-dlp` universal fallback for tube URLs (resolves xnxx without RapidAPI).
+- **Pre-resolved neighbor URLs** (±1, ±2) so arrow nav is instant.
+- **Right-click menu** for SauceNAO / iqdb / TraceMoe / Yandex / Google Lens reverse image search + Copy URL + Open original + More like this + Hide this post + Tag wiki.
+- **Custom filename template** (`{source}`, `{id}`, `{topTags3}`, `{ext}`, `{date}` placeholders).
+- **Save destination picker** (when multiple media dirs configured).
+- **Auto-tag `source:browse` + `source:<source_booru>`** on every saved post so Library can filter by origin.
+- **In-library badge** via the new `media:allHashes` IPC.
+- **HTML5 drag** for external drop targets (browser, file manager).
+- **Density toggle** (Compact / Comfortable / Large grid).
+- **Infinite-scroll sentinel** at the bottom of the grid for hands-free pagination.
+
+#### 2. ML detector stack (`src/main/services/ai-intelligence/`)
+- **YuNet face detection** + **SFace face recognition** → 128-D embeddings clustered via cosine similarity (≥0.45) into `face_clusters` + `face_embeddings` tables.
+- **Person ReID** → 768-D body embeddings linked to face_clusters via shared frame_idx.
+- **MoveNet pose detection** → performer count + body-orientation tags.
+- **NudeNet v3** → 18-class body-part detection.
+- **Gender classifier** (Intel age-gender or HF ViT, auto-detected).
+- **whisper.cpp transcription** → opt-in via `settings.ai.whisperEnabled` → FTS5-indexed transcript table for dialogue search.
+- **JoyCaption sidecar** → high-quality VLM captioning when launched manually.
+- **LAION aesthetic predictor** → 0-10 score using existing CLIP embeddings; drop weights JSON to activate.
+- **Multi-frame video fingerprint** (5-frame pHash).
+- **Filename ML classifier** → bag-of-tokens learner from approved-media filenames.
+- **Chapter + subtitle extractor** → free metadata from MKV/MP4 (chapter markers as scene boundaries; embedded subs as transcript priors).
+- **TPDB / StashDB face importers** → bootstrap face_clusters from external performer databases.
+
+#### 3. Performers UI (`src/renderer/pages/PerformersPage.tsx`)
+- Face cluster grid with face thumbnails (CSS-cropped to bbox).
+- Inline rename auto-applies `performer:NAME` to every cluster member.
+- Merge mode (click source → click target → confirm) + delete + view-cluster modal.
+
+### Schema additions
+Migrations v17–v23 added:
+- `face_clusters` (id, name, centroid_b64, sample_count, representative_media_id, representative_bbox)
+- `face_embeddings` (per-frame 128-D SFace embedding)
+- `body_embeddings` (per-frame 768-D Person ReID embedding, linked to face_cluster_id)
+- `media.multi_phash` column
+- `ai_analysis_results` column repairs (`review_status`, `approved_tag_ids`, `approved_title`, `reviewed_at`, `rich_tags`, `rejection_history`, `suggested_filename`)
+- `media_transcripts` + FTS5 index for dialogue search
+- `media_clip_embeddings` for natural-language search
+
+### Dependencies added
+- `hls.js ^1.6.16` (HLS-aware video playback for tube content)
+- `motion ^12.38.0` (formerly framer-motion; spring animations)
+- `@phosphor-icons/react ^2.1.10` (secondary icon set)
+
+### Other improvements
+- `media:allHashes` IPC for in-library duplicate detection.
+- XMP sidecar export (Darktable / Lightroom / Immich interop).
+- Stash interop (`.stash.json` import/export).
+- Tag merger UI + tagger quality dashboard.
+- Library-wide rejection patterns (per-video + library-wide priors).
+- Multi-frame Venice consensus voting + per-tag agreement chips in Review.
+- xnxx three-host fallback chain + 429 retry-with-backoff + yt-dlp universal fallback.
+- Portable-install support: `.api-keys.env` is now picked up from the Vault folder as well as `C:\dev\` and `~/.vault-api-keys.env`.
+
+### Known limitations
+- xnxx `/download` RapidAPI endpoint returns 403 on all three subscribed hosts because the path is wrong — yt-dlp fallback handles playback.
+- App.tsx is still >21k lines (Babel deopts at build; runtime unaffected).
+- Eighteen ML / UI library tasks remain pending (JoyTag, idolsankaku-eva02, ArcFace, TransNet V2, VideoMAE, X-CLIP, YAMNet, CLAP, Demucs, Chromaprint, WhisperX, F5-TTS, Vidstack, dnd-kit, Base UI, ECharts, masonic, PhotoSwipe) — each needs a dedicated session and a model download / package install.
+
+---
+
 ## 2026-05-10 — AI tagger pipeline buildout + cross-device + Spotify daylist + App.tsx split POC
 
 Day-2 shipment closing all 81 formal tasks. Builds on yesterday's foundation.

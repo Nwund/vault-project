@@ -4,7 +4,7 @@
 
 ### *Your Private Media Sanctuary*
 
-[![Version](https://img.shields.io/badge/v2.4.0-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
+[![Version](https://img.shields.io/badge/v2.6.0-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
 [![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-Platform-blue?style=for-the-badge)](https://github.com/Nwund/vault-project)
 [![Electron](https://img.shields.io/badge/Electron-32.0-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-18.3-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://react.dev)
@@ -33,6 +33,19 @@
 </div>
 
 <br/>
+
+## 🆕 v2.6.0 — What's new
+
+- **Browse aggregator** — 26-source parallel search across boorus, AI-gen platforms, tube sites, and social feeds (e621, rule34.xxx, Danbooru, AIBooru, Civitai, Gelbooru, Pixiv R-18, RedGifs, PornHub, RedTube, Eporner, xnxx, Bluesky, Reddit, and more). Multi-select bulk save, custom filename templates, in-library duplicate detection, Vault-tag-blacklist application, and source-family tabs.
+- **ML detector stack** — six ONNX models wired into the AI tagging queue: YuNet face detection, SFace face recognition (with face_clusters table), Person ReID body embeddings, MoveNet pose detection, NudeNet v3 body-part detection, and a gender classifier. Plus whisper.cpp transcription, JoyCaption sidecar, and LAION aesthetic predictor.
+- **Performers page** — face-cluster grid driven by SFace. Name a cluster once and every video featuring that face auto-gets a `performer:NAME` tag.
+- **HLS-aware video lightbox** — xnxx + other tube playback now works via `hls.js` with yt-dlp as the universal fallback resolver.
+- **Tag autocomplete** — Vault's canonical-tags vocabulary now drives in-place autocomplete in the Browse search bar.
+- **Migrations v17 → v23** — face_clusters, face_embeddings, body_embeddings, multi-frame pHash, ai_analysis_results repairs, whisper transcripts (FTS5), CLIP embeddings.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full v2.6.0 release notes.
+
+---
 
 ## ✨ Why Vault?
 

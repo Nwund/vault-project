@@ -63,10 +63,18 @@ function loadRapidApiXnxxHostFromDevEnv(): string | null {
   return loadDevEnvKey('RAPIDAPI_XNXX_HOST')
 }
 
-/** Generic "look up a key by name across all well-known env stores". */
+/** Generic "look up a key by name across all well-known env stores".
+ *  Search order (first non-empty wins):
+ *    1. process.env (CI / explicit override)
+ *    2. <vault-dir>/.api-keys.env   ← portable / laptop install — drop the
+ *                                     file alongside package.json and it works
+ *    3. C:\dev\.api-keys.env         ← original dev-machine location
+ *    4. <home>/.vault-api-keys.env  ← per-user dotfile fallback
+ */
 function loadDevEnvKey(name: string): string | null {
   const candidates = [
     (process.env as any)[name],
+    readEnvFile(path.join(app.getAppPath(), '.api-keys.env'))?.[name],
     readEnvFile('C:\\dev\\.api-keys.env')?.[name],
     readEnvFile(path.join(app.getPath('home'), '.vault-api-keys.env'))?.[name],
   ]
