@@ -36,6 +36,7 @@ import { HardwareEncoderSettings } from '../components/HardwareEncoderSettings'
 import { XyreneSettings } from '../components/XyreneSettings'
 import { CrossDeviceCard, CloudflareTunnelCard, ZeroTierCard, ResticBackupCard, WebDavCard } from '../components/AdminCards'
 import { WindowsHelloCard } from '../components/WindowsHelloCard'
+import { IntifaceCard } from '../components/IntifaceCard'
 import { themes, DARK_THEME_LIST, LIGHT_THEME_LIST, GOON_THEME_LIST, type ThemeId } from '../styles/themes'
 import { QRCodeSVG } from 'qrcode.react'
 
@@ -2866,6 +2867,11 @@ export function SettingsPage(props: {
           {/* #194 — Windows Hello / Touch ID enrollment + biometric gate setting */}
           {activeTab === 'services' && (
             <WindowsHelloCard />
+          )}
+
+          {/* #196 — Intiface / Buttplug.io haptic device control */}
+          {activeTab === 'services' && (
+            <IntifaceCard />
           )}
 
           {/* Mobile Sync Section - under Services */}
