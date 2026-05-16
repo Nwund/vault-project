@@ -355,6 +355,22 @@ const SOURCE_HINTS: Record<string, string[]> = {
   spankbang: ['(empty = trending)'],
   erome:   ['(plain keywords)'],
   motherless: ['(plain keywords)'],
+  coomer:  ['patreon:<id>', 'onlyfans:<id>', '(plain text = global creator search)'],
+  kemono:  ['patreon:<id>', 'fanbox:<id>', 'gumroad:<id>', '(plain text = global)'],
+}
+
+// #118 — Tube categories. Per-source curated category chips for
+// one-click discovery without typing. Most tubes treat category
+// names as search terms, so clicking a chip just runs that search.
+const TUBE_CATEGORIES: Record<string, string[]> = {
+  pornhub: ['amateur', 'anal', 'big tits', 'blowjob', 'cumshot', 'creampie', 'lesbian', 'milf', 'pov', 'public', 'threesome', 'verified amateurs'],
+  redtube: ['amateur', 'anal', 'asian', 'big tits', 'blonde', 'brunette', 'cumshot', 'lesbian', 'milf', 'teen', 'threesome'],
+  eporner: ['amateur', 'anal', 'asian', 'big tits', 'blowjob', 'cumshot', 'lesbian', 'milf', 'pov', 'redhead', 'squirt'],
+  xnxx:    ['amateur', 'anal', 'big ass', 'big tits', 'blowjob', 'cumshot', 'lesbian', 'milf', 'pov', 'teen', 'threesome'],
+  redgifs: ['amateur', 'anal', 'blowjob', 'cumshot', 'lesbian', 'milf', 'pov', 'public', 'squirt'],
+  spankbang: ['amateur', 'anal', 'asian', 'big tits', 'blowjob', 'cumshot', 'lesbian', 'milf', 'pov'],
+  erome:   ['amateur', 'anal', 'lesbian', 'milf', 'pov', 'teen'],
+  motherless: ['amateur', 'anal', 'big tits', 'blowjob', 'cumshot', 'lesbian', 'milf', 'teen'],
 }
 
 const PER_PAGE = 60
@@ -1851,6 +1867,31 @@ export default function Rule34Page() {
             chip clicks to append the operator (with space prefix) to
             the current tag input. Helps users discover what each source
             supports without leaving Browse. */}
+        {/* #118 — Tube categories. One-click search for common tube
+            categories per source. Click a chip → fires a search with
+            that category name as the query. Single-source mode only;
+            avoids overwhelming the user when 'all sources' is active. */}
+        {source !== 'all' && TUBE_CATEGORIES[source] && TUBE_CATEGORIES[source].length > 0 && (
+          <div className="mt-1 mb-1 flex items-center gap-1.5 flex-wrap text-[11px]">
+            <span className="mr-1 opacity-70 text-[var(--muted)]">Categories:</span>
+            {TUBE_CATEGORIES[source].map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => {
+                  setTagInput(cat)
+                  setActiveQuery(cat)
+                  setPage(0)
+                  void search(cat, 0, source)
+                }}
+                className="px-2 py-0.5 rounded-full bg-[var(--primary)]/10 hover:bg-[var(--primary)]/20 border border-[var(--primary)]/30 text-[var(--primary)] transition"
+                title={`Browse "${cat}" on ${source}`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
         {source !== 'all' && SOURCE_HINTS[source] && SOURCE_HINTS[source].length > 0 && (
           <div className="mt-1 mb-1 flex items-center gap-1.5 flex-wrap text-[11px] text-[var(--muted)]">
             <span className="mr-1 opacity-70">Hints:</span>
