@@ -519,6 +519,10 @@ const api = {
     siblingsGet: () => invoke<Record<string, string[]>>('tags:siblingsGet'),
     siblingsSave: (map: Record<string, string[]>) =>
       invoke<{ ok: boolean; error?: string }>('tags:siblingsSave', map),
+    // #133 — Merge a curated set of content-warning implication edges
+    // (blood → cw:violence, etc.) into the user's tag-implications.json
+    loadDefaultCwImplications: () =>
+      invoke<{ ok: boolean; added: number; error?: string }>('tags:loadDefaultCwImplications'),
     // #155 — Stacks / versions IPC bridges
     stacksCreate: (args: { originalId: string; memberIds: string[] }) =>
       invoke<{ ok: boolean; stackId?: string; memberCount?: number; error?: string }>('stacks:create', args),

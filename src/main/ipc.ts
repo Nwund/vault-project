@@ -2456,6 +2456,59 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return db.listMediaTags(mediaId)
   })
 
+  // #133 — Content-warning seed pack. Merges a curated set of
+  // cw:* implication edges (blood → cw:violence, vomit → cw:disgust,
+  // etc.) into the user's tag-implications.json. Non-destructive:
+  // existing edges are preserved, new edges are added.
+  ipcMain.handle('tags:loadDefaultCwImplications', async () => {
+    try {
+      const { getImplications, saveImplications } = await import('./services/tag-implications')
+      const current = getImplications()
+      const defaults: Record<string, string[]> = {
+        // Violence + injury
+        blood: ['cw:violence', 'cw:gore'],
+        gore: ['cw:violence', 'cw:gore'],
+        injury: ['cw:violence'],
+        violence: ['cw:violence'],
+        weapons: ['cw:weapons'],
+        gun: ['cw:weapons'],
+        knife: ['cw:weapons'],
+        // Bodily fluids
+        vomit: ['cw:bodily_fluids', 'cw:disgust'],
+        feces: ['cw:bodily_fluids', 'cw:disgust'],
+        urine: ['cw:bodily_fluids'],
+        // Restraint without explicit consent context — user can add
+        // 'consensual' to override per-video by NOT applying cw:
+        bondage: ['cw:restraint'],
+        gag: ['cw:restraint'],
+        chains: ['cw:restraint'],
+        rope: ['cw:restraint'],
+        // Distress / non-consensual implications
+        crying: ['cw:distress'],
+        unconscious: ['cw:distress', 'cw:incapacitated'],
+        // Animals — most users want a heads-up
+        zoophilia: ['cw:animals'],
+        bestiality: ['cw:animals'],
+      }
+      const merged = { ...current }
+      let added = 0
+      for (const [child, parents] of Object.entries(defaults)) {
+        const existing = new Set((merged[child] ?? []).map(s => s.toLowerCase()))
+        const next = [...(merged[child] ?? [])]
+        for (const p of parents) {
+          if (!existing.has(p.toLowerCase())) {
+            next.push(p); existing.add(p.toLowerCase()); added++
+          }
+        }
+        merged[child] = next
+      }
+      const r = saveImplications(merged)
+      return { ok: r.ok, added, error: r.error }
+    } catch (err: any) {
+      return { ok: false, added: 0, error: err?.message ?? String(err) }
+    }
+  })
+
   // #102 — IPCs to read/write the tag-siblings JSON.
   ipcMain.handle('tags:siblingsGet', async () => {
     const { getSiblings } = await import('./services/tag-siblings')
