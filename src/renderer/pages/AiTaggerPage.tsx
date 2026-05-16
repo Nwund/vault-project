@@ -35,6 +35,7 @@ import { formatBytes } from '../utils/formatters'
 import { cn } from '../utils/cn'
 import { ReviewHoverPreview } from '../components/ReviewHoverPreview'
 import { TaggerQualityCard } from '../components/AdminCards'
+import { ModelFileCard } from '../components/ModelFileCard'
 import { toFileUrlCached } from '../hooks/usePerformance'
 import { DebouncedInput, DebouncedTextarea } from '../components/DebouncedField'
 
@@ -2571,6 +2572,69 @@ export function AiTaggerPage() {
                   Vocab loaded. CLIP text → image search and zero-shot tag validation are using real BPE encoding.
                 </p>
               )}
+            </div>
+
+            {/* More optional detectors — compact grid of model-file cards.
+                Each probe is null-safe + returns whether the .onnx is on
+                disk; the user drops the file and re-checks. The pattern
+                is identical to the JoyCaption / NudeNet / CLIP BPE cards
+                above, just dense to avoid scroll fatigue. */}
+            <div className="bg-[var(--panel)] rounded-xl border border-[var(--border)] p-6">
+              <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                <Zap size={20} />
+                More optional detectors
+              </h2>
+              <p className="text-sm text-[var(--muted)] mb-4">
+                Drop the model file at the path shown and click <span className="font-mono">Re-check</span>.
+                Each card self-disables when its model isn't present, so leaving them all uninstalled is fine.
+              </p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <ModelFileCard
+                  title="SFace face recognition"
+                  description="128-D face embeddings → face_clusters. Drop sface.onnx or face-recognition-arcface.onnx (auto-detected)."
+                  probe={() => window.api.ai.sfaceStatus?.() ?? Promise.resolve(null) as any}
+                  upstreamUrl="https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface"
+                  installHint="Filename face-recognition-arcface.onnx switches the pipeline to ArcFace's 512-D embeddings."
+                  onToast={showToast}
+                />
+                <ModelFileCard
+                  title="Person ReID"
+                  description="768-D body embeddings linked to face_clusters via shared frame_idx."
+                  probe={() => window.api.ai.personReidStatus?.() ?? Promise.resolve(null) as any}
+                  upstreamUrl="https://github.com/KaiyangZhou/deep-person-reid"
+                  installHint="Drop person-reid.onnx at the path above. Used in the Performers tab's Bodies panel."
+                  onToast={showToast}
+                />
+                <ModelFileCard
+                  title="DB + CRNN OCR"
+                  description="Two-stage OCR — replaces tesseract.js. Opt-in via settings.ai.useDbCrnnOcr."
+                  probe={() => window.api.ai.dbCrnnStatus?.() ?? Promise.resolve(null) as any}
+                  installHint="Drop text-detection-db.onnx and text-recognition-crnn.onnx at the path above."
+                  onToast={showToast}
+                />
+                <ModelFileCard
+                  title="LAION aesthetic predictor"
+                  description="0-10 aesthetic score using existing CLIP image embeddings. Near-zero compute."
+                  probe={() => window.api.ai.aestheticStatus?.() ?? Promise.resolve(null) as any}
+                  upstreamUrl="https://github.com/LAION-AI/aesthetic-predictor"
+                  installHint="Drop aesthetic-linear.json at the path above."
+                  onToast={showToast}
+                />
+                <ModelFileCard
+                  title="Deepfake / AI-face detector"
+                  description="Binary classifier on 224×224 face crops from YuNet."
+                  probe={() => window.api.ai.deepfakeStatus?.() ?? Promise.resolve(null) as any}
+                  installHint="Drop deepfake-detector.onnx at the path above."
+                  onToast={showToast}
+                />
+                <ModelFileCard
+                  title="AI-image (full-frame) detector"
+                  description="SigLIP / DINOv2 binary head on the full frame — complements the face-level deepfake detector."
+                  probe={() => window.api.ai.aiImageStatus?.() ?? Promise.resolve(null) as any}
+                  installHint="Drop ai-image-detector.onnx at the path above."
+                  onToast={showToast}
+                />
+              </div>
             </div>
 
             {/* How it works */}
