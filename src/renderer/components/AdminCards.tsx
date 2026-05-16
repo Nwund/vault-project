@@ -448,6 +448,98 @@ export function ResticBackupCard() {
   )
 }
 
+/**
+ * #181 — WebDAV server card. Lets any third-party file manager
+ * (Windows Explorer, Finder, Infuse, VLC, Kodi) mount the Vault
+ * library as a network drive. Bearer-token-auth via the existing
+ * mobile-sync tokens.
+ */
+export function WebDavCard() {
+  const { showToast } = useToast()
+  const [status, setStatus] = useState<{ running: boolean; port: number | null } | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const refresh = useCallback(async () => {
+    try {
+      const r = await (window.api as any).network?.webdavStatus?.()
+      setStatus(r ?? { running: false, port: null })
+    } catch {
+      setStatus({ running: false, port: null })
+    }
+  }, [])
+
+  useEffect(() => { void refresh() }, [refresh])
+
+  const start = async () => {
+    setBusy(true)
+    try {
+      const r = await (window.api as any).network?.webdavStart?.({ port: 9997 })
+      if (r?.ok) {
+        showToast?.('success', `WebDAV server on port ${r.port}`)
+        await refresh()
+      } else {
+        showToast?.('error', r?.error ?? 'WebDAV start failed')
+      }
+    } finally { setBusy(false) }
+  }
+  const stop = async () => {
+    setBusy(true)
+    try {
+      await (window.api as any).network?.webdavStop?.()
+      showToast?.('info', 'WebDAV server stopped')
+      await refresh()
+    } finally { setBusy(false) }
+  }
+
+  if (status === null) return null
+
+  return (
+    <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5 mt-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="text-sm font-semibold">WebDAV Server</div>
+          <div className="text-[11px] text-[var(--muted)] mt-0.5">
+            Mount the library as a network drive in Explorer / Finder / VLC / Infuse / Kodi (read-only).
+          </div>
+        </div>
+        {status.running ? (
+          <button
+            disabled={busy}
+            onClick={stop}
+            className="px-3 py-1.5 rounded text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 transition disabled:opacity-40"
+          >
+            {busy ? 'Stopping…' : 'Stop'}
+          </button>
+        ) : (
+          <button
+            disabled={busy}
+            onClick={start}
+            className="px-3 py-1.5 rounded text-xs bg-[var(--primary)] hover:opacity-90 text-white transition disabled:opacity-40 flex items-center gap-1.5"
+          >
+            {busy ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+            Start on 9997
+          </button>
+        )}
+      </div>
+      {status.running ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <code className="text-xs text-emerald-200 truncate flex-1">http://127.0.0.1:{status.port}/</code>
+          </div>
+          <div className="text-[10px] text-[var(--muted)] leading-relaxed">
+            <strong>Windows:</strong> Map Network Drive → <code className="bg-black/40 px-1 rounded">http://127.0.0.1:{status.port}/</code> with a bearer token (generate one in Cross-Device Access) as the password. <strong>macOS:</strong> Finder → Go → Connect to Server.
+          </div>
+        </div>
+      ) : (
+        <div className="text-[11px] text-[var(--muted)]">
+          Bearer-token auth — generate one in Cross-Device Access above first.
+        </div>
+      )}
+    </div>
+  )
+}
+
 function UrlGroup({ label, hint, urls, onCopy, accent }: {
   label: string; hint: string; urls: string[]; onCopy: (u: string) => void; accent: 'emerald' | 'cyan' | 'zinc'
 }) {

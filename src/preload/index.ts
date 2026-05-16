@@ -2083,6 +2083,13 @@ const api = {
       invoke<{ ok: boolean; wasRunning?: boolean; error?: string }>('network:cloudflare-tunnel-stop'),
     cloudflareTunnelStatus: () =>
       invoke<{ running: boolean; url: string | null }>('network:cloudflare-tunnel-status'),
+    /** #181 — WebDAV server wrappers. Mount the library as a network
+     *  drive (read-only). Auth uses the same mobile-sync bearer tokens. */
+    webdavStart: (args?: { port?: number }) =>
+      invoke<{ ok: boolean; port?: number; error?: string }>('webdav:start', args),
+    webdavStop: () => invoke<{ ok: boolean }>('webdav:stop'),
+    webdavStatus: () => invoke<{ running: boolean; port: number | null }>('webdav:status'),
+
     /** #200 — Restic backup wrappers. Snapshot pushes a new backup;
      *  Snapshots lists recent ones. Requires settings.backup.resticRepo
      *  + settings.backup.resticPasswordFile configured. */

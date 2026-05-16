@@ -9397,6 +9397,46 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   //   password file, and optional paths to include/exclude.
   // ─────────────────────────────────────────────────────────────────────────
 
+  // ─────────────────────────────────────────────────────────────────────────
+  //   WebDAV server (#181) — mounts the library as a network drive.
+  //   Reuses mobileSyncService's token store so the same bearer tokens
+  //   authorize WebDAV requests.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  ipcMain.handle('webdav:start', async (_ev, args?: { port?: number }) => {
+    const port = args?.port ?? 9997
+    try {
+      const { startWebDavServer } = await import('./services/webdav-server')
+      const r = await startWebDavServer(port, {
+        db,
+        validToken: (token: string) => {
+          // Accept tokens from the mobile-sync token store. The
+          // CrossDeviceCard generates these.
+          try {
+            const allTokens = (mobileSyncService as any).getAllTokens?.() ?? []
+            return Array.isArray(allTokens) && allTokens.some((t: any) => t?.token === token)
+          } catch {
+            return false
+          }
+        },
+      })
+      return { ok: true, port: r.port }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('webdav:stop', async () => {
+    const { stopWebDavServer } = await import('./services/webdav-server')
+    await stopWebDavServer()
+    return { ok: true }
+  })
+
+  ipcMain.handle('webdav:status', async () => {
+    const { getWebDavStatus } = await import('./services/webdav-server')
+    return getWebDavStatus()
+  })
+
   ipcMain.handle('backup:restic-snapshot', async (_ev, args?: {
     extraPaths?: string[]   // additional source dirs beyond <userData>
     tag?: string            // restic --tag for organization

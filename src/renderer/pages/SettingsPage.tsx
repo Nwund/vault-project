@@ -34,7 +34,7 @@ import { cn } from '../utils/cn'
 import { Btn, TopBar, ToggleSwitch } from '../components/ui'
 import { HardwareEncoderSettings } from '../components/HardwareEncoderSettings'
 import { XyreneSettings } from '../components/XyreneSettings'
-import { CrossDeviceCard, CloudflareTunnelCard, ZeroTierCard, ResticBackupCard } from '../components/AdminCards'
+import { CrossDeviceCard, CloudflareTunnelCard, ZeroTierCard, ResticBackupCard, WebDavCard } from '../components/AdminCards'
 import { WindowsHelloCard } from '../components/WindowsHelloCard'
 import { themes, DARK_THEME_LIST, LIGHT_THEME_LIST, GOON_THEME_LIST, type ThemeId } from '../styles/themes'
 import { QRCodeSVG } from 'qrcode.react'
@@ -2851,6 +2851,11 @@ export function SettingsPage(props: {
           {/* #190 — ZeroTier orchestration (auto-hides when not installed) */}
           {activeTab === 'services' && (
             <ZeroTierCard />
+          )}
+
+          {/* #181 — WebDAV server (mount library as a network drive) */}
+          {activeTab === 'services' && (
+            <WebDavCard />
           )}
 
           {/* #200 — Restic offsite backup */}
