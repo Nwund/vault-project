@@ -839,6 +839,19 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       } else if (e.key === ' ') {
         e.preventDefault()
         togglePlay()
+      } else if (e.key === 'k' || e.key === 'K') {
+        // #161 — YouTube/NLE convention: K toggles play/pause
+        e.preventDefault()
+        togglePlay()
+      } else if (e.key === 'j' || e.key === 'J') {
+        // #161 — YouTube/NLE convention: J rewinds 10s.
+        // (L=Like is preserved for backward compat instead of being
+        // remapped to "forward 10s" — Shift+ArrowRight already covers
+        // a 5s skip-forward, and Period is a frame-jog.)
+        if (videoRef.current) {
+          e.preventDefault()
+          videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10)
+        }
       } else if (e.key === 'm' || e.key === 'M') {
         if (isMuted || volume === 0) {
           const restored = prevVolumeRef.current > 0 ? prevVolumeRef.current : 0.5
