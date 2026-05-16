@@ -306,19 +306,29 @@ export class ModelDownloader {
   }
 
   /**
-   * Get the tag labels for WD Tagger
+   * Get the tag labels for a WD-Tagger variant. With no arg → returns
+   * the canonical wd-tags.json (the default SwinV2 labels). With a
+   * variant ID (e.g. 'pixai', 'joytag', 'idolsankaku') → looks for
+   * wd-tags-<variant>.json first and falls back to wd-tags.json so
+   * variants that share the same label vocab don't need a separate
+   * file. Variants with their own vocab (joytag, idolsankaku) MUST
+   * ship a wd-tags-<variant>.json or their tag IDs will be misaligned.
    */
-  getTagLabels(): string[] {
-    const labelsPath = this.getModelPath('wd-tags.json')
-    if (!fs.existsSync(labelsPath)) {
-      return []
+  getTagLabels(variantId?: string): string[] {
+    const candidates: string[] = []
+    if (variantId) candidates.push(`wd-tags-${variantId}.json`)
+    candidates.push('wd-tags.json')
+    for (const filename of candidates) {
+      const labelsPath = this.getModelPath(filename)
+      if (!fs.existsSync(labelsPath)) continue
+      try {
+        const content = fs.readFileSync(labelsPath, 'utf-8')
+        const parsed = JSON.parse(content)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      } catch {
+        // try next candidate
+      }
     }
-
-    try {
-      const content = fs.readFileSync(labelsPath, 'utf-8')
-      return JSON.parse(content)
-    } catch {
-      return []
-    }
+    return []
   }
 }

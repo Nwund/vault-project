@@ -92,17 +92,33 @@ async function createMainWindow(): Promise<BrowserWindow> {
   // before the request goes out — letting us load these images
   // transparently in the renderer's <img> tags.
   // Add new entries here when we hit a new hotlink-protected source.
-  const REFERER_OVERRIDES: Array<{ hostMatch: RegExp; referer: string; origin?: string }> = [
+  // `referer` set: rewrite. `stripReferer: true`: delete (used for CDNs
+  // that 403 cross-origin <video> playback when our `app://` Referer
+  // leaks — booru-host videos in the Browse lightbox were the original
+  // bug, "gray video frame, 0-byte fetch").
+  const REFERER_OVERRIDES: Array<{ hostMatch: RegExp; referer?: string; origin?: string; stripReferer?: boolean }> = [
     { hostMatch: /(^|\.)pximg\.net$/i, referer: 'https://www.pixiv.net/', origin: 'https://www.pixiv.net' },
     { hostMatch: /(^|\.)pixiv\.net$/i, referer: 'https://www.pixiv.net/', origin: 'https://www.pixiv.net' },
+    // Booru video CDNs that 403 with cross-origin Referer.
+    { hostMatch: /(^|\.)xbooru\.com$/i, stripReferer: true },
+    { hostMatch: /(^|\.)gelbooru\.com$/i, stripReferer: true },
+    { hostMatch: /(^|\.)realbooru\.com$/i, stripReferer: true },
+    { hostMatch: /(^|\.)tbib\.org$/i, stripReferer: true },
+    { hostMatch: /(^|\.)hypnohub\.net$/i, stripReferer: true },
+    { hostMatch: /(^|\.)paheal\.net$/i, stripReferer: true },
   ]
   win.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
     try {
       const u = new URL(details.url)
       const override = REFERER_OVERRIDES.find((r) => r.hostMatch.test(u.hostname))
       if (override) {
-        details.requestHeaders['Referer'] = override.referer
-        if (override.origin) details.requestHeaders['Origin'] = override.origin
+        if (override.stripReferer) {
+          delete details.requestHeaders['Referer']
+          delete details.requestHeaders['Origin']
+        } else if (override.referer) {
+          details.requestHeaders['Referer'] = override.referer
+          if (override.origin) details.requestHeaders['Origin'] = override.origin
+        }
       }
     } catch { /* malformed URL — pass through unchanged */ }
     callback({ requestHeaders: details.requestHeaders })

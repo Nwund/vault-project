@@ -35,6 +35,7 @@ interface BooruPost {
   width: number
   height: number
   source_booru?: string  // populated by multi-source search
+  hash?: string          // md5/post hash from booru API, used for in-library duplicate detection
 }
 
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v)(\?.*)?$/i
@@ -252,6 +253,10 @@ function HlsAwareVideo({ src, className, autoPlay = true, loop = true, controls 
     }
   }, [src])  // intentionally ONLY src — onError lives in a ref
 
+  // Booru-CDN Referer stripping happens in main.ts via a webRequest
+  // override (REFERER_OVERRIDES with stripReferer: true). Doing it in
+  // the network layer is the only reliable path — the HTML
+  // referrerpolicy attribute is not honored on <video>.
   return (
     <video
       ref={videoRef}
@@ -263,13 +268,6 @@ function HlsAwareVideo({ src, className, autoPlay = true, loop = true, controls 
       loop={loop && !isHlsUrl(src)}
       controls={controls}
       preload="auto"
-      // Strip the Referer header so booru CDNs (xbooru, gelbooru,
-      // others) don't reject the request based on cross-origin referer
-      // checks. Symptom this fixes: thumbnail shows but `<video>` is
-      // gray / blank because the CDN 403s the actual file fetch.
-      // No-referrer is safe for direct-file URLs; HLS uses fetch via
-      // hls.js which has its own CORS handling.
-      referrerPolicy="no-referrer"
       className={className}
       onDoubleClick={onDoubleClick}
       onError={onError}
@@ -576,8 +574,8 @@ export default function Rule34Page() {
             setPosts((prev) => {
               // Dedupe by (source_booru, id) so re-paging doesn't show
               // the same post twice when sources return overlap.
-              const seen = new Set(prev.map((x) => `${x.source_booru ?? ''}-${x.id}`))
-              const fresh = (r.posts ?? []).filter((x) => !seen.has(`${x.source_booru ?? ''}-${x.id}`))
+              const seen = new Set(prev.map((x: BooruPost) => `${x.source_booru ?? ''}-${x.id}`))
+              const fresh = (r.posts ?? []).filter((x: BooruPost) => !seen.has(`${x.source_booru ?? ''}-${x.id}`))
               return [...prev, ...fresh]
             })
           } else {
@@ -607,8 +605,8 @@ export default function Rule34Page() {
         if (r?.ok) {
           if (opts?.append) {
             setPosts((prev) => {
-              const seen = new Set(prev.map((x) => `${x.source_booru ?? ''}-${x.id}`))
-              const fresh = (r.posts ?? []).filter((x) => !seen.has(`${x.source_booru ?? ''}-${x.id}`))
+              const seen = new Set(prev.map((x: BooruPost) => `${x.source_booru ?? ''}-${x.id}`))
+              const fresh = (r.posts ?? []).filter((x: BooruPost) => !seen.has(`${x.source_booru ?? ''}-${x.id}`))
               return [...prev, ...fresh]
             })
           } else {
@@ -1802,7 +1800,6 @@ export default function Rule34Page() {
                   <video
                     src={pasteResult.videoUrl}
                     controls
-                    referrerPolicy="no-referrer"
                     className="rounded-lg bg-black"
                     style={{ width: 480, height: 270 }}
                   />
@@ -2319,7 +2316,6 @@ export default function Rule34Page() {
                           muted
                           loop
                           playsInline
-                          referrerPolicy="no-referrer"
                           className="absolute inset-0 w-full h-full object-cover pointer-events-none"
                         />
                       )}
