@@ -395,6 +395,25 @@ async function main() {
       }
     })()
 
+    // Persistent trash auto-purge. Drops media_trash entries whose
+    // purge_at has passed (default 30 days from soft-delete). Runs once
+    // at boot — for normal long-running sessions a daily-resolution
+    // purge is fine. Best-effort: failure here is logged but doesn't
+    // block app boot.
+    void (async () => {
+      try {
+        const nowSec = Math.floor(Date.now() / 1000)
+        const r = db.raw.prepare(
+          `DELETE FROM media_trash WHERE purge_at < ?`
+        ).run(nowSec)
+        if (r.changes > 0) {
+          console.log(`[Trash auto-purge] Removed ${r.changes} expired entries`)
+        }
+      } catch (err) {
+        console.warn('[Trash auto-purge] threw (non-fatal):', err)
+      }
+    })()
+
     // F5-TTS auto-start. Opt-in via settings.ai.f5ttsAutoStart. Required when
     // settings.ai.xyreneVoiceBackend = 'f5tts' so the engine doesn't have to
     // wait through a 90s sidecar boot on first synth. Default off (XTTS is the

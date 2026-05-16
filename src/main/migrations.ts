@@ -700,6 +700,39 @@ const migrations: Migration[] = [
         console.log('[Migration v24] Added media.chromaprint for audio-fingerprint dedup')
       }
     }
+  },
+
+  {
+    id: 25,
+    up: (db) => {
+      // Persistent trash / recycle bin with 30-day retention. Soft-deletes
+      // land here (in addition to the in-memory undo stack which only
+      // holds 10 items and is lost on restart). Settings UI lists
+      // everything in here, lets the user restore by id, and a boot-time
+      // task purges entries older than 30 days.
+      //
+      // restoration_data is the full JSON envelope needed to round-trip
+      // a restore: every media row field + tag-name array. We don't FK
+      // to media because the media row is deleted at trash-time; the
+      // trash entry is the sole record until restored or auto-purged.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS media_trash (
+          id TEXT PRIMARY KEY,
+          original_path TEXT NOT NULL,
+          filename TEXT NOT NULL,
+          type TEXT NOT NULL,
+          size_bytes INTEGER,
+          duration_sec REAL,
+          thumb_path TEXT,
+          deleted_at REAL NOT NULL DEFAULT (strftime('%s', 'now')),
+          purge_at REAL NOT NULL,
+          restoration_data TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_trash_purge_at ON media_trash(purge_at);
+        CREATE INDEX IF NOT EXISTS idx_trash_deleted_at ON media_trash(deleted_at DESC);
+      `)
+      console.log('[Migration v25] Added media_trash for persistent recycle bin')
+    }
   }
 ]
 

@@ -1409,7 +1409,16 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   }> = []
   const MAX_UNDO_STACK = 10
 
-  // Delete media from library (soft delete - file stays on disk)
+  // Persistent trash retention window — items older than this auto-purge
+  // at boot. 30 days matches the Trash bin convention in macOS / Windows
+  // Recycle Bin / Google Drive.
+  const TRASH_RETENTION_SECONDS = 30 * 24 * 60 * 60
+
+  // Delete media from library (soft delete - file stays on disk).
+  // Writes to BOTH the in-memory undo stack (for instant Ctrl+Z) AND the
+  // persistent media_trash table (for cross-session restore up to 30
+  // days). The two systems are independent — Ctrl+Z still pops the most
+  // recent stack entry; the Settings → Trash UI lists from media_trash.
   ipcMain.handle('media:delete', async (_ev, mediaId: string) => {
     try {
       const media = db.getMedia(mediaId)
@@ -1444,6 +1453,48 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
         deletedMediaStack.shift()
       }
 
+      // Persist to media_trash for cross-session restore. Best-effort —
+      // a write failure here is logged but doesn't block the delete
+      // itself (the user explicitly asked to delete).
+      try {
+        const nowSec = Math.floor(Date.now() / 1000)
+        const restorationData = JSON.stringify({
+          id: media.id,
+          path: media.path,
+          filename: media.filename,
+          ext: media.ext,
+          type: media.type,
+          size: media.size,
+          mtimeMs: media.mtimeMs,
+          durationSec: media.durationSec,
+          thumbPath: media.thumbPath,
+          width: media.width,
+          height: media.height,
+          hashSha256: media.hashSha256,
+          phash: media.phash,
+          tags,
+        })
+        db.raw.prepare(`
+          INSERT OR REPLACE INTO media_trash
+            (id, original_path, filename, type, size_bytes, duration_sec,
+             thumb_path, deleted_at, purge_at, restoration_data)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          media.id,
+          media.path,
+          media.filename,
+          media.type,
+          media.size ?? null,
+          media.durationSec ?? null,
+          media.thumbPath ?? null,
+          nowSec,
+          nowSec + TRASH_RETENTION_SECONDS,
+          restorationData,
+        )
+      } catch (err) {
+        console.warn('[media:delete] media_trash insert failed (non-fatal):', err)
+      }
+
       // Delete from database (file stays on disk)
       db.deleteMediaById(mediaId)
       broadcast('vault:changed')
@@ -1452,6 +1503,115 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     } catch (err: any) {
       errorLogger.error('IPC', 'media:delete error', err)
       return { success: false, error: err?.message }
+    }
+  })
+
+  // List trash entries newest-first. Used by Settings → Trash panel.
+  ipcMain.handle('media:trash:list', async () => {
+    try {
+      const rows = db.raw.prepare(`
+        SELECT id, original_path, filename, type, size_bytes, duration_sec,
+               thumb_path, deleted_at, purge_at
+        FROM media_trash
+        ORDER BY deleted_at DESC
+        LIMIT 1000
+      `).all() as Array<{
+        id: string; original_path: string; filename: string; type: string
+        size_bytes: number | null; duration_sec: number | null
+        thumb_path: string | null; deleted_at: number; purge_at: number
+      }>
+      return { ok: true, items: rows }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), items: [] }
+    }
+  })
+
+  // Restore a single trash entry back to the library. Re-upserts the
+  // media row + reattaches tags from restoration_data, then drops the
+  // trash entry. Errors if the file no longer exists on disk.
+  ipcMain.handle('media:trash:restore', async (_ev, trashId: string) => {
+    try {
+      const row = db.raw.prepare(
+        `SELECT restoration_data FROM media_trash WHERE id = ?`
+      ).get(trashId) as { restoration_data: string } | undefined
+      if (!row) return { ok: false, error: 'Trash entry not found' }
+      const data = JSON.parse(row.restoration_data) as {
+        id: string; path: string; filename: string; ext: string
+        type: 'video' | 'image' | 'gif'
+        size: number; mtimeMs: number
+        durationSec: number | null; thumbPath: string | null
+        width: number | null; height: number | null
+        hashSha256: string | null; phash: string | null
+        tags: string[]
+      }
+      if (!fs.existsSync(data.path)) {
+        return { ok: false, error: 'File no longer exists on disk', path: data.path }
+      }
+      db.upsertMedia({
+        id: data.id,
+        path: data.path,
+        filename: data.filename,
+        ext: data.ext,
+        type: data.type,
+        size: data.size,
+        mtimeMs: data.mtimeMs,
+        durationSec: data.durationSec,
+        thumbPath: data.thumbPath,
+        width: data.width,
+        height: data.height,
+        hashSha256: data.hashSha256,
+        phash: data.phash,
+        addedAt: Date.now(),
+      })
+      for (const tagName of data.tags ?? []) {
+        try {
+          db.ensureTag(tagName)
+          db.addTagToMedia(data.id, tagName)
+        } catch { /* skip tag-restore errors per-tag */ }
+      }
+      db.raw.prepare(`DELETE FROM media_trash WHERE id = ?`).run(trashId)
+      broadcast('vault:changed')
+      return { ok: true, restoredId: data.id }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // Drop a trash entry without restoring (user manually purges).
+  ipcMain.handle('media:trash:purgeOne', async (_ev, trashId: string) => {
+    try {
+      const r = db.raw.prepare(`DELETE FROM media_trash WHERE id = ?`).run(trashId)
+      return { ok: true, removed: r.changes }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // Drop ALL trash entries. Confirmation-gated in the UI.
+  ipcMain.handle('media:trash:purgeAll', async () => {
+    try {
+      const r = db.raw.prepare(`DELETE FROM media_trash`).run()
+      return { ok: true, removed: r.changes }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // Boot-time auto-purge — drops any trash entry whose purge_at has
+  // passed (default 30 days from soft-delete). Called once on startup
+  // from main.ts; safe to invoke repeatedly.
+  ipcMain.handle('media:trash:autoPurgeExpired', async () => {
+    try {
+      const nowSec = Math.floor(Date.now() / 1000)
+      const r = db.raw.prepare(
+        `DELETE FROM media_trash WHERE purge_at < ?`
+      ).run(nowSec)
+      if (r.changes > 0) {
+        console.log(`[media:trash] Auto-purged ${r.changes} expired trash entries`)
+      }
+      return { ok: true, removed: r.changes }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
     }
   })
 

@@ -431,6 +431,31 @@ const api = {
     delete: (mediaId: string) => invoke<{ success: boolean; deletedMedia?: any; error?: string }>('media:delete', mediaId),
     // Undo last delete (restores media to library if file still exists)
     undoDelete: () => invoke<{ success: boolean; restoredId?: string; error?: string }>('media:undoDelete'),
+    // Persistent trash (30-day retention) — separate from the in-memory
+    // undo stack. Settings → Trash UI consumes these.
+    trashList: () => invoke<{
+      ok: boolean
+      items: Array<{
+        id: string
+        original_path: string
+        filename: string
+        type: string
+        size_bytes: number | null
+        duration_sec: number | null
+        thumb_path: string | null
+        deleted_at: number
+        purge_at: number
+      }>
+      error?: string
+    }>('media:trash:list'),
+    trashRestore: (trashId: string) =>
+      invoke<{ ok: boolean; restoredId?: string; path?: string; error?: string }>('media:trash:restore', trashId),
+    trashPurgeOne: (trashId: string) =>
+      invoke<{ ok: boolean; removed?: number; error?: string }>('media:trash:purgeOne', trashId),
+    trashPurgeAll: () =>
+      invoke<{ ok: boolean; removed?: number; error?: string }>('media:trash:purgeAll'),
+    trashAutoPurgeExpired: () =>
+      invoke<{ ok: boolean; removed?: number; error?: string }>('media:trash:autoPurgeExpired'),
     // GIF creation from video
     createGif: (options: {
       mediaId: string
