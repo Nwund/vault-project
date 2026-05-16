@@ -1,4 +1,5 @@
 // File: src/main/services/ai-intelligence/transnet-detector.ts
+// STATUS: scaffold — detectBoundaries() returns []. See docs/ML_WRAPPER_BACKLOG.md.
 //
 // TransNet V2 shot-boundary detector (#18). 3D-CNN trained on
 // IACC.3 / RAI / BBC for high-precision scene splits. Better than

@@ -1,4 +1,5 @@
 // File: src/main/services/ai-intelligence/clap-audio-tagger.ts
+// STATUS: scaffold — classify() returns []. See docs/ML_WRAPPER_BACKLOG.md.
 //
 // LAION CLAP zero-shot audio tagger (#24). CLIP-for-audio: given
 // text prompts and an audio file, returns per-prompt similarity.

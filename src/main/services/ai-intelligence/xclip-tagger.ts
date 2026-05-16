@@ -1,4 +1,5 @@
 // File: src/main/services/ai-intelligence/xclip-tagger.ts
+// STATUS: scaffold — classify() returns []. See docs/ML_WRAPPER_BACKLOG.md.
 //
 // X-CLIP zero-shot video tagging (#20). Microsoft's video-CLIP
 // extension — given a list of text prompts and a video clip, returns

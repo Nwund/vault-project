@@ -1,4 +1,5 @@
 // File: src/main/services/ai-intelligence/demucs-separator.ts
+// STATUS: scaffold — separate() returns null. See docs/ML_WRAPPER_BACKLOG.md.
 //
 // Demucs vocal/instrument separation (#25). Splits an audio stream
 // into 4 stems (vocals / drums / bass / other). Used by:
