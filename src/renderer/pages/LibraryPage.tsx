@@ -75,6 +75,7 @@ import { RecentlyViewedStrip } from '../components/RecentlyViewedStrip'
 import { TrashPanel } from '../components/TrashPanel'
 import { LibraryHealthPanel } from '../components/LibraryHealthPanel'
 import { PinnedFiltersBar } from '../components/PinnedFiltersBar'
+import { SlideshowController } from '../components/SlideshowController'
 import { UrlDownloaderPanel } from '../components/UrlDownloaderPanel'
 import { DuplicatesModal } from '../components/DuplicatesModal'
 import { PlaylistPicker, AddToPlaylistPopup } from '../components/PlaylistPickers'
@@ -233,6 +234,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
   const [showWatchLaterPanel, setShowWatchLaterPanel] = useState(false) // Watch Later queue panel
   const [showTrashPanel, setShowTrashPanel] = useState(false) // Persistent trash / recycle bin
   const [showLibraryHealth, setShowLibraryHealth] = useState(false) // Actionable health dashboard
+  const [showSlideshow, setShowSlideshow] = useState(false) // Stills slideshow with Ken Burns / transitions
   const [showTVRemotePanel, setShowTVRemotePanel] = useState(false) // TV Remote control panel
   const [showUrlDownloaderPanel, setShowUrlDownloaderPanel] = useState(false) // URL Downloader panel
   // v2.3.0 Panel states
@@ -1382,6 +1384,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                   <button onClick={() => setShowUrlDownloaderPanel(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Download size={14} />URL Downloader</button>
                   <button onClick={() => setShowTrashPanel(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Trash2 size={14} />Trash</button>
                   <button onClick={() => setShowLibraryHealth(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Activity size={14} />Library Health</button>
+                  <button onClick={() => setShowSlideshow(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Play size={14} />Slideshow</button>
                 </div>
                 <div className="p-2 border-t border-b border-white/10">
                   <span className="text-xs text-white/50 font-medium">Video Tools</span>
@@ -3276,6 +3279,41 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
         }}
         showToast={showToast}
       />
+
+      {/* Stills slideshow — uses the current sortedMedia filtered to
+          image+gif. Honors current selection if any items are selected
+          (so "select N → Slideshow" plays just those); otherwise plays
+          whatever's currently visible in the grid. */}
+      {showSlideshow && (() => {
+        const sourcePool = (selectionMode && selectedIds.size >= 1)
+          ? sortedMedia.filter((m: MediaRow) => selectedIds.has(m.id))
+          : sortedMedia
+        const items = sourcePool
+          .filter((m: MediaRow) => m.type === 'image' || m.type === 'gif')
+          .map((m: MediaRow) => ({
+            id: m.id,
+            path: m.path,
+            filename: m.filename ?? '',
+            type: m.type as 'image' | 'gif',
+            durationSec: m.durationSec ?? null,
+          }))
+        if (items.length === 0) {
+          showToast('info', 'No images or GIFs to play. Filter to images or select a few first.')
+          setShowSlideshow(false)
+          return null
+        }
+        return (
+          <div className="fixed inset-0 z-[200] bg-black" onClick={() => setShowSlideshow(false)}>
+            <div className="absolute inset-0" onClick={(e) => e.stopPropagation()}>
+              <SlideshowController
+                items={items}
+                onClose={() => setShowSlideshow(false)}
+                className="h-full w-full"
+              />
+            </div>
+          </div>
+        )
+      })()}
 
       {/* TV Remote Control Panel */}
       <TVRemotePanel
