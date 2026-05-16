@@ -8536,6 +8536,39 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return { ok: true, fingerprint: fp }
   })
 
+  // Chromaprint audio-fingerprint dedup. Catches re-encodes that share
+  // the audio track but differ visually (cropped / watermarked / re-encoded
+  // codec). Requires fpcalc.exe — the IPCs return null/skip when missing.
+  ipcMain.handle('visualDuplicates:cpCoverage', async () => {
+    return getVisualDuplicatesService(db).getChromaprintCoverage()
+  })
+
+  ipcMain.handle('visualDuplicates:cpComputeAll', async (_ev, opts?: { onlyUnhashed?: boolean }) => {
+    const service = getVisualDuplicatesService(db)
+    return service.computeAllChromaprints(
+      (p) => {
+        try {
+          const win = BrowserWindow.getAllWindows()[0]
+          win?.webContents.send('visualDuplicates:cpProgress', p)
+        } catch {}
+      },
+      opts
+    )
+  })
+
+  ipcMain.handle('visualDuplicates:cpFindGroups', async (_ev, opts?: { threshold?: number }) => {
+    const service = getVisualDuplicatesService(db)
+    const threshold = Math.max(0.5, Math.min(0.99, opts?.threshold ?? 0.85))
+    return { groups: await service.findChromaprintGroups(threshold), threshold }
+  })
+
+  ipcMain.handle('visualDuplicates:cpHashOne', async (_ev, mediaId: string) => {
+    const service = getVisualDuplicatesService(db)
+    const env = await service.computeChromaprint(mediaId)
+    if (!env) return { ok: false, error: 'Chromaprint failed (no fpcalc / no audio / not a video)' }
+    return { ok: true, fingerprint: env }
+  })
+
   // ═══════════════════════════════════════════════════════════════════════════
   // MOBILE SYNC SERVICE
   // ═══════════════════════════════════════════════════════════════════════════

@@ -444,6 +444,172 @@ export class VisualDuplicatesService {
     out.sort((a, b) => b.members.length - a.members.length)
     return out
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //   Chromaprint audio fingerprint (videos with audio + audio-only).
+  //   Catches re-encodes that share the audio stream but differ visually
+  //   (cropped / watermarked / re-encoded). Stored as JSON envelope
+  //   {"d": durationSec, "f": "<base64-chromaprint>"} on media.chromaprint.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  getChromaprintCoverage(): { hashed: number; total: number } {
+    const total = (this.rawDb.prepare(
+      `SELECT COUNT(*) as n FROM media WHERE type IN ('video') AND COALESCE(durationSec, 0) > 0`
+    ).get() as { n: number }).n
+    const hashed = (this.rawDb.prepare(
+      `SELECT COUNT(*) as n FROM media WHERE type IN ('video') AND chromaprint IS NOT NULL AND chromaprint != ''`
+    ).get() as { n: number }).n
+    return { hashed, total }
+  }
+
+  /** Compute and persist the chromaprint envelope for a single media item. */
+  async computeChromaprint(mediaId: string): Promise<{ d: number; f: string } | null> {
+    const { chromaprintFile } = await import('./ai-intelligence/chromaprint-fingerprint')
+    const row = this.rawDb.prepare(
+      `SELECT path, type FROM media WHERE id = ?`
+    ).get(mediaId) as { path: string; type: string } | undefined
+    if (!row || row.type !== 'video' || !fs.existsSync(row.path)) return null
+
+    const r = await chromaprintFile(row.path)
+    if (!r) return null
+    const env = { d: r.duration, f: r.fingerprint }
+    this.rawDb.prepare(`UPDATE media SET chromaprint = ? WHERE id = ?`)
+      .run(JSON.stringify(env), mediaId)
+    return env
+  }
+
+  /** Bulk-compute chromaprints. fpcalc averages ~1s/file. */
+  async computeAllChromaprints(
+    onProgress?: (p: VisualScanProgress) => void,
+    options?: { onlyUnhashed?: boolean }
+  ): Promise<{ hashed: number; skipped: number }> {
+    this.aborted = false
+    const onlyUnhashed = options?.onlyUnhashed ?? true
+    const where = onlyUnhashed
+      ? `WHERE type = 'video' AND COALESCE(durationSec, 0) > 0 AND (chromaprint IS NULL OR chromaprint = '')`
+      : `WHERE type = 'video' AND COALESCE(durationSec, 0) > 0`
+    const rows = this.rawDb.prepare(
+      `SELECT id, path FROM media ${where}`
+    ).all() as Array<{ id: string; path: string }>
+
+    const { chromaprintFile } = await import('./ai-intelligence/chromaprint-fingerprint')
+    const update = this.rawDb.prepare(`UPDATE media SET chromaprint = ? WHERE id = ?`)
+    let hashed = 0
+    let skipped = 0
+    const total = rows.length
+
+    for (let i = 0; i < rows.length; i++) {
+      if (this.aborted) break
+      const r = rows[i]
+      if (!fs.existsSync(r.path)) { skipped++; continue }
+
+      const cp = await chromaprintFile(r.path)
+      if (cp) {
+        update.run(JSON.stringify({ d: cp.duration, f: cp.fingerprint }), r.id)
+        hashed++
+      } else {
+        skipped++
+      }
+
+      if (onProgress) {
+        onProgress({ hashed, total, currentFile: path.basename(r.path) })
+      }
+    }
+
+    return { hashed, skipped }
+  }
+
+  /**
+   * Group videos by chromaprint similarity. Two videos cluster when
+   * chromaprintSimilarity >= threshold (default 0.85). Same union-find
+   * structure as findMultiFrameGroups.
+   */
+  async findChromaprintGroups(threshold = 0.85): Promise<VisualDuplicateGroup[]> {
+    const { chromaprintSimilarity } = await import('./ai-intelligence/chromaprint-fingerprint')
+    const rows = this.rawDb.prepare(`
+      SELECT id, filename, thumbPath, size, width, height, chromaprint
+      FROM media
+      WHERE type = 'video' AND chromaprint IS NOT NULL AND chromaprint != ''
+    `).all() as Array<{
+      id: string; filename: string; thumbPath: string | null;
+      size: number | null; width: number | null; height: number | null;
+      chromaprint: string
+    }>
+
+    if (rows.length < 2) return []
+
+    const fingerprints: Array<{ row: typeof rows[0]; fp: string; dur: number }> = []
+    for (const r of rows) {
+      try {
+        const env = JSON.parse(r.chromaprint) as { d: number; f: string }
+        if (env && typeof env.f === 'string' && env.f.length > 0) {
+          fingerprints.push({ row: r, fp: env.f, dur: env.d })
+        }
+      } catch { /* skip malformed */ }
+    }
+
+    const parent = new Map<string, string>()
+    fingerprints.forEach(({ row }) => parent.set(row.id, row.id))
+    const find = (id: string): string => {
+      let cur = id
+      while (parent.get(cur) !== cur) cur = parent.get(cur)!
+      let walk = id
+      while (parent.get(walk) !== cur) {
+        const next = parent.get(walk)!
+        parent.set(walk, cur)
+        walk = next
+      }
+      return cur
+    }
+    const union = (a: string, b: string) => {
+      const ra = find(a); const rb = find(b)
+      if (ra !== rb) parent.set(ra, rb)
+    }
+
+    // Pre-filter pairs by duration (within 5%) — chromaprint similarity
+    // on grossly different-length clips is meaningless.
+    for (let i = 0; i < fingerprints.length; i++) {
+      for (let j = i + 1; j < fingerprints.length; j++) {
+        const a = fingerprints[i], b = fingerprints[j]
+        const durRatio = Math.min(a.dur, b.dur) / Math.max(a.dur, b.dur)
+        if (durRatio < 0.95) continue
+        if (chromaprintSimilarity(a.fp, b.fp) >= threshold) {
+          union(a.row.id, b.row.id)
+        }
+      }
+    }
+
+    const groups = new Map<string, typeof fingerprints>()
+    for (const fp of fingerprints) {
+      const root = find(fp.row.id)
+      if (!groups.has(root)) groups.set(root, [])
+      groups.get(root)!.push(fp)
+    }
+
+    const out: VisualDuplicateGroup[] = []
+    for (const [root, members] of groups) {
+      if (members.length < 2) continue
+      const rep = members.find((m) => m.row.id === root) ?? members[0]
+      out.push({
+        representativeId: rep.row.id,
+        members: members.map((m) => {
+          const sim = chromaprintSimilarity(rep.fp, m.fp)
+          // Pseudo-distance: 100 - similarity*100, so identical→0
+          return {
+            mediaId: m.row.id,
+            filename: m.row.filename,
+            thumbPath: m.row.thumbPath,
+            sizeBytes: m.row.size,
+            width: m.row.width,
+            height: m.row.height,
+            distance: Math.round((1 - sim) * 100),
+          }
+        }).sort((a, b) => a.distance - b.distance)
+      })
+    }
+    out.sort((a, b) => b.members.length - a.members.length)
+    return out
+  }
 }
 
 let singleton: VisualDuplicatesService | null = null

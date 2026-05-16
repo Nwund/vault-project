@@ -2140,6 +2140,31 @@ const api = {
     mfHashOne: (mediaId: string) =>
       invoke<{ ok: boolean; fingerprint?: { hashes: string[]; validFrameCount: number; timestampsPct: number[] }; error?: string }>('visualDuplicates:mfHashOne', mediaId),
 
+    // Chromaprint audio-fingerprint dedup. Catches re-encodes that share
+    // the audio track but differ visually. Requires fpcalc on PATH or in
+    // resources/bin/.
+    cpCoverage: () => invoke<{ hashed: number; total: number }>('visualDuplicates:cpCoverage'),
+    cpComputeAll: (opts?: { onlyUnhashed?: boolean }) =>
+      invoke<{ hashed: number; skipped: number }>('visualDuplicates:cpComputeAll', opts),
+    cpFindGroups: (opts?: { threshold?: number }) =>
+      invoke<{
+        threshold: number
+        groups: Array<{
+          representativeId: string
+          members: Array<{
+            mediaId: string
+            filename: string
+            thumbPath: string | null
+            sizeBytes: number | null
+            width: number | null
+            height: number | null
+            distance: number
+          }>
+        }>
+      }>('visualDuplicates:cpFindGroups', opts),
+    cpHashOne: (mediaId: string) =>
+      invoke<{ ok: boolean; fingerprint?: { d: number; f: string }; error?: string }>('visualDuplicates:cpHashOne', mediaId),
+
     // Find exact duplicates by file hash
     findDuplicates: () =>
       invoke<Array<{

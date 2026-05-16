@@ -39,7 +39,7 @@ interface DuplicatesModalProps {
   onViewMedia: (mediaId: string) => void
 }
 
-type ScanType = 'exact' | 'size' | 'name' | 'visual' | 'visual-mf'
+type ScanType = 'exact' | 'size' | 'name' | 'visual' | 'visual-mf' | 'audio-fp'
 
 export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModalProps) {
   const { showToast } = useToast()
@@ -126,6 +126,32 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
           const mf = await (window as any).api?.similar?.mfFindGroups?.({ maxDistance: 5, minMatches: 3 })
           const groups = (mf?.groups ?? []).map((g: any) => ({
             hash: `mfphash-${g.representativeId}`,
+            type: 'similar' as const,
+            count: g.members.length,
+            totalSize: 0,
+            mediaIds: g.members.map((m: any) => m.mediaId)
+          }))
+          result = {
+            type: 'similar',
+            groups,
+            totalGroups: groups.length,
+            totalDuplicates: groups.reduce((s: number, g: any) => s + g.count, 0),
+            potentialSavings: 0,
+            scanTime: 0
+          } as DuplicateScanResult
+          break
+        }
+        case 'audio-fp': {
+          // Chromaprint audio fingerprint — catches re-encodes that share
+          // an audio track but differ visually (different aspect crop /
+          // watermark / transcoded codec). Requires fpcalc.
+          const coverage = await (window as any).api?.similar?.cpCoverage?.()
+          if (coverage && coverage.hashed < coverage.total) {
+            await (window as any).api?.similar?.cpComputeAll?.({ onlyUnhashed: true })
+          }
+          const cp = await (window as any).api?.similar?.cpFindGroups?.({ threshold: 0.85 })
+          const groups = (cp?.groups ?? []).map((g: any) => ({
+            hash: `cphash-${g.representativeId}`,
             type: 'similar' as const,
             count: g.members.length,
             totalSize: 0,
@@ -337,6 +363,19 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
               <Copy className="w-4 h-4" />
               Visual (Video MF)
             </button>
+            {/* Chromaprint audio fingerprint — catches videos with the
+                same audio track but different visual encoding. Requires
+                fpcalc.exe at resources/bin/. */}
+            <button
+              onClick={() => setScanType('audio-fp')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${
+                scanType === 'audio-fp' ? 'bg-fuchsia-600' : 'bg-zinc-700 hover:bg-zinc-600'
+              }`}
+              title="Chromaprint audio fingerprint — catches re-encodes that share an audio track"
+            >
+              <Copy className="w-4 h-4" />
+              Audio Fingerprint
+            </button>
           </div>
           <div className="flex-1" />
           <button
@@ -369,6 +408,7 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
                 {scanType === 'size' && 'File size scanning is fast but may include false positives'}
                 {scanType === 'visual' && 'Visual (perceptual) hash on thumbnails — catches re-encodes / crops / watermarks. First run hashes any unhashed media (~1-2s per 100 items).'}
                 {scanType === 'visual-mf' && 'Multi-frame video fingerprint — 5 evenly-spaced frames per video, best-of-N match. Catches re-encodes the keyframe phash misses. Videos only. First run is ~2-3s per video.'}
+                {scanType === 'audio-fp' && 'Chromaprint audio fingerprint — catches videos with identical audio but different visual encoding (different aspect crop / watermark / codec re-encode). Videos only. Requires fpcalc.exe. First run is ~1s per video.'}
                 {scanType === 'name' && 'Filename scanning finds files with identical names'}
               </p>
             </div>

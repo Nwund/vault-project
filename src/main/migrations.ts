@@ -681,6 +681,25 @@ const migrations: Migration[] = [
       `)
       console.log('[Migration v23] Added performer_watchlist + performer_watchlist_hits')
     }
+  },
+
+  {
+    id: 24,
+    up: (db) => {
+      // Chromaprint audio fingerprint column on media. Used by the
+      // visualDuplicates:cp* IPC family to detect re-encodes that share
+      // an audio track but differ visually (different aspect crop /
+      // watermark / re-encode codec). Stored as a JSON envelope so we
+      // can carry the duration alongside the hash:
+      //   {"d": 234.56, "f": "<base64-chromaprint>"}
+      // chromaprintSimilarity in chromaprint-fingerprint.ts handles
+      // the bit-distance scoring directly on the .f payload.
+      const cols = db.prepare(`PRAGMA table_info(media)`).all() as Array<{ name: string }>
+      if (!cols.find((c) => c.name === 'chromaprint')) {
+        db.exec(`ALTER TABLE media ADD COLUMN chromaprint TEXT;`)
+        console.log('[Migration v24] Added media.chromaprint for audio-fingerprint dedup')
+      }
+    }
   }
 ]
 
