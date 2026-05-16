@@ -843,6 +843,17 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
             }
           }
           break
+        case 'c':
+        case 'C':
+          // Compare Mode: open SplitScreen with the multi-selection.
+          // Requires multi-select active + at least 2 items selected;
+          // SplitScreen uses the selection as its source pool when
+          // selectionMode is on (logic in the showSplitScreen JSX).
+          if (selectionMode && selectedIds.size >= 2) {
+            e.preventDefault()
+            setShowSplitScreen(true)
+          }
+          break
       }
     }
 
@@ -3249,7 +3260,21 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showSplitScreen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowSplitScreen(false)}>
           <div className="max-w-4xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
-            <SplitScreen availableMedia={media.filter((m: MediaRow) => m.type === 'video').slice(0, 20).map((m: MediaRow) => ({ id: m.id, path: m.path, thumbnail: m.thumbPath || undefined, title: m.filename || '' }))} className="m-4" />
+            {/* Compare Mode: when entered with multi-select active, the
+                available list is the user's selection (so the comparison
+                slots auto-populate from the picked clips). Otherwise
+                fall back to the first 20 videos in the library. */}
+            <SplitScreen
+              availableMedia={(() => {
+                const selectedVideos = selectionMode && selectedIds.size >= 2
+                  ? media.filter((m: MediaRow) => m.type === 'video' && selectedIds.has(m.id))
+                  : media.filter((m: MediaRow) => m.type === 'video').slice(0, 20)
+                return selectedVideos.map((m: MediaRow) => ({
+                  id: m.id, path: m.path, thumbnail: m.thumbPath || undefined, title: m.filename || ''
+                }))
+              })()}
+              className="m-4"
+            />
           </div>
         </div>
       )}
