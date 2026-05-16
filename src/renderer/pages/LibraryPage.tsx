@@ -73,6 +73,7 @@ import { FloatingVideoPlayer } from '../components/FloatingVideoPlayer'
 import { WatchLaterPanel } from '../components/WatchLaterPanel'
 import { RecentlyViewedStrip } from '../components/RecentlyViewedStrip'
 import { TrashPanel } from '../components/TrashPanel'
+import { LibraryHealthPanel } from '../components/LibraryHealthPanel'
 import { UrlDownloaderPanel } from '../components/UrlDownloaderPanel'
 import { DuplicatesModal } from '../components/DuplicatesModal'
 import { PlaylistPicker, AddToPlaylistPopup } from '../components/PlaylistPickers'
@@ -230,6 +231,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false) // Duplicate detection modal
   const [showWatchLaterPanel, setShowWatchLaterPanel] = useState(false) // Watch Later queue panel
   const [showTrashPanel, setShowTrashPanel] = useState(false) // Persistent trash / recycle bin
+  const [showLibraryHealth, setShowLibraryHealth] = useState(false) // Actionable health dashboard
   const [showTVRemotePanel, setShowTVRemotePanel] = useState(false) // TV Remote control panel
   const [showUrlDownloaderPanel, setShowUrlDownloaderPanel] = useState(false) // URL Downloader panel
   // v2.3.0 Panel states
@@ -1367,6 +1369,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                   <button onClick={() => setShowTVRemotePanel(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Tv size={14} />TV Remote</button>
                   <button onClick={() => setShowUrlDownloaderPanel(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Download size={14} />URL Downloader</button>
                   <button onClick={() => setShowTrashPanel(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Trash2 size={14} />Trash</button>
+                  <button onClick={() => setShowLibraryHealth(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Activity size={14} />Library Health</button>
                 </div>
                 <div className="p-2 border-t border-b border-white/10">
                   <span className="text-xs text-white/50 font-medium">Video Tools</span>
@@ -3154,6 +3157,19 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       <TrashPanel
         isOpen={showTrashPanel}
         onClose={() => setShowTrashPanel(false)}
+        showToast={showToast}
+      />
+
+      {/* Actionable Library Health dashboard with one-click fixes */}
+      <LibraryHealthPanel
+        isOpen={showLibraryHealth}
+        onClose={() => setShowLibraryHealth(false)}
+        onOpenDuplicates={() => { setShowLibraryHealth(false); setShowDuplicatesModal(true) }}
+        onOpenAiTagger={() => {
+          // Switch to the AI Tools page via the global nav event
+          setShowLibraryHealth(false)
+          window.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'aiTagger' }))
+        }}
         showToast={showToast}
       />
 
