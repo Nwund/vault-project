@@ -1324,6 +1324,30 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // #120 — Watermark crop heuristic. Single-file IPC the user can
+  // wire to a post-save hook OR invoke ad-hoc from the right-click
+  // menu on a media tile.
+  ipcMain.handle('media:cropWatermarks', async (_ev, mediaId: string) => {
+    try {
+      const m = db.getMedia(mediaId)
+      if (!m) return { ok: false, error: 'Media not found' }
+      const { cropWatermarksInPlace } = await import('./services/watermark-cropper')
+      const r = await cropWatermarksInPlace(m.path)
+      if (r.ok && r.cropped) {
+        // Re-stat to update size + height in the DB; cheap.
+        try {
+          const stat = fs.statSync(m.path)
+          db.raw.prepare(`UPDATE media SET size = ?, height = ? WHERE id = ?`)
+            .run(stat.size, r.height ?? m.height, mediaId)
+        } catch { /* swallow */ }
+        broadcast('vault:changed')
+      }
+      return r
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
   // #110 — Batch MD5 backfill. Scans every media row missing an md5,
   // streams the file through crypto.createHash('md5'), persists. Used
   // by Browse to populate libraryHashes for the in-library-badge check

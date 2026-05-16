@@ -456,6 +456,18 @@ const api = {
       invoke<{ ok: boolean; removed?: number; error?: string }>('media:trash:purgeAll'),
     trashAutoPurgeExpired: () =>
       invoke<{ ok: boolean; removed?: number; error?: string }>('media:trash:autoPurgeExpired'),
+    // #120 — Watermark crop heuristic. Analyzes top/bottom 15% bands,
+    // crops uniform-color / high-contrast banner regions.
+    cropWatermarks: (mediaId: string) =>
+      invoke<{
+        ok: boolean
+        cropped: boolean
+        width?: number
+        height?: number
+        decision?: { cropTop: number; cropBottom: number; rationale: string }
+        error?: string
+      }>('media:cropWatermarks', mediaId),
+
     // #110 — Batch MD5 backfill. Walks every media row missing md5,
     // streams the file through createHash, persists. Idempotent.
     backfillMd5: () =>
