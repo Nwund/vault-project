@@ -162,6 +162,120 @@ export function CrossDeviceCard() {
   )
 }
 
+/**
+ * #189 — Cloudflare Tunnel one-click remote access. Spawns
+ * `cloudflared tunnel --url http://127.0.0.1:<port>` and surfaces the
+ * trycloudflare.com URL it prints. Requires the user to have installed
+ * cloudflared (winget install Cloudflare.cloudflared).
+ */
+export function CloudflareTunnelCard() {
+  const { showToast } = useToast()
+  const [status, setStatus] = useState<{ running: boolean; url: string | null } | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const refresh = useCallback(async () => {
+    try {
+      const r = await (window.api as any).network?.cloudflareTunnelStatus?.()
+      setStatus(r ?? { running: false, url: null })
+    } catch {
+      setStatus({ running: false, url: null })
+    }
+  }, [])
+
+  useEffect(() => { void refresh() }, [refresh])
+
+  const start = async () => {
+    setBusy(true)
+    try {
+      const r = await (window.api as any).network?.cloudflareTunnelStart?.()
+      if (r?.ok) {
+        showToast?.('success', `Tunnel up: ${r.url}`)
+        await refresh()
+      } else {
+        showToast?.('error', r?.error ?? 'Tunnel start failed')
+      }
+    } finally { setBusy(false) }
+  }
+  const stop = async () => {
+    setBusy(true)
+    try {
+      await (window.api as any).network?.cloudflareTunnelStop?.()
+      showToast?.('info', 'Tunnel stopped')
+      await refresh()
+    } finally { setBusy(false) }
+  }
+  const copyUrl = async () => {
+    if (!status?.url) return
+    try {
+      await navigator.clipboard.writeText(status.url)
+      showToast?.('success', 'Tunnel URL copied')
+    } catch { showToast?.('error', 'Clipboard write failed') }
+  }
+
+  return (
+    <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5 mt-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="text-sm font-semibold">Cloudflare Tunnel</div>
+          <div className="text-[11px] text-[var(--muted)] mt-0.5">
+            One-click public HTTPS tunnel via cloudflared. No port forwarding, no Tailscale needed.
+          </div>
+        </div>
+        <button
+          onClick={refresh}
+          className="px-2 py-1 rounded text-xs bg-white/5 hover:bg-white/10 transition flex items-center gap-1"
+          title="Refresh"
+        >
+          <RefreshCw size={11} />
+        </button>
+      </div>
+      {status === null ? (
+        <div className="text-xs text-[var(--muted)] italic">Checking…</div>
+      ) : !status.running ? (
+        <div className="space-y-2">
+          <div className="text-xs text-[var(--muted)]">
+            Requires <code className="bg-black/40 px-1 rounded">cloudflared</code> on PATH.
+            Install: <code className="bg-black/40 px-1 rounded">winget install Cloudflare.cloudflared</code>
+          </div>
+          <button
+            disabled={busy}
+            onClick={start}
+            className="w-full px-3 py-2 rounded-lg bg-[#f6821f] hover:bg-[#ff9f3d] text-white text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            {busy ? 'Starting tunnel…' : 'Start tunnel'}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <code className="text-xs text-emerald-200 truncate flex-1" title={status.url ?? ''}>
+              {status.url ?? '—'}
+            </code>
+            <button
+              onClick={copyUrl}
+              className="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200"
+            >
+              Copy
+            </button>
+          </div>
+          <button
+            disabled={busy}
+            onClick={stop}
+            className="w-full px-3 py-1.5 rounded text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 transition disabled:opacity-50"
+          >
+            {busy ? 'Stopping…' : 'Stop tunnel'}
+          </button>
+          <div className="text-[10px] text-[var(--muted)]">
+            Anyone with this URL can reach your Mobile Sync server. Pair with bearer-token auth from the card above.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function UrlGroup({ label, hint, urls, onCopy, accent }: {
   label: string; hint: string; urls: string[]; onCopy: (u: string) => void; accent: 'emerald' | 'cyan' | 'zinc'
 }) {

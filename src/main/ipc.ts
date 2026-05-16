@@ -9223,5 +9223,81 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       console.error('[MobileSync] Auto-start error:', err)
     })
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //   Cloudflare Tunnel (#189) — one-click NAT-traversal alternative to
+  //   Tailscale. Spawns `cloudflared tunnel --url http://127.0.0.1:<port>`
+  //   and parses stdout for the trycloudflare.com URL it prints. Process
+  //   stays alive until tunnelStop is called or the app exits.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  let cloudflaredProc: import('node:child_process').ChildProcess | null = null
+  let cloudflaredUrl: string | null = null
+
+  ipcMain.handle('network:cloudflare-tunnel-start', async (_ev, args?: { port?: number }) => {
+    const port = args?.port ?? mobileSyncService.getStatus().port ?? 8765
+    if (cloudflaredProc && !cloudflaredProc.killed) {
+      return { ok: true, alreadyRunning: true, url: cloudflaredUrl }
+    }
+    try {
+      const { spawn } = await import('node:child_process')
+      // Try cloudflared on PATH first; user installs it themselves
+      // (one-line winget install Cloudflare.cloudflared).
+      cloudflaredProc = spawn('cloudflared', [
+        'tunnel', '--no-autoupdate', '--url', `http://127.0.0.1:${port}`,
+      ], { windowsHide: true })
+      cloudflaredUrl = null
+      const url: string | null = await new Promise((resolve) => {
+        let resolved = false
+        const handler = (chunk: Buffer) => {
+          const text = chunk.toString('utf8')
+          // cloudflared logs the trycloudflare URL once on startup.
+          const match = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i)
+          if (match && !resolved) {
+            resolved = true
+            cloudflaredUrl = match[0]
+            resolve(match[0])
+          }
+        }
+        cloudflaredProc?.stdout?.on('data', handler)
+        cloudflaredProc?.stderr?.on('data', handler)
+        cloudflaredProc?.on('error', (err) => {
+          if (!resolved) { resolved = true; resolve(null) }
+          console.warn('[Cloudflared] spawn error:', err.message)
+        })
+        // 30s timeout — if no URL appears, the binary is missing or
+        // the user's network is blocked.
+        setTimeout(() => { if (!resolved) { resolved = true; resolve(null) } }, 30_000)
+      })
+      if (!url) {
+        try { cloudflaredProc?.kill() } catch { /* noop */ }
+        cloudflaredProc = null
+        return { ok: false, error: 'cloudflared did not report a tunnel URL within 30s. Is the binary installed (winget install Cloudflare.cloudflared)?' }
+      }
+      return { ok: true, url, port }
+    } catch (err: any) {
+      cloudflaredProc = null
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('network:cloudflare-tunnel-stop', async () => {
+    if (!cloudflaredProc) return { ok: true, wasRunning: false }
+    try {
+      cloudflaredProc.kill()
+      cloudflaredProc = null
+      cloudflaredUrl = null
+      return { ok: true, wasRunning: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('network:cloudflare-tunnel-status', async () => {
+    return {
+      running: !!(cloudflaredProc && !cloudflaredProc.killed),
+      url: cloudflaredUrl,
+    }
+  })
 }
 

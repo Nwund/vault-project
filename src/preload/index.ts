@@ -2050,6 +2050,20 @@ const api = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // CLOUDFLARE TUNNEL — one-click NAT-traversal (#189)
+  // ═══════════════════════════════════════════════════════════════════════════
+  network: {
+    cloudflareTunnelStart: (args?: { port?: number }) =>
+      invoke<{ ok: boolean; alreadyRunning?: boolean; url?: string | null; port?: number; error?: string }>(
+        'network:cloudflare-tunnel-start', args
+      ),
+    cloudflareTunnelStop: () =>
+      invoke<{ ok: boolean; wasRunning?: boolean; error?: string }>('network:cloudflare-tunnel-stop'),
+    cloudflareTunnelStatus: () =>
+      invoke<{ running: boolean; url: string | null }>('network:cloudflare-tunnel-status'),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // URL DOWNLOADER - Download videos from URLs (yt-dlp)
   // ═══════════════════════════════════════════════════════════════════════════
   urlDownloader: {
