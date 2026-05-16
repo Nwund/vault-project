@@ -733,6 +733,26 @@ const migrations: Migration[] = [
       `)
       console.log('[Migration v25] Added media_trash for persistent recycle bin')
     }
+  },
+
+  {
+    id: 26,
+    up: (db) => {
+      // #155 Stacks / versions — group originals + derivative edits
+      // (PMV cuts, color grades, re-encodes) under a single grid card.
+      // media.stack_id is the parent media id; stack_role indicates
+      // 'original' vs 'edit' vs 'alt'. Nullable so unstacked media is
+      // unaffected. Index by stack_id for the group-fetch query.
+      const cols = db.prepare(`PRAGMA table_info(media)`).all() as Array<{ name: string }>
+      if (!cols.find((c) => c.name === 'stack_id')) {
+        db.exec(`ALTER TABLE media ADD COLUMN stack_id TEXT;`)
+      }
+      if (!cols.find((c) => c.name === 'stack_role')) {
+        db.exec(`ALTER TABLE media ADD COLUMN stack_role TEXT;`)
+      }
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_media_stack_id ON media(stack_id);`)
+      console.log('[Migration v26] Added media.stack_id + stack_role for #155 stacks')
+    }
   }
 ]
 

@@ -944,6 +944,67 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // ─────────────────────────────────────────────────────────────────────────
+  //   Stacks / versions (#155) — group originals + derivative edits
+  //   under a single grid card. Backed by media.stack_id + stack_role
+  //   columns (migration v26). Two media in the same stack share a
+  //   stack_id (the "original" item's id is the convention) so a stack
+  //   has a stable identity even when the original is later removed.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  ipcMain.handle('stacks:create', async (_ev, args: {
+    originalId: string
+    memberIds: string[]   // other items to add as 'edit'
+  }) => {
+    try {
+      if (!args.originalId) return { ok: false, error: 'originalId required' }
+      const stackId = args.originalId
+      const stmt = db.raw.prepare(`UPDATE media SET stack_id = ?, stack_role = ? WHERE id = ?`)
+      stmt.run(stackId, 'original', args.originalId)
+      for (const mid of args.memberIds ?? []) {
+        if (mid !== args.originalId) stmt.run(stackId, 'edit', mid)
+      }
+      broadcast('vault:changed')
+      return { ok: true, stackId, memberCount: 1 + (args.memberIds?.length ?? 0) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('stacks:add', async (_ev, args: { stackId: string; mediaIds: string[] }) => {
+    try {
+      const stmt = db.raw.prepare(`UPDATE media SET stack_id = ?, stack_role = ? WHERE id = ?`)
+      for (const mid of args.mediaIds ?? []) stmt.run(args.stackId, 'edit', mid)
+      broadcast('vault:changed')
+      return { ok: true, added: args.mediaIds?.length ?? 0 }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('stacks:remove', async (_ev, mediaId: string) => {
+    try {
+      db.raw.prepare(`UPDATE media SET stack_id = NULL, stack_role = NULL WHERE id = ?`).run(mediaId)
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('stacks:members', async (_ev, stackId: string) => {
+    try {
+      const rows = db.raw.prepare(`
+        SELECT id, filename, thumbPath, type, durationSec, stack_role
+        FROM media WHERE stack_id = ?
+        ORDER BY CASE stack_role WHEN 'original' THEN 0 ELSE 1 END, addedAt DESC
+      `).all(stackId) as Array<any>
+      return { ok: true, members: rows }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), members: [] }
+    }
+  })
+
   // #197 — Funscript sidecar lookup. Per Funscript convention, the
   // file lives next to the media as <basename>.funscript with JSON
   // payload {version, actions: [{at: ms, pos: 0-100}, ...]}. Vault

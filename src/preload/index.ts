@@ -519,6 +519,15 @@ const api = {
     siblingsGet: () => invoke<Record<string, string[]>>('tags:siblingsGet'),
     siblingsSave: (map: Record<string, string[]>) =>
       invoke<{ ok: boolean; error?: string }>('tags:siblingsSave', map),
+    // #155 — Stacks / versions IPC bridges
+    stacksCreate: (args: { originalId: string; memberIds: string[] }) =>
+      invoke<{ ok: boolean; stackId?: string; memberCount?: number; error?: string }>('stacks:create', args),
+    stacksAdd: (args: { stackId: string; mediaIds: string[] }) =>
+      invoke<{ ok: boolean; added?: number; error?: string }>('stacks:add', args),
+    stacksRemove: (mediaId: string) =>
+      invoke<{ ok: boolean; error?: string }>('stacks:remove', mediaId),
+    stacksMembers: (stackId: string) =>
+      invoke<{ ok: boolean; members: any[]; error?: string }>('stacks:members', stackId),
     // Cleanup inappropriate/weird tags
     cleanup: (options?: { patterns?: string[] }) => invoke('tags:cleanup', options),
     // Two-level taxonomy — returns CATEGORY_META plus the tag list +
