@@ -1231,6 +1231,13 @@ const api = {
       expectedPath: string
       vocabSize: number | null
     }>('ai:clip-bpe-status'),
+    clipBpeDownload: () => invoke<{
+      ok: boolean
+      alreadyPresent?: boolean
+      sizeBytes?: number
+      path?: string
+      error?: string
+    }>('ai:clip-bpe-download'),
     dbCrnnStatus: () => invoke<{
       available: boolean
       detectorPath: string

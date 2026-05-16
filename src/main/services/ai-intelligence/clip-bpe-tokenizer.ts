@@ -156,17 +156,11 @@ const PRETOKENIZE_RE = /<\|startoftext\|>|<\|endoftext\|>|'s|'t|'re|'ve|'m|'ll|'
  * iteratively merges the lowest-rank pair until none apply.
  */
 function bpe(word: string, s: BpeState): string[] {
-  if (s.cache.has(word)) {
-    return s.cache.get(word)!.map((id) => {
-      // The cache stores token IDs; we need to decode back to subwords
-      // for the encoder lookup downstream. Cleaner: cache the subword
-      // sequence directly. Refactor below.
-      void id
-      return ''
-    })
-  }
   // Build initial symbol sequence: each char as its own symbol, last
   // char gets "</w>" suffix.
+  // Note: subword caching happens at the encodeClipText layer (token-IDs
+  // for the same byte-encoded word). bpe() itself stays cache-free so
+  // its return type stays subword-strings.
   if (word.length === 0) return []
   const chars: string[] = Array.from(word)
   chars[chars.length - 1] = chars[chars.length - 1] + '</w>'

@@ -4,6 +4,7 @@
 
 import { ipcMain, BrowserWindow, app } from 'electron'
 import fs from 'node:fs'
+import fsp from 'node:fs/promises'
 import path from 'node:path'
 import type { DB } from '../../db'
 import { getSettings, updateSettings, type VaultSettings } from '../../settings'
@@ -3680,6 +3681,34 @@ RULES:
   ipcMain.handle('ai:clip-bpe-status', async () => {
     const { getClipBpeStatus } = await import('./clip-bpe-tokenizer')
     return getClipBpeStatus()
+  })
+
+  // One-click BPE vocab installer. Downloads the gzipped Apache-2.0
+  // vocab from openai/CLIP raw.githubusercontent.com to
+  // <userData>/models/clip-vocab.txt.gz. ~1.4 MB. After this returns
+  // ok=true, ai:clip-bpe-status flips to available + reports vocabSize.
+  ipcMain.handle('ai:clip-bpe-download', async () => {
+    const { getClipVocabPath } = await import('./clip-bpe-tokenizer')
+    const target = getClipVocabPath()
+    try {
+      const dir = path.dirname(target)
+      await fsp.mkdir(dir, { recursive: true })
+      if (fs.existsSync(target)) {
+        const stat = await fsp.stat(target)
+        if (stat.size > 100_000) {
+          return { ok: true, alreadyPresent: true, sizeBytes: stat.size, path: target }
+        }
+      }
+      const url = 'https://raw.githubusercontent.com/openai/CLIP/main/clip/bpe_simple_vocab_16e6.txt.gz'
+      const res = await fetch(url)
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+      const buf = Buffer.from(await res.arrayBuffer())
+      if (buf.length < 100_000) return { ok: false, error: `download too small: ${buf.length} bytes` }
+      await fsp.writeFile(target, buf)
+      return { ok: true, alreadyPresent: false, sizeBytes: buf.length, path: target }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
   })
 
   // DB + CRNN OCR pipeline status. When both models are installed +
