@@ -967,6 +967,23 @@ export default function Rule34Page() {
     recordRecentSearch(q, source, 0)
   }
 
+  // #117 — Creator/artist channel view. Click any tag (typically an
+  // artist:/uploader:/by_artist: tag) to fan that handle out across
+  // every configured source in one shot. Forces source='all' so the
+  // user sees results from e621, rule34, Pixiv, Bluesky, PullPush,
+  // etc. simultaneously instead of just the source the original
+  // result came from.
+  const openCreatorChannel = useCallback((tag: string) => {
+    const cleaned = tag.trim().toLowerCase()
+    if (!cleaned) return
+    setSource('all')
+    setTagInput(cleaned)
+    setActiveQuery(cleaned)
+    setPage(0)
+    void search(cleaned, 0, 'all')
+    recordRecentSearch(cleaned, 'all', 0)
+  }, [search, recordRecentSearch])
+
   const resolvePastedUrl = async () => {
     const url = pasteUrl.trim()
     if (!url) return
@@ -3031,22 +3048,41 @@ export default function Rule34Page() {
             {lightbox.tags && !lightboxFullscreen && (
               <div className="bg-[var(--panel)]/95 border border-[var(--border)] rounded-lg px-4 py-2 max-h-32 overflow-y-auto">
                 <div className="flex flex-wrap gap-1">
-                  {lightbox.tags.split(/\s+/).filter(Boolean).slice(0, 50).map((t, i) => (
-                    <span
-                      key={i}
-                      className="inline-block px-2 py-0.5 rounded-full bg-[var(--primary)]/10 border border-[var(--primary)]/20 text-[10px] text-[var(--primary)] cursor-pointer hover:bg-[var(--primary)]/20"
-                      onClick={() => {
-                        setTagInput(t)
-                        setLightbox(null)
-                        setActiveQuery(t)
-                        setPage(0)
-                        search(t, 0, source)
-                      }}
-                      title={`Click to search for "${t}"`}
-                    >
-                      {t}
-                    </span>
-                  ))}
+                  {lightbox.tags.split(/\s+/).filter(Boolean).slice(0, 50).map((t, i) => {
+                    // #117 — Tags starting with artist:/uploader:/by_/creator:
+                    // get a "Channel" pivot affordance via Shift+click. Plain
+                    // left-click keeps the existing same-source search behavior.
+                    const isCreatorTag = /^(artist|uploader|creator|by_|by-)/i.test(t)
+                    return (
+                      <span
+                        key={i}
+                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] cursor-pointer transition ${
+                          isCreatorTag
+                            ? 'bg-pink-500/10 border border-pink-500/30 text-pink-200 hover:bg-pink-500/20'
+                            : 'bg-[var(--primary)]/10 border border-[var(--primary)]/20 text-[var(--primary)] hover:bg-[var(--primary)]/20'
+                        }`}
+                        onClick={(e) => {
+                          setLightbox(null)
+                          // Shift-click OR any click on a creator-tag opens
+                          // the cross-source channel view; plain click on a
+                          // regular tag stays scoped to current source.
+                          if (e.shiftKey || isCreatorTag) {
+                            openCreatorChannel(t)
+                          } else {
+                            setTagInput(t)
+                            setActiveQuery(t)
+                            setPage(0)
+                            search(t, 0, source)
+                          }
+                        }}
+                        title={isCreatorTag
+                          ? `Click → open ${t} channel across all sources`
+                          : `Click to search for "${t}" (Shift+click → all sources)`}
+                      >
+                        {isCreatorTag ? '👤 ' : ''}{t}
+                      </span>
+                    )
+                  })}
                 </div>
               </div>
             )}
