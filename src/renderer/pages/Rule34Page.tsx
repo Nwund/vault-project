@@ -2648,6 +2648,41 @@ export default function Rule34Page() {
                   Open source page
                 </button>
               )}
+              {/* #119 — Civitai pivot: when this post came from Civitai
+                  and we have a model/version anchor, offer one-click
+                  re-search for everything from that LoRA / checkpoint. */}
+              {((p as any).civitaiModelId || (p as any).civitaiModelVersionId) && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setTileMenu(null)
+                    try {
+                      const r = await (window as any).api?.booru?.civitaiByModel?.({
+                        modelId: (p as any).civitaiModelId,
+                        modelVersionId: (p as any).civitaiModelVersionId,
+                        perPage: PER_PAGE,
+                        page: 0,
+                      })
+                      if (r?.ok && Array.isArray(r.posts)) {
+                        // Replace the current results pool with the
+                        // model-filtered hits + reset pagination.
+                        setPosts(r.posts)
+                        setHasMore(!!r.hasMore)
+                        setPage(0)
+                        setActiveQuery(`(model ${(p as any).civitaiModelVersionId ?? (p as any).civitaiModelId})`)
+                        showToast('success', `${r.posts.length} more from this Civitai model`)
+                      } else {
+                        showToast('error', r?.error ?? 'Civitai pivot failed')
+                      }
+                    } catch (err: any) {
+                      showToast('error', err?.message ?? 'Civitai pivot failed')
+                    }
+                  }}
+                  className="w-full text-left px-3 py-1.5 hover:bg-white/5 text-pink-300 font-medium"
+                >
+                  More from this model
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {

@@ -700,6 +700,30 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
     }
   })
 
+  // #119 — Civitai-only: search by model / version ID. Powers the
+  // "More from this model / LoRA" action on Civitai lightbox results.
+  // Either modelId or modelVersionId required; if both are passed,
+  // modelVersionId takes precedence (more specific).
+  ipcMain.handle('booru:civitai-by-model', async (_ev, args: {
+    modelId?: number
+    modelVersionId?: number
+    perPage?: number
+    page?: number
+  }) => {
+    try {
+      const { searchCivitaiByModel } = await import('./booru-client')
+      const result = await searchCivitaiByModel({
+        modelId: args.modelId,
+        modelVersionId: args.modelVersionId,
+        perPage: args.perPage ?? 30,
+        page: args.page ?? 0,
+      })
+      return { ok: true, ...result }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), posts: [], hasMore: false, page: 0 }
+    }
+  })
+
   // Mixed multi-source search — fan out to N sources, merge results,
   // sort by score desc. "all" mode lets the user search every source
   // they have credentials for in one shot.

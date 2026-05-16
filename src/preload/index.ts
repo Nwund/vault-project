@@ -2474,6 +2474,24 @@ const api = {
       sourceUrl: string
     }>('booru:resolve-url', url),
 
+    /** #119 — Civitai-only: pivot search by model / version ID. Returns
+     *  results from the same /api/v1/images endpoint but filtered to a
+     *  specific checkpoint or LoRA. Used by the lightbox "More from
+     *  this model" action. */
+    civitaiByModel: (args: {
+      modelId?: number
+      modelVersionId?: number
+      perPage?: number
+      page?: number
+    }) =>
+      invoke<{
+        ok: boolean
+        error?: string
+        posts: any[]
+        hasMore: boolean
+        page: number
+      }>('booru:civitai-by-model', args),
+
     /** Download a booru post to the user's first media directory.
      *  The scanner picks it up automatically within a few seconds. */
     downloadToLibrary: (post: any) =>

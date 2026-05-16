@@ -139,6 +139,10 @@ export interface BooruPost {
   height: number
   /** From the response — used to verify the file is reachable. */
   hash?: string
+  /** Civitai-only: model + version anchors so the renderer can pivot
+   *  to "More from this model / LoRA" without re-parsing the source URL. */
+  civitaiModelId?: number
+  civitaiModelVersionId?: number
 }
 
 // Legacy / XML-derived rule34 schema sometimes returns directory+image
@@ -316,6 +320,21 @@ function fetchBinary(fileUrl: string, outPath: string): Promise<{ bytes: number 
  *                 for future-proofing when the user adds an API key)
  * Each source returns the canonical BooruPost shape after normalization.
  */
+/** #119 — Civitai pivot search by model / version. Wraps the
+ *  internal searchCivitai with the modelId/modelVersionId opts.
+ *  Other booru clients don't have this concept; Civitai-only export. */
+export async function searchCivitaiByModel(args: {
+  modelId?: number
+  modelVersionId?: number
+  perPage?: number
+  page?: number
+}): Promise<BooruSearchResult> {
+  return searchCivitai('', args.perPage ?? 30, args.page ?? 0, {
+    modelId: args.modelId,
+    modelVersionId: args.modelVersionId,
+  })
+}
+
 export async function searchBooru(
   source: BooruSource,
   tags: string,
@@ -1145,7 +1164,12 @@ async function searchBluesky(tags: string, perPage: number, page: number): Promi
 // with full prompt + model metadata. Free tier; API key optional but
 // raises rate limits. NSFW filter: omit `nsfw=false`, supply explicit
 // NsfwLevel — `nsfw=X` accepts None / Soft / Mature / X.
-async function searchCivitai(tags: string, perPage: number, page: number): Promise<BooruSearchResult> {
+async function searchCivitai(
+  tags: string,
+  perPage: number,
+  page: number,
+  opts?: { modelId?: number; modelVersionId?: number }
+): Promise<BooruSearchResult> {
   const { getSettings } = await import('../../settings')
   const { decryptString } = await import('../secure-storage')
   const aiSettings = (getSettings().ai as any) || {}
@@ -1154,12 +1178,16 @@ async function searchCivitai(tags: string, perPage: number, page: number): Promi
   const qTags = tags.trim()
   // Civitai's image search isn't full-text — it indexes by tag, model,
   // or prompt-substring. We map free-text into the `query` param which
-  // hits prompt-substring search.
+  // hits prompt-substring search. When opts.modelId / modelVersionId
+  // are set (#119 — "More from this model" pivot), filter by those
+  // instead of free-text query.
   const params = [
     `limit=${perPage}`,
     `page=${page + 1}`,
     `nsfw=X`,  // include the highest tier; renderer can downgrade per-result
-    qTags ? `query=${encodeURIComponent(qTags)}` : '',
+    opts?.modelVersionId ? `modelVersionId=${opts.modelVersionId}` : '',
+    opts?.modelId && !opts?.modelVersionId ? `modelId=${opts.modelId}` : '',
+    !opts?.modelId && !opts?.modelVersionId && qTags ? `query=${encodeURIComponent(qTags)}` : '',
     `sort=${encodeURIComponent('Most Reactions')}`,
   ].filter(Boolean).join('&')
   const urlPath = `/api/v1/images?${params}`
@@ -1207,6 +1235,18 @@ async function searchCivitai(tags: string, perPage: number, page: number): Promi
           if (m && m.length <= 30 && !m.startsWith('<')) tagBits.push(m.toLowerCase().replace(/\s+/g, '_'))
         }
       }
+      // #119 — preserve Civitai model + version IDs from meta so the
+      // lightbox can offer "More from this model / LoRA". meta.resources
+      // is an array of { type: 'model'|'lora'|..., modelVersionId, ... }
+      // — we surface the first model resource as the primary anchor.
+      let civitaiModelId: number | undefined
+      let civitaiModelVersionId: number | undefined
+      if (Array.isArray(p.meta?.resources) && p.meta.resources.length > 0) {
+        const primary = p.meta.resources.find((r: any) => r?.type === 'model')
+          ?? p.meta.resources[0]
+        if (primary?.modelVersionId) civitaiModelVersionId = Number(primary.modelVersionId)
+        if (primary?.modelId) civitaiModelId = Number(primary.modelId)
+      }
       return {
         id: Number(p.id ?? 0),
         file_url: String(p.url),
@@ -1219,7 +1259,9 @@ async function searchCivitai(tags: string, perPage: number, page: number): Promi
         width: Number(p.width ?? 0),
         height: Number(p.height ?? 0),
         hash: String(p.hash ?? ''),
-      }
+        civitaiModelId,
+        civitaiModelVersionId,
+      } as BooruPost
     })
   console.log(`[Civitai] ${posts.length} posts for q="${qTags}" page=${page + 1}`)
   return { posts, hasMore: !!parsed.metadata?.nextPage, page }
