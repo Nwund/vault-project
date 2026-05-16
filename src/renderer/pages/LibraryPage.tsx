@@ -697,10 +697,35 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
 
   // Sort media - most sorting handled by database, only 'type' sort done locally
   const sortedMedia = useMemo(() => {
+    // #114 — apply post-fetch -tag:foo exclusions from the boolean DSL
+    // search syntax. The DB layer supports excludeTags via listMedia
+    // but the media:search IPC doesn't surface it yet; doing the
+    // filter client-side keeps the change scoped to the renderer.
+    // Note: this slightly skews "N items" / pagination when many
+    // results are excluded, but matches the existing blacklist pattern.
+    // Inline-parse just the excludes here to avoid a TDZ on
+    // parseAdvancedSearch (declared further down in this file).
+    const excludes: string[] = []
+    for (const token of debouncedQuery.split(/\s+/)) {
+      if (token.toLowerCase().startsWith('-tag:')) {
+        const t = token.slice(5).trim().toLowerCase()
+        if (t) excludes.push(t)
+      }
+    }
+    const filtered = excludes.length > 0
+      ? media.filter((m: any) => {
+          const mediaTags = (m.tags as string[] | undefined) ?? []
+          if (mediaTags.length === 0) return true
+          const lower = mediaTags.map(t => String(t).toLowerCase())
+          for (const ex of excludes) if (lower.includes(ex)) return false
+          return true
+        })
+      : media
+
     // Database handles: newest, oldest, name, views, duration, size, random
     // Only 'type' needs local sorting
     if (sortBy === 'type') {
-      const sorted = [...media]
+      const sorted = [...filtered]
       const typeOrder: Record<string, number> = { video: 0, gif: 1, image: 2 }
       return sorted.sort((a, b) => {
         const aOrder = typeOrder[a.type] ?? 3
@@ -710,8 +735,8 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       })
     }
     // For all other sorts, database already sorted the data
-    return media
-  }, [media, sortBy])
+    return filtered
+  }, [media, sortBy, debouncedQuery])
 
   // Effective page size: -1 means show all
   const effectivePageSize = pageSize === -1 ? sortedMedia.length : pageSize
@@ -923,6 +948,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
     const result = {
       text: '',
       tags: [] as string[],
+      excludeTags: [] as string[],         // #114: -tag:foo support
       type: null as MediaType | null,
       rating: null as number | null,
       ratingOp: '=' as '=' | '>' | '<' | '>=' | '<='
@@ -933,8 +959,13 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
     const tokens = query.split(/\s+/)
 
     for (const token of tokens) {
+      // -tag:foo  → exclude this tag from results (#114 boolean DSL)
+      if (token.toLowerCase().startsWith('-tag:')) {
+        const tagName = token.slice(5).trim()
+        if (tagName) result.excludeTags.push(tagName.toLowerCase())
+      }
       // tag:tagname
-      if (token.toLowerCase().startsWith('tag:')) {
+      else if (token.toLowerCase().startsWith('tag:')) {
         const tagName = token.slice(4).trim()
         if (tagName) result.tags.push(tagName)
       }
@@ -1590,6 +1621,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                     <div className="text-[10px] text-[var(--muted)] uppercase tracking-wide mb-1.5">Search Tips</div>
                     <div className="text-[11px] text-white/60 space-y-1">
                       <div><code className="bg-white/10 px-1 rounded">tag:name</code> filter by tag</div>
+                      <div><code className="bg-white/10 px-1 rounded">-tag:name</code> exclude tag</div>
                       <div><code className="bg-white/10 px-1 rounded">type:video</code> video/image/gif</div>
                       <div><code className="bg-white/10 px-1 rounded">rating:5</code> or <code className="bg-white/10 px-1 rounded">rating:&gt;3</code></div>
                     </div>
