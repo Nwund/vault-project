@@ -2246,13 +2246,43 @@ export function AiTaggerPage() {
                 </button>
               </div>
               {nudenetStatus && !nudenetStatus.installed && (
-                <div className="text-[11px] text-[var(--muted)] space-y-1">
-                  <div>To install:</div>
-                  <ol className="list-decimal pl-4 space-y-0.5">
-                    <li>Grab the v3 ONNX from <span className="font-mono text-[var(--primary)]/80">github.com/notAI-tech/NudeNet</span> — pick <span className="font-mono">320n.onnx</span> (~3MB nano) or <span className="font-mono">640m.onnx</span> (~14MB medium).</li>
-                    <li>Save it at the path above (rename to <span className="font-mono">nudenet-detector.onnx</span>).</li>
-                    <li>Restart Vault — the queue auto-detects it.</li>
-                  </ol>
+                <div className="text-[11px] text-[var(--muted)] space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span>One-click install:</span>
+                    <button
+                      onClick={async () => {
+                        const r = await window.api.ai.nudenetDownload?.({ variant: 'nano' })
+                        if (r?.ok) {
+                          showToast?.('success', r.alreadyPresent ? 'Already installed' : `Nano installed (${formatBytes(r.sizeBytes ?? 0)}) · restart to activate`)
+                          const s = await window.api.ai.nudenetStatus?.()
+                          setNudenetStatus(s ?? null)
+                        } else {
+                          showToast?.('error', r?.error ?? 'Download failed')
+                        }
+                      }}
+                      className="text-[11px] px-2 py-0.5 rounded bg-[var(--primary)] hover:opacity-90 text-white transition"
+                    >
+                      Nano (~3 MB)
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const r = await window.api.ai.nudenetDownload?.({ variant: 'medium' })
+                        if (r?.ok) {
+                          showToast?.('success', r.alreadyPresent ? 'Already installed' : `Medium installed (${formatBytes(r.sizeBytes ?? 0)}) · restart to activate`)
+                          const s = await window.api.ai.nudenetStatus?.()
+                          setNudenetStatus(s ?? null)
+                        } else {
+                          showToast?.('error', r?.error ?? 'Download failed')
+                        }
+                      }}
+                      className="text-[11px] px-2 py-0.5 rounded bg-[var(--primary)] hover:opacity-90 text-white transition"
+                    >
+                      Medium (~14 MB)
+                    </button>
+                  </div>
+                  <div>
+                    Or grab manually from <span className="font-mono text-[var(--primary)]/80">github.com/notAI-tech/NudeNet</span> and drop at the path above as <span className="font-mono">nudenet-detector.onnx</span>.
+                  </div>
                 </div>
               )}
             </div>

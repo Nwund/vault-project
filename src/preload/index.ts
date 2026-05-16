@@ -1205,6 +1205,14 @@ const api = {
       expectedPath: string
       sizeBytes: number
     }>('ai:nudenet-status'),
+    nudenetDownload: (opts?: { variant?: 'nano' | 'medium' }) => invoke<{
+      ok: boolean
+      alreadyPresent?: boolean
+      sizeBytes?: number
+      path?: string
+      variant?: 'nano' | 'medium'
+      error?: string
+    }>('ai:nudenet-download', opts),
 
     // Gender classifier status (manual install — see Setup card).
     genderClassifierStatus: () => invoke<{

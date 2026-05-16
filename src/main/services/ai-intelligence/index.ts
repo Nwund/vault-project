@@ -4668,6 +4668,36 @@ RULES:
     return { installed, expectedPath, sizeBytes }
   })
 
+  // One-click NudeNet installer. 'nano' = 320n.onnx (~3 MB), 'medium' =
+  // 640m.onnx (~14 MB). Both from the notAI-tech/NudeNet v3 release.
+  // Idempotent: skips when the target file already exists and is >100 KB.
+  ipcMain.handle('ai:nudenet-download', async (_ev, opts?: { variant?: 'nano' | 'medium' }) => {
+    const variant = opts?.variant === 'medium' ? 'medium' : 'nano'
+    const sourceFile = variant === 'medium' ? '640m.onnx' : '320n.onnx'
+    const target = path.join(app.getPath('userData'), 'models', 'nudenet-detector.onnx')
+    try {
+      const dir = path.dirname(target)
+      await fsp.mkdir(dir, { recursive: true })
+      if (fs.existsSync(target)) {
+        const stat = await fsp.stat(target)
+        if (stat.size > 100_000) {
+          return { ok: true, alreadyPresent: true, sizeBytes: stat.size, path: target }
+        }
+      }
+      // The notAI-tech/NudeNet repo hosts the models under
+      // /docs/assets/, mirrored at the raw GitHub URL.
+      const url = `https://raw.githubusercontent.com/notAI-tech/NudeNet/v3.4.2/docs/assets/${sourceFile}`
+      const res = await fetch(url)
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status} from ${url}` }
+      const buf = Buffer.from(await res.arrayBuffer())
+      if (buf.length < 100_000) return { ok: false, error: `download too small: ${buf.length} bytes` }
+      await fsp.writeFile(target, buf)
+      return { ok: true, alreadyPresent: false, sizeBytes: buf.length, path: target, variant }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
   // YuNet face detector status. Bundled in the standard downloader
   // (it's tiny — ~340KB), so the UI just shows presence + size.
   ipcMain.handle('ai:face-detector-status', async () => {
