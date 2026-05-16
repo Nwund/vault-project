@@ -34,7 +34,7 @@ import { cn } from '../utils/cn'
 import { Btn, TopBar, ToggleSwitch } from '../components/ui'
 import { HardwareEncoderSettings } from '../components/HardwareEncoderSettings'
 import { XyreneSettings } from '../components/XyreneSettings'
-import { CrossDeviceCard, CloudflareTunnelCard } from '../components/AdminCards'
+import { CrossDeviceCard, CloudflareTunnelCard, ZeroTierCard } from '../components/AdminCards'
 import { themes, DARK_THEME_LIST, LIGHT_THEME_LIST, GOON_THEME_LIST, type ThemeId } from '../styles/themes'
 import { QRCodeSVG } from 'qrcode.react'
 
@@ -2845,6 +2845,11 @@ export function SettingsPage(props: {
           {/* #189 — Cloudflare Tunnel one-click remote access */}
           {activeTab === 'services' && (
             <CloudflareTunnelCard />
+          )}
+
+          {/* #190 — ZeroTier orchestration (auto-hides when not installed) */}
+          {activeTab === 'services' && (
+            <ZeroTierCard />
           )}
 
           {/* Mobile Sync Section - under Services */}

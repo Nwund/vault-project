@@ -9299,5 +9299,66 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       url: cloudflaredUrl,
     }
   })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //   ZeroTier (#190) — detect locally installed ZeroTier One client, list
+  //   joined networks, surface the assigned 10.147.x.x / fd80::* addresses
+  //   alongside the existing Tailscale 100.64/10 detection. Local API at
+  //   127.0.0.1:9993 with bearer auth from the on-disk authtoken.secret.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  ipcMain.handle('network:zerotier-status', async () => {
+    try {
+      const fsMod = await import('node:fs/promises')
+      const pathMod = await import('node:path')
+      // ZeroTier One install paths per platform.
+      const candidates = process.platform === 'win32'
+        ? [pathMod.join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'ZeroTier', 'One', 'authtoken.secret')]
+        : process.platform === 'darwin'
+          ? ['/Library/Application Support/ZeroTier/One/authtoken.secret']
+          : ['/var/lib/zerotier-one/authtoken.secret']
+
+      let token: string | null = null
+      for (const p of candidates) {
+        try {
+          token = (await fsMod.readFile(p, 'utf8')).trim()
+          if (token) break
+        } catch { /* try next */ }
+      }
+      if (!token) {
+        return { installed: false, networks: [], addresses: [] }
+      }
+      // GET /network → array of joined networks
+      const httpMod = await import('node:http')
+      const networks = await new Promise<any[]>((resolve) => {
+        const req = httpMod.request({
+          hostname: '127.0.0.1', port: 9993, path: '/network', method: 'GET',
+          headers: { 'X-ZT1-Auth': token! },
+          timeout: 2000,
+        }, (res) => {
+          let body = ''
+          res.on('data', c => body += c)
+          res.on('end', () => {
+            try { resolve(JSON.parse(body)) } catch { resolve([]) }
+          })
+        })
+        req.on('error', () => resolve([]))
+        req.on('timeout', () => { try { req.destroy() } catch {} ; resolve([]) })
+        req.end()
+      })
+      const addresses: Array<{ ip: string; network: string; networkName: string }> = []
+      for (const n of networks ?? []) {
+        const nName = String(n?.name ?? n?.id ?? '')
+        const nId = String(n?.id ?? '')
+        for (const ipCidr of (n?.assignedAddresses ?? []) as string[]) {
+          const ip = String(ipCidr).split('/')[0]
+          if (ip) addresses.push({ ip, network: nId, networkName: nName })
+        }
+      }
+      return { installed: true, networks, addresses }
+    } catch (err: any) {
+      return { installed: false, networks: [], addresses: [], error: err?.message }
+    }
+  })
 }
 

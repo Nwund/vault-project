@@ -276,6 +276,87 @@ export function CloudflareTunnelCard() {
   )
 }
 
+/**
+ * #190 — ZeroTier orchestration. Detects locally installed ZeroTier
+ * One client (reads authtoken.secret + queries the local API at
+ * 127.0.0.1:9993) and surfaces the assigned 10.147.x.x addresses
+ * alongside the existing Tailscale + LAN groups.
+ */
+export function ZeroTierCard() {
+  const { showToast } = useToast()
+  const [info, setInfo] = useState<{
+    installed: boolean
+    addresses: Array<{ ip: string; network: string; networkName: string }>
+  } | null>(null)
+
+  const refresh = useCallback(async () => {
+    try {
+      const r = await (window.api as any).network?.zerotierStatus?.()
+      setInfo({
+        installed: !!r?.installed,
+        addresses: Array.isArray(r?.addresses) ? r.addresses : [],
+      })
+    } catch {
+      setInfo({ installed: false, addresses: [] })
+    }
+  }, [])
+
+  useEffect(() => { void refresh() }, [refresh])
+
+  const copy = async (ip: string) => {
+    const port = 8765  // matches mobile sync default
+    const url = `http://${ip}:${port}`
+    try {
+      await navigator.clipboard.writeText(url)
+      showToast?.('success', `${url} copied`)
+    } catch { showToast?.('error', 'Clipboard write failed') }
+  }
+
+  if (info === null) return null
+  // Hide entirely when ZeroTier isn't installed — no value showing
+  // an empty card to users who don't use ZeroTier.
+  if (!info.installed && info.addresses.length === 0) return null
+
+  return (
+    <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5 mt-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="text-sm font-semibold">ZeroTier</div>
+          <div className="text-[11px] text-[var(--muted)] mt-0.5">
+            Reachable from any device on your ZeroTier networks (10.147.x.x).
+          </div>
+        </div>
+        <button
+          onClick={refresh}
+          className="px-2 py-1 rounded text-xs bg-white/5 hover:bg-white/10 transition flex items-center gap-1"
+        >
+          <RefreshCw size={11} />
+        </button>
+      </div>
+      {info.addresses.length === 0 ? (
+        <div className="text-xs text-amber-300">
+          ZeroTier installed but no networks joined. Run <code className="bg-black/40 px-1 rounded">zerotier-cli join &lt;networkId&gt;</code>.
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {info.addresses.map(addr => (
+            <button
+              key={`${addr.network}-${addr.ip}`}
+              onClick={() => copy(addr.ip)}
+              className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-500/10 border border-orange-500/30 hover:bg-orange-500/20 transition"
+            >
+              <code className="text-xs text-orange-200 font-mono flex-1">http://{addr.ip}:8765</code>
+              <span className="text-[10px] text-orange-300/70 truncate max-w-[10rem]" title={addr.networkName}>
+                {addr.networkName || addr.network.slice(0, 8)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function UrlGroup({ label, hint, urls, onCopy, accent }: {
   label: string; hint: string; urls: string[]; onCopy: (u: string) => void; accent: 'emerald' | 'cyan' | 'zinc'
 }) {

@@ -2061,6 +2061,13 @@ const api = {
       invoke<{ ok: boolean; wasRunning?: boolean; error?: string }>('network:cloudflare-tunnel-stop'),
     cloudflareTunnelStatus: () =>
       invoke<{ running: boolean; url: string | null }>('network:cloudflare-tunnel-status'),
+    zerotierStatus: () =>
+      invoke<{
+        installed: boolean
+        networks: any[]
+        addresses: Array<{ ip: string; network: string; networkName: string }>
+        error?: string
+      }>('network:zerotier-status'),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
