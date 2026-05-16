@@ -76,6 +76,7 @@ import { TrashPanel } from '../components/TrashPanel'
 import { LibraryHealthPanel } from '../components/LibraryHealthPanel'
 import { PinnedFiltersBar } from '../components/PinnedFiltersBar'
 import { SlideshowController } from '../components/SlideshowController'
+import { VaultWrappedPanel } from '../components/VaultWrappedPanel'
 import { UrlDownloaderPanel } from '../components/UrlDownloaderPanel'
 import { DuplicatesModal } from '../components/DuplicatesModal'
 import { PlaylistPicker, AddToPlaylistPopup } from '../components/PlaylistPickers'
@@ -235,6 +236,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
   const [showTrashPanel, setShowTrashPanel] = useState(false) // Persistent trash / recycle bin
   const [showLibraryHealth, setShowLibraryHealth] = useState(false) // Actionable health dashboard
   const [showSlideshow, setShowSlideshow] = useState(false) // Stills slideshow with Ken Burns / transitions
+  const [showVaultWrapped, setShowVaultWrapped] = useState(false) // Spotify-style monthly recap
   const [showTVRemotePanel, setShowTVRemotePanel] = useState(false) // TV Remote control panel
   const [showUrlDownloaderPanel, setShowUrlDownloaderPanel] = useState(false) // URL Downloader panel
   // v2.3.0 Panel states
@@ -1385,6 +1387,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                   <button onClick={() => setShowTrashPanel(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Trash2 size={14} />Trash</button>
                   <button onClick={() => setShowLibraryHealth(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Activity size={14} />Library Health</button>
                   <button onClick={() => setShowSlideshow(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Play size={14} />Slideshow</button>
+                  <button onClick={() => setShowVaultWrapped(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Sparkles size={14} />Vault Wrapped</button>
                 </div>
                 <div className="p-2 border-t border-b border-white/10">
                   <span className="text-xs text-white/50 font-medium">Video Tools</span>
@@ -3284,6 +3287,13 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
           image+gif. Honors current selection if any items are selected
           (so "select N → Slideshow" plays just those); otherwise plays
           whatever's currently visible in the grid. */}
+      {/* Vault Wrapped — Spotify-style monthly recap */}
+      <VaultWrappedPanel
+        isOpen={showVaultWrapped}
+        onClose={() => setShowVaultWrapped(false)}
+        showToast={showToast}
+      />
+
       {showSlideshow && (() => {
         const sourcePool = (selectionMode && selectedIds.size >= 1)
           ? sortedMedia.filter((m: MediaRow) => selectedIds.has(m.id))
