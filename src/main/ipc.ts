@@ -2106,10 +2106,34 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('tags:addToMedia', async (_ev, mediaId: string, tagName: string) => {
     db.addTagToMedia(mediaId, tagName)
+    // #103 — walk the user's tag-implications graph and add every
+    // ancestor tag too. Cycle-safe via the service's visited set.
+    // Best-effort: per-ancestor failures are swallowed so a broken
+    // implication doesn't block the primary tag write.
+    try {
+      const { expandImplications } = await import('./services/tag-implications')
+      for (const parent of expandImplications(tagName)) {
+        try { db.addTagToMedia(mediaId, parent) } catch { /* skip dup / invalid */ }
+      }
+    } catch (err) {
+      console.warn('[tags:addToMedia] implication expansion failed:', err)
+    }
     recordTagAssigned()  // Track for achievements
     checkAchievements()  // Check 'tagged' achievement
     broadcast('vault:changed')
     return db.listMediaTags(mediaId)
+  })
+
+  // #103 — IPCs to read/write the tag-implications JSON. Settings UI
+  // surfaces the editor; tag pickers can highlight implied parents.
+  ipcMain.handle('tags:implicationsGet', async () => {
+    const { getImplications } = await import('./services/tag-implications')
+    return getImplications()
+  })
+
+  ipcMain.handle('tags:implicationsSave', async (_ev, map: Record<string, string[]>) => {
+    const { saveImplications } = await import('./services/tag-implications')
+    return saveImplications(map)
   })
 
   ipcMain.handle('tags:removeFromMedia', async (_ev, mediaId: string, tagName: string) => {

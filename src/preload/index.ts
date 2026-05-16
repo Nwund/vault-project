@@ -509,6 +509,11 @@ const api = {
     ensure: (tag: string) => invoke('tags:ensure', tag),
     create: (tagName: string) => invoke('tags:create', tagName),
     delete: (tagName: string) => invoke('tags:delete', tagName),
+    // #103 — Tag implications graph: ancestor tags auto-applied when
+    // a child tag is added to media. Get returns the whole JSON map.
+    implicationsGet: () => invoke<Record<string, string[]>>('tags:implicationsGet'),
+    implicationsSave: (map: Record<string, string[]>) =>
+      invoke<{ ok: boolean; error?: string }>('tags:implicationsSave', map),
     // Cleanup inappropriate/weird tags
     cleanup: (options?: { patterns?: string[] }) => invoke('tags:cleanup', options),
     // Two-level taxonomy — returns CATEGORY_META plus the tag list +
