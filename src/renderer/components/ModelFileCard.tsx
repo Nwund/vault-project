@@ -60,8 +60,12 @@ export function ModelFileCard({
 
   useEffect(() => { void refresh() }, [refresh])
 
-  const installed = !!(status?.installed || status?.available)
-  const path = status?.expectedPath ?? status?.detectorPath ?? ''
+  // installed = present-and-loaded. Three flavors:
+  //   - { installed: true } — model file on disk
+  //   - { available: true } — multi-file group (e.g. DB-CRNN OCR)
+  //   - { ready: true } — sidecar pinged healthy
+  const installed = !!(status?.installed || status?.available || status?.ready)
+  const path = status?.expectedPath ?? status?.detectorPath ?? status?.startScript ?? ''
   const size = status?.sizeBytes ?? status?.detectorSize ?? 0
 
   return (

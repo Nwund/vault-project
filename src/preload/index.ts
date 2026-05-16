@@ -1265,6 +1265,23 @@ const api = {
       inputSize: number
       outputShape: 'softmax-2' | 'sigmoid-1' | 'unknown'
     }>('ai:ai-image-status'),
+    whisperxStatus: () => invoke<{
+      configured: boolean
+      scriptExists: boolean
+      ready: boolean
+      startScript: string | null
+      autoStart: boolean
+      port: number
+    }>('ai:whisperx-status'),
+    f5ttsStatus: () => invoke<{
+      configured: boolean
+      scriptExists: boolean
+      ready: boolean
+      startScript: string | null
+      autoStart: boolean
+      backend: 'xtts' | 'f5tts'
+      port: number
+    }>('ai:f5tts-status'),
     extraModelStatus: (kind?: string) => invoke<Array<{
       kind: string
       label: string

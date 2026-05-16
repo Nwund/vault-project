@@ -3658,6 +3658,49 @@ RULES:
     return { ok: true, enabled: !!enabled }
   })
 
+  // WhisperX sidecar status. Surfaces whether the start script is
+  // configured + on disk + reachable. When ready=true, transcribeAudio
+  // routes through this backend instead of whisper.cpp.
+  ipcMain.handle('ai:whisperx-status', async () => {
+    const fs = await import('node:fs')
+    const { isWhisperXReady } = await import('./whisperx-launcher')
+    const { getAISettings } = await import('../../settings')
+    const ai = getAISettings() as any
+    const startScript = String(ai?.whisperxStartScript ?? '').trim()
+    const configured = !!startScript
+    const scriptExists = configured && fs.existsSync(startScript)
+    return {
+      configured,
+      scriptExists,
+      ready: isWhisperXReady(),
+      startScript: startScript || null,
+      autoStart: !!ai?.whisperxAutoStart,
+      port: 8031,
+    }
+  })
+
+  // F5-TTS sidecar status. Same shape as WhisperX. Used by the voice
+  // backend picker to indicate whether settings.ai.xyreneVoiceBackend =
+  // 'f5tts' is currently viable.
+  ipcMain.handle('ai:f5tts-status', async () => {
+    const fs = await import('node:fs')
+    const { isF5TtsReady } = await import('./f5-tts-launcher')
+    const { getAISettings } = await import('../../settings')
+    const ai = getAISettings() as any
+    const startScript = String(ai?.f5ttsStartScript ?? '').trim()
+    const configured = !!startScript
+    const scriptExists = configured && fs.existsSync(startScript)
+    return {
+      configured,
+      scriptExists,
+      ready: isF5TtsReady(),
+      startScript: startScript || null,
+      autoStart: !!ai?.f5ttsAutoStart,
+      backend: (ai?.xyreneVoiceBackend === 'f5tts' ? 'f5tts' : 'xtts') as 'xtts' | 'f5tts',
+      port: 8021,
+    }
+  })
+
   // Person ReID status. Same install pattern as other detectors.
   ipcMain.handle('ai:person-reid-status', async () => {
     const fs = await import('node:fs')

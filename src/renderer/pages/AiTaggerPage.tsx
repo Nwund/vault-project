@@ -2634,6 +2634,22 @@ export function AiTaggerPage() {
                   installHint="Drop ai-image-detector.onnx at the path above."
                   onToast={showToast}
                 />
+                <ModelFileCard
+                  title="WhisperX sidecar"
+                  description="Word-level + speaker-diarized transcripts on port 8031. Replaces whisper.cpp when up."
+                  probe={() => window.api.ai.whisperxStatus?.() ?? Promise.resolve(null) as any}
+                  upstreamUrl="https://github.com/m-bain/whisperX"
+                  installHint="Set settings.ai.whisperxStartScript to a start.bat that activates the venv + runs server.py. Auto-start at boot via settings.ai.whisperxAutoStart."
+                  onToast={showToast}
+                />
+                <ModelFileCard
+                  title="F5-TTS sidecar"
+                  description="Voice-clone alt to XTTS on port 8021. Switch via settings.ai.xyreneVoiceBackend = 'f5tts'."
+                  probe={() => window.api.ai.f5ttsStatus?.() ?? Promise.resolve(null) as any}
+                  upstreamUrl="https://github.com/SWivid/F5-TTS"
+                  installHint="Set settings.ai.f5ttsStartScript to a start.bat that activates the venv + runs server.py. Auto-start at boot via settings.ai.f5ttsAutoStart."
+                  onToast={showToast}
+                />
               </div>
             </div>
 

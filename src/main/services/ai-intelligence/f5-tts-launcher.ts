@@ -71,3 +71,9 @@ function ping(): Promise<boolean> {
 export function getF5TtsBaseUrl(): string | null {
   return _ready ? 'http://127.0.0.1:8021' : null
 }
+
+/** Side-effect-free probe — true only when the sidecar has reported
+ *  healthy at least once this process lifetime. Does NOT spawn. */
+export function isF5TtsReady(): boolean {
+  return _ready
+}
