@@ -7,6 +7,66 @@ For per-session work logs (the live ground truth), see **[SESSION_NOTES.md](SESS
 
 ---
 
+## v2.6.1 — 2026-05-15 — Polish pass: one-click installs, more detector cards, WhisperX wiring
+
+Patch release on top of v2.6.0. No new top-level surfaces — just lower
+friction for the optional ML stack, more thorough detector status visibility,
+and the first consumer for WhisperX.
+
+### One-click installs
+- **CLIP BPE vocab** — `ai:clip-bpe-download` IPC fetches the Apache-2.0
+  vocab from openai/CLIP raw GitHub straight to
+  `<userData>/models/clip-vocab.txt.gz`. Install button surfaces in a new
+  CLIP BPE setup card in AI Tools. Idempotent, ~1.4 MB.
+- **NudeNet** — `ai:nudenet-download` fetches the v3.4.2 release model
+  (`320n.onnx` nano ~3 MB or `640m.onnx` medium ~14 MB). Two buttons in
+  the existing NudeNet card. Idempotent.
+
+### More detector status cards
+- New reusable `ModelFileCard` component (`src/renderer/components/`).
+- 8 additional cards in AI Tools' "More optional detectors" section:
+  SFace face recognition, Person ReID, DB + CRNN OCR, LAION aesthetic
+  predictor, deepfake / AI-face detector, AI-image (full-frame)
+  detector, WhisperX sidecar, F5-TTS sidecar. All probe via existing
+  `ai:*-status` IPCs and show install path + size + Re-check.
+
+### Sidecar auto-start
+- WhisperX (port 8031) and F5-TTS (port 8021) launchers now auto-spawn
+  at app boot when `settings.ai.whisperxAutoStart` / `f5ttsAutoStart`
+  are set + the start script path is configured. Same pattern as the
+  XTTS / JoyCaption auto-start blocks in `main.ts`.
+- Side-effect-free probes (`isWhisperXReady` / `isF5TtsReady`) so
+  status checks don't accidentally spawn the sidecar.
+
+### WhisperX consumer
+- `transcribeAudio()` now prefers WhisperX when its sidecar is up
+  (auto-started at boot). Returns flat `.text` for existing callers
+  plus a rich `segments[]` field with word-level + speaker-diarized
+  data for downstream consumers (SFX-on-word triggers, diarized
+  speaker UI). Falls back to whisper.cpp when WhisperX is offline.
+
+### TS sweep
+- `npx tsc --noEmit` is now clean across the whole codebase.
+  - Fixed: `<video referrerPolicy>` (invalid HTML attribute) — replaced
+    with main-process `webRequest.onBeforeSendHeaders` strip-Referer
+    overrides for booru video CDNs (xbooru / gelbooru / realbooru / tbib /
+    hypnohub / paheal). This is the proper fix for the "gray video frame,
+    0-byte fetch" bug on cross-origin booru CDN playback.
+  - Added `BooruPost.hash?: string` to the renderer-side interface.
+  - Explicit `BooruPost` types on two prev.map / .filter arrow params.
+  - `getTagLabels(variantId?: string)` for per-variant WD-Tagger vocabs.
+
+### Documentation
+- New `docs/ML_WRAPPER_BACKLOG.md` — single index of every optional ML
+  wrapper with status (shipped / functional / scaffold) and a one-line
+  activation summary. Scaffold wrappers (transnet / xclip / clap /
+  demucs) gain a `STATUS: scaffold` marker at the top of the file.
+- DEVELOPMENT.md and README.md fully refreshed for v2.6.x truth
+  (accurate stats, current Tier 1/2/3 description, full credential
+  matrix, current dependencies + ports).
+
+---
+
 ## v2.6.0 — 2026-05-14 — Browse aggregator + ML detector stack + Performers UI + xnxx HLS playback
 
 The largest single release since v2.0. Three brand-new surfaces, full ML detector pipeline, and a robust xnxx playback story.

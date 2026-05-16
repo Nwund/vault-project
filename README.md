@@ -4,7 +4,7 @@
 
 ### *Your Private Media Sanctuary*
 
-[![Version](https://img.shields.io/badge/v2.6.0-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
+[![Version](https://img.shields.io/badge/v2.6.1-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
 [![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-Platform-blue?style=for-the-badge)](https://github.com/Nwund/vault-project)
 [![Electron](https://img.shields.io/badge/Electron-32.0-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-18.3-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://react.dev)
@@ -33,6 +33,17 @@
 </div>
 
 <br/>
+
+## 🆕 v2.6.1 — Polish patch
+
+- **One-click installs** — CLIP BPE vocab + NudeNet model (Nano / Medium) now install with a single click from AI Tools. No more "open DevTools and drop a file."
+- **8 more detector status cards** — SFace, Person ReID, DB+CRNN OCR, LAION aesthetic, deepfake / AI-face, AI-image, WhisperX sidecar, F5-TTS sidecar — all probe their own state and show install path + size in AI Tools.
+- **WhisperX auto-start + consumer** — when the WhisperX Python sidecar is configured + opted in, transcripts route through it for word-level + speaker-diarized output instead of whisper.cpp.
+- **TS sweep** — `npx tsc --noEmit` clean across the codebase.
+- **Booru video CDN fix** — gray-frame playback on xbooru / gelbooru / realbooru / tbib / hypnohub / paheal solved at the network layer via Electron `webRequest.onBeforeSendHeaders` Referer strip.
+- **ML wrapper backlog doc** — `docs/ML_WRAPPER_BACKLOG.md` is the single index of every optional ML add-on with status (shipped / functional / scaffold).
+
+See [CHANGELOG.md](CHANGELOG.md) for full v2.6.1 notes.
 
 ## 🆕 v2.6.0 — What's new
 
@@ -503,7 +514,7 @@ Create professional-quality beat-synced videos:
 
 <br/>
 
-[![Download Latest](https://img.shields.io/badge/Download-v2.6.0-success?style=for-the-badge&logo=windows)](https://github.com/Nwund/vault-project/releases/latest)
+[![Download Latest](https://img.shields.io/badge/Download-v2.6.1-success?style=for-the-badge&logo=windows)](https://github.com/Nwund/vault-project/releases/latest)
 
 <br/>
 
@@ -518,7 +529,7 @@ Create professional-quality beat-synced videos:
 *Built with obsession by developers who understand the mission.*
 
 <sub>
-🔐 Vault v2.6.0 • 71 AI services • 27 Browse sources • 112 components • 16 ML detector wrappers
+🔐 Vault v2.6.1 • 71 AI services • 27 Browse sources • 114 components • 16 ML detector wrappers
 </sub>
 
 <br/>
