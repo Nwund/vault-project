@@ -35,6 +35,7 @@ import { Btn, TopBar, ToggleSwitch } from '../components/ui'
 import { HardwareEncoderSettings } from '../components/HardwareEncoderSettings'
 import { XyreneSettings } from '../components/XyreneSettings'
 import { CrossDeviceCard, CloudflareTunnelCard, ZeroTierCard, ResticBackupCard } from '../components/AdminCards'
+import { WindowsHelloCard } from '../components/WindowsHelloCard'
 import { themes, DARK_THEME_LIST, LIGHT_THEME_LIST, GOON_THEME_LIST, type ThemeId } from '../styles/themes'
 import { QRCodeSVG } from 'qrcode.react'
 
@@ -2855,6 +2856,11 @@ export function SettingsPage(props: {
           {/* #200 — Restic offsite backup */}
           {activeTab === 'services' && (
             <ResticBackupCard />
+          )}
+
+          {/* #194 — Windows Hello / Touch ID enrollment + biometric gate setting */}
+          {activeTab === 'services' && (
+            <WindowsHelloCard />
           )}
 
           {/* Mobile Sync Section - under Services */}
