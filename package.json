@@ -46,6 +46,7 @@
     "@fontsource/vt323": "^5.2.7",
     "@fontsource/wallpoet": "^5.2.7",
     "@phosphor-icons/react": "^2.1.10",
+    "@ricky0123/vad-web": "^0.0.30",
     "@sentry/electron": "^7.13.0",
     "@types/react-window": "^1.8.8",
     "animejs": "^4.3.5",
