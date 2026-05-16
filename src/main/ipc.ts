@@ -9786,6 +9786,105 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   let cloudflaredUrl: string | null = null
 
   // ─────────────────────────────────────────────────────────────────────────
+  //   Synology File Station integration (#187) — one-way push to a
+  //   user-configured NAS folder. Auth via DSM credentials in
+  //   settings.backup.synology* keys. Two-way sync + change-detection
+  //   is a follow-on; this commit ships the auth + upload primitives
+  //   so user-level scripts can compose a real sync.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  let _synologySid: string | null = null
+  let _synologyHost: string | null = null
+
+  ipcMain.handle('synology:auth', async (_ev, args?: { host?: string; username?: string; password?: string }) => {
+    try {
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      const host = args?.host ?? String(s?.backup?.synologyHost ?? '').trim()
+      const user = args?.username ?? String(s?.backup?.synologyUsername ?? '').trim()
+      const pass = args?.password ?? String(s?.backup?.synologyPassword ?? '').trim()
+      if (!host || !user || !pass) return { ok: false, error: 'Synology host/user/password not configured' }
+      const url = `${host.replace(/\/$/, '')}/webapi/auth.cgi?api=SYNO.API.Auth&method=login&version=3&account=${encodeURIComponent(user)}&passwd=${encodeURIComponent(pass)}&session=Vault&format=sid`
+      const res = await fetch(url)
+      if (!res.ok) return { ok: false, error: `Synology auth HTTP ${res.status}` }
+      const json = await res.json() as any
+      if (!json?.success || !json?.data?.sid) {
+        return { ok: false, error: `Synology auth failed: ${JSON.stringify(json?.error ?? 'unknown')}` }
+      }
+      _synologySid = String(json.data.sid)
+      _synologyHost = host
+      return { ok: true, sid: _synologySid }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('synology:logout', async () => {
+    if (!_synologySid || !_synologyHost) return { ok: true, wasLoggedIn: false }
+    try {
+      const url = `${_synologyHost}/webapi/auth.cgi?api=SYNO.API.Auth&method=logout&version=3&session=Vault`
+      await fetch(url)
+    } catch { /* best effort */ }
+    _synologySid = null
+    _synologyHost = null
+    return { ok: true, wasLoggedIn: true }
+  })
+
+  ipcMain.handle('synology:listDir', async (_ev, args: { folderPath: string }) => {
+    if (!_synologySid || !_synologyHost) return { ok: false, error: 'Not authenticated. Run synology:auth first.', files: [] }
+    try {
+      const url = `${_synologyHost}/webapi/entry.cgi?api=SYNO.FileStation.List&version=2&method=list&folder_path=${encodeURIComponent(args.folderPath)}&_sid=${_synologySid}`
+      const res = await fetch(url)
+      if (!res.ok) return { ok: false, error: `Synology list HTTP ${res.status}`, files: [] }
+      const json = await res.json() as any
+      if (!json?.success) return { ok: false, error: `Synology list error ${JSON.stringify(json?.error ?? 'unknown')}`, files: [] }
+      return { ok: true, files: json?.data?.files ?? [] }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), files: [] }
+    }
+  })
+
+  // upload IPC accepts a local path + the Synology destination dir;
+  // streams the file via multipart POST to SYNO.FileStation.Upload.
+  ipcMain.handle('synology:uploadFile', async (_ev, args: { localPath: string; remoteDir: string; overwrite?: boolean }) => {
+    if (!_synologySid || !_synologyHost) return { ok: false, error: 'Not authenticated. Run synology:auth first.' }
+    try {
+      if (!fs.existsSync(args.localPath)) return { ok: false, error: 'localPath does not exist' }
+      const boundary = `----vault-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const filename = path.basename(args.localPath)
+      const fileBuf = await fsp.readFile(args.localPath)
+      const fields: Array<[string, string]> = [
+        ['api', 'SYNO.FileStation.Upload'],
+        ['version', '2'],
+        ['method', 'upload'],
+        ['path', args.remoteDir],
+        ['create_parents', 'true'],
+        ['overwrite', args.overwrite ? 'true' : 'false'],
+      ]
+      const parts: Buffer[] = []
+      for (const [k, v] of fields) {
+        parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`, 'utf8'))
+      }
+      parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: application/octet-stream\r\n\r\n`, 'utf8'))
+      parts.push(fileBuf)
+      parts.push(Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8'))
+      const body = Buffer.concat(parts)
+      const url = `${_synologyHost}/webapi/entry.cgi?_sid=${_synologySid}`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+        body,
+      })
+      if (!res.ok) return { ok: false, error: `Synology upload HTTP ${res.status}` }
+      const json = await res.json() as any
+      if (!json?.success) return { ok: false, error: `Synology upload error ${JSON.stringify(json?.error ?? 'unknown')}` }
+      return { ok: true, bytes: fileBuf.length }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
   //   Chromecast sender (#183) — discover Chromecast devices on the
   //   LAN via mDNS, push current media via the Default Media Receiver.
   // ─────────────────────────────────────────────────────────────────────────

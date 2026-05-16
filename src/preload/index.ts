@@ -2161,6 +2161,18 @@ const api = {
       }>('backup:restic-snapshot', args),
     resticSnapshots: () =>
       invoke<{ ok: boolean; snapshots: Array<any>; error?: string }>('backup:restic-snapshots'),
+    /** #187 — Synology File Station auth + upload primitives. Two-way
+     *  sync + change detection is a follow-on; this surface ships the
+     *  primitives so user-level scripts / future cron jobs can compose. */
+    synologyAuth: (args?: { host?: string; username?: string; password?: string }) =>
+      invoke<{ ok: boolean; sid?: string; error?: string }>('synology:auth', args),
+    synologyLogout: () =>
+      invoke<{ ok: boolean; wasLoggedIn?: boolean }>('synology:logout'),
+    synologyListDir: (args: { folderPath: string }) =>
+      invoke<{ ok: boolean; files: any[]; error?: string }>('synology:listDir', args),
+    synologyUploadFile: (args: { localPath: string; remoteDir: string; overwrite?: boolean }) =>
+      invoke<{ ok: boolean; bytes?: number; error?: string }>('synology:uploadFile', args),
+
     /** #183 — Chromecast sender. Discovers via mDNS, casts via the
      *  Default Media Receiver. Pairs with the existing DLNA service. */
     chromecastDiscover: () =>

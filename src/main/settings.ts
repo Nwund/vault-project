@@ -684,6 +684,11 @@ export interface VaultSettings {
     resticPasswordFile?: string // absolute path to a file containing the repo password
     autoBackupHours?: number    // 0 = manual only
     autoBackupLastRun?: number  // unix ms
+    // #187 — Synology File Station target
+    synologyHost?: string       // e.g. "https://nas.local:5001"
+    synologyUsername?: string
+    synologyPassword?: string   // stored plaintext for now; rotate-via-DSM is the user's responsibility
+    synologyTargetDir?: string  // e.g. "/photo/vault"
   }
   // Legacy support
   mediaDirs?: string[]
