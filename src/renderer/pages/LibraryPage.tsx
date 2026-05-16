@@ -74,6 +74,7 @@ import { WatchLaterPanel } from '../components/WatchLaterPanel'
 import { RecentlyViewedStrip } from '../components/RecentlyViewedStrip'
 import { TrashPanel } from '../components/TrashPanel'
 import { LibraryHealthPanel } from '../components/LibraryHealthPanel'
+import { PinnedFiltersBar } from '../components/PinnedFiltersBar'
 import { UrlDownloaderPanel } from '../components/UrlDownloaderPanel'
 import { DuplicatesModal } from '../components/DuplicatesModal'
 import { PlaylistPicker, AddToPlaylistPopup } from '../components/PlaylistPickers'
@@ -1641,6 +1642,32 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
               {typeCounts.gif > 0 && <span className="text-[9px] opacity-60">({typeCounts.gif})</span>}
             </button>
           </div>
+
+          {/* Pinned filter chips — sticky quick-access for the user's most-used
+              filter combinations. Click "Pin current" to save the active
+              filter snapshot; click any chip to apply. Persisted in
+              localStorage; cap 10 chips. */}
+          <PinnedFiltersBar
+            current={{
+              query,
+              activeTags,
+              typeFilter,
+              sortBy,
+              sortAscending,
+              pageSize,
+              layout,
+            }}
+            onApply={(snap) => {
+              setQuery(snap.query)
+              setActiveTags(snap.activeTags)
+              setTypeFilter(snap.typeFilter as MediaType | 'all')
+              setSortBy(snap.sortBy as SortOption)
+              setSortAscending(snap.sortAscending)
+              setPageSize(snap.pageSize)
+              setLayout(snap.layout as any)
+              setCurrentPage(1)
+            }}
+          />
 
           {/* Sort By */}
           <div className="flex items-center gap-1">
