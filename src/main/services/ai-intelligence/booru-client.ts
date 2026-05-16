@@ -52,6 +52,8 @@ export type BooruSource =
   | 'motherless'  // motherless.com — HTML scrape of /term/videos/<query>
   | 'pixiv'       // pixiv.net — /ajax/search/illustrations + R-18 mode
   | 'pullpush'    // api.pullpush.io — Pushshift successor (Reddit archive). No auth required.
+  | 'coomer'      // coomer.su — Patreon/OnlyFans/Fansly archive. No auth required.
+  | 'kemono'      // kemono.su — Patreon/Fanbox/Gumroad/SubscribeStar/etc archive. No auth.
   // NOTE: rule34.us / XVideos / xHamster don't expose usable public
   // APIs — would need scraping. Add later if demand warrants.
 
@@ -83,9 +85,11 @@ const SOURCE_HOSTS: Record<BooruSource, string> = {
   motherless: 'motherless.com',
   pixiv: 'www.pixiv.net',
   pullpush: 'api.pullpush.io',
+  coomer: 'coomer.su',
+  kemono: 'kemono.su',
 }
 
-const SOURCE_FAMILY: Record<BooruSource, 'e621' | 'moebooru' | 'gelbooru' | 'eporner' | 'redtube' | 'pornhub' | 'xnxx' | 'redgifs' | 'e926' | 'danbooru' | 'civitai' | 'bluesky' | 'reddit' | 'paheal' | 'spankbang' | 'erome' | 'motherless' | 'pixiv' | 'pullpush'> = {
+const SOURCE_FAMILY: Record<BooruSource, 'e621' | 'moebooru' | 'gelbooru' | 'eporner' | 'redtube' | 'pornhub' | 'xnxx' | 'redgifs' | 'e926' | 'danbooru' | 'civitai' | 'bluesky' | 'reddit' | 'paheal' | 'spankbang' | 'erome' | 'motherless' | 'pixiv' | 'pullpush' | 'coomer' | 'kemono'> = {
   e621: 'e621',
   'yande.re': 'moebooru',
   konachan: 'moebooru',
@@ -113,6 +117,8 @@ const SOURCE_FAMILY: Record<BooruSource, 'e621' | 'moebooru' | 'gelbooru' | 'epo
   motherless: 'motherless',
   pixiv: 'pixiv',
   pullpush: 'pullpush',
+  coomer: 'coomer',
+  kemono: 'kemono',
 }
 
 /** CDN base for URL reconstruction on gelbooru-style boorus. Most
@@ -379,7 +385,92 @@ export async function searchBooru(
   if (family === 'erome') return searchErome(tags, perPage, page)
   if (family === 'motherless') return searchMotherless(tags, perPage, page)
   if (family === 'pixiv') return searchPixiv(tags, perPage, page)
+  if (family === 'coomer' || family === 'kemono') return searchCoomerKemono(family, tags, perPage, page)
   return searchGelbooruStyle(host, tags, perPage, page)
+}
+
+// #105 — Coomer / Kemono shared adapter. Both sites speak the same
+// API shape (same upstream code base); only the hostname differs.
+// Search syntax: query can be a bare creator id (matches a creator
+// across all services), or "<service>:<user_id>" (e.g. "patreon:12345")
+// for exact targeting. Without query, returns recent posts globally.
+async function searchCoomerKemono(
+  site: 'coomer' | 'kemono',
+  tags: string,
+  perPage: number,
+  page: number
+): Promise<BooruSearchResult> {
+  const host = site === 'coomer' ? 'coomer.su' : 'kemono.su'
+  const trimmed = tags.trim()
+  const offset = page * perPage
+  // Two query modes: targeted (<service>:<user_id>) vs general
+  // (free text → search API q=).
+  const colonMatch = trimmed.match(/^([a-z]+):(.+)$/i)
+  let urlPath: string
+  if (colonMatch) {
+    const service = colonMatch[1].toLowerCase()
+    const user = colonMatch[2]
+    urlPath = `/api/v1/${encodeURIComponent(service)}/user/${encodeURIComponent(user)}?o=${offset}`
+  } else if (trimmed) {
+    urlPath = `/api/v1/posts?q=${encodeURIComponent(trimmed)}&o=${offset}`
+  } else {
+    urlPath = `/api/v1/posts?o=${offset}`
+  }
+  console.log(`[${site}] GET https://${host}${urlPath}`)
+  const body = await fetchJsonWithHeaders(host, urlPath, {
+    'User-Agent': USER_AGENT,
+    Accept: 'application/json',
+  }).catch((err) => { console.warn(`[${site}] fetch failed:`, err); return '' })
+  if (!body) return { posts: [], hasMore: false, page }
+  let arr: any[] = []
+  try {
+    const parsed = JSON.parse(body)
+    arr = Array.isArray(parsed) ? parsed : (parsed?.posts ?? [])
+  } catch { return { posts: [], hasMore: false, page } }
+  // Each post: { id, service, user, title, content, published, file, attachments[] }
+  // file/attachments items: { name, path } — path starts with /data/<...>
+  // Full URL = https://<host>/data/<...> or https://<host>/thumbnail/data/<...>
+  const posts: BooruPost[] = []
+  for (const p of arr) {
+    if (!p?.id) continue
+    const service = String(p.service ?? '')
+    const user = String(p.user ?? '')
+    const title = String(p.title ?? '').slice(0, 200)
+    // Gather every media URL from file + attachments
+    const mediaPaths: string[] = []
+    if (p.file?.path) mediaPaths.push(String(p.file.path))
+    for (const att of (p.attachments ?? []) as any[]) {
+      if (att?.path) mediaPaths.push(String(att.path))
+    }
+    if (mediaPaths.length === 0) continue
+    // Emit one BooruPost per media attachment (so a multi-image post
+    // shows as multiple grid tiles instead of one)
+    for (let i = 0; i < mediaPaths.length; i++) {
+      const mp = mediaPaths[i]
+      const fileUrl = mp.startsWith('http') ? mp : `https://${host}${mp}`
+      // Thumbnail URL is /thumbnail<path> for images on these sites
+      const thumbUrl = mp.startsWith('http') ? mp : `https://${host}/thumbnail${mp}`
+      const idNum = parseInt(String(p.id).replace(/\D/g, '').slice(0, 9) || '0', 10) || posts.length
+      posts.push({
+        id: idNum + i,
+        file_url: fileUrl,
+        preview_url: thumbUrl,
+        sample_url: thumbUrl,
+        tags: [
+          `source:${site}`,
+          service ? `service:${service}` : '',
+          user ? `artist:${user}` : '',
+        ].filter(Boolean).join(' '),
+        rating: 'questionable',
+        score: 0,
+        source: `https://${host}/${service}/user/${user}/post/${p.id}`,
+        width: 0,
+        height: 0,
+        hash: String(p.id),
+      })
+    }
+  }
+  return { posts, hasMore: arr.length >= perPage, page }
 }
 
 // ─── Pixiv R-18 ──────────────────────────────────────────────────

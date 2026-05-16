@@ -48,7 +48,7 @@ function isGif(url: string): boolean {
   return GIF_EXT.test(url || '')
 }
 
-type Source = 'all' | 'e621' | 'rule34' | 'safebooru' | 'yande.re' | 'konachan' | 'tbib' | 'xbooru' | 'hypnohub' | 'eporner' | 'redtube' | 'pornhub' | 'xnxx' | 'redgifs' | 'e926' | 'gelbooru' | 'realbooru' | 'danbooru' | 'aibooru' | 'civitai' | 'bluesky' | 'reddit' | 'paheal' | 'spankbang' | 'erome' | 'motherless' | 'pixiv' | 'pullpush'
+type Source = 'all' | 'e621' | 'rule34' | 'safebooru' | 'yande.re' | 'konachan' | 'tbib' | 'xbooru' | 'hypnohub' | 'eporner' | 'redtube' | 'pornhub' | 'xnxx' | 'redgifs' | 'e926' | 'gelbooru' | 'realbooru' | 'danbooru' | 'aibooru' | 'civitai' | 'bluesky' | 'reddit' | 'paheal' | 'spankbang' | 'erome' | 'motherless' | 'pixiv' | 'pullpush' | 'coomer' | 'kemono'
 
 const SOURCE_OPTIONS: Array<{ id: Source; label: string; auth: 'free' | 'key' | 'broken'; note?: string; family?: 'booru' | 'tube' }> = [
   { id: 'all', label: 'All sources', auth: 'free', note: 'parallel search across every booru + tube site' },
@@ -81,6 +81,8 @@ const SOURCE_OPTIONS: Array<{ id: Source; label: string; auth: 'free' | 'key' | 
   { id: 'motherless', label: 'Motherless', auth: 'broken', note: 'Anti-bot protection added 2026 — returns 503 on scrape. Re-enable when bypass found or API access purchased', family: 'tube' },
   { id: 'pixiv', label: 'Pixiv R-18', auth: 'key', note: 'Pixiv ajax JSON · R-18 mode · needs PHPSESSID cookie for results (see settings → AI Tools)', family: 'booru' },
   { id: 'pullpush', label: 'PullPush (Reddit)', auth: 'free', note: 'Pushshift successor · Reddit archive · no auth required · fills the gap left by Reddit OAuth gating', family: 'tube' },
+  { id: 'coomer', label: 'Coomer', auth: 'free', note: 'Patreon / OnlyFans / Fansly archive · query "<service>:<user>" for a specific creator (e.g. patreon:asanagi)', family: 'tube' },
+  { id: 'kemono', label: 'Kemono', auth: 'free', note: 'Patreon / Fanbox / Gumroad / SubscribeStar archive · same query syntax as Coomer', family: 'tube' },
 ]
 
 // Tube embed detection — when file_url is an embed page rather than a
@@ -549,7 +551,7 @@ export default function Rule34Page() {
         // Muted sources are excluded — user has explicitly told us to
         // stop wasting query time on them this session. Family-tab
         // narrowing further restricts to one of booru/tube/ai/social.
-        const allSources = ['e621', 'rule34', 'safebooru', 'yande.re', 'konachan', 'tbib', 'xbooru', 'hypnohub', 'eporner', 'redtube', 'pornhub', 'xnxx', 'redgifs', 'e926', 'gelbooru', 'realbooru', 'danbooru', 'aibooru', 'civitai', 'bluesky', 'reddit', 'paheal', 'spankbang', 'erome', 'motherless', 'pixiv', 'pullpush']
+        const allSources = ['e621', 'rule34', 'safebooru', 'yande.re', 'konachan', 'tbib', 'xbooru', 'hypnohub', 'eporner', 'redtube', 'pornhub', 'xnxx', 'redgifs', 'e926', 'gelbooru', 'realbooru', 'danbooru', 'aibooru', 'civitai', 'bluesky', 'reddit', 'paheal', 'spankbang', 'erome', 'motherless', 'pixiv', 'pullpush', 'coomer', 'kemono']
         // Per-source independent pagination: when paginating forward,
         // skip sources that returned 0 last time AND sources the user
         // muted AND sources outside the active family. Fresh queries
