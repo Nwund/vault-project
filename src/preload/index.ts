@@ -514,6 +514,11 @@ const api = {
     implicationsGet: () => invoke<Record<string, string[]>>('tags:implicationsGet'),
     implicationsSave: (map: Record<string, string[]>) =>
       invoke<{ ok: boolean; error?: string }>('tags:implicationsSave', map),
+    // #102 — Tag siblings (bidirectional aliases). Aliases get rewritten
+    // to canonical at addToMedia time so the DB never stores duplicates.
+    siblingsGet: () => invoke<Record<string, string[]>>('tags:siblingsGet'),
+    siblingsSave: (map: Record<string, string[]>) =>
+      invoke<{ ok: boolean; error?: string }>('tags:siblingsSave', map),
     // Cleanup inappropriate/weird tags
     cleanup: (options?: { patterns?: string[] }) => invoke('tags:cleanup', options),
     // Two-level taxonomy — returns CATEGORY_META plus the tag list +

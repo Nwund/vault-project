@@ -2105,14 +2105,25 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   ipcMain.handle('tags:addToMedia', async (_ev, mediaId: string, tagName: string) => {
-    db.addTagToMedia(mediaId, tagName)
+    // #102 — canonicalize through the user's tag-siblings (aliases)
+    // graph FIRST so writes always land on the canonical form. If the
+    // user adds "big_titties", and that's an alias for "big_breasts",
+    // the row stores big_breasts. Idempotent when no alias edge exists.
+    let effectiveTag = tagName
+    try {
+      const { canonicalize } = await import('./services/tag-siblings')
+      effectiveTag = canonicalize(tagName)
+    } catch (err) {
+      console.warn('[tags:addToMedia] sibling canonicalize failed:', err)
+    }
+    db.addTagToMedia(mediaId, effectiveTag)
     // #103 — walk the user's tag-implications graph and add every
     // ancestor tag too. Cycle-safe via the service's visited set.
     // Best-effort: per-ancestor failures are swallowed so a broken
     // implication doesn't block the primary tag write.
     try {
       const { expandImplications } = await import('./services/tag-implications')
-      for (const parent of expandImplications(tagName)) {
+      for (const parent of expandImplications(effectiveTag)) {
         try { db.addTagToMedia(mediaId, parent) } catch { /* skip dup / invalid */ }
       }
     } catch (err) {
@@ -2122,6 +2133,16 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     checkAchievements()  // Check 'tagged' achievement
     broadcast('vault:changed')
     return db.listMediaTags(mediaId)
+  })
+
+  // #102 — IPCs to read/write the tag-siblings JSON.
+  ipcMain.handle('tags:siblingsGet', async () => {
+    const { getSiblings } = await import('./services/tag-siblings')
+    return getSiblings()
+  })
+  ipcMain.handle('tags:siblingsSave', async (_ev, map: Record<string, string[]>) => {
+    const { saveSiblings } = await import('./services/tag-siblings')
+    return saveSiblings(map)
   })
 
   // #103 — IPCs to read/write the tag-implications JSON. Settings UI
