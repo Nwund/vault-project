@@ -456,6 +456,13 @@ const api = {
       invoke<{ ok: boolean; removed?: number; error?: string }>('media:trash:purgeAll'),
     trashAutoPurgeExpired: () =>
       invoke<{ ok: boolean; removed?: number; error?: string }>('media:trash:autoPurgeExpired'),
+    // #164 — Loudness measurement / cache. measureLufs is heavy
+    // (5-30s ffmpeg pass); getLufs is a fast cached lookup.
+    measureLufs: (mediaId: string) =>
+      invoke<{ ok: boolean; lufs?: number; cached?: boolean; full?: any; error?: string }>('media:measureLufs', mediaId),
+    getLufs: (mediaId: string) =>
+      invoke<{ ok: boolean; lufs: number | null; error?: string }>('media:getLufs', mediaId),
+
     // #197 — Funscript sidecar lookup. Returns ok:false with no error
     // when the file simply isn't there; ok:true with actions[] when it is.
     loadFunscript: (mediaId: string) =>

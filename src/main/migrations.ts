@@ -822,6 +822,21 @@ const migrations: Migration[] = [
       `)
       console.log('[Migration v28] Added collections + collection_members for #154')
     }
+  },
+
+  {
+    id: 29,
+    up: (db) => {
+      // #164 Loudness-normalized playback. Caches the integrated LUFS
+      // measurement per video so subsequent loads can apply a GainNode
+      // offset to hit -16 LUFS without re-measuring (ffmpeg loudnorm
+      // takes 5-30s per video). NULL = unmeasured; -70 = silence.
+      const cols = db.prepare(`PRAGMA table_info(media)`).all() as Array<{ name: string }>
+      if (!cols.find((c) => c.name === 'lufs_integrated')) {
+        db.exec(`ALTER TABLE media ADD COLUMN lufs_integrated REAL;`)
+        console.log('[Migration v29] Added media.lufs_integrated for #164 loudness normalization')
+      }
+    }
   }
 ]
 

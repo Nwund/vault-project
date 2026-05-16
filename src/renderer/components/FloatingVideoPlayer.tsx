@@ -322,13 +322,40 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     return () => { alive = false }
   }, [media.id, media.path, currentResolution])
 
+  // #164 — Loudness normalization. On media load, query the cached
+  // LUFS measurement; convert (target - measured) dB → gain ratio and
+  // apply as a multiplier on top of the user's volume slider so all
+  // clips hit the same perceived loudness. ~-16 LUFS is the broadcast
+  // dialogue target.
+  const [lufsGain, setLufsGain] = useState(1)
+  useEffect(() => {
+    if (media.type !== 'video') { setLufsGain(1); return }
+    let alive = true
+    void (async () => {
+      try {
+        const r = await (window.api as any).media?.getLufs?.(media.id)
+        if (!alive) return
+        if (r?.ok && typeof r.lufs === 'number' && Number.isFinite(r.lufs)) {
+          const targetLufs = -16
+          const offsetDb = targetLufs - r.lufs
+          // Clamp to ±12 dB to avoid runaway boost on silent / clipped clips.
+          const clampedDb = Math.max(-12, Math.min(12, offsetDb))
+          setLufsGain(Math.pow(10, clampedDb / 20))
+        } else {
+          setLufsGain(1)
+        }
+      } catch { setLufsGain(1) }
+    })()
+    return () => { alive = false }
+  }, [media.id, media.type])
+
   // Apply volume to video element
   useEffect(() => {
     if (videoRef.current) {
-      videoRef.current.volume = volume
+      videoRef.current.volume = Math.max(0, Math.min(1, volume * lufsGain))
       videoRef.current.muted = isMuted
     }
-  }, [volume, isMuted])
+  }, [volume, isMuted, lufsGain])
 
   // Xyrene watch-along loop. While xyMode is on AND the video is playing,
   // every xyFrequencySec we capture a frame, send it to xyrene:comment,

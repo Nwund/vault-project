@@ -1007,6 +1007,65 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   // ─────────────────────────────────────────────────────────────────────────
+  //   Loudness measurement (#164) — runs ffmpeg loudnorm in
+  //   measurement mode (print_format=json), parses the integrated
+  //   LUFS, caches in media.lufs_integrated. Player applies GainNode
+  //   offset = (target_lufs - measured_lufs) so all clips hit -16 LUFS.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  ipcMain.handle('media:measureLufs', async (_ev, mediaId: string) => {
+    try {
+      const m = db.getMedia(mediaId)
+      if (!m) return { ok: false, error: 'Media not found' }
+      if (m.type !== 'video') return { ok: false, error: 'Loudness only for videos' }
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not available' }
+      const cached = (m as any).lufs_integrated
+      if (typeof cached === 'number' && !Number.isNaN(cached)) {
+        return { ok: true, lufs: cached, cached: true }
+      }
+      const { spawn } = await import('node:child_process')
+      const args = [
+        '-hide_banner', '-nostats',
+        '-i', m.path,
+        '-vn', '-af', 'loudnorm=print_format=json',
+        '-f', 'null', '-',
+      ]
+      const proc = spawn(ffmpegBin, args, { windowsHide: true })
+      let stderr = ''
+      proc.stderr?.on('data', (c) => { stderr += c.toString('utf8') })
+      const exit = await new Promise<number | null>((resolve) => {
+        proc.on('error', () => resolve(-1))
+        proc.on('close', (code) => resolve(code))
+      })
+      if (exit !== 0) return { ok: false, error: `ffmpeg loudnorm exit ${exit}` }
+      // loudnorm prints a JSON block to stderr. Find the last {...} object.
+      const lastBrace = stderr.lastIndexOf('}')
+      const firstBrace = stderr.lastIndexOf('{', lastBrace)
+      if (firstBrace < 0 || lastBrace < 0) return { ok: false, error: 'no loudnorm output' }
+      let parsed: any
+      try { parsed = JSON.parse(stderr.slice(firstBrace, lastBrace + 1)) }
+      catch { return { ok: false, error: 'loudnorm JSON parse failed' } }
+      const lufs = Number(parsed.input_i)
+      if (!Number.isFinite(lufs)) return { ok: false, error: 'no input_i' }
+      db.raw.prepare(`UPDATE media SET lufs_integrated = ? WHERE id = ?`).run(lufs, mediaId)
+      return { ok: true, lufs, cached: false, full: parsed }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // Lightweight getter — Library can query for the cached value
+  // without triggering a measurement.
+  ipcMain.handle('media:getLufs', async (_ev, mediaId: string) => {
+    try {
+      const row = db.raw.prepare(`SELECT lufs_integrated FROM media WHERE id = ?`).get(mediaId) as { lufs_integrated: number | null } | undefined
+      return { ok: true, lufs: row?.lufs_integrated ?? null }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), lufs: null }
+    }
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
   //   Collections (#154) — first-class entities with custom cover art,
   //   description, color, ordering. Distinct from playlists (which are
   //   playback-ordered media sequences).
