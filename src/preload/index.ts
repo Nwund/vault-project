@@ -2156,6 +2156,16 @@ const api = {
       }>('backup:restic-snapshot', args),
     resticSnapshots: () =>
       invoke<{ ok: boolean; snapshots: Array<any>; error?: string }>('backup:restic-snapshots'),
+    /** #186 — Panic webhook: HTTP POST listener for Frigate / Home
+     *  Assistant / any source. On hit, broadcasts 'system:panic' to
+     *  the renderer. Optional X-Vault-Secret header for auth. */
+    panicWebhookStart: (args?: { port?: number; secret?: string }) =>
+      invoke<{ ok: boolean; port?: number; error?: string }>('network:panic-webhook-start', args),
+    panicWebhookStop: () =>
+      invoke<{ ok: boolean; wasRunning?: boolean }>('network:panic-webhook-stop'),
+    panicWebhookStatus: () =>
+      invoke<{ running: boolean }>('network:panic-webhook-status'),
+
     zerotierStatus: () =>
       invoke<{
         installed: boolean

@@ -9958,6 +9958,65 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // ─────────────────────────────────────────────────────────────────────────
+  //   Panic webhook receiver (#186) — listens for POST hits from
+  //   Frigate / Home Assistant / any HTTP source. On hit, broadcasts
+  //   'system:panic' to the renderer which can wire its UI hide /
+  //   incognito-on response.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  let panicHttp: import('node:http').Server | null = null
+  ipcMain.handle('network:panic-webhook-start', async (_ev, args?: { port?: number; secret?: string }) => {
+    if (panicHttp) {
+      try { panicHttp.close() } catch { /* noop */ }
+      panicHttp = null
+    }
+    const port = args?.port ?? 8771
+    const secret = args?.secret ?? ''
+    try {
+      const httpMod = await import('node:http')
+      panicHttp = httpMod.createServer((req, res) => {
+        if (req.method !== 'POST') {
+          res.writeHead(405); res.end('POST only'); return
+        }
+        if (secret) {
+          const hdr = String(req.headers['x-vault-secret'] ?? '')
+          if (hdr !== secret) {
+            res.writeHead(401); res.end('Unauthorized'); return
+          }
+        }
+        // Trigger panic regardless of body content.
+        try {
+          const win = BrowserWindow.getAllWindows()[0]
+          win?.webContents.send('system:panic', { source: req.headers['user-agent'] ?? 'webhook', at: Date.now() })
+        } catch (err) {
+          console.warn('[Panic webhook] broadcast failed:', err)
+        }
+        res.writeHead(204); res.end()
+      })
+      await new Promise<void>((resolve, reject) => {
+        panicHttp!.once('error', reject)
+        panicHttp!.listen(port, () => resolve())
+      })
+      console.log(`[Panic webhook] Listening on http://127.0.0.1:${port}/`)
+      return { ok: true, port }
+    } catch (err: any) {
+      panicHttp = null
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('network:panic-webhook-stop', async () => {
+    if (!panicHttp) return { ok: true, wasRunning: false }
+    await new Promise<void>((resolve) => panicHttp!.close(() => resolve()))
+    panicHttp = null
+    return { ok: true, wasRunning: true }
+  })
+
+  ipcMain.handle('network:panic-webhook-status', async () => {
+    return { running: !!panicHttp }
+  })
+
   ipcMain.handle('network:zerotier-status', async () => {
     try {
       const fsMod = await import('node:fs/promises')
