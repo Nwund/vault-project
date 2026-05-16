@@ -2933,6 +2933,72 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
             {bulkActionLoading === 'favorite' ? <RefreshCw size={12} className="animate-spin" /> : <Heart size={12} />}
           </Btn>
 
+          {/* Bulk Add Tag — opens an inline prompt that adds the typed
+              tag to every selected media item via media:bulkAddTag. Tag
+              is normalized through ensureTag so canonical-tag rewrites
+              still apply. */}
+          <Btn
+            tone="ghost"
+            title="Add a tag to all selected items"
+            aria-label="Add a tag to all selected items"
+            disabled={!!bulkActionLoading}
+            onClick={async () => {
+              const tagName = window.prompt('Add tag to all selected items:')
+              if (!tagName || !tagName.trim()) return
+              try {
+                setBulkActionLoading('tag')
+                let added = 0
+                for (const mid of selectedIds) {
+                  try {
+                    await window.api.invoke('media:addTag', mid, tagName.trim())
+                    added++
+                  } catch { /* skip per-item failures */ }
+                }
+                showToast('success', `Tagged ${added}/${selectedIds.size} items with "${tagName.trim()}"`)
+              } catch (err: any) {
+                showToast('error', err?.message ?? 'Failed to tag items')
+              } finally {
+                setBulkActionLoading(null)
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+          >
+            {bulkActionLoading === 'tag' ? <RefreshCw size={12} className="animate-spin" /> : <Tag size={12} />}
+            <span>Tag</span>
+          </Btn>
+
+          {/* Bulk Delete — soft-delete via media:delete which now writes
+              to media_trash for 30-day recoverable retention (#144). */}
+          <Btn
+            tone="ghost"
+            title="Move all selected items to Trash (recoverable for 30 days)"
+            aria-label="Delete all selected items"
+            disabled={!!bulkActionLoading}
+            onClick={async () => {
+              if (!window.confirm(`Move ${selectedIds.size} item${selectedIds.size === 1 ? '' : 's'} to Trash?\n\nRecoverable for 30 days from Library Tools → Trash.`)) return
+              try {
+                setBulkActionLoading('delete')
+                let deleted = 0
+                for (const mid of selectedIds) {
+                  try {
+                    const r = await window.api.media.delete(mid)
+                    if (r?.success) deleted++
+                  } catch { /* skip per-item failures */ }
+                }
+                showToast('success', `Moved ${deleted}/${selectedIds.size} item${selectedIds.size === 1 ? '' : 's'} to Trash`)
+                setSelectedIds(new Set())
+                setSelectionMode(false)
+              } catch (err: any) {
+                showToast('error', err?.message ?? 'Bulk delete failed')
+              } finally {
+                setBulkActionLoading(null)
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-red-400 hover:text-red-300"
+          >
+            {bulkActionLoading === 'delete' ? <RefreshCw size={12} className="animate-spin" /> : <Trash2 size={12} />}
+          </Btn>
+
           {/* Clear selection */}
           <Btn tone="ghost" title="Clear selection" aria-label="Clear selection" onClick={() => setSelectedIds(new Set())} className="px-2.5 py-1.5 text-xs text-white/60 hover:text-white">
             <X size={12} />
