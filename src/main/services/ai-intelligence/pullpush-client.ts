@@ -37,6 +37,10 @@ export interface PullPushSearchOptions {
   size?: number    // max 500
   /** When set, restricts to over_18 posts only. Default true. */
   over18Only?: boolean
+  /** #108 — author filter. Maps to PullPush's native `author=` param. */
+  author?: string
+  /** #108 — minimum score threshold. PullPush native `score>N`. */
+  minScore?: number
 }
 
 export async function pullpushSearchSubmissions(
@@ -49,6 +53,8 @@ export async function pullpushSearchSubmissions(
   if (opts.before) params.push(`before=${opts.before}`)
   params.push(`size=${Math.max(1, Math.min(500, opts.size ?? 50))}`)
   if (opts.over18Only !== false) params.push('over_18=true')
+  if (opts.author) params.push(`author=${encodeURIComponent(opts.author)}`)
+  if (typeof opts.minScore === 'number') params.push(`score=%3E${opts.minScore}`)  // score>N URL-encoded
   const urlPath = `/reddit/search/submission/?${params.join('&')}`
   return new Promise((resolve) => {
     const req = https.request({

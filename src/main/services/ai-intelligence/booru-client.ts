@@ -715,17 +715,52 @@ async function searchPaheal(tags: string, perPage: number, page: number): Promis
 const _pullpushPageCursors = new Map<string, number>()
 async function searchPullPush(tags: string, perPage: number, page: number): Promise<BooruSearchResult> {
   const { pullpushSearchSubmissions } = await import('./pullpush-client')
-  const trimmed = tags.trim()
-  const cacheKey = trimmed
+  // #108 — parse PullPush-specific advanced filter tokens out of the
+  // free-text query: author:foo / score:>100 / before:YYYY-MM-DD /
+  // after:YYYY-MM-DD / sub:subname. Stripped from the query string
+  // before sending; remaining tokens become the search text.
+  const rawTokens = tags.trim().split(/\s+/).filter(Boolean)
+  const remaining: string[] = []
+  let author: string | undefined
+  let minScore: number | undefined
+  let after: number | undefined
+  let before: number | undefined
+  let subreddit: string | undefined
+  for (const tok of rawTokens) {
+    const lower = tok.toLowerCase()
+    if (lower.startsWith('author:')) { author = tok.slice(7); continue }
+    if (lower.startsWith('sub:') || lower.startsWith('subreddit:')) {
+      subreddit = tok.replace(/^(sub|subreddit):/i, ''); continue
+    }
+    if (lower.startsWith('score:')) {
+      const m = tok.slice(6).match(/^>(\d+)$/)
+      if (m) { minScore = parseInt(m[1], 10); continue }
+    }
+    if (lower.startsWith('after:')) {
+      const ts = Date.parse(tok.slice(6))
+      if (!Number.isNaN(ts)) { after = Math.floor(ts / 1000); continue }
+    }
+    if (lower.startsWith('before:')) {
+      const ts = Date.parse(tok.slice(7))
+      if (!Number.isNaN(ts)) { before = Math.floor(ts / 1000); continue }
+    }
+    remaining.push(tok)
+  }
+  const trimmed = remaining.join(' ').trim()
+  const cacheKey = `${trimmed}|${author ?? ''}|${minScore ?? ''}|${subreddit ?? ''}|${after ?? ''}|${before ?? ''}`
   // Page 0 resets the cursor; subsequent pages use the stored cutoff.
-  let beforeCutoff: number | undefined
+  let beforeCutoff: number | undefined = before
   if (page === 0) {
     _pullpushPageCursors.delete(cacheKey)
   } else {
-    beforeCutoff = _pullpushPageCursors.get(cacheKey)
+    beforeCutoff = _pullpushPageCursors.get(cacheKey) ?? before
   }
   const r = await pullpushSearchSubmissions({
     query: trimmed || undefined,
+    subreddit,
+    author,
+    minScore,
+    after,
     size: Math.min(100, Math.max(10, perPage)),
     before: beforeCutoff,
     over18Only: true,
