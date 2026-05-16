@@ -2644,6 +2644,31 @@ export default function Rule34Page() {
                   {it.label}
                 </button>
               ))}
+              {/* #205 — Native SauceNAO that returns results into the
+                  current Browse grid instead of popping a tab. */}
+              <button
+                type="button"
+                onClick={async () => {
+                  setTileMenu(null)
+                  try {
+                    const r = await (window as any).api?.booru?.saucenaoSearch?.({ imageUrl: imgUrl })
+                    if (r?.ok && Array.isArray(r.posts)) {
+                      setPosts(r.posts)
+                      setHasMore(false)
+                      setPage(0)
+                      setActiveQuery('(SauceNAO match)')
+                      showToast('success', `${r.posts.length} SauceNAO matches`)
+                    } else {
+                      showToast('error', r?.error ?? 'SauceNAO failed')
+                    }
+                  } catch (err: any) {
+                    showToast('error', err?.message ?? 'SauceNAO failed')
+                  }
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-white/5 text-yellow-200 font-medium"
+              >
+                🍢 Find sauce (native)
+              </button>
               <div className="border-t border-[var(--border)] my-1" />
               <button
                 type="button"

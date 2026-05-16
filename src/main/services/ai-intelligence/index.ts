@@ -700,6 +700,68 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
     }
   })
 
+  // #205 — Native SauceNAO lookup. Posts an image URL to the SauceNAO
+  // JSON API + parses results into Vault's Browse result format so
+  // matches show up in the same grid instead of a popped-out tab.
+  // No API key required for ~100 lookups/day; user can paste their
+  // key into settings.ai.saucenaoApiKey to lift the limit.
+  ipcMain.handle('booru:saucenao-search', async (_ev, args: { imageUrl: string }) => {
+    try {
+      const { getSettings } = await import('../../settings')
+      const apiKey = String((getSettings().ai as any)?.saucenaoApiKey ?? '').trim()
+      const params = new URLSearchParams({
+        url: args.imageUrl,
+        output_type: '2',  // JSON
+        numres: '15',
+        db: '999',  // search all indexes
+      })
+      if (apiKey) params.set('api_key', apiKey)
+      const res = await fetch(`https://saucenao.com/search.php?${params.toString()}`, {
+        headers: { 'User-Agent': 'Vault/1.0' },
+      })
+      if (!res.ok) return { ok: false, error: `SauceNAO HTTP ${res.status}` }
+      const data = await res.json() as any
+      if (!Array.isArray(data?.results)) return { ok: false, error: 'No results array' }
+      // Re-shape into Vault's BooruPost-ish structure so the existing
+      // Browse renderer can show them. Each SauceNAO result has
+      // header.{similarity, thumbnail} and data.{ext_urls, source, title, ...}
+      const posts = data.results
+        .filter((r: any) => Array.isArray(r?.data?.ext_urls) && r.data.ext_urls.length > 0)
+        .map((r: any, i: number) => {
+          const similarity = parseFloat(r.header?.similarity ?? '0')
+          const thumb = String(r.header?.thumbnail ?? '')
+          const primaryUrl = String(r.data.ext_urls[0])
+          const title = String(r.data?.title ?? r.data?.material ?? r.data?.source ?? 'SauceNAO match')
+          const author = String(r.data?.author_name ?? r.data?.member_name ?? r.data?.creator ?? '')
+          const tags = [
+            'source:saucenao',
+            ...(author ? [`artist:${author.toLowerCase().replace(/\s+/g, '_')}`] : []),
+            `similarity:${Math.round(similarity)}`,
+          ].join(' ')
+          return {
+            id: 1_000_000 + i,
+            file_url: primaryUrl,
+            preview_url: thumb,
+            sample_url: thumb,
+            tags,
+            rating: 'questionable',
+            score: Math.round(similarity * 10),  // pseudo-score from similarity %
+            source: primaryUrl,
+            source_booru: 'saucenao',
+            width: 0,
+            height: 0,
+            // Re-purpose source_booru title via a friendly title field
+            // the renderer can show in hover-info — using `title` here
+            // is non-standard but harmless to the BooruPost shape.
+            title,
+          }
+        })
+      return { ok: true, posts, hasMore: false, page: 0 }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
   // #119 — Civitai-only: search by model / version ID. Powers the
   // "More from this model / LoRA" action on Civitai lightbox results.
   // Either modelId or modelVersionId required; if both are passed,

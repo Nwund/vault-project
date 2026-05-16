@@ -2590,6 +2590,14 @@ const api = {
       sourceUrl: string
     }>('booru:resolve-url', url),
 
+    /** #205 — Native SauceNAO lookup. Returns results as Browse posts
+     *  so the renderer can display them in the same grid as a normal
+     *  search instead of opening a browser tab. */
+    saucenaoSearch: (args: { imageUrl: string }) =>
+      invoke<{ ok: boolean; posts?: any[]; hasMore?: boolean; page?: number; error?: string }>(
+        'booru:saucenao-search', args
+      ),
+
     /** #119 — Civitai-only: pivot search by model / version ID. Returns
      *  results from the same /api/v1/images endpoint but filtered to a
      *  specific checkpoint or LoRA. Used by the lightbox "More from
