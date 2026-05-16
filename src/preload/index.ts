@@ -541,6 +541,25 @@ const api = {
       invoke<{ ok: boolean; error?: string }>('relationships:delete', id),
     relationshipsInfer: (mediaId: string) =>
       invoke<{ ok: boolean; candidates: any[]; error?: string }>('relationships:infer', mediaId),
+    // #154 — Collections (first-class entities, cover art, ordering)
+    collectionsList: () =>
+      invoke<{ ok: boolean; collections: any[]; error?: string }>('collections:list'),
+    collectionsCreate: (args: { name: string; description?: string; color?: string; parentId?: string }) =>
+      invoke<{ ok: boolean; id?: string; error?: string }>('collections:create', args),
+    collectionsUpdate: (args: { id: string; name?: string; description?: string; color?: string; parentId?: string | null }) =>
+      invoke<{ ok: boolean; error?: string }>('collections:update', args),
+    collectionsReorder: (orderedIds: string[]) =>
+      invoke<{ ok: boolean; error?: string }>('collections:reorder', orderedIds),
+    collectionsDelete: (id: string) =>
+      invoke<{ ok: boolean; error?: string }>('collections:delete', id),
+    collectionsAddMedia: (args: { collectionId: string; mediaIds: string[] }) =>
+      invoke<{ ok: boolean; added?: number; error?: string }>('collections:addMedia', args),
+    collectionsRemoveMedia: (args: { collectionId: string; mediaIds: string[] }) =>
+      invoke<{ ok: boolean; removed?: number; error?: string }>('collections:removeMedia', args),
+    collectionsMembers: (collectionId: string) =>
+      invoke<{ ok: boolean; members: any[]; error?: string }>('collections:members', collectionId),
+    collectionsSetCover: (args: { collectionId: string; sourcePath: string }) =>
+      invoke<{ ok: boolean; coverPath?: string; error?: string }>('collections:setCover', args),
     // Cleanup inappropriate/weird tags
     cleanup: (options?: { patterns?: string[] }) => invoke('tags:cleanup', options),
     // Two-level taxonomy — returns CATEGORY_META plus the tag list +

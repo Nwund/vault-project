@@ -4,6 +4,7 @@
 // ===============================
 import { IpcMain, dialog, shell, BrowserWindow, app } from 'electron'
 import fs from 'node:fs'
+import fsp from 'node:fs/promises'
 import path from 'node:path'
 import type { DB } from './db'
 import { SoundOrganizer } from './services/audio/sound-organizer'
@@ -1002,6 +1003,162 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       return { ok: true, members: rows }
     } catch (err: any) {
       return { ok: false, error: err?.message ?? String(err), members: [] }
+    }
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //   Collections (#154) — first-class entities with custom cover art,
+  //   description, color, ordering. Distinct from playlists (which are
+  //   playback-ordered media sequences).
+  // ─────────────────────────────────────────────────────────────────────────
+
+  ipcMain.handle('collections:list', async () => {
+    try {
+      const rows = db.raw.prepare(`
+        SELECT c.id, c.name, c.description, c.cover_path, c.color, c.position, c.parent_id,
+               c.created_at, c.updated_at,
+               (SELECT COUNT(*) FROM collection_members WHERE collection_id = c.id) AS item_count
+        FROM collections c
+        ORDER BY c.position ASC, c.name ASC
+      `).all() as any[]
+      return { ok: true, collections: rows }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), collections: [] }
+    }
+  })
+
+  ipcMain.handle('collections:create', async (_ev, args: {
+    name: string
+    description?: string
+    color?: string
+    parentId?: string
+  }) => {
+    try {
+      const id = `coll-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const maxPos = (db.raw.prepare(`SELECT COALESCE(MAX(position), 0) + 1 AS p FROM collections`).get() as { p: number }).p
+      db.raw.prepare(`
+        INSERT INTO collections (id, name, description, color, position, parent_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(id, args.name, args.description ?? null, args.color ?? null, maxPos, args.parentId ?? null)
+      broadcast('vault:changed')
+      return { ok: true, id }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('collections:update', async (_ev, args: {
+    id: string
+    name?: string
+    description?: string
+    color?: string
+    parentId?: string | null
+  }) => {
+    try {
+      const sets: string[] = []
+      const params: any[] = []
+      for (const k of ['name', 'description', 'color'] as const) {
+        if (args[k] !== undefined) { sets.push(`${k} = ?`); params.push(args[k]) }
+      }
+      if (args.parentId !== undefined) { sets.push(`parent_id = ?`); params.push(args.parentId) }
+      if (sets.length === 0) return { ok: false, error: 'No fields to update' }
+      sets.push(`updated_at = strftime('%s', 'now')`)
+      params.push(args.id)
+      db.raw.prepare(`UPDATE collections SET ${sets.join(', ')} WHERE id = ?`).run(...params)
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // Reorder collections via drag-drop. Caller sends the full ordered id list.
+  ipcMain.handle('collections:reorder', async (_ev, orderedIds: string[]) => {
+    try {
+      const stmt = db.raw.prepare(`UPDATE collections SET position = ? WHERE id = ?`)
+      db.raw.transaction(() => {
+        for (let i = 0; i < orderedIds.length; i++) stmt.run(i, orderedIds[i])
+      })()
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('collections:delete', async (_ev, id: string) => {
+    try {
+      db.raw.prepare(`DELETE FROM collections WHERE id = ?`).run(id)
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('collections:addMedia', async (_ev, args: { collectionId: string; mediaIds: string[] }) => {
+    try {
+      const maxPosRow = db.raw.prepare(
+        `SELECT COALESCE(MAX(position), 0) AS p FROM collection_members WHERE collection_id = ?`
+      ).get(args.collectionId) as { p: number }
+      let pos = maxPosRow.p
+      const stmt = db.raw.prepare(`
+        INSERT OR IGNORE INTO collection_members (collection_id, media_id, position) VALUES (?, ?, ?)
+      `)
+      db.raw.transaction(() => {
+        for (const mid of args.mediaIds ?? []) stmt.run(args.collectionId, mid, ++pos)
+      })()
+      broadcast('vault:changed')
+      return { ok: true, added: args.mediaIds?.length ?? 0 }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('collections:removeMedia', async (_ev, args: { collectionId: string; mediaIds: string[] }) => {
+    try {
+      const stmt = db.raw.prepare(`DELETE FROM collection_members WHERE collection_id = ? AND media_id = ?`)
+      db.raw.transaction(() => {
+        for (const mid of args.mediaIds ?? []) stmt.run(args.collectionId, mid)
+      })()
+      broadcast('vault:changed')
+      return { ok: true, removed: args.mediaIds?.length ?? 0 }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('collections:members', async (_ev, collectionId: string) => {
+    try {
+      const rows = db.raw.prepare(`
+        SELECT m.id, m.filename, m.thumbPath, m.type, m.durationSec, cm.position
+        FROM collection_members cm
+        JOIN media m ON m.id = cm.media_id
+        WHERE cm.collection_id = ?
+        ORDER BY cm.position ASC
+      `).all(collectionId) as any[]
+      return { ok: true, members: rows }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), members: [] }
+    }
+  })
+
+  // Copy a user-picked image to <userData>/collection-covers/<id>.png
+  // and persist the path on the collection row.
+  ipcMain.handle('collections:setCover', async (_ev, args: { collectionId: string; sourcePath: string }) => {
+    try {
+      if (!fs.existsSync(args.sourcePath)) return { ok: false, error: 'Source image does not exist' }
+      const coversDir = path.join(app.getPath('userData'), 'collection-covers')
+      await fsp.mkdir(coversDir, { recursive: true })
+      const ext = path.extname(args.sourcePath) || '.png'
+      const dest = path.join(coversDir, `${args.collectionId}${ext}`)
+      await fsp.copyFile(args.sourcePath, dest)
+      db.raw.prepare(`UPDATE collections SET cover_path = ?, updated_at = strftime('%s', 'now') WHERE id = ?`)
+        .run(dest, args.collectionId)
+      broadcast('vault:changed')
+      return { ok: true, coverPath: dest }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
     }
   })
 

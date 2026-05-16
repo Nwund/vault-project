@@ -784,6 +784,44 @@ const migrations: Migration[] = [
       `)
       console.log('[Migration v27] Added media_relationships for #156 relationships graph')
     }
+  },
+
+  {
+    id: 28,
+    up: (db) => {
+      // #154 Collections with cover art + ordering. Upgrades the
+      // existing tag-based "collection" concept to first-class
+      // entities with custom posters + manual ordering. Distinct
+      // from playlists (which are sequence-of-media for playback);
+      // collections are albums / box-sets for organization.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS collections (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          cover_path TEXT,
+          color TEXT,
+          position INTEGER NOT NULL DEFAULT 0,
+          parent_id TEXT,
+          created_at REAL NOT NULL DEFAULT (strftime('%s', 'now')),
+          updated_at REAL NOT NULL DEFAULT (strftime('%s', 'now')),
+          FOREIGN KEY (parent_id) REFERENCES collections(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_collections_parent ON collections(parent_id);
+        CREATE INDEX IF NOT EXISTS idx_collections_position ON collections(position);
+
+        CREATE TABLE IF NOT EXISTS collection_members (
+          collection_id TEXT NOT NULL,
+          media_id TEXT NOT NULL,
+          position INTEGER NOT NULL DEFAULT 0,
+          added_at REAL NOT NULL DEFAULT (strftime('%s', 'now')),
+          PRIMARY KEY (collection_id, media_id),
+          FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_collection_members_media ON collection_members(media_id);
+      `)
+      console.log('[Migration v28] Added collections + collection_members for #154')
+    }
   }
 ]
 
