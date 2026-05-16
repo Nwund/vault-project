@@ -456,6 +456,18 @@ const api = {
       invoke<{ ok: boolean; removed?: number; error?: string }>('media:trash:purgeAll'),
     trashAutoPurgeExpired: () =>
       invoke<{ ok: boolean; removed?: number; error?: string }>('media:trash:autoPurgeExpired'),
+    // #197 — Funscript sidecar lookup. Returns ok:false with no error
+    // when the file simply isn't there; ok:true with actions[] when it is.
+    loadFunscript: (mediaId: string) =>
+      invoke<{
+        ok: boolean
+        path?: string
+        version?: string | null
+        inverted?: boolean
+        actionCount?: number
+        actions?: Array<{ at: number; pos: number }>
+        error?: string
+      }>('media:loadFunscript', mediaId),
     // GIF creation from video
     createGif: (options: {
       mediaId: string

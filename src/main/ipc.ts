@@ -944,6 +944,44 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // #197 — Funscript sidecar lookup. Per Funscript convention, the
+  // file lives next to the media as <basename>.funscript with JSON
+  // payload {version, actions: [{at: ms, pos: 0-100}, ...]}. Vault
+  // doesn't ship an editor yet — this is the read path for the
+  // heatmap overlay on the seek bar.
+  ipcMain.handle('media:loadFunscript', async (_ev, mediaId: string) => {
+    try {
+      const media = db.getMedia(mediaId)
+      if (!media) return { ok: false, error: 'Media not found' }
+      const ext = path.extname(media.path)
+      const baseNoExt = media.path.slice(0, media.path.length - ext.length)
+      const candidates = [
+        `${baseNoExt}.funscript`,
+        `${media.path}.funscript`,
+      ]
+      for (const fp of candidates) {
+        try {
+          if (!fs.existsSync(fp)) continue
+          const raw = fs.readFileSync(fp, 'utf8')
+          const parsed = JSON.parse(raw)
+          if (Array.isArray(parsed?.actions)) {
+            return {
+              ok: true,
+              path: fp,
+              version: parsed.version ?? null,
+              inverted: !!parsed.inverted,
+              actionCount: parsed.actions.length,
+              actions: parsed.actions as Array<{ at: number; pos: number }>,
+            }
+          }
+        } catch { /* try next */ }
+      }
+      return { ok: false, error: 'No .funscript sidecar found' }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
   ipcMain.handle('media:randomByTags', async (_ev, tags: string[], opts?: any) => {
     const limit = opts?.limit ?? 50
     const typeFilter = opts?.type ?? 'video' // Default to video for Feed compatibility

@@ -6,6 +6,7 @@ import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from
 import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2, RectangleHorizontal, Crop, Minus, Square, Scissors, Check, Download, Library, Palette, Sliders, Activity, Gauge, Repeat, Wrench, Mic } from 'lucide-react'
 import { RelatedMediaPanel } from './RelatedMediaPanel'
+import { FunscriptHeatmap } from './FunscriptHeatmap'
 import { WatchWithXy } from './WatchWithXy'
 import { MediaNotesPanel } from './MediaNotesPanel'
 import { BookmarksPanel } from './BookmarksPanel'
@@ -2054,7 +2055,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         {media.type === 'video' && duration > 0 && (
           <div
             ref={progressRef}
-            className="w-full h-1.5 bg-white/20 rounded-full mb-3 cursor-pointer group relative"
+            className="w-full h-1.5 bg-white/20 rounded-full mb-3 cursor-pointer group relative overflow-hidden"
             onClick={handleProgressClick}
             onMouseMove={(e) => {
               if (progressRef.current && duration > 0) {
@@ -2076,9 +2077,17 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
               }
             }}
           >
+            {/* #197 — Funscript heatmap. Renders only when a .funscript
+                sidecar exists next to the video; the component returns
+                null otherwise so the seek bar layout is unchanged. */}
+            {duration > 0 && (
+              <div className="absolute inset-0 pointer-events-none opacity-60">
+                <FunscriptHeatmap mediaId={media.id} durationMs={duration * 1000} />
+              </div>
+            )}
             {/* Progress fill */}
             <div
-              className="h-full bg-white/80 rounded-full relative"
+              className="h-full bg-white/80 rounded-full relative z-[1]"
               style={{ width: `${(currentTime / duration) * 100}%` }}
             >
               <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition" />
