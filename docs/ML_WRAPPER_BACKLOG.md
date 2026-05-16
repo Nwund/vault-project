@@ -38,7 +38,7 @@ file header — every wrapper has a `// ACTIVATION:` block.
 | `chromaprint-fingerprint.ts` | Audio fingerprint | functional | Drop `fpcalc.exe` at `resources/bin/`. |
 | `yamnet-classifier.ts` | 521-class audio events | functional | Drop `yamnet.onnx` + `yamnet-class-map.csv`. |
 | `videomae-classifier.ts` | Kinetics-400 actions | functional | Drop `videomae-v2.onnx` + `kinetics-400-labels.txt`. |
-| `transnet-detector.ts` | Shot boundaries (3D-CNN) | **scaffold** | `detectBoundaries()` returns `[]` — fill in once a real `transnet-v2.onnx` is on disk to verify the sliding-window shape. |
+| `transnet-detector.ts` | Shot boundaries (3D-CNN) | functional | Drop `transnet-v2.onnx` at `<userData>/models/`. 100-frame sliding windows with 25-frame edge discard, sigmoid-aware peak picker. Speculative shape `[1, 100, 27, 48, 3]` uint8 — verify against the actual tf2onnx export. |
 | `xclip-tagger.ts` | Zero-shot video tagging | **scaffold** | `classify()` returns `[]` — needs the model file present to validate frame-count + embedding-dim. |
 | `clap-audio-tagger.ts` | Zero-shot audio tagging | **scaffold** | `classify()` returns `[]` — needs the model + a CLIP-style BPE tokenizer for the text branch. |
 | `demucs-separator.ts` | Vocal / drum / bass / other stems | **scaffold** | Python sidecar (no port assigned) — wire up once `settings.ai.demucsPython` is configured. |
