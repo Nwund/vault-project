@@ -3679,6 +3679,21 @@ RULES:
     }
   })
 
+  // Chromaprint / fpcalc status. Surfaces whether fpcalc.exe is
+  // bundled at resources/bin/. When not present, chromaprintFile()
+  // falls through to PATH lookup which may still work but isn't
+  // detectable from here.
+  ipcMain.handle('ai:chromaprint-status', async () => {
+    const { getFpcalcStatus } = await import('./chromaprint-fingerprint')
+    const s = getFpcalcStatus()
+    return {
+      installed: s.installed,
+      bundled: s.bundled,
+      expectedPath: s.path ?? '<resources/bin/fpcalc.exe>',
+      sizeBytes: 0,
+    }
+  })
+
   // F5-TTS sidecar status. Same shape as WhisperX. Used by the voice
   // backend picker to indicate whether settings.ai.xyreneVoiceBackend =
   // 'f5tts' is currently viable.

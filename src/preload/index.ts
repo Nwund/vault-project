@@ -1273,6 +1273,12 @@ const api = {
       inputSize: number
       outputShape: 'softmax-2' | 'sigmoid-1' | 'unknown'
     }>('ai:ai-image-status'),
+    chromaprintStatus: () => invoke<{
+      installed: boolean
+      bundled: boolean
+      expectedPath: string
+      sizeBytes: number
+    }>('ai:chromaprint-status'),
     whisperxStatus: () => invoke<{
       configured: boolean
       scriptExists: boolean

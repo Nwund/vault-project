@@ -51,6 +51,28 @@ function findFpcalc(): string | null {
   return _fpcalcPath
 }
 
+/** Probe for the AiTaggerPage status card. Returns the resolved path
+ *  if fpcalc lives at one of the known bundled locations (definitely
+ *  installed) or just the bare exe name when we'll need to fall through
+ *  to PATH at run time. The two cases are distinguished by `bundled`. */
+export function getFpcalcStatus(): { installed: boolean; bundled: boolean; path: string | null } {
+  const isWin = os.platform() === 'win32'
+  const exe = isWin ? 'fpcalc.exe' : 'fpcalc'
+  const bundledCandidates = [
+    path.join(process.resourcesPath || '', 'bin', exe),
+    path.join(process.cwd(), 'resources', 'bin', exe),
+    path.join(process.cwd(), 'bin', exe),
+  ]
+  for (const c of bundledCandidates) {
+    if (fs.existsSync(c)) {
+      return { installed: true, bundled: true, path: c }
+    }
+  }
+  // We don't synchronously probe PATH; report not-bundled and let the
+  // user know the fall-through behavior via the install hint.
+  return { installed: false, bundled: false, path: null }
+}
+
 /**
  * Compute the Chromaprint fingerprint of an audio (or video-with-
  * audio) file. Returns null if fpcalc is missing or the file has

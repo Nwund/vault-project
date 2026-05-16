@@ -2680,6 +2680,14 @@ export function AiTaggerPage() {
                   installHint="Set settings.ai.f5ttsStartScript to a start.bat that activates the venv + runs server.py. Auto-start at boot via settings.ai.f5ttsAutoStart."
                   onToast={showToast}
                 />
+                <ModelFileCard
+                  title="Chromaprint (fpcalc)"
+                  description="Audio fingerprinting for soundpack dedup + video re-encode detection."
+                  probe={() => window.api.ai.chromaprintStatus?.() ?? Promise.resolve(null) as any}
+                  upstreamUrl="https://acoustid.org/chromaprint"
+                  installHint="Drop fpcalc.exe at resources/bin/. Without it, chromaprintFile() still tries PATH but the status card can't see that."
+                  onToast={showToast}
+                />
               </div>
             </div>
 
