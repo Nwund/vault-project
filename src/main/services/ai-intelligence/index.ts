@@ -920,6 +920,21 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
           if (post?.source_booru) {
             try { db.addTagToMedia(mediaRow.id, `source:${String(post.source_booru).toLowerCase()}`) } catch { /* ignore */ }
           }
+          // User-supplied "extra tags" (#115) — applied to every saved
+          // post when the bulk-save bar's tag pill is filled. Useful for
+          // marking creator searches en masse (artist:foo) without
+          // post-hoc bulk-tag passes.
+          const extraTags = Array.isArray(post?.extraTags)
+            ? (post.extraTags as unknown[]).map((t) => String(t).trim().toLowerCase()).filter(Boolean)
+            : typeof post?.extraTags === 'string'
+              ? String(post.extraTags).split(/[,\s]+/).map((t) => t.trim().toLowerCase()).filter(Boolean)
+              : []
+          for (const tag of extraTags) {
+            try {
+              db.ensureTag(tag)
+              db.addTagToMedia(mediaRow.id, tag)
+            } catch { /* skip per-tag failures */ }
+          }
         }
       } catch (err) {
         console.warn('[booru:download] auto-provenance tags failed:', err)

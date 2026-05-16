@@ -438,6 +438,9 @@ export default function Rule34Page() {
   const [multiSelect, setMultiSelect] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())  // composite "<source>-<id>"
   const [bulkSaving, setBulkSaving] = useState(false)
+  // #115 — user-supplied tags applied to every selected item on bulk-save.
+  // Comma- or space-separated; lowercased + trimmed at save time.
+  const [bulkExtraTags, setBulkExtraTags] = useState('')
   // Hidden-for-session set — Esc menu's "Hide this post" stashes a
   // post's composite id here so subsequent renders / paginations skip it.
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set())
@@ -2490,6 +2493,17 @@ export default function Rule34Page() {
           <span className="text-sm font-medium text-white tabular-nums">
             {selectedIds.size} selected
           </span>
+          {/* #115 — Apply tags to all on save. Comma- or space-separated.
+              Forwarded as `extraTags` on each booru:download-to-library
+              call; backend normalizes + ensureTag's each before adding. */}
+          <input
+            type="text"
+            value={bulkExtraTags}
+            onChange={(e) => setBulkExtraTags(e.target.value)}
+            placeholder="Extra tags (artist:foo …)"
+            className="px-2 py-1 rounded text-[11px] bg-white/5 border border-white/10 focus:outline-none focus:border-[var(--primary)] w-44 placeholder:text-[var(--muted)]/70"
+            title="Optional. Tag(s) added to every selected post on save. Comma or space separated."
+          />
           <button
             type="button"
             onClick={async () => {
@@ -2507,7 +2521,12 @@ export default function Rule34Page() {
                     continue
                   }
                   try {
-                    const r = await (window as any).api?.booru?.downloadToLibrary?.({ ...post, targetDir: saveTargetDir || undefined, filenameTemplate: filenameTemplate || undefined })
+                    const r = await (window as any).api?.booru?.downloadToLibrary?.({
+                      ...post,
+                      targetDir: saveTargetDir || undefined,
+                      filenameTemplate: filenameTemplate || undefined,
+                      extraTags: bulkExtraTags.trim() || undefined,
+                    })
                     if (r?.ok) {
                       ok++
                       setDownloaded((prev) => { const next = new Set(prev); next.add(post.id); return next })
