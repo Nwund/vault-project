@@ -394,6 +394,19 @@ export interface AISettings {
   // tier1-onnx-tagger.ts for the file-name → model mapping.
   // Switch takes effect on next Tier 1 init (e.g., after restart).
   wdTaggerVariant?: 'swinv2' | 'vit' | 'pixai' | 'joytag' | 'idolsankaku'
+  // Multi-tagger mode — when this array is non-empty, EVERY listed
+  // variant is loaded and run on every frame. Tag confidences are
+  // averaged across variants that agree, with a +10% boost on
+  // consensus (2+ variants emitting the same tag). The single
+  // `wdTaggerVariant` above acts as the primary; this list is the
+  // ENSEMBLE of additional opinion-givers. Each variant adds ~500-
+  // 1500 MB of VRAM/RAM and ~50-200ms of inference per frame.
+  // Recommended combos:
+  //   ['joytag']                       — second opinion on photographic NSFW
+  //   ['joytag', 'idolsankaku']        — full coverage of WD's blind spots
+  //   ['pixai']                        — adds named-character recognition
+  // Empty / undefined = single-tagger mode (existing behavior).
+  wdTaggerVariants?: Array<'swinv2' | 'vit' | 'pixai' | 'joytag' | 'idolsankaku'>
   /** Probability threshold for the deepfake (face-level) detector to
    *  emit a `deepfake` / `ai-generated` tag prior. Default 0.75.
    *  Higher = fewer tags but more precision. Clamped 0..1. */

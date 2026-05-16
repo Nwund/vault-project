@@ -242,10 +242,15 @@ export class Tier1OnnxTagger {
   // NSFWJS
   private nsfwSession: any = null
   private nsfwInputName: string = 'input'
-  // WD Tagger
+  // WD Tagger (primary)
   private taggerSession: any = null
   private taggerInputName: string = 'input'
   private tagLabels: string[] = []
+  // WD Tagger ensemble — populated only when settings.ai.wdTaggerVariants
+  // is non-empty. Each entry adds another model that's run alongside the
+  // primary on every frame; results are merged with consensus boost.
+  // Keyed by variant id ('swinv2' | 'vit' | 'pixai' | 'joytag' | 'idolsankaku').
+  private extraTaggers: Map<string, { session: any; inputName: string; labels: string[] }> = new Map()
   // NudeNet
   private nudenetSession: any = null
   private nudenetInputName: string = 'input'
@@ -335,14 +340,50 @@ export class Tier1OnnxTagger {
       else if (fs.existsSync(joytagPath)) taggerPath = joytagPath
       else if (fs.existsSync(pixaiPath)) taggerPath = pixaiPath
       else taggerPath = idolPath
+      let primaryVariantId = 'swinv2'
       if (fs.existsSync(taggerPath)) {
         this.taggerSession = await ort.InferenceSession.create(taggerPath, sessionOptions)
         this.taggerInputName = this.taggerSession.inputNames[0] || 'input'
-        const variantLabel = taggerPath === pixaiPath ? 'pixai'
+        primaryVariantId = taggerPath === pixaiPath ? 'pixai'
           : taggerPath === joytagPath ? 'joytag'
           : taggerPath === idolPath ? 'idolsankaku'
           : taggerPath === vitPath ? 'vit' : 'swinv2'
-        console.log(`[Tier1] WD Tagger loaded — variant: ${variantLabel} (input: ${this.taggerInputName})`)
+        console.log(`[Tier1] WD Tagger loaded — variant: ${primaryVariantId} (input: ${this.taggerInputName})`)
+      }
+
+      // Multi-tagger ensemble — load any additional variants listed in
+      // settings.ai.wdTaggerVariants. Skip the primary (already loaded)
+      // and any model that isn't on disk. Each adds ~500-1500 MB of
+      // RAM and ~50-200ms of per-frame inference.
+      let ensembleVariants: string[] = []
+      try {
+        const { getSettings } = await import('../../settings')
+        const v = (getSettings().ai as any)?.wdTaggerVariants
+        if (Array.isArray(v)) ensembleVariants = v.map((s: string) => s.toLowerCase())
+      } catch { /* default empty */ }
+      const variantPathMap: Record<string, string> = {
+        swinv2: swinPath,
+        vit: vitPath,
+        pixai: pixaiPath,
+        joytag: joytagPath,
+        idolsankaku: idolPath,
+      }
+      for (const vid of ensembleVariants) {
+        if (vid === primaryVariantId) continue  // primary already loaded
+        const p = variantPathMap[vid]
+        if (!p || !fs.existsSync(p)) {
+          console.warn(`[Tier1] Ensemble variant '${vid}' requested but model file not found at ${p ?? '(unknown path)'}`)
+          continue
+        }
+        try {
+          const session = await ort.InferenceSession.create(p, sessionOptions)
+          const inputName = session.inputNames[0] || 'input'
+          const labels = await this.modelDownloader.getTagLabels(vid)
+          this.extraTaggers.set(vid, { session, inputName, labels })
+          console.log(`[Tier1] Ensemble: loaded '${vid}' (input: ${inputName}, ${labels.length} labels)`)
+        } catch (err) {
+          console.warn(`[Tier1] Ensemble: failed to load '${vid}':`, err)
+        }
       }
 
       // Load NudeNet classifier
@@ -419,13 +460,37 @@ export class Tier1OnnxTagger {
         result.nsfw = nsfwResult
       }
 
-      // Run WD Tagger
+      // Run WD Tagger (primary). When the ensemble Map is non-empty,
+      // also run each extra variant on the same preprocessed frame and
+      // merge predictions with consensus boost (+10% for 2-variant
+      // agreement, +20% for 3+). Pre-processing is shared since all
+      // variants take the same 448×448 RGB float32 input.
       if (this.taggerSession && this.tagLabels.length > 0) {
         const taggerInput = await this.preprocessForTagger(framePath)
         const feeds: Record<string, any> = {}
         feeds[this.taggerInputName] = taggerInput
         const taggerOutput = await this.taggerSession.run(feeds)
-        result.tags = this.parseTaggerOutput(taggerOutput)
+        const primaryTags = this.parseTaggerOutput(taggerOutput)
+
+        if (this.extraTaggers.size === 0) {
+          result.tags = primaryTags
+        } else {
+          // Run each ensemble variant in parallel — they're independent.
+          const ensembleResults = await Promise.all(
+            Array.from(this.extraTaggers.entries()).map(async ([vid, t]) => {
+              try {
+                const extraFeeds: Record<string, any> = {}
+                extraFeeds[t.inputName] = taggerInput
+                const out = await t.session.run(extraFeeds)
+                return this.parseTaggerOutputWithLabels(out, t.labels)
+              } catch (err) {
+                console.warn(`[Tier1] Ensemble variant '${vid}' inference failed:`, err)
+                return [] as Array<{ label: string; confidence: number }>
+              }
+            })
+          )
+          result.tags = this.mergeEnsembleTags([primaryTags, ...ensembleResults])
+        }
       }
 
       // Run NudeNet
@@ -783,25 +848,63 @@ export class Tier1OnnxTagger {
   }
 
   /**
-   * Parse WD Tagger output
+   * Parse WD Tagger output using the primary tagger's label list.
+   * Wrapper kept for backward compat with single-tagger callers.
    */
   private parseTaggerOutput(output: any): Array<{ label: string; confidence: number }> {
+    return this.parseTaggerOutputWithLabels(output, this.tagLabels)
+  }
+
+  /**
+   * Variant-aware parse — used by the multi-tagger ensemble. Each
+   * extra tagger has its own label vocabulary (joytag's 200k tags
+   * differ entirely from WD's 7k), so we can't share the primary's
+   * tagLabels for them.
+   */
+  private parseTaggerOutputWithLabels(output: any, labels: string[]): Array<{ label: string; confidence: number }> {
     const outputTensor = Object.values(output)[0] as any
     const scores = outputTensor.data as Float32Array
-
     const results: Array<{ label: string; confidence: number }> = []
     const threshold = 0.35
-
-    for (let i = 0; i < scores.length && i < this.tagLabels.length; i++) {
+    for (let i = 0; i < scores.length && i < labels.length; i++) {
       if (scores[i] >= threshold) {
-        results.push({
-          label: this.tagLabels[i],
-          confidence: scores[i]
-        })
+        results.push({ label: labels[i], confidence: scores[i] })
       }
     }
-
     return results.sort((a, b) => b.confidence - a.confidence)
+  }
+
+  /**
+   * Merge tag predictions from multiple tagger variants. Tags emitted
+   * by 2+ variants get a +10% confidence boost (capped at 1.0). For
+   * tags appearing in N variants, we average their confidences then
+   * apply the consensus multiplier. Single-variant tags pass through
+   * with their original confidence — they're still useful (joytag has
+   * NSFW vocab WD prunes; pixai has named characters WD doesn't know).
+   */
+  private mergeEnsembleTags(
+    tagsByVariant: Array<Array<{ label: string; confidence: number }>>
+  ): Array<{ label: string; confidence: number }> {
+    const merged = new Map<string, { confidences: number[]; canonicalLabel: string }>()
+    for (const variantTags of tagsByVariant) {
+      for (const t of variantTags) {
+        const key = t.label.toLowerCase()
+        const entry = merged.get(key)
+        if (entry) {
+          entry.confidences.push(t.confidence)
+        } else {
+          merged.set(key, { confidences: [t.confidence], canonicalLabel: t.label })
+        }
+      }
+    }
+    const out: Array<{ label: string; confidence: number }> = []
+    for (const { confidences, canonicalLabel } of merged.values()) {
+      const avg = confidences.reduce((a, b) => a + b, 0) / confidences.length
+      // +10% for 2-variant consensus, +20% for 3+, capped at 1.0.
+      const multiplier = confidences.length >= 3 ? 1.20 : confidences.length >= 2 ? 1.10 : 1.0
+      out.push({ label: canonicalLabel, confidence: Math.min(1.0, avg * multiplier) })
+    }
+    return out.sort((a, b) => b.confidence - a.confidence)
   }
 
   /**
