@@ -4772,12 +4772,16 @@ RULES:
     return { installed, expectedPath, sizeBytes }
   })
 
-  // One-click NudeNet installer. 'nano' = 320n.onnx (~3 MB), 'medium' =
-  // 640m.onnx (~14 MB). Both from the notAI-tech/NudeNet v3 release.
+  // One-click NudeNet installer. 'nano' = 320n.onnx (~12 MB),
+  // 'medium' = 640m.onnx (~103 MB). Pulled from the notAI-tech/NudeNet
+  // v3.4-weights release. Uses the GitHub API asset endpoint with
+  // Accept: application/octet-stream — the bare /releases/download/...
+  // URL hits anti-abuse and 302s to a login page. Asset IDs are
+  // pinned per release.
   // Idempotent: skips when the target file already exists and is >100 KB.
   ipcMain.handle('ai:nudenet-download', async (_ev, opts?: { variant?: 'nano' | 'medium' }) => {
     const variant = opts?.variant === 'medium' ? 'medium' : 'nano'
-    const sourceFile = variant === 'medium' ? '640m.onnx' : '320n.onnx'
+    const assetId = variant === 'medium' ? 176832019 : 176831997
     const target = path.join(app.getPath('userData'), 'models', 'nudenet-detector.onnx')
     try {
       const dir = path.dirname(target)
@@ -4788,13 +4792,14 @@ RULES:
           return { ok: true, alreadyPresent: true, sizeBytes: stat.size, path: target }
         }
       }
-      // The notAI-tech/NudeNet repo hosts the models under
-      // /docs/assets/, mirrored at the raw GitHub URL.
-      const url = `https://raw.githubusercontent.com/notAI-tech/NudeNet/v3.4.2/docs/assets/${sourceFile}`
-      const res = await fetch(url)
-      if (!res.ok) return { ok: false, error: `HTTP ${res.status} from ${url}` }
+      const url = `https://api.github.com/repos/notAI-tech/NudeNet/releases/assets/${assetId}`
+      const res = await fetch(url, {
+        headers: { Accept: 'application/octet-stream' },
+        redirect: 'follow',
+      })
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status} from API asset ${assetId}` }
       const buf = Buffer.from(await res.arrayBuffer())
-      if (buf.length < 100_000) return { ok: false, error: `download too small: ${buf.length} bytes` }
+      if (buf.length < 100_000) return { ok: false, error: `download too small: ${buf.length} bytes (got HTML?)` }
       await fsp.writeFile(target, buf)
       return { ok: true, alreadyPresent: false, sizeBytes: buf.length, path: target, variant }
     } catch (err: any) {

@@ -2262,7 +2262,7 @@ export function AiTaggerPage() {
                       }}
                       className="text-[11px] px-2 py-0.5 rounded bg-[var(--primary)] hover:opacity-90 text-white transition"
                     >
-                      Nano (~3 MB)
+                      Nano (~12 MB)
                     </button>
                     <button
                       onClick={async () => {
@@ -2277,7 +2277,7 @@ export function AiTaggerPage() {
                       }}
                       className="text-[11px] px-2 py-0.5 rounded bg-[var(--primary)] hover:opacity-90 text-white transition"
                     >
-                      Medium (~14 MB)
+                      Medium (~103 MB)
                     </button>
                   </div>
                   <div>
