@@ -2173,6 +2173,16 @@ const api = {
       }>('backup:restic-snapshot', args),
     resticSnapshots: () =>
       invoke<{ ok: boolean; snapshots: Array<any>; error?: string }>('backup:restic-snapshots'),
+    /** #185 — Home Assistant MQTT integration. Vault publishes as a
+     *  media_player entity via MQTT auto-discovery; HA can automate
+     *  around the state + send back commands (play/pause/stop/etc). */
+    haStart: (args: { brokerUrl: string; username?: string; password?: string }) =>
+      invoke<{ ok: boolean; error?: string }>('homeassistant:start', args),
+    haStop: () => invoke<{ ok: boolean; error?: string }>('homeassistant:stop'),
+    haPublishState: (state: 'playing' | 'paused' | 'idle' | 'off') =>
+      invoke<{ ok: boolean; error?: string }>('homeassistant:publishState', state),
+    haStatus: () => invoke<{ connected: boolean }>('homeassistant:status'),
+
     /** #187 — Synology File Station auth + upload primitives. Two-way
      *  sync + change detection is a follow-on; this surface ships the
      *  primitives so user-level scripts / future cron jobs can compose. */

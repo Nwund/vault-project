@@ -9810,6 +9810,60 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   let cloudflaredUrl: string | null = null
 
   // ─────────────────────────────────────────────────────────────────────────
+  //   Home Assistant MQTT integration (#185) — Vault publishes as a
+  //   media_player entity via MQTT auto-discovery. HA-side users can
+  //   automate around play/pause/idle state + send commands back.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  ipcMain.handle('homeassistant:start', async (_ev, args: { brokerUrl: string; username?: string; password?: string }) => {
+    try {
+      const { startHaMqtt } = await import('./services/home-assistant-mqtt')
+      return await startHaMqtt({
+        ...args,
+        onCommand: (cmd) => {
+          try {
+            const win = BrowserWindow.getAllWindows()[0]
+            win?.webContents.send('homeassistant:command', cmd)
+          } catch (err) {
+            console.warn('[HA-MQTT] forward to renderer failed:', err)
+          }
+        },
+      })
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('homeassistant:stop', async () => {
+    try {
+      const { stopHaMqtt } = await import('./services/home-assistant-mqtt')
+      await stopHaMqtt()
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('homeassistant:publishState', async (_ev, state: 'playing' | 'paused' | 'idle' | 'off') => {
+    try {
+      const { publishHaState } = await import('./services/home-assistant-mqtt')
+      publishHaState(state)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('homeassistant:status', async () => {
+    try {
+      const { isHaMqttConnected } = await import('./services/home-assistant-mqtt')
+      return { connected: isHaMqttConnected() }
+    } catch {
+      return { connected: false }
+    }
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
   //   Synology File Station integration (#187) — one-way push to a
   //   user-configured NAS folder. Auth via DSM credentials in
   //   settings.backup.synology* keys. Two-way sync + change-detection

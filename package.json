@@ -70,6 +70,7 @@
     "lucide-react": "^0.516.0",
     "masonic": "^4.1.0",
     "motion": "^12.38.0",
+    "mqtt": "^5.15.1",
     "nanoid": "^5.0.9",
     "onnxruntime-node": "^1.24.1",
     "photoswipe": "^5.4.4",
