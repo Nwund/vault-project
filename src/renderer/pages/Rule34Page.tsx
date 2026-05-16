@@ -385,6 +385,11 @@ export default function Rule34Page() {
   // search returns. Boorus return mixed image / GIF / video posts;
   // tubes return only embeds.
   const [mediaFilter, setMediaFilter] = useState<'all' | 'image' | 'gif' | 'video' | 'tube'>('all')
+  // #112 — When on, collapse duplicate posts across sources (same md5)
+  // into a single tile showing all matched source badges. Lets users
+  // see "this exact image is on e621 + Danbooru + Gelbooru" instead of
+  // 3 identical tiles in a row.
+  const [mergeBySharedHash, setMergeBySharedHash] = useState(false)
   const [sortBy, setSortBy] = useState<'default' | 'score' | 'newest'>('default')
   const [posts, setPosts] = useState<BooruPost[]>([])
   const [loading, setLoading] = useState(false)
@@ -1335,6 +1340,18 @@ export default function Rule34Page() {
                   Only direct-saveable
                 </span>
               </label>
+              {/* #112 — Cross-source merge toggle */}
+              <label className="inline-flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={mergeBySharedHash}
+                  onChange={(e) => setMergeBySharedHash(e.target.checked)}
+                  className="accent-[var(--primary)] cursor-pointer"
+                />
+                <span className={cn(mergeBySharedHash ? 'text-white' : 'text-[var(--muted)]')}>
+                  Merge duplicates
+                </span>
+              </label>
               <span className="ml-2 font-medium text-white/80">Layout:</span>
               <div className="flex items-center gap-1 bg-black/20 rounded-md p-0.5 border border-[var(--border)]">
                 {([
@@ -2178,6 +2195,34 @@ export default function Rule34Page() {
           const sorted = sortBy === 'default' ? filtered
             : sortBy === 'score' ? [...filtered].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
             : [...filtered].sort((a, b) => (b.id ?? 0) - (a.id ?? 0))
+
+          // #112 — Cross-source merge. When mergeBySharedHash is on,
+          // collapse posts with the same md5 hash into a single tile
+          // and stash the secondary source names on each kept post for
+          // badge rendering.
+          const mergedSorted = (() => {
+            if (!mergeBySharedHash) return sorted
+            const byHash = new Map<string, BooruPost[]>()
+            const noHash: BooruPost[] = []
+            for (const p of sorted) {
+              const h = String((p as any).hash ?? '').toLowerCase()
+              if (h && h.length >= 16) {
+                const list = byHash.get(h) ?? []
+                list.push(p)
+                byHash.set(h, list)
+              } else {
+                noHash.push(p)
+              }
+            }
+            const out: BooruPost[] = []
+            for (const list of byHash.values()) {
+              const primary = list.find(p => (p.score ?? 0) >= Math.max(...list.map(x => x.score ?? 0))) ?? list[0]
+              ;(primary as any).mergedSources = list.map(p => p.source_booru ?? 'unknown')
+              out.push(primary)
+            }
+            return [...out, ...noHash]
+          })()
+
           // Per-page score quartiles for visual ranking. Sorted ascending
           // so p90 = scores[90% index]. Cheap; runs once per render.
           const scores = filtered.map((p) => p.score ?? 0).sort((a, b) => a - b)
@@ -2236,7 +2281,7 @@ export default function Rule34Page() {
               layoutSize === 'large'     ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4' :
               /* comfortable */            'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3'
             )}>
-              {sorted.map((post) => {
+              {mergedSorted.map((post) => {
                 const isDownloaded = downloaded.has(post.id)
                 const isDownloading = downloading.has(post.id)
                 const tier = scoreTier(post.score ?? 0)
@@ -2450,6 +2495,14 @@ export default function Rule34Page() {
                         <div className="text-[9px] text-[var(--primary)]/70 truncate inline-flex items-center gap-1" title={`From ${post.source_booru}`}>
                           <span aria-hidden="true">{SOURCE_ICONS[post.source_booru] ?? '🌐'}</span>
                           {post.source_booru}
+                          {/* #112 — Merged-source pile. When the tile
+                              represents a cross-source duplicate, surface
+                              the other sources as smaller icon chips. */}
+                          {Array.isArray((post as any).mergedSources) && (post as any).mergedSources.length > 1 && (
+                            <span className="ml-1 inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[9px]" title={`Also on: ${(post as any).mergedSources.filter((s: string) => s !== post.source_booru).join(', ')}`}>
+                              +{((post as any).mergedSources.length - 1)} more
+                            </span>
+                          )}
                         </div>
                       )}
                       <button
