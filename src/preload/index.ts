@@ -2156,6 +2156,15 @@ const api = {
       }>('backup:restic-snapshot', args),
     resticSnapshots: () =>
       invoke<{ ok: boolean; snapshots: Array<any>; error?: string }>('backup:restic-snapshots'),
+    /** #183 — Chromecast sender. Discovers via mDNS, casts via the
+     *  Default Media Receiver. Pairs with the existing DLNA service. */
+    chromecastDiscover: () =>
+      invoke<{ ok: boolean; devices: Array<{ name: string; host: string }>; error?: string }>('chromecast:discover'),
+    chromecastCast: (args: { deviceName: string; mediaUrl: string; title?: string; contentType?: string }) =>
+      invoke<{ ok: boolean; error?: string }>('chromecast:cast', args),
+    chromecastControl: (args: { deviceName: string; action: 'pause' | 'resume' | 'stop' | 'seek'; seekSeconds?: number }) =>
+      invoke<{ ok: boolean; error?: string }>('chromecast:control', args),
+
     /** #186 — Panic webhook: HTTP POST listener for Frigate / Home
      *  Assistant / any source. On hit, broadcasts 'system:panic' to
      *  the renderer. Optional X-Vault-Secret header for auth. */

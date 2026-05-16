@@ -9750,6 +9750,48 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   let cloudflaredProc: import('node:child_process').ChildProcess | null = null
   let cloudflaredUrl: string | null = null
 
+  // ─────────────────────────────────────────────────────────────────────────
+  //   Chromecast sender (#183) — discover Chromecast devices on the
+  //   LAN via mDNS, push current media via the Default Media Receiver.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  ipcMain.handle('chromecast:discover', async () => {
+    try {
+      const { discoverChromecasts } = await import('./services/chromecast-sender')
+      const list = await discoverChromecasts()
+      return { ok: true, devices: list }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), devices: [] }
+    }
+  })
+
+  ipcMain.handle('chromecast:cast', async (_ev, args: {
+    deviceName: string
+    mediaUrl: string
+    title?: string
+    contentType?: string
+  }) => {
+    try {
+      const { castToChromecast } = await import('./services/chromecast-sender')
+      return await castToChromecast(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('chromecast:control', async (_ev, args: {
+    deviceName: string
+    action: 'pause' | 'resume' | 'stop' | 'seek'
+    seekSeconds?: number
+  }) => {
+    try {
+      const { chromecastControl } = await import('./services/chromecast-sender')
+      return await chromecastControl(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
   ipcMain.handle('network:cloudflare-tunnel-start', async (_ev, args?: { port?: number }) => {
     const port = args?.port ?? mobileSyncService.getStatus().port ?? 8765
     if (cloudflaredProc && !cloudflaredProc.killed) {
