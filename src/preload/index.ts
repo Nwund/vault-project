@@ -528,6 +528,19 @@ const api = {
       invoke<{ ok: boolean; error?: string }>('stacks:remove', mediaId),
     stacksMembers: (stackId: string) =>
       invoke<{ ok: boolean; members: any[]; error?: string }>('stacks:members', stackId),
+    // #156 — Relationships graph: user-drawn or inferred links between media
+    relationshipsList: (mediaId: string) =>
+      invoke<{ ok: boolean; outgoing: any[]; incoming: any[]; error?: string }>('relationships:list', mediaId),
+    relationshipsCreate: (args: {
+      sourceId: string
+      targetId: string
+      kind: 'parent' | 'child' | 'alternate' | 'companion'
+      notes?: string
+    }) => invoke<{ ok: boolean; id?: string; error?: string }>('relationships:create', args),
+    relationshipsDelete: (id: string) =>
+      invoke<{ ok: boolean; error?: string }>('relationships:delete', id),
+    relationshipsInfer: (mediaId: string) =>
+      invoke<{ ok: boolean; candidates: any[]; error?: string }>('relationships:infer', mediaId),
     // Cleanup inappropriate/weird tags
     cleanup: (options?: { patterns?: string[] }) => invoke('tags:cleanup', options),
     // Two-level taxonomy — returns CATEGORY_META plus the tag list +

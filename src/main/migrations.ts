@@ -753,6 +753,37 @@ const migrations: Migration[] = [
       db.exec(`CREATE INDEX IF NOT EXISTS idx_media_stack_id ON media(stack_id);`)
       console.log('[Migration v26] Added media.stack_id + stack_role for #155 stacks')
     }
+  },
+
+  {
+    id: 27,
+    up: (db) => {
+      // #156 Relationships graph — explicit parent/child/alt links
+      // between media items. Distinct from #155 stacks (which group
+      // versions of the same clip) — relationships connect DIFFERENT
+      // clips that happen to be related (e.g. scenes from the same
+      // shoot, paired performer roles, sequel-to).
+      //
+      // kind values:
+      //   'parent'      — target is the parent of source
+      //   'child'       — target is the child / derivative of source
+      //   'alternate'   — source ↔ target are alternate cuts of same
+      //   'companion'   — paired (e.g. POV view of the same scene)
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS media_relationships (
+          id TEXT PRIMARY KEY,
+          source_id TEXT NOT NULL,
+          target_id TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          notes TEXT,
+          created_at REAL NOT NULL DEFAULT (strftime('%s', 'now')),
+          UNIQUE(source_id, target_id, kind)
+        );
+        CREATE INDEX IF NOT EXISTS idx_relationships_source ON media_relationships(source_id);
+        CREATE INDEX IF NOT EXISTS idx_relationships_target ON media_relationships(target_id);
+      `)
+      console.log('[Migration v27] Added media_relationships for #156 relationships graph')
+    }
   }
 ]
 

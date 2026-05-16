@@ -1005,6 +1005,109 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // ─────────────────────────────────────────────────────────────────────────
+  //   Relationships graph (#156) — user-drawn or inferred parent/
+  //   child/alt/companion links between distinct media items.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  ipcMain.handle('relationships:list', async (_ev, mediaId: string) => {
+    try {
+      const outgoing = db.raw.prepare(`
+        SELECT r.id, r.source_id, r.target_id, r.kind, r.notes, r.created_at,
+               m.filename AS target_filename, m.thumbPath AS target_thumb, m.type AS target_type
+        FROM media_relationships r
+        JOIN media m ON m.id = r.target_id
+        WHERE r.source_id = ?
+        ORDER BY r.created_at DESC
+      `).all(mediaId) as any[]
+      const incoming = db.raw.prepare(`
+        SELECT r.id, r.source_id, r.target_id, r.kind, r.notes, r.created_at,
+               m.filename AS source_filename, m.thumbPath AS source_thumb, m.type AS source_type
+        FROM media_relationships r
+        JOIN media m ON m.id = r.source_id
+        WHERE r.target_id = ?
+        ORDER BY r.created_at DESC
+      `).all(mediaId) as any[]
+      return { ok: true, outgoing, incoming }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), outgoing: [], incoming: [] }
+    }
+  })
+
+  ipcMain.handle('relationships:create', async (_ev, args: {
+    sourceId: string
+    targetId: string
+    kind: 'parent' | 'child' | 'alternate' | 'companion'
+    notes?: string
+  }) => {
+    try {
+      if (!args.sourceId || !args.targetId || args.sourceId === args.targetId) {
+        return { ok: false, error: 'sourceId/targetId required + must differ' }
+      }
+      const id = `rel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      db.raw.prepare(`
+        INSERT OR IGNORE INTO media_relationships (id, source_id, target_id, kind, notes)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(id, args.sourceId, args.targetId, args.kind, args.notes ?? null)
+      broadcast('vault:changed')
+      return { ok: true, id }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('relationships:delete', async (_ev, id: string) => {
+    try {
+      db.raw.prepare(`DELETE FROM media_relationships WHERE id = ?`).run(id)
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  /**
+   * Auto-suggest related media for a given mediaId, based on:
+   *   - shared performer:* tags
+   *   - duration within ±10% (for videos)
+   * Returns candidates the user can promote to real relationships.
+   */
+  ipcMain.handle('relationships:infer', async (_ev, mediaId: string) => {
+    try {
+      const me = db.getMedia(mediaId)
+      if (!me) return { ok: false, error: 'Media not found', candidates: [] }
+      const myTags = db.listMediaTags(mediaId).map(t => t.name.toLowerCase())
+      const performerTags = myTags.filter(t => t.startsWith('performer:') || t.startsWith('artist:'))
+      if (performerTags.length === 0 && !me.durationSec) {
+        return { ok: true, candidates: [] }
+      }
+      const placeholders = performerTags.map(() => '?').join(',') || "''"
+      // Pull every other media that shares ≥1 performer/artist tag
+      const tagMatches = performerTags.length > 0 ? db.raw.prepare(`
+        SELECT m.id, m.filename, m.thumbPath, m.type, m.durationSec, COUNT(DISTINCT t.name) AS shared
+        FROM media m
+        JOIN media_tags mt ON mt.mediaId = m.id
+        JOIN tags t ON t.id = mt.tagId
+        WHERE m.id != ? AND t.name IN (${placeholders})
+        GROUP BY m.id
+        ORDER BY shared DESC
+        LIMIT 50
+      `).all(mediaId, ...performerTags) as any[] : []
+      // Re-rank by duration proximity if me.durationSec is set
+      const out = tagMatches.map(t => {
+        let durScore = 0
+        if (me.durationSec && t.durationSec) {
+          const ratio = Math.min(me.durationSec, t.durationSec) / Math.max(me.durationSec, t.durationSec)
+          durScore = Math.max(0, (ratio - 0.9) * 10)  // 0 at 90% ratio, 1 at exact match
+        }
+        return { ...t, score: (t.shared as number) + durScore }
+      }).sort((a, b) => b.score - a.score)
+      return { ok: true, candidates: out.slice(0, 20) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), candidates: [] }
+    }
+  })
+
   // #197 — Funscript sidecar lookup. Per Funscript convention, the
   // file lives next to the media as <basename>.funscript with JSON
   // payload {version, actions: [{at: ms, pos: 0-100}, ...]}. Vault
