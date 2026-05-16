@@ -63,6 +63,39 @@ function loadRapidApiXnxxHostFromDevEnv(): string | null {
   return loadDevEnvKey('RAPIDAPI_XNXX_HOST')
 }
 
+// Danbooru — Basic auth, needs username + API key.
+function loadDanbooruUsernameFromDevEnv(): string | null {
+  return loadDevEnvKey('DANBOORU_USERNAME')
+}
+function loadDanbooruKeyFromDevEnv(): string | null {
+  return loadDevEnvKey('DANBOORU_API_KEY')
+}
+
+// AIBooru — separate Danbooru-software install, separate account.
+function loadAibooruUsernameFromDevEnv(): string | null {
+  return loadDevEnvKey('AIBOORU_USERNAME')
+}
+function loadAibooruKeyFromDevEnv(): string | null {
+  return loadDevEnvKey('AIBOORU_API_KEY')
+}
+
+// Gelbooru — URL-param auth, key + numeric user_id.
+function loadGelbooruKeyFromDevEnv(): string | null {
+  return loadDevEnvKey('GELBOORU_API_KEY')
+}
+function loadGelbooruUserIdFromDevEnv(): string | null {
+  return loadDevEnvKey('GELBOORU_USER_ID')
+}
+
+// Bluesky — handle + app password. Used for authenticated NSFW
+// search on the AT Protocol API.
+function loadBlueskyHandleFromDevEnv(): string | null {
+  return loadDevEnvKey('BLUESKY_HANDLE')
+}
+function loadBlueskyAppPasswordFromDevEnv(): string | null {
+  return loadDevEnvKey('BLUESKY_APP_PASSWORD')
+}
+
 /** Generic "look up a key by name across all well-known env stores".
  *  Search order (first non-empty wins):
  *    1. process.env (CI / explicit override)
@@ -134,6 +167,18 @@ export function initializeAiIntelligence(
     tier3Matcher,
     mainWindow
   )
+  // Boot-time orphan purge — drops queue rows pointing to deleted
+  // media. Without this, every restart inherits whatever inflation
+  // happened from prior file moves / library re-org. Cheap (< 50ms
+  // even on a 30k-row queue); safe to always run.
+  try {
+    const orphanResult = processingQueue.purgeOrphans()
+    if (orphanResult.purged > 0) {
+      console.log(`[AI] Startup orphan purge: dropped ${orphanResult.purged} queue rows pointing to missing media`)
+    }
+  } catch (err) {
+    console.warn('[AI] Startup orphan purge failed:', err)
+  }
 
   // Load saved Venice API key from settings. The stored value may be
   // ciphertext (`enc:v1:...`) or legacy plaintext from before the
@@ -388,6 +433,45 @@ export function initializeAiIntelligence(
       } catch { /* ignore */ }
       console.log(`[AI] RapidAPI key configured (ends "${decryptedRapid.slice(-4)}")`)
     }
+  })()
+
+  // Danbooru / AIBooru / Gelbooru / Bluesky — auto-import from
+  // .api-keys.env when settings don't already have credentials.
+  // Each pair (username + key) is independent; missing one doesn't
+  // block the others. All values are stored plaintext in settings —
+  // they're not as sensitive as Venice / RapidAPI, and they need to
+  // be sent in clear in HTTP basic auth headers anyway.
+  ;(() => {
+    const importPair = (
+      siteName: string,
+      settingsUserKey: string,
+      settingsKeyKey: string,
+      envUserLoader: () => string | null,
+      envKeyLoader: () => string | null,
+    ) => {
+      const ai = (getSettings() as VaultSettings).ai as any
+      if (ai?.[settingsUserKey] && ai?.[settingsKeyKey]) return  // already configured
+      const user = envUserLoader()
+      const key = envKeyLoader()
+      if (!user || !key) return
+      try {
+        const current = (getSettings() as VaultSettings).ai as any
+        updateSettings({
+          ai: { ...current, [settingsUserKey]: user, [settingsKeyKey]: key } as any
+        } as Partial<VaultSettings>)
+        console.log(`[AI] ${siteName} credentials loaded from .api-keys.env (user=${user})`)
+      } catch (err) {
+        console.warn(`[AI] Could not persist ${siteName} credentials:`, err)
+      }
+    }
+    importPair('Danbooru', 'danbooruUsername', 'danbooruApiKey',
+      loadDanbooruUsernameFromDevEnv, loadDanbooruKeyFromDevEnv)
+    importPair('AIBooru', 'aibooruUsername', 'aibooruApiKey',
+      loadAibooruUsernameFromDevEnv, loadAibooruKeyFromDevEnv)
+    importPair('Gelbooru', 'gelbooruUserId', 'gelbooruApiKey',
+      loadGelbooruUserIdFromDevEnv, loadGelbooruKeyFromDevEnv)
+    importPair('Bluesky', 'blueskyHandle', 'blueskyAppPassword',
+      loadBlueskyHandleFromDevEnv, loadBlueskyAppPasswordFromDevEnv)
   })()
 
   // Auto-load the user's saved porn-domains blocklist from settings.
@@ -1285,6 +1369,20 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
   ipcMain.handle('ai:retry-failed', async () => {
     if (!processingQueue) throw new Error('Processing queue not initialized')
     return processingQueue.retryFailed()
+  })
+
+  // Purge orphan queue rows — entries pointing to deleted/missing media.
+  // Fixes the "queue says 4534 but library is 700" inflation symptom.
+  ipcMain.handle('ai:purge-orphans', async () => {
+    if (!processingQueue) throw new Error('Processing queue not initialized')
+    return processingQueue.purgeOrphans()
+  })
+
+  // Nuke the entire queue. Recovery hatch when the queue gets so out
+  // of sync that selective fixes can't bring it back.
+  ipcMain.handle('ai:clear-queue', async () => {
+    if (!processingQueue) throw new Error('Processing queue not initialized')
+    return processingQueue.clearAll()
   })
 
   // Re-generate just the title or description for an existing review item.

@@ -440,6 +440,11 @@ export interface AISettings {
   aibooruUsername?: string
   // Civitai — AI-image gallery. Optional API key (free; raises rate limits).
   civitaiApiKey?: string
+  // Bluesky — handle (e.g. someone.bsky.social) + app password (NOT main
+  // login). Used for authenticated NSFW search via the AT Protocol.
+  // Generate at bsky.app/settings/app-passwords.
+  blueskyHandle?: string
+  blueskyAppPassword?: string
   // Reddit OAuth (script app) — clientId/secret/username/password.
   // Used by the Reddit Browse source. Configure at reddit.com/prefs/apps,
   // type=script. Sub list is comma-separated plaintext.

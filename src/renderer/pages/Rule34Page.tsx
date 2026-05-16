@@ -47,7 +47,7 @@ function isGif(url: string): boolean {
   return GIF_EXT.test(url || '')
 }
 
-type Source = 'all' | 'e621' | 'rule34' | 'safebooru' | 'yande.re' | 'konachan' | 'tbib' | 'xbooru' | 'hypnohub' | 'eporner' | 'redtube' | 'pornhub' | 'xnxx' | 'redgifs' | 'e926' | 'gelbooru' | 'realbooru' | 'danbooru' | 'aibooru' | 'civitai' | 'bluesky' | 'reddit' | 'paheal' | 'spankbang' | 'erome' | 'motherless' | 'pixiv'
+type Source = 'all' | 'e621' | 'rule34' | 'safebooru' | 'yande.re' | 'konachan' | 'tbib' | 'xbooru' | 'hypnohub' | 'eporner' | 'redtube' | 'pornhub' | 'xnxx' | 'redgifs' | 'e926' | 'gelbooru' | 'realbooru' | 'danbooru' | 'aibooru' | 'civitai' | 'bluesky' | 'reddit' | 'paheal' | 'spankbang' | 'erome' | 'motherless' | 'pixiv' | 'pullpush'
 
 const SOURCE_OPTIONS: Array<{ id: Source; label: string; auth: 'free' | 'key' | 'broken'; note?: string; family?: 'booru' | 'tube' }> = [
   { id: 'all', label: 'All sources', auth: 'free', note: 'parallel search across every booru + tube site' },
@@ -68,17 +68,18 @@ const SOURCE_OPTIONS: Array<{ id: Source; label: string; auth: 'free' | 'key' | 
   { id: 'redgifs', label: 'RedGifs', auth: 'free', note: 'NSFW GIFs/short videos · most Reddit NSFW GIF traffic ends up here · free temp-token', family: 'tube' },
   { id: 'e926', label: 'e926', auth: 'key', note: 'SFW twin of e621 (uses same key, rating:s locked)', family: 'booru' },
   { id: 'gelbooru', label: 'gelbooru', auth: 'key', note: 'NSFW general · drawings · same schema as rule34', family: 'booru' },
-  { id: 'realbooru', label: 'realbooru', auth: 'key', note: 'NSFW real photos · gelbooru schema', family: 'booru' },
+  { id: 'realbooru', label: 'realbooru', auth: 'broken', note: 'API confirmed dead 2026 — site now serves only an "API offline indefinitely" XML response', family: 'booru' },
   { id: 'danbooru', label: 'danbooru', auth: 'key', note: 'NSFW anime/general · richest tag taxonomy · own schema (e621-fork)', family: 'booru' },
   { id: 'aibooru', label: 'aibooru', auth: 'key', note: 'AI-generated anime · danbooru software · separate account', family: 'booru' },
   { id: 'civitai', label: 'Civitai', auth: 'free', note: 'AI-image gallery with full prompt/model metadata · optional key for higher rate limits', family: 'booru' },
   { id: 'bluesky', label: 'Bluesky', auth: 'free', note: 'NSFW-labeled posts (porn/sexual) · free public AT Protocol API · growing artist corpus', family: 'booru' },
-  { id: 'reddit', label: 'Reddit', auth: 'key', note: 'Curated NSFW subreddits · needs script-app OAuth (free, reddit.com/prefs/apps) + sub list', family: 'tube' },
+  { id: 'reddit', label: 'Reddit', auth: 'broken', note: 'Removed — Reddit Data API now requires Responsible Builder Policy gating. Use PullPush instead (no auth, same content)', family: 'tube' },
   { id: 'paheal', label: 'rule34.paheal', auth: 'free', note: 'Shimmie2 software · distinct corpus from rule34.xxx · danbooru-XML API', family: 'booru' },
   { id: 'spankbang', label: 'SpankBang', auth: 'free', note: 'HTML scrape · yt-dlp handles downloads · amateur+studio mix', family: 'tube' },
-  { id: 'erome', label: 'Erome', auth: 'free', note: 'amateur albums (images + videos) · yt-dlp downloads · HTML scrape', family: 'tube' },
-  { id: 'motherless', label: 'Motherless', auth: 'free', note: 'amateur clip aggregator · HTML scrape · yt-dlp downloads', family: 'tube' },
+  { id: 'erome', label: 'Erome', auth: 'broken', note: 'HTML scrape selectors broke 2026 — site redesign changed the markup. Will need a new scraper to re-enable', family: 'tube' },
+  { id: 'motherless', label: 'Motherless', auth: 'broken', note: 'Anti-bot protection added 2026 — returns 503 on scrape. Re-enable when bypass found or API access purchased', family: 'tube' },
   { id: 'pixiv', label: 'Pixiv R-18', auth: 'key', note: 'Pixiv ajax JSON · R-18 mode · needs PHPSESSID cookie for results (see settings → AI Tools)', family: 'booru' },
+  { id: 'pullpush', label: 'PullPush (Reddit)', auth: 'free', note: 'Pushshift successor · Reddit archive · no auth required · fills the gap left by Reddit OAuth gating', family: 'tube' },
 ]
 
 // Tube embed detection — when file_url is an embed page rather than a
@@ -95,6 +96,53 @@ function isEmbedUrl(url: string): boolean {
 // set src as normal.
 function isHlsUrl(url: string): boolean {
   return /\.m3u8(\?|$)/i.test(url || '')
+}
+
+// Generic tags that DON'T identify content meaningfully — when "More
+// like this" picks similar posts, including these in the new query
+// turns "find more like this anime girl" into "find anything tagged
+// 1girl" which returns everything. We strip them so the resulting
+// query is built from character / copyright / scenario / kink tags
+// that actually narrow results to similar posts.
+const GENERIC_TAGS = new Set([
+  // Composition / pose / camera
+  '1girl', '1boy', '2girls', '2boys', '3girls', 'multiple_girls', 'multiple_boys',
+  'solo', 'solo_focus', 'group', 'looking_at_viewer', 'standing', 'sitting',
+  'lying', 'kneeling', 'looking_back', 'from_behind', 'from_above', 'from_below',
+  'pov', 'close-up', 'closeup', 'cropped', 'portrait',
+  // Ratings / meta
+  'rating:safe', 'rating:questionable', 'rating:explicit', 'rating:s', 'rating:q', 'rating:e',
+  'safe', 'questionable', 'explicit', 'nsfw', 'sfw',
+  // Hair colors (user explicitly removed these from canonical vocab)
+  'blonde_hair', 'brown_hair', 'black_hair', 'red_hair', 'redhead', 'pink_hair',
+  'blue_hair', 'green_hair', 'silver_hair', 'white_hair', 'long_hair', 'short_hair',
+  'hair', 'twintails', 'ponytail',
+  // Eye colors
+  'blue_eyes', 'green_eyes', 'brown_eyes', 'red_eyes', 'purple_eyes', 'yellow_eyes',
+  // Quality / source meta
+  'highres', 'absurdres', 'lowres', 'official_art', 'commentary_request',
+  'translated', 'translation_request', 'tagme', 'meta',
+  // Body parts as solo tags (only useful in combination)
+  'breasts', 'nipples', 'pussy', 'penis', 'ass', 'thighs', 'feet', 'hands',
+])
+
+// Filter a tag string down to the most meaningful tokens for a "More
+// like this" search. Drops generic composition / hair-color / quality
+// tags, prefers character / copyright / kink / scenario tags. Returns
+// up to 6 tokens (more than 3 = better signal, less than 8 = source
+// APIs cap out).
+function getMeaningfulTags(rawTags: string, limit = 6): string {
+  const tokens = String(rawTags || '').split(/\s+/).filter(Boolean)
+  const meaningful: string[] = []
+  for (const t of tokens) {
+    const lower = t.toLowerCase()
+    if (GENERIC_TAGS.has(lower)) continue
+    // Skip boilerplate prefixed metadata
+    if (/^(highres|absurdres|lowres|tagme|translated)/.test(lower)) continue
+    meaningful.push(t)
+    if (meaningful.length >= limit) break
+  }
+  return meaningful.join(' ')
 }
 
 // Sentinel that calls `onIntersect` once each time the user scrolls
@@ -137,9 +185,23 @@ interface HlsAwareVideoProps {
 
 function HlsAwareVideo({ src, className, autoPlay = true, loop = true, controls = true, onDoubleClick, onError }: HlsAwareVideoProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  // Refs for the HLS instance + the latest onError callback. Without
+  // these the effect ran on every parent render (inline `onError={...}`
+  // callbacks are new function identities every time), tearing down +
+  // re-creating the HLS attachment, which restarted the video. Now
+  // the effect deps are JUST `src` — onError changes don't re-mount.
+  const hlsRef = useRef<Hls | null>(null)
+  const onErrorRef = useRef(onError)
+  onErrorRef.current = onError
+
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
+    // Always tear down a prior HLS attachment before starting a new one.
+    if (hlsRef.current) {
+      try { hlsRef.current.destroy() } catch { /* noop */ }
+      hlsRef.current = null
+    }
     if (!isHlsUrl(src)) {
       // Direct file URL — let the browser handle it natively.
       video.src = src
@@ -164,33 +226,31 @@ function HlsAwareVideo({ src, className, autoPlay = true, loop = true, controls 
         nudgeMaxRetry: 10,
         fragLoadingMaxRetry: 6,
       })
+      hlsRef.current = hls
       hls.loadSource(src)
       hls.attachMedia(video)
       hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (!data?.fatal) return  // non-fatal errors recover internally
         console.warn('[Browse lightbox] HLS fatal:', data?.type, data?.details)
-        // Recover network / media errors instead of giving up. Calling
-        // these tells hls.js to re-attach and retry without unmounting
-        // — avoids the "video disappears mid-playback" symptom.
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
           try { hls.startLoad() } catch { /* noop */ }
         } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
           try { hls.recoverMediaError() } catch { /* noop */ }
         } else {
-          onError?.(new Error(`HLS fatal: ${data.details}`))
+          onErrorRef.current?.(new Error(`HLS fatal: ${data.details}`))
         }
       })
       return () => {
         try { hls.destroy() } catch { /* noop */ }
+        if (hlsRef.current === hls) hlsRef.current = null
       }
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native HLS (Safari only — unlikely in Electron but harmless).
       video.src = src
     } else {
       console.warn('[Browse lightbox] No HLS support and URL is HLS:', src)
-      onError?.(new Error('HLS not supported by this browser'))
+      onErrorRef.current?.(new Error('HLS not supported by this browser'))
     }
-  }, [src, onError])
+  }, [src])  // intentionally ONLY src — onError lives in a ref
 
   return (
     <video
@@ -203,6 +263,13 @@ function HlsAwareVideo({ src, className, autoPlay = true, loop = true, controls 
       loop={loop && !isHlsUrl(src)}
       controls={controls}
       preload="auto"
+      // Strip the Referer header so booru CDNs (xbooru, gelbooru,
+      // others) don't reject the request based on cross-origin referer
+      // checks. Symptom this fixes: thumbnail shows but `<video>` is
+      // gray / blank because the CDN 403s the actual file fetch.
+      // No-referrer is safe for direct-file URLs; HLS uses fetch via
+      // hls.js which has its own CORS handling.
+      referrerPolicy="no-referrer"
       className={className}
       onDoubleClick={onDoubleClick}
       onError={onError}
@@ -221,6 +288,7 @@ const SOURCE_FAMILY_4: Record<string, SourceFamily> = {
   reddit: 'social',
   bluesky: 'social',
   pixiv: 'social',
+  pullpush: 'social',
   // Tubes — explicit
   eporner: 'tube', redtube: 'tube', pornhub: 'tube', xnxx: 'tube',
   redgifs: 'tube', spankbang: 'tube', erome: 'tube', motherless: 'tube',
@@ -253,6 +321,7 @@ const SOURCE_ICONS: Record<string, string> = {
   bluesky: '☁️', reddit: '👽',
   eporner: '🎬', redtube: '📺', pornhub: '🎥', xnxx: '🎞️',
   redgifs: '⚡', spankbang: '🎬', erome: '📁', motherless: '🎥',
+  pullpush: '📦',
 }
 
 // Per-source operator hints. Shown as clickable chips below the search
@@ -276,6 +345,7 @@ const SOURCE_HINTS: Record<string, string[]> = {
   civitai: ['(searches prompt text — try: "redhead", "1girl outdoors")'],
   pixiv:   ['(R-18 only; comma-separate tags for AND)'],
   reddit:  ['(searches NSFW subs you configured)'],
+  pullpush:['(plain keywords; queries Reddit archive — no auth needed)'],
   bluesky: ['nsfw', 'porn', 'sexual'],
   eporner: ['(empty = trending)'],
   redtube: ['(empty = trending)'],
@@ -375,6 +445,11 @@ export default function Rule34Page() {
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set())
   // Header collapse — give back vertical real estate on small windows.
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
+  // Filters popover — when open, shows rating/min-res/min-score/SFW/
+  // blacklist/layout/density/etc. as a dropdown panel under the
+  // search bar. Saves vertical space in the header by hiding controls
+  // that aren't tweaked every query.
+  const [filtersOpen, setFiltersOpen] = useState(false)
   // SFW-only quick-toggle. When on, auto-injects rating:safe / rating:s
   // operators into queries on supported sources + applies the s/q filter
   // client-side as belt-and-suspenders.
@@ -473,13 +548,18 @@ export default function Rule34Page() {
         // Muted sources are excluded — user has explicitly told us to
         // stop wasting query time on them this session. Family-tab
         // narrowing further restricts to one of booru/tube/ai/social.
-        const allSources = ['e621', 'rule34', 'safebooru', 'yande.re', 'konachan', 'tbib', 'xbooru', 'hypnohub', 'eporner', 'redtube', 'pornhub', 'xnxx', 'redgifs', 'e926', 'gelbooru', 'realbooru', 'danbooru', 'aibooru', 'civitai', 'bluesky', 'reddit', 'paheal', 'spankbang', 'erome', 'motherless', 'pixiv']
+        const allSources = ['e621', 'rule34', 'safebooru', 'yande.re', 'konachan', 'tbib', 'xbooru', 'hypnohub', 'eporner', 'redtube', 'pornhub', 'xnxx', 'redgifs', 'e926', 'gelbooru', 'realbooru', 'danbooru', 'aibooru', 'civitai', 'bluesky', 'reddit', 'paheal', 'spankbang', 'erome', 'motherless', 'pixiv', 'pullpush']
         // Per-source independent pagination: when paginating forward,
         // skip sources that returned 0 last time AND sources the user
         // muted AND sources outside the active family. Fresh queries
         // (p === 0) reset the exhausted set so all sources get a chance.
         if (p === 0) exhaustedSourcesRef.current = new Set()
+        // Sources marked auth:'broken' in SOURCE_OPTIONS are confirmed
+        // dead — skip them at fan-out time so we don't burn quota or
+        // pollute the per-source-error display with known failures.
+        const brokenSources = new Set(SOURCE_OPTIONS.filter((s) => s.auth === 'broken').map((s) => s.id as string))
         const activeSources = allSources.filter((s) => {
+          if (brokenSources.has(s)) return false
           if (mutedSources.has(s)) return false
           if (activeFamily !== 'all' && familyOf(s) !== activeFamily) return false
           if (exhaustedSourcesRef.current.has(s)) return false
@@ -1062,86 +1142,8 @@ export default function Rule34Page() {
               </button>
             ))}
           </div>
-          {/* Only direct-saveable filter — hides tube embed posts
-              (xnxx/pornhub) that require a paid RapidAPI subscription
-              to download. Useful when the user's xnxx sub is dead and
-              they only want results they can actually save. */}
-          <label className="ml-2 inline-flex items-center gap-1.5 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={onlyDirect}
-              onChange={(e) => setOnlyDirect(e.target.checked)}
-              className="accent-[var(--primary)] cursor-pointer"
-            />
-            <span className={cn(onlyDirect ? 'text-white' : 'text-[var(--muted)]')}>
-              Only direct-saveable
-            </span>
-          </label>
-          {mediaDirs.length > 1 && (
-            <>
-              <span className="ml-3">Save to:</span>
-              <select
-                value={saveTargetDir}
-                onChange={(e) => setSaveTargetDir(e.target.value)}
-                className="px-2 py-0.5 rounded text-[11px] bg-black/30 border border-[var(--border)] text-white font-mono max-w-[14rem] truncate cursor-pointer"
-                title={saveTargetDir}
-              >
-                {mediaDirs.map((d) => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-              </select>
-            </>
-          )}
-          {/* Density / layout toggle — affects column count + tile padding. */}
-          <span className="ml-3">Layout:</span>
-          <div className="flex items-center gap-1 bg-black/20 rounded-md p-0.5 border border-[var(--border)]">
-            {([
-              { id: 'compact',     label: 'S' },
-              { id: 'comfortable', label: 'M' },
-              { id: 'large',       label: 'L' },
-            ] as const).map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => setLayoutSize(opt.id)}
-                title={opt.id}
-                className={cn(
-                  'w-6 py-0.5 rounded text-[10px] font-medium transition tabular-nums',
-                  layoutSize === opt.id
-                    ? 'bg-[var(--primary)] text-white'
-                    : 'text-[var(--muted)] hover:text-white'
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          {/* SFW-only quick toggle — forces safe rating everywhere */}
-          <label className="ml-2 inline-flex items-center gap-1 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={sfwOnly}
-              onChange={(e) => setSfwOnly(e.target.checked)}
-              className="accent-[var(--primary)] cursor-pointer"
-            />
-            <span className={cn(sfwOnly ? 'text-emerald-300' : 'text-[var(--muted)]')}>SFW</span>
-          </label>
-          {/* Vault blacklist toggle — when on, drops Browse results
-              that contain any tag in settings.blacklist.tags. Same
-              vocab the rest of Vault hides from view. */}
-          {blacklistTags.length > 0 && (
-            <label className="ml-1 inline-flex items-center gap-1 cursor-pointer select-none" title={`Hide posts containing any of: ${blacklistTags.slice(0, 5).join(', ')}${blacklistTags.length > 5 ? ` + ${blacklistTags.length - 5} more` : ''}`}>
-              <input
-                type="checkbox"
-                checked={applyBlacklist}
-                onChange={(e) => setApplyBlacklist(e.target.checked)}
-                className="accent-[var(--primary)] cursor-pointer"
-              />
-              <span className={cn(applyBlacklist ? 'text-amber-200' : 'text-[var(--muted)]')}>
-                Apply blacklist <span className="opacity-60">({blacklistTags.length})</span>
-              </span>
-            </label>
-          )}
-          {/* Multi-select toggle */}
+          {/* Multi-select toggle — kept inline because it's a primary
+              action, not a config preference. */}
           <button
             type="button"
             onClick={() => setMultiSelect((v) => !v)}
@@ -1155,85 +1157,201 @@ export default function Rule34Page() {
           >
             {multiSelect ? `Multi (${selectedIds.size})` : 'Multi'}
           </button>
-        </div>
-        {/* Secondary filter row — rating, min-resolution, min-score. */}
-        <div className="flex flex-wrap items-center gap-3 mb-3 text-[11px] text-[var(--muted)]">
-          <span>Rating:</span>
-          <div className="flex items-center gap-1 bg-black/20 rounded-md p-0.5 border border-[var(--border)]">
-            {([
-              { id: 'all', label: 'Any' },
-              { id: 's',   label: 'Safe' },
-              { id: 'q',   label: 'Quest.' },
-              { id: 'e',   label: 'Explicit' },
-            ] as const).map((opt) => (
+          {/* "Filters" popover button — collapses rating/res/score/SFW/
+              blacklist/layout/save-dir/filename-template/etc. into a
+              single dropdown panel so they don't crowd the header. The
+              count badge shows how many filters are active so the user
+              can see at a glance whether their results are narrowed. */}
+          {(() => {
+            const activeCount =
+              (ratingFilter !== 'all' ? 1 : 0) +
+              (minResolution > 0 ? 1 : 0) +
+              (minScore > 0 ? 1 : 0) +
+              (sfwOnly ? 1 : 0) +
+              (applyBlacklist ? 1 : 0) +
+              (onlyDirect ? 1 : 0) +
+              (filenameTemplate.trim() ? 1 : 0)
+            return (
               <button
-                key={opt.id}
-                onClick={() => setRatingFilter(opt.id)}
+                type="button"
+                onClick={() => setFiltersOpen((v) => !v)}
                 className={cn(
-                  'px-2 py-0.5 rounded text-[10px] font-medium transition',
-                  ratingFilter === opt.id ? 'bg-[var(--primary)] text-white' : 'text-[var(--muted)] hover:text-white'
+                  'ml-2 px-2.5 py-0.5 rounded text-[11px] font-medium transition border inline-flex items-center gap-1.5',
+                  filtersOpen || activeCount > 0
+                    ? 'bg-[var(--primary)]/20 border-[var(--primary)]/40 text-[var(--primary)]'
+                    : 'bg-white/5 border-white/10 text-[var(--muted)] hover:text-white'
                 )}
-              >{opt.label}</button>
-            ))}
-          </div>
-          <span className="ml-2">Min res:</span>
-          <div className="flex items-center gap-1 bg-black/20 rounded-md p-0.5 border border-[var(--border)]">
-            {([
-              { id: 0,    label: 'Any' },
-              { id: 720,  label: '720p+' },
-              { id: 1080, label: '1080p+' },
-              { id: 2160, label: '4K' },
-            ] as const).map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => setMinResolution(opt.id)}
-                className={cn(
-                  'px-2 py-0.5 rounded text-[10px] font-medium transition',
-                  minResolution === opt.id ? 'bg-[var(--primary)] text-white' : 'text-[var(--muted)] hover:text-white'
+              >
+                Filters
+                {activeCount > 0 && (
+                  <span className="px-1 py-0 rounded-full bg-[var(--primary)] text-white text-[9px] tabular-nums">
+                    {activeCount}
+                  </span>
                 )}
-              >{opt.label}</button>
-            ))}
-          </div>
-          <span className="ml-2">Min score:</span>
-          <div className="flex items-center gap-1 bg-black/20 rounded-md p-0.5 border border-[var(--border)]">
-            {([
-              { id: 0,    label: 'Any' },
-              { id: 50,   label: '50+' },
-              { id: 200,  label: '200+' },
-              { id: 1000, label: '1k+' },
-            ] as const).map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => setMinScore(opt.id)}
-                className={cn(
-                  'px-2 py-0.5 rounded text-[10px] font-medium transition',
-                  minScore === opt.id ? 'bg-[var(--primary)] text-white' : 'text-[var(--muted)] hover:text-white'
-                )}
-              >{opt.label}</button>
-            ))}
-          </div>
+                <span className="text-[8px] opacity-60">{filtersOpen ? '▴' : '▾'}</span>
+              </button>
+            )
+          })()}
           {hiddenIds.size > 0 && (
             <button
               type="button"
               onClick={() => setHiddenIds(new Set())}
-              className="ml-2 text-[10px] text-amber-300 hover:text-white"
+              className="ml-1 text-[10px] text-amber-300 hover:text-white"
               title="Unhide all posts hidden this session"
             >
               Unhide {hiddenIds.size}
             </button>
           )}
-          {/* Custom filename template — placeholders: {source} {id}
-              {topTags3} {ext} {date}. Empty = source default. */}
-          <span className="ml-2 text-[10px] text-[var(--muted)]">Filename:</span>
-          <input
-            type="text"
-            value={filenameTemplate}
-            onChange={(e) => setFilenameTemplate(e.target.value)}
-            placeholder="{source}-{id}{ext}"
-            className="px-2 py-0.5 rounded text-[11px] bg-black/30 border border-[var(--border)] text-white font-mono w-[14rem]"
-            title="Placeholders: {source} {id} {topTags3} {ext} {date}. Empty = source default."
-          />
         </div>
+
+        {/* Filters dropdown panel — appears under the filter row when
+            the Filters button is clicked. Holds rating/res/score/SFW/
+            blacklist/layout/density/onlyDirect/save-dir/filename. */}
+        {filtersOpen && (
+          <div className="mb-3 p-3 rounded-lg bg-[var(--panel)]/95 border border-[var(--border)] shadow-lg space-y-3">
+            <div className="flex flex-wrap items-center gap-3 text-[11px] text-[var(--muted)]">
+              <span className="font-medium text-white/80">Rating:</span>
+              <div className="flex items-center gap-1 bg-black/20 rounded-md p-0.5 border border-[var(--border)]">
+                {([
+                  { id: 'all', label: 'Any' },
+                  { id: 's',   label: 'Safe' },
+                  { id: 'q',   label: 'Quest.' },
+                  { id: 'e',   label: 'Explicit' },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setRatingFilter(opt.id)}
+                    className={cn(
+                      'px-2 py-0.5 rounded text-[10px] font-medium transition',
+                      ratingFilter === opt.id ? 'bg-[var(--primary)] text-white' : 'text-[var(--muted)] hover:text-white'
+                    )}
+                  >{opt.label}</button>
+                ))}
+              </div>
+              <span className="ml-2 font-medium text-white/80">Min res:</span>
+              <div className="flex items-center gap-1 bg-black/20 rounded-md p-0.5 border border-[var(--border)]">
+                {([
+                  { id: 0,    label: 'Any' },
+                  { id: 720,  label: '720p+' },
+                  { id: 1080, label: '1080p+' },
+                  { id: 2160, label: '4K' },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setMinResolution(opt.id)}
+                    className={cn(
+                      'px-2 py-0.5 rounded text-[10px] font-medium transition',
+                      minResolution === opt.id ? 'bg-[var(--primary)] text-white' : 'text-[var(--muted)] hover:text-white'
+                    )}
+                  >{opt.label}</button>
+                ))}
+              </div>
+              <span className="ml-2 font-medium text-white/80">Min score:</span>
+              <div className="flex items-center gap-1 bg-black/20 rounded-md p-0.5 border border-[var(--border)]">
+                {([
+                  { id: 0,    label: 'Any' },
+                  { id: 50,   label: '50+' },
+                  { id: 200,  label: '200+' },
+                  { id: 1000, label: '1k+' },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setMinScore(opt.id)}
+                    className={cn(
+                      'px-2 py-0.5 rounded text-[10px] font-medium transition',
+                      minScore === opt.id ? 'bg-[var(--primary)] text-white' : 'text-[var(--muted)] hover:text-white'
+                    )}
+                  >{opt.label}</button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-[11px] text-[var(--muted)]">
+              <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={sfwOnly}
+                  onChange={(e) => setSfwOnly(e.target.checked)}
+                  className="accent-[var(--primary)] cursor-pointer"
+                />
+                <span className={cn(sfwOnly ? 'text-emerald-300' : 'text-[var(--muted)]')}>SFW only</span>
+              </label>
+              {blacklistTags.length > 0 && (
+                <label className="inline-flex items-center gap-1.5 cursor-pointer select-none" title={`Hide posts containing any of: ${blacklistTags.slice(0, 5).join(', ')}${blacklistTags.length > 5 ? ` + ${blacklistTags.length - 5} more` : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={applyBlacklist}
+                    onChange={(e) => setApplyBlacklist(e.target.checked)}
+                    className="accent-[var(--primary)] cursor-pointer"
+                  />
+                  <span className={cn(applyBlacklist ? 'text-amber-200' : 'text-[var(--muted)]')}>
+                    Apply Vault blacklist <span className="opacity-60">({blacklistTags.length} tags)</span>
+                  </span>
+                </label>
+              )}
+              <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={onlyDirect}
+                  onChange={(e) => setOnlyDirect(e.target.checked)}
+                  className="accent-[var(--primary)] cursor-pointer"
+                />
+                <span className={cn(onlyDirect ? 'text-white' : 'text-[var(--muted)]')}>
+                  Only direct-saveable
+                </span>
+              </label>
+              <span className="ml-2 font-medium text-white/80">Layout:</span>
+              <div className="flex items-center gap-1 bg-black/20 rounded-md p-0.5 border border-[var(--border)]">
+                {([
+                  { id: 'compact',     label: 'S' },
+                  { id: 'comfortable', label: 'M' },
+                  { id: 'large',       label: 'L' },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setLayoutSize(opt.id)}
+                    title={opt.id}
+                    className={cn(
+                      'w-6 py-0.5 rounded text-[10px] font-medium transition tabular-nums',
+                      layoutSize === opt.id
+                        ? 'bg-[var(--primary)] text-white'
+                        : 'text-[var(--muted)] hover:text-white'
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {(mediaDirs.length > 1 || filenameTemplate) && (
+              <div className="flex flex-wrap items-center gap-3 text-[11px] text-[var(--muted)]">
+                {mediaDirs.length > 1 && (
+                  <>
+                    <span className="font-medium text-white/80">Save to:</span>
+                    <select
+                      value={saveTargetDir}
+                      onChange={(e) => setSaveTargetDir(e.target.value)}
+                      className="px-2 py-0.5 rounded text-[11px] bg-black/30 border border-[var(--border)] text-white font-mono max-w-[18rem] truncate cursor-pointer"
+                      title={saveTargetDir}
+                    >
+                      {mediaDirs.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
+                <span className="ml-2 font-medium text-white/80">Filename:</span>
+                <input
+                  type="text"
+                  value={filenameTemplate}
+                  onChange={(e) => setFilenameTemplate(e.target.value)}
+                  placeholder="{source}-{id}{ext}"
+                  className="px-2 py-0.5 rounded text-[11px] bg-black/30 border border-[var(--border)] text-white font-mono w-[16rem]"
+                  title="Placeholders: {source} {id} {topTags3} {ext} {date}. Empty = source default."
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Source-family tabs — narrow the chip list AND the
             All-sources fan-out to one family at a time. Family counts
@@ -1279,7 +1397,10 @@ export default function Rule34Page() {
         <div className="flex flex-wrap items-center gap-1.5 mb-3 max-h-[5.5rem] overflow-y-auto pr-1 scrollbar-thin">
           <span className="text-[11px] text-[var(--muted)] mr-1 sticky left-0">Source:</span>
           {SOURCE_OPTIONS.filter((opt) => {
-            if (opt.id === 'all') return true  // always show the "All sources" chip
+            // Drop confirmed-dead sources from the picker entirely —
+            // user doesn't want to see them at all.
+            if (opt.auth === 'broken') return false
+            if (opt.id === 'all') return true
             return activeFamily === 'all' || familyOf(opt.id) === activeFamily
           }).map((opt) => {
             const isActive = source === opt.id
@@ -1295,22 +1416,45 @@ export default function Rule34Page() {
               : typeof count === 'number' && count > 0 ? 'ok'
               : typeof count === 'number' && count === 0 ? 'err'  // returned cleanly but empty
               : 'unknown'
+            const isMuted = mutedSources.has(opt.id)
             return (
               <button
                 key={opt.id}
                 onClick={() => setSource(opt.id)}
-                title={health === 'err' ? `${opt.note} — last query failed` : opt.note}
+                onDoubleClick={(e) => {
+                  // Click-once = select (default). Click-twice = toggle
+                  // mute, which excludes the source from the "All sources"
+                  // fan-out. Visible state: red strike-through ring + tooltip.
+                  // Doesn't apply to the "all" chip since muting it is
+                  // meaningless.
+                  if (opt.id === 'all') return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setMutedSources((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(opt.id)) next.delete(opt.id)
+                    else next.add(opt.id)
+                    return next
+                  })
+                }}
+                title={
+                  isMuted ? `${opt.note} — MUTED (double-click to unmute)`
+                  : health === 'err' ? `${opt.note} — last query failed (double-click to mute)`
+                  : `${opt.note} (double-click to mute)`
+                }
                 disabled={isBroken}
                 className={cn(
                   'px-2.5 py-1 rounded text-[11px] font-medium transition border inline-flex items-center gap-1.5',
                   isBroken
                     ? 'bg-white/5 border-white/5 text-white/30 cursor-not-allowed line-through'
-                    : isActive
-                      ? 'bg-[var(--primary)] border-[var(--primary)] text-white'
-                      : 'bg-white/5 border-white/10 text-[var(--muted)] hover:text-white hover:border-white/30'
+                    : isMuted
+                      ? 'bg-red-500/10 border-red-500/40 text-red-300 line-through opacity-70'
+                      : isActive
+                        ? 'bg-[var(--primary)] border-[var(--primary)] text-white'
+                        : 'bg-white/5 border-white/10 text-[var(--muted)] hover:text-white hover:border-white/30'
                 )}
               >
-                {health && (
+                {health && !isMuted && (
                   <span
                     aria-hidden="true"
                     className={cn(
@@ -1658,6 +1802,7 @@ export default function Rule34Page() {
                   <video
                     src={pasteResult.videoUrl}
                     controls
+                    referrerPolicy="no-referrer"
                     className="rounded-lg bg-black"
                     style={{ width: 480, height: 270 }}
                   />
@@ -1853,7 +1998,7 @@ export default function Rule34Page() {
               Per-source results
             </div>
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
-              {SOURCE_OPTIONS.filter((s) => s.id !== 'all').map((s) => {
+              {SOURCE_OPTIONS.filter((s) => s.id !== 'all' && s.auth !== 'broken').map((s) => {
                 const count = perSourceCounts[s.id] ?? 0
                 const failed = sourceErrors.some((e) => e.source === s.id)
                 return (
@@ -2143,6 +2288,20 @@ export default function Rule34Page() {
                           alt={`Post ${post.id}`}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                           loading="lazy"
+                          // Per-source referrer policy: pixiv CDN
+                          // (i.pximg.net) REQUIRES pixiv.net referer
+                          // and 403s without it. xbooru / booru CDNs
+                          // mostly accept anything. Default browser
+                          // policy works for everyone EXCEPT xbooru/
+                          // gelbooru videos (handled separately).
+                          // Auto-hide ONLY for PullPush — its archive
+                          // routinely points at deleted Imgur/redd.it
+                          // images. Other sources show broken-image
+                          // icons rather than disappearing.
+                          onError={post.source_booru === 'pullpush' ? (e) => {
+                            const tile = (e.currentTarget.closest('.group') as HTMLElement | null)
+                            if (tile) tile.style.display = 'none'
+                          } : undefined}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-[var(--muted)]/40">
@@ -2160,6 +2319,7 @@ export default function Rule34Page() {
                           muted
                           loop
                           playsInline
+                          referrerPolicy="no-referrer"
                           className="absolute inset-0 w-full h-full object-cover pointer-events-none"
                         />
                       )}
@@ -2487,10 +2647,11 @@ export default function Rule34Page() {
               <button
                 type="button"
                 onClick={() => {
-                  // "More like this" — replace current query with top
-                  // 3 tags from the clicked post, re-run search across
-                  // current source(s).
-                  const topTags = (p.tags || '').split(/\s+/).filter(Boolean).slice(0, 3).join(' ')
+                  // "More like this" — replace current query with the
+                  // most meaningful tags from the clicked post (filters
+                  // out generic 1girl/solo/hair-color/etc that turn the
+                  // query into "find anything"). Uses up to 6 tags.
+                  const topTags = getMeaningfulTags(p.tags || '', 6)
                   if (topTags) {
                     setTagInput(topTags)
                     setActiveQuery(topTags)
@@ -2715,6 +2876,22 @@ export default function Rule34Page() {
                       : "max-w-full max-h-[75vh] rounded-lg shadow-2xl"
                   )}
                   onDoubleClick={() => setLightboxFullscreen((f) => !f)}
+                  // Two-stage fallback for hotlink-protected sources
+                  // (tbib, some boorus): if sample_url 403s, try the
+                  // raw file_url; if THAT also fails, swap to the
+                  // already-loaded thumbnail at preview_url so the user
+                  // at least sees something instead of a broken-icon void.
+                  onError={(e) => {
+                    const img = e.currentTarget
+                    const tried = img.getAttribute('data-fallback-stage') ?? '0'
+                    if (tried === '0' && url && img.src !== url) {
+                      img.setAttribute('data-fallback-stage', '1')
+                      img.src = url
+                    } else if (tried !== '2' && lightbox.preview_url && img.src !== lightbox.preview_url) {
+                      img.setAttribute('data-fallback-stage', '2')
+                      img.src = lightbox.preview_url
+                    }
+                  }}
                 />
               )
             })()}
@@ -2742,9 +2919,11 @@ export default function Rule34Page() {
                 <button
                   type="button"
                   onClick={() => {
-                    // "More like this" — replace query with top tags
-                    // from the lightbox post, close lightbox, re-search.
-                    const topTags = (lightbox.tags || '').split(/\s+/).filter(Boolean).slice(0, 3).join(' ')
+                    // "More like this" — replace query with the most
+                    // meaningful tags from the lightbox post (skips
+                    // 1girl/solo/hair-color/quality meta), close
+                    // lightbox, re-search.
+                    const topTags = getMeaningfulTags(lightbox.tags || '', 6)
                     if (topTags) {
                       setTagInput(topTags)
                       setActiveQuery(topTags)

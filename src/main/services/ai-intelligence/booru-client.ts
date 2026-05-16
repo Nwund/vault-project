@@ -51,6 +51,7 @@ export type BooruSource =
   | 'erome'       // erome.com — HTML scrape of /search?q=<query>
   | 'motherless'  // motherless.com — HTML scrape of /term/videos/<query>
   | 'pixiv'       // pixiv.net — /ajax/search/illustrations + R-18 mode
+  | 'pullpush'    // api.pullpush.io — Pushshift successor (Reddit archive). No auth required.
   // NOTE: rule34.us / XVideos / xHamster don't expose usable public
   // APIs — would need scraping. Add later if demand warrants.
 
@@ -81,9 +82,10 @@ const SOURCE_HOSTS: Record<BooruSource, string> = {
   erome: 'www.erome.com',
   motherless: 'motherless.com',
   pixiv: 'www.pixiv.net',
+  pullpush: 'api.pullpush.io',
 }
 
-const SOURCE_FAMILY: Record<BooruSource, 'e621' | 'moebooru' | 'gelbooru' | 'eporner' | 'redtube' | 'pornhub' | 'xnxx' | 'redgifs' | 'e926' | 'danbooru' | 'civitai' | 'bluesky' | 'reddit' | 'paheal' | 'spankbang' | 'erome' | 'motherless' | 'pixiv'> = {
+const SOURCE_FAMILY: Record<BooruSource, 'e621' | 'moebooru' | 'gelbooru' | 'eporner' | 'redtube' | 'pornhub' | 'xnxx' | 'redgifs' | 'e926' | 'danbooru' | 'civitai' | 'bluesky' | 'reddit' | 'paheal' | 'spankbang' | 'erome' | 'motherless' | 'pixiv' | 'pullpush'> = {
   e621: 'e621',
   'yande.re': 'moebooru',
   konachan: 'moebooru',
@@ -110,6 +112,7 @@ const SOURCE_FAMILY: Record<BooruSource, 'e621' | 'moebooru' | 'gelbooru' | 'epo
   erome: 'erome',
   motherless: 'motherless',
   pixiv: 'pixiv',
+  pullpush: 'pullpush',
 }
 
 /** CDN base for URL reconstruction on gelbooru-style boorus. Most
@@ -341,6 +344,7 @@ export async function searchBooru(
   if (family === 'bluesky') return searchBluesky(tags, perPage, page)
   if (family === 'reddit') return searchReddit(tags, perPage, page)
   if (family === 'paheal') return searchPaheal(tags, perPage, page)
+  if (family === 'pullpush') return searchPullPush(tags, perPage, page)
   if (family === 'spankbang') return searchSpankBang(tags, perPage, page)
   if (family === 'erome') return searchErome(tags, perPage, page)
   if (family === 'motherless') return searchMotherless(tags, perPage, page)
@@ -647,6 +651,124 @@ async function searchPaheal(tags: string, perPage: number, page: number): Promis
   return { posts, hasMore: posts.length === perPage, page }
 }
 
+// --- PullPush (Reddit archive successor) — no auth required ---
+// PullPush is the spiritual successor to Pushshift; mirrors Reddit
+// submissions into a public search-able archive. Vault uses it as a
+// Reddit-source alternative since Reddit's official Data API now
+// requires script-app OAuth and a Responsible Builder Policy
+// acknowledgment that's been a UX nightmare for users to navigate.
+//
+// API: GET /reddit/search/submission/?subreddit=X&q=Y&size=N&over_18=true
+// Returns { data: [submission, ...] } where each submission has the
+// usual Reddit fields (id, title, url, thumbnail, subreddit, etc).
+//
+// Pagination: PullPush uses unix-time `before` for backward
+// pagination instead of page numbers. We translate page index to
+// `before` by tracking the oldest created_utc returned and using it
+// as the next page's `before` cutoff.
+const _pullpushPageCursors = new Map<string, number>()
+async function searchPullPush(tags: string, perPage: number, page: number): Promise<BooruSearchResult> {
+  const { pullpushSearchSubmissions } = await import('./pullpush-client')
+  const trimmed = tags.trim()
+  const cacheKey = trimmed
+  // Page 0 resets the cursor; subsequent pages use the stored cutoff.
+  let beforeCutoff: number | undefined
+  if (page === 0) {
+    _pullpushPageCursors.delete(cacheKey)
+  } else {
+    beforeCutoff = _pullpushPageCursors.get(cacheKey)
+  }
+  const r = await pullpushSearchSubmissions({
+    query: trimmed || undefined,
+    size: Math.min(100, Math.max(10, perPage)),
+    before: beforeCutoff,
+    over18Only: true,
+  })
+  if (!r.ok) {
+    throw new Error(`PullPush: ${r.error ?? 'unknown error'}`)
+  }
+  const items = r.items
+  // Track oldest created_utc for the next page's `before` cutoff.
+  if (items.length > 0) {
+    const oldest = Math.min(...items.map((x) => x.created_utc ?? Date.now() / 1000))
+    _pullpushPageCursors.set(cacheKey, oldest)
+  }
+  // Map PullPush submissions → BooruPost. Filter out:
+  //   - posts with no media URL
+  //   - selftext-only posts (is_self === true) — they're text walls
+  //   - removed/deleted thumbnails ("default", "self", "spoiler", "nsfw")
+  //   - file URLs known to be deleted-image placeholders. PullPush's
+  //     archive sometimes outlives the original media host; common
+  //     placeholders include Imgur's `removed.png`, the redd.it 404,
+  //     and various host-specific deleted indicators.
+  const DEAD_URL_PATTERNS = [
+    /imgur\.com\/removed\.(png|jpg)/i,
+    /i\.imgur\.com\/[a-z0-9]{1,7}\.(png|jpg)$/i,  // imgur 7-char hashes are pre-modern, often dead
+    /\/removed\.(png|jpg|webp|gif)/i,
+    /\/deleted\.(png|jpg|webp|gif)/i,
+    /\/404\.(png|jpg|webp|gif|html)/i,
+    /not[-_]?found/i,
+    /redgifs\.com\/ifr\/[^/]+\.(png|jpg)$/i,  // RedGifs removed-poster placeholder
+    /imgur\.com\/(404|removed|gallery\/0)/i,
+    /^https?:\/\/(www\.)?reddit\.com\/login/i,  // private/quarantined sub redirects
+  ]
+  const isDeadUrl = (url: string): boolean => {
+    if (!url) return true
+    return DEAD_URL_PATTERNS.some((re) => re.test(url))
+  }
+  // NSFW subreddit gate. Reddit's `over_18` post flag isn't reliable —
+  // SFW subs often don't tag posts as over_18 even when content is
+  // adult, and tame meme/news subs sometimes do. We require the
+  // subreddit name itself to look NSFW. This catches:
+  //   - r/gonewild, r/gonewildaudio, r/PetiteGoneWild, etc.
+  //   - r/NSFW411, r/NSFW_GIF, r/NSFW_Korea, etc.
+  //   - Anything with porn/nude/hentai/tits/ass/cum/fuck in the name
+  //   - Body-part-specific subs (r/legs, r/hugeboobs, r/feet, etc.)
+  // The list errs on the side of inclusion — adjust if too noisy.
+  const NSFW_SUB_PATTERN = /^(gonewild|nsfw|hentai|porn|nude|nudes|cum|fuck|tits|ass|pussy|cock|dick|bbw|milf|bukkake|gangbang|petite|amateur|asian|asianporn|lesbian|teen|college|realgirls?|girlsfinishingthejob|chubby|pawg|thicc|legs|feet|boobs|hugeboobs|tinytits|onlyfans|altgonewild|barelylegalteens|adorableporn|womenofcolor|holdthemoan|public|publicflashing|squirting|squirt|anal|deepthroat|facefuck|bdsm|spitroast|creampie|breeding|edging|gooning|hentairule34|rule34|trapsgonewild|sissies|crossdressing|trans|futa|monstergirls)/i
+  const posts: BooruPost[] = items
+    .filter((s) => {
+      if (!s.url || s.url.startsWith('https://www.reddit.com/')) return false  // self-post
+      if (isDeadUrl(s.url)) return false
+      const t = String(s.thumbnail ?? '').toLowerCase()
+      if (['default', 'self', 'spoiler', 'nsfw', 'image', ''].includes(t) && !s.preview) return false
+      // Thumbnail being a placeholder URL is also a strong signal the
+      // source media is gone — drop these even if `url` looks ok.
+      if (t.startsWith('http') && isDeadUrl(t)) return false
+      // NSFW gate — drop posts from subs whose name doesn't match our
+      // adult-content pattern. This is the heuristic that filters out
+      // the SFW noise the user reported.
+      const sub = String(s.subreddit ?? '')
+      if (!NSFW_SUB_PATTERN.test(sub)) return false
+      return true
+    })
+    .map((s) => {
+      // Prefer high-res preview if available; fall back to thumbnail.
+      const previewUrl = s.preview?.images?.[0]?.source?.url?.replace(/&amp;/g, '&')
+        ?? s.thumbnail
+        ?? s.url
+      const tagsStr = [
+        s.subreddit ? `r:${s.subreddit.toLowerCase()}` : '',
+        ...(String(s.title ?? '').toLowerCase().split(/\W+/).filter((w) => w.length >= 3).slice(0, 8)),
+      ].filter(Boolean).join(' ')
+      return {
+        id: stringHash(`pullpush-${s.id}`),
+        file_url: s.url ?? '',
+        preview_url: previewUrl,
+        sample_url: previewUrl,
+        tags: tagsStr,
+        rating: s.over_18 ? 'explicit' : 'safe',
+        score: Number(s.score ?? 0),
+        source: s.permalink ? `https://reddit.com${s.permalink}` : (s.url ?? ''),
+        width: Number(s.preview?.images?.[0]?.source?.width ?? 0),
+        height: Number(s.preview?.images?.[0]?.source?.height ?? 0),
+        hash: s.id,
+      }
+    })
+  console.log(`[PullPush] ${posts.length}/${items.length} posts for q="${trimmed}" page=${page} before=${beforeCutoff ?? 'none'}`)
+  return { posts, hasMore: items.length >= Math.min(100, perPage), page }
+}
+
 // --- Reddit (NSFW curated subs) — script-app OAuth ---
 // User configures: clientId / clientSecret / username / password / subList.
 // Settings stores credentials encrypted. Token cached 50min (Reddit
@@ -852,6 +974,60 @@ async function searchReddit(tags: string, perPage: number, page: number): Promis
 // cursor-paginated results; we map page → cursor over a small in-mem
 // cache so the user can scroll.
 const _bskyCursors = new Map<string, string>()  // query → next cursor
+// Cached AT Protocol session token. Created by bskyAuth() using the
+// user's handle + app password. Bluesky's public.api.bsky.app started
+// returning 403s on /xrpc/app.bsky.feed.searchPosts in 2025 for
+// unauthenticated requests; bearer auth fixes it. Tokens last ~2h
+// before refresh is needed; we just re-auth on 401/403.
+let _bskySession: { accessJwt: string; did: string; expiresAt: number } | null = null
+
+async function bskyAuth(handle: string, appPassword: string): Promise<string | null> {
+  if (_bskySession && _bskySession.expiresAt > Date.now() + 60_000) {
+    return _bskySession.accessJwt
+  }
+  return new Promise((resolve) => {
+    const payload = Buffer.from(JSON.stringify({ identifier: handle, password: appPassword }), 'utf8')
+    const req = https.request({
+      hostname: 'bsky.social',
+      port: 443,
+      path: '/xrpc/com.atproto.server.createSession',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': payload.length,
+        Accept: 'application/json',
+      },
+      timeout: 10_000,
+    }, (res) => {
+      let body = ''
+      res.on('data', (c) => body += c)
+      res.on('end', () => {
+        if ((res.statusCode ?? 0) >= 400) {
+          console.warn(`[Bluesky] auth failed: ${res.statusCode} ${body.slice(0, 200)}`)
+          resolve(null)
+          return
+        }
+        try {
+          const parsed = JSON.parse(body)
+          _bskySession = {
+            accessJwt: String(parsed.accessJwt ?? ''),
+            did: String(parsed.did ?? ''),
+            // accessJwt is good for ~2h; cache 100 min to be safe.
+            expiresAt: Date.now() + 100 * 60 * 1000,
+          }
+          console.log(`[Bluesky] auth ok, did=${_bskySession.did}`)
+          resolve(_bskySession.accessJwt)
+        } catch {
+          resolve(null)
+        }
+      })
+    })
+    req.on('error', (err) => { console.warn('[Bluesky] auth request error:', err.message); resolve(null) })
+    req.on('timeout', () => { try { req.destroy() } catch {} ; resolve(null) })
+    req.write(payload)
+    req.end()
+  })
+}
 
 async function searchBluesky(tags: string, perPage: number, page: number): Promise<BooruSearchResult> {
   const q = tags.trim() || 'nsfw'  // empty query returns nothing; default to broad
@@ -863,19 +1039,44 @@ async function searchBluesky(tags: string, perPage: number, page: number): Promi
     cursor ? `cursor=${encodeURIComponent(cursor)}` : '',
   ].filter(Boolean).join('&')
   const urlPath = `/xrpc/app.bsky.feed.searchPosts?${params}`
-  console.log(`[Bluesky] GET https://public.api.bsky.app${urlPath}`)
+
+  // Auth: pull handle + app password from settings; fetch a session
+  // token if we don't have a fresh one. Falls through to unauthenticated
+  // request if creds aren't configured (will likely 403 in 2025+).
+  const { getSettings } = await import('../../settings')
+  const ai = (getSettings().ai as any) || {}
+  const handle = String(ai.blueskyHandle ?? '').trim()
+  const appPassword = String(ai.blueskyAppPassword ?? '').trim()
+  let bearer: string | null = null
+  if (handle && appPassword) {
+    bearer = await bskyAuth(handle, appPassword)
+  }
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'User-Agent': 'vault/2.6.0',
+  }
+  if (bearer) headers.Authorization = `Bearer ${bearer}`
+
+  // Authenticated requests must go to the user's PDS (bsky.social by
+  // default), NOT public.api.bsky.app — the latter is the unauthenticated
+  // appview and silently rejects bearer tokens with 403. Both expose the
+  // same xrpc endpoints.
+  const apiHost = bearer ? 'bsky.social' : 'public.api.bsky.app'
+  console.log(`[Bluesky] GET https://${apiHost}${urlPath} (auth=${bearer ? 'bearer' : 'none'})`)
   const body = await new Promise<string>((resolve, reject) => {
     const req = https.request({
-      hostname: 'public.api.bsky.app',
+      hostname: apiHost,
       port: 443,
       path: urlPath,
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      headers,
     }, (res) => {
       let data = ''
       res.on('data', (c) => data += c)
       res.on('end', () => {
         if ((res.statusCode ?? 0) >= 400) {
+          // 401/403 may mean expired token — clear cache so next attempt re-auths.
+          if (res.statusCode === 401 || res.statusCode === 403) _bskySession = null
           reject(new Error(`Bluesky ${res.statusCode}: ${data.slice(0, 200)}`))
           return
         }

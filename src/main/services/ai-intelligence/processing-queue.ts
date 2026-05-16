@@ -3096,6 +3096,32 @@ export class ProcessingQueue {
   }
 
   /**
+   * Purge orphaned queue entries — items pointing to media_ids that no
+   * longer exist in the `media` table. These accumulate when files get
+   * deleted/moved without the scanner cleaning up the queue side. The
+   * inflation symptom: AI Tools shows "4534 queued" when the actual
+   * library is 700 files. Cheap LEFT JOIN delete; safe to run anytime.
+   */
+  purgeOrphans(): { purged: number } {
+    const result = this.rawDb.prepare(`
+      DELETE FROM ai_processing_queue
+      WHERE media_id NOT IN (SELECT id FROM media)
+    `).run()
+    return { purged: result.changes }
+  }
+
+  /**
+   * Wipe the entire queue regardless of state. Recovery hatch when
+   * the queue gets so out of sync that selective fixes won't bring
+   * it back to sanity. Caller must accept that all in-flight work
+   * is lost — nothing left to resume.
+   */
+  clearAll(): { cleared: number } {
+    const result = this.rawDb.prepare(`DELETE FROM ai_processing_queue`).run()
+    return { cleared: result.changes }
+  }
+
+  /**
    * Retry all failed items
    */
   retryFailed(): { retried: number } {

@@ -1039,6 +1039,11 @@ const api = {
     // Failed items management
     clearFailed: () => invoke<{ cleared: number }>('ai:clear-failed'),
     retryFailed: () => invoke<{ retried: number }>('ai:retry-failed'),
+    // Drop queue rows pointing to deleted media (fixes "queue says 4534
+    // but library is 700" inflation).
+    purgeOrphans: () => invoke<{ purged: number }>('ai:purge-orphans'),
+    // Nuke the entire queue. Use sparingly.
+    clearQueue: () => invoke<{ cleared: number }>('ai:clear-queue'),
 
     // Tag cleanup — three passes: (1) migrate redirects (trans woman → mtf,
     // self-pleasure → masturbation, teen girl → teen+female) preserving

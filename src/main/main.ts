@@ -85,6 +85,29 @@ async function createMainWindow(): Promise<BrowserWindow> {
     }
   })
 
+  // Per-host Referer / Origin injection for hotlink-protected CDNs.
+  // Some image hosts (pixiv's i.pximg.net most notably) reject any
+  // request that doesn't carry the right Referer. Browsers can't fake
+  // Referer client-side, but Electron's webRequest can rewrite headers
+  // before the request goes out — letting us load these images
+  // transparently in the renderer's <img> tags.
+  // Add new entries here when we hit a new hotlink-protected source.
+  const REFERER_OVERRIDES: Array<{ hostMatch: RegExp; referer: string; origin?: string }> = [
+    { hostMatch: /(^|\.)pximg\.net$/i, referer: 'https://www.pixiv.net/', origin: 'https://www.pixiv.net' },
+    { hostMatch: /(^|\.)pixiv\.net$/i, referer: 'https://www.pixiv.net/', origin: 'https://www.pixiv.net' },
+  ]
+  win.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
+    try {
+      const u = new URL(details.url)
+      const override = REFERER_OVERRIDES.find((r) => r.hostMatch.test(u.hostname))
+      if (override) {
+        details.requestHeaders['Referer'] = override.referer
+        if (override.origin) details.requestHeaders['Origin'] = override.origin
+      }
+    } catch { /* malformed URL — pass through unchanged */ }
+    callback({ requestHeaders: details.requestHeaders })
+  })
+
   win.once('ready-to-show', () => win.show())
 
   if (isDevMode()) {
