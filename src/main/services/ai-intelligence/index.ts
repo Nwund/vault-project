@@ -700,6 +700,26 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
     }
   })
 
+  // #109 — Pixiv R-18 discovery modes (daily ranking + recommended).
+  // Bypasses the search box for high-signal browse without typing a tag.
+  ipcMain.handle('booru:pixiv-discover', async (_ev, args: {
+    mode: 'rankingDayR18' | 'recommended'
+    perPage?: number
+    page?: number
+  }) => {
+    try {
+      const { searchPixivDiscovery } = await import('./booru-client')
+      const result = await searchPixivDiscovery({
+        mode: args.mode,
+        perPage: args.perPage ?? 60,
+        page: args.page ?? 0,
+      })
+      return { ok: true, ...result }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), posts: [], hasMore: false, page: 0 }
+    }
+  })
+
   // #205 — Native SauceNAO lookup. Posts an image URL to the SauceNAO
   // JSON API + parses results into Vault's Browse result format so
   // matches show up in the same grid instead of a popped-out tab.

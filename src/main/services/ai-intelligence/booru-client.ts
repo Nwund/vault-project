@@ -320,6 +320,17 @@ function fetchBinary(fileUrl: string, outPath: string): Promise<{ bytes: number 
  *                 for future-proofing when the user adds an API key)
  * Each source returns the canonical BooruPost shape after normalization.
  */
+/** #109 — Pixiv R-18 discovery (daily ranking + recommended).
+ *  Public wrapper that calls the internal searchPixiv with a
+ *  discoveryMode opt. */
+export async function searchPixivDiscovery(args: {
+  mode: 'rankingDayR18' | 'recommended'
+  perPage?: number
+  page?: number
+}): Promise<BooruSearchResult> {
+  return searchPixiv('', args.perPage ?? 60, args.page ?? 0, { discoveryMode: args.mode })
+}
+
 /** #119 — Civitai pivot search by model / version. Wraps the
  *  internal searchCivitai with the modelId/modelVersionId opts.
  *  Other booru clients don't have this concept; Civitai-only export. */
@@ -381,13 +392,29 @@ export async function searchBooru(
 //   - For R-18: a logged-in session via the PHPSESSID cookie. Anonymous
 //     queries get an empty result on r18 mode. The user supplies the
 //     cookie via settings.ai.pixivSessionId.
-async function searchPixiv(tags: string, perPage: number, page: number): Promise<BooruSearchResult> {
+async function searchPixiv(
+  tags: string,
+  perPage: number,
+  page: number,
+  opts?: { discoveryMode?: 'search' | 'rankingDayR18' | 'recommended' }
+): Promise<BooruSearchResult> {
   void perPage  // Pixiv fixes page size at 60 server-side
+  const mode = opts?.discoveryMode ?? 'search'
   const q = tags.trim() || 'r-18'
-  const urlPath = `/ajax/search/illustrations/${encodeURIComponent(q)}`
-    + `?word=${encodeURIComponent(q)}`
-    + `&order=date_d&mode=r18&p=${page + 1}`
-    + `&s_mode=s_tag&type=illust_and_ugoira&lang=en`
+  // #109 — discoveryMode='rankingDayR18' uses /ranking endpoint for
+  // the day's top R-18 list (no query), 'recommended' uses
+  // /illust/recommended (cookie required for personalized feed).
+  let urlPath: string
+  if (mode === 'rankingDayR18') {
+    urlPath = `/ranking.php?mode=daily_r18&content=illust&p=${page + 1}&format=json`
+  } else if (mode === 'recommended') {
+    urlPath = `/ajax/discovery/artworks?mode=r18&limit=60&lang=en`
+  } else {
+    urlPath = `/ajax/search/illustrations/${encodeURIComponent(q)}`
+      + `?word=${encodeURIComponent(q)}`
+      + `&order=date_d&mode=r18&p=${page + 1}`
+      + `&s_mode=s_tag&type=illust_and_ugoira&lang=en`
+  }
   console.log(`[Pixiv] GET https://www.pixiv.net${urlPath}`)
 
   // Pull session cookie (optional but recommended).

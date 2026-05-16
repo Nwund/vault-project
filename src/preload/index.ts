@@ -2600,6 +2600,15 @@ const api = {
       sourceUrl: string
     }>('booru:resolve-url', url),
 
+    /** #109 — Pixiv R-18 discovery modes (daily ranking / recommended) */
+    pixivDiscover: (args: {
+      mode: 'rankingDayR18' | 'recommended'
+      perPage?: number
+      page?: number
+    }) => invoke<{ ok: boolean; posts?: any[]; hasMore?: boolean; page?: number; error?: string }>(
+      'booru:pixiv-discover', args
+    ),
+
     /** #205 — Native SauceNAO lookup. Returns results as Browse posts
      *  so the renderer can display them in the same grid as a normal
      *  search instead of opening a browser tab. */
