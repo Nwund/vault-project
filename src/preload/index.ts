@@ -2083,6 +2083,20 @@ const api = {
       invoke<{ ok: boolean; wasRunning?: boolean; error?: string }>('network:cloudflare-tunnel-stop'),
     cloudflareTunnelStatus: () =>
       invoke<{ running: boolean; url: string | null }>('network:cloudflare-tunnel-status'),
+    /** #200 — Restic backup wrappers. Snapshot pushes a new backup;
+     *  Snapshots lists recent ones. Requires settings.backup.resticRepo
+     *  + settings.backup.resticPasswordFile configured. */
+    resticSnapshot: (args?: { extraPaths?: string[]; tag?: string }) =>
+      invoke<{
+        ok: boolean
+        snapshotId?: string | null
+        filesNew?: number | null
+        dataAdded?: string | null
+        tail?: string
+        error?: string
+      }>('backup:restic-snapshot', args),
+    resticSnapshots: () =>
+      invoke<{ ok: boolean; snapshots: Array<any>; error?: string }>('backup:restic-snapshots'),
     zerotierStatus: () =>
       invoke<{
         installed: boolean

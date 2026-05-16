@@ -9390,6 +9390,101 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   //   127.0.0.1:9993 with bearer auth from the on-disk authtoken.secret.
   // ─────────────────────────────────────────────────────────────────────────
 
+  // ─────────────────────────────────────────────────────────────────────────
+  //   Restic backup (#200) — wraps the user's installed restic binary
+  //   to push encrypted dedup snapshots of <userData> + selected media
+  //   dirs to a B2/S3/SFTP/rclone target. Settings supply the repo URI,
+  //   password file, and optional paths to include/exclude.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  ipcMain.handle('backup:restic-snapshot', async (_ev, args?: {
+    extraPaths?: string[]   // additional source dirs beyond <userData>
+    tag?: string            // restic --tag for organization
+  }) => {
+    try {
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      const repo = String(s?.backup?.resticRepo ?? '').trim()
+      const pwFile = String(s?.backup?.resticPasswordFile ?? '').trim()
+      if (!repo) return { ok: false, error: 'settings.backup.resticRepo not configured' }
+      if (!pwFile || !fs.existsSync(pwFile)) {
+        return { ok: false, error: 'settings.backup.resticPasswordFile missing or path does not exist' }
+      }
+      const paths = [
+        app.getPath('userData'),
+        ...(Array.isArray(args?.extraPaths) ? args!.extraPaths : []),
+      ].filter(p => p && fs.existsSync(p))
+      if (paths.length === 0) return { ok: false, error: 'No valid source paths to back up' }
+
+      const { spawn } = await import('node:child_process')
+      const tagArgs = args?.tag ? ['--tag', args.tag] : []
+      const cliArgs = ['backup', ...tagArgs, ...paths]
+      console.log(`[Restic] running: restic ${cliArgs.join(' ')}`)
+      const proc = spawn('restic', cliArgs, {
+        env: {
+          ...process.env,
+          RESTIC_REPOSITORY: repo,
+          RESTIC_PASSWORD_FILE: pwFile,
+        },
+        windowsHide: true,
+      })
+      let stdout = ''
+      let stderr = ''
+      proc.stdout?.on('data', (c) => { stdout += c.toString('utf8') })
+      proc.stderr?.on('data', (c) => { stderr += c.toString('utf8') })
+      const exit = await new Promise<number | null>((resolve) => {
+        proc.on('error', () => resolve(-1))
+        proc.on('close', (code) => resolve(code))
+      })
+      if (exit !== 0) {
+        return { ok: false, error: `restic exit ${exit}: ${stderr.slice(-500)}` }
+      }
+      // Parse the summary line restic prints at the end.
+      const filesNew = (stdout.match(/Files:\s+(\d+) new/) ?? [])[1]
+      const dataAdded = (stdout.match(/Added to the repository:\s+([^\s]+ \w+)/) ?? [])[1]
+      const snapshotId = (stdout.match(/snapshot ([a-f0-9]{8})/) ?? [])[1]
+      return {
+        ok: true,
+        snapshotId: snapshotId ?? null,
+        filesNew: filesNew ? Number(filesNew) : null,
+        dataAdded: dataAdded ?? null,
+        tail: stdout.slice(-1000),
+      }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('backup:restic-snapshots', async () => {
+    try {
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      const repo = String(s?.backup?.resticRepo ?? '').trim()
+      const pwFile = String(s?.backup?.resticPasswordFile ?? '').trim()
+      if (!repo || !pwFile) return { ok: false, error: 'Restic not configured', snapshots: [] }
+      const { spawn } = await import('node:child_process')
+      const proc = spawn('restic', ['snapshots', '--json', '--latest', '20'], {
+        env: { ...process.env, RESTIC_REPOSITORY: repo, RESTIC_PASSWORD_FILE: pwFile },
+        windowsHide: true,
+      })
+      let stdout = ''
+      proc.stdout?.on('data', (c) => { stdout += c.toString('utf8') })
+      const exit = await new Promise<number | null>((resolve) => {
+        proc.on('error', () => resolve(-1))
+        proc.on('close', (code) => resolve(code))
+      })
+      if (exit !== 0) return { ok: false, error: `restic snapshots exit ${exit}`, snapshots: [] }
+      try {
+        const parsed = JSON.parse(stdout)
+        return { ok: true, snapshots: Array.isArray(parsed) ? parsed : [] }
+      } catch {
+        return { ok: false, error: 'restic snapshots: non-JSON output', snapshots: [] }
+      }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), snapshots: [] }
+    }
+  })
+
   ipcMain.handle('network:zerotier-status', async () => {
     try {
       const fsMod = await import('node:fs/promises')

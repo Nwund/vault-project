@@ -357,6 +357,97 @@ export function ZeroTierCard() {
   )
 }
 
+/**
+ * #200 — Restic offsite backup card. Reads the configured repo URI
+ * from settings.backup.resticRepo + password file path. Backup Now
+ * spawns restic; the IPC parses the summary line for snapshot ID +
+ * data-added. Snapshot history pulled via restic snapshots --json.
+ */
+export function ResticBackupCard() {
+  const { showToast } = useToast()
+  const [snapshots, setSnapshots] = useState<any[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [configured, setConfigured] = useState<boolean | null>(null)
+
+  const refresh = useCallback(async () => {
+    try {
+      const r = await (window.api as any).network?.resticSnapshots?.()
+      if (r?.ok) {
+        setSnapshots(r.snapshots)
+        setConfigured(true)
+      } else {
+        setSnapshots([])
+        // Probe whether the error is just "not configured" or a real fault
+        setConfigured(!String(r?.error ?? '').toLowerCase().includes('not configured'))
+      }
+    } catch {
+      setSnapshots([])
+      setConfigured(false)
+    }
+  }, [])
+
+  useEffect(() => { void refresh() }, [refresh])
+
+  const backupNow = async () => {
+    setBusy(true)
+    try {
+      const r = await (window.api as any).network?.resticSnapshot?.({ tag: 'manual' })
+      if (r?.ok) {
+        showToast?.('success',
+          `Snapshot ${r.snapshotId ?? ''} created · ${r.filesNew ?? '?'} new files · ${r.dataAdded ?? 'unknown size'}`)
+        await refresh()
+      } else {
+        showToast?.('error', r?.error ?? 'Restic backup failed')
+      }
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5 mt-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="text-sm font-semibold">Restic Backup</div>
+          <div className="text-[11px] text-[var(--muted)] mt-0.5">
+            Encrypted, deduplicated offsite snapshots of <code className="bg-black/40 px-1 rounded text-[10px]">userData</code>.
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            disabled={busy || configured === false}
+            onClick={backupNow}
+            className="px-3 py-1.5 rounded text-xs bg-[#9333ea] hover:bg-[#a855f7] text-white transition disabled:opacity-40 flex items-center gap-1.5"
+          >
+            {busy ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+            {busy ? 'Snapshotting…' : 'Backup now'}
+          </button>
+          <button onClick={refresh} className="px-2 py-1.5 rounded text-xs bg-white/5 hover:bg-white/10 transition">
+            <RefreshCw size={11} />
+          </button>
+        </div>
+      </div>
+      {configured === false ? (
+        <div className="text-xs text-amber-300 leading-relaxed">
+          Restic isn't configured. Set <code className="bg-black/40 px-1 rounded">settings.backup.resticRepo</code> (e.g. <code className="bg-black/40 px-1 rounded">b2:my-bucket:vault</code>) and <code className="bg-black/40 px-1 rounded">settings.backup.resticPasswordFile</code> (absolute path to a file with the repo password). Then install the restic binary on PATH and click Backup Now.
+        </div>
+      ) : snapshots && snapshots.length === 0 ? (
+        <div className="text-xs text-[var(--muted)] italic">
+          No snapshots yet. Click Backup Now to create the first one.
+        </div>
+      ) : snapshots && snapshots.length > 0 ? (
+        <div className="space-y-1 max-h-40 overflow-y-auto">
+          {snapshots.slice(0, 10).map((s: any, i: number) => (
+            <div key={s.id ?? i} className="flex items-center justify-between text-[11px] px-2 py-1 rounded bg-white/[0.03]">
+              <code className="text-purple-300 font-mono">{String(s.short_id ?? s.id ?? '').slice(0, 8)}</code>
+              <span className="text-[var(--muted)]">{s.time ? new Date(s.time).toLocaleString() : '—'}</span>
+              <span className="text-white/60">{(s.tags ?? []).join(', ') || '—'}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function UrlGroup({ label, hint, urls, onCopy, accent }: {
   label: string; hint: string; urls: string[]; onCopy: (u: string) => void; accent: 'emerald' | 'cyan' | 'zinc'
 }) {

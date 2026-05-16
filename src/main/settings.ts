@@ -676,6 +676,15 @@ export interface VaultSettings {
   performance: PerformanceSettings  // Memory and performance tuning
   mobileSync: MobileSyncSettings  // Mobile sync server settings
   hasSeenWelcome: boolean  // First-time welcome tutorial completed
+  // #200 — Restic offsite backup (optional). Repository URI per restic
+  // docs (sftp:/, s3:, b2:, rclone:, etc.); password file path stored
+  // separately so the password itself never lives in settings.json.
+  backup?: {
+    resticRepo?: string         // e.g. "b2:my-bucket:vault" or "/local/restic-repo"
+    resticPasswordFile?: string // absolute path to a file containing the repo password
+    autoBackupHours?: number    // 0 = manual only
+    autoBackupLastRun?: number  // unix ms
+  }
   // Legacy support
   mediaDirs?: string[]
   cacheDir?: string
