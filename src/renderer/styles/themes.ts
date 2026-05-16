@@ -39,6 +39,7 @@ export type ClassicThemeId =
   | 'cyber-noir'        // Cyberpunk black + acid green + neon red
   | 'liquid-mercury'    // Silvery iridescent + cool blue shifts
   | 'tropical-storm'    // Teal + electric blue + lightning yellow
+  | 'high-contrast'     // WCAG-AA pure-black + white with vivid primary (accessibility)
 
 // Hypersexual goon themes
 export type GoonThemeId =
@@ -2044,6 +2045,49 @@ export const themes: Record<ThemeId, Theme> = {
       glow: '0 0 28px rgba(0, 212, 229, 0.55), 0 0 60px rgba(255, 215, 64, 0.25)'
     },
     blur: { sm: '8px', md: '18px', lg: '36px' }
+  },
+
+  // High-Contrast — WCAG-AA accessibility theme. Pure black background,
+  // pure white text, vivid yellow primary for maximum legibility. No
+  // surface tints, all borders at full opacity. Pairs with the
+  // global "Reduce Motion" toggle for low-fatigue late-night sessions.
+  'high-contrast': {
+    id: 'high-contrast',
+    name: 'High Contrast',
+    description: 'WCAG-AA accessibility. Pure black + white + yellow. Maximum legibility.',
+    isDark: true,
+    colors: {
+      background: '#000000',
+      backgroundAlt: '#0a0a0a',
+      surface: 'rgba(255, 255, 255, 0.08)',
+      surfaceHover: 'rgba(255, 255, 255, 0.14)',
+      surfaceActive: 'rgba(255, 255, 255, 0.22)',
+      border: 'rgba(255, 255, 255, 0.4)',
+      borderHover: 'rgba(255, 255, 255, 0.6)',
+      borderActive: '#ffd60a',
+      text: '#ffffff',
+      textMuted: 'rgba(255, 255, 255, 0.85)',
+      textSubtle: 'rgba(255, 255, 255, 0.7)',
+      primary: '#ffd60a',
+      primaryHover: '#ffeb3b',
+      primaryMuted: 'rgba(255, 214, 10, 0.3)',
+      secondary: '#ffffff',
+      secondaryHover: '#f0f0f0',
+      success: '#00ff00',
+      warning: '#ffd60a',
+      error: '#ff3030',
+      info: '#00bfff',
+      gradient: 'linear-gradient(135deg, #000 0%, #1a1a1a 100%)',
+      glow: 'rgba(255, 214, 10, 0.6)',
+      overlay: 'rgba(0, 0, 0, 0.95)'
+    },
+    shadows: {
+      sm: '0 1px 2px rgba(0, 0, 0, 1)',
+      md: '0 4px 12px rgba(0, 0, 0, 1)',
+      lg: '0 8px 32px rgba(0, 0, 0, 1)',
+      glow: '0 0 25px rgba(255, 214, 10, 0.6)'
+    },
+    blur: { sm: '0px', md: '0px', lg: '0px' }  // No blur — clarity over flair
   }
 }
 
