@@ -304,6 +304,13 @@ class MobileSyncService extends EventEmitter {
         }
       }
 
+      // #188 — PhotoSync "Custom Web" upload endpoint. multipart/form-data
+      // POST with a `file` field; the uploaded bytes get saved into the
+      // user's first configured media dir + the scanner picks it up.
+      if (pathname === '/api/upload' && req.method === 'POST') {
+        return this.handlePhotoSyncUpload(req, res)
+      }
+
       // Route to handlers
       if (pathname === '/api/library') {
         return this.handleLibrary(req, res, url)
@@ -591,6 +598,73 @@ class MobileSyncService extends EventEmitter {
   // ─────────────────────────────────────────────────────────────────────────
   // API HANDLERS
   // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * #188 — Minimal multipart/form-data parser + file writer for the
+   * PhotoSync "Custom Web" upload protocol. Locates the `file` part
+   * inside the body, extracts the filename from its Content-Disposition,
+   * writes the raw payload to the user's first configured media dir.
+   * The scanner picks it up within ~30s.
+   */
+  private async handlePhotoSyncUpload(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    try {
+      const settings = (await import('../settings')).getSettings()
+      const mediaDirs: string[] = settings.library?.mediaDirs ?? []
+      if (mediaDirs.length === 0) {
+        return this.sendError(res, 500, 'No media directories configured')
+      }
+      const targetDir = mediaDirs[0]
+      const contentType = String(req.headers['content-type'] ?? '')
+      const boundaryMatch = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType)
+      if (!boundaryMatch) return this.sendError(res, 400, 'Missing multipart boundary')
+      const boundary = `--${boundaryMatch[1] ?? boundaryMatch[2]}`
+
+      // Buffer the whole request body. PhotoSync uploads are individual
+      // photos so the size is bounded (~10-50MB typical).
+      const chunks: Buffer[] = []
+      for await (const chunk of req) chunks.push(chunk as Buffer)
+      const body = Buffer.concat(chunks)
+      // Find the `file` part using literal byte search; we don't need a
+      // full multipart parser since PhotoSync sends a single file part.
+      const fileBoundary = Buffer.from(`${boundary}\r\nContent-Disposition: form-data; name="file"`, 'utf8')
+      const fileStart = body.indexOf(fileBoundary)
+      if (fileStart < 0) {
+        // Fallback: try a less-strict search by Content-Disposition only
+        const looseStart = body.indexOf(Buffer.from('Content-Disposition: form-data', 'utf8'))
+        if (looseStart < 0) return this.sendError(res, 400, 'No file part found in multipart body')
+      }
+      // Extract filename from the part's headers
+      const headerEnd = body.indexOf(Buffer.from('\r\n\r\n', 'utf8'), fileStart < 0 ? 0 : fileStart)
+      if (headerEnd < 0) return this.sendError(res, 400, 'Malformed multipart part headers')
+      const headersStr = body.slice(fileStart < 0 ? 0 : fileStart, headerEnd).toString('utf8')
+      const filenameMatch = /filename="([^"]+)"/i.exec(headersStr)
+      const filename = filenameMatch?.[1] ?? `photosync-${Date.now()}.jpg`
+      // File payload is from end-of-headers (+4) to the next boundary.
+      const payloadStart = headerEnd + 4
+      const trailingBoundary = Buffer.from(`\r\n${boundary}`, 'utf8')
+      const payloadEnd = body.indexOf(trailingBoundary, payloadStart)
+      if (payloadEnd < 0) return this.sendError(res, 400, 'No trailing boundary found')
+      const filePayload = body.slice(payloadStart, payloadEnd)
+
+      // Sanitize filename + write
+      const path = await import('node:path')
+      const fs = await import('node:fs/promises')
+      const safeName = filename.replace(/[\\/:*?"<>|]/g, '_')
+      const destPath = path.join(targetDir, safeName)
+      await fs.mkdir(path.dirname(destPath), { recursive: true })
+      await fs.writeFile(destPath, filePayload)
+
+      return this.sendJson(res, {
+        ok: true,
+        filename: safeName,
+        bytes: filePayload.length,
+        savedTo: destPath,
+      })
+    } catch (err: any) {
+      console.warn('[PhotoSync] upload failed:', err)
+      return this.sendError(res, 500, err?.message ?? 'Upload failed')
+    }
+  }
 
   private async handleLibrary(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<void> {
     if (!this.getMediaList) {
