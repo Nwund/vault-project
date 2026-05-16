@@ -1,7 +1,7 @@
-# VAULT v2.5.0 - Development Guide
+# VAULT v2.6.0 - Development Guide
 
-**Last Updated:** February 23, 2026
-**Current Version:** 2.5.0
+**Last Updated:** May 15, 2026
+**Current Version:** 2.6.0
 **Build Status:** Stable
 
 ---
@@ -45,12 +45,13 @@ Vault is a private media library application for discerning adults. It provides:
 
 ### Build Stats
 
-- **Main Process**: 73 modules, ~981 KB
-- **Preload**: 35 KB
-- **Renderer**: ~1.7 MB
-- **Components**: 94 React components
-- **Services**: 61 backend services
-- **Database Tables**: 13 tables across 10 migrations
+- **Main Process**: ~85 modules
+- **Preload**: 38 KB
+- **Renderer**: ~1.9 MB
+- **Components**: 112 React components
+- **Services**: 71 backend services (incl. 16 ML detector wrappers)
+- **Browse Sources**: 27 booru / tube aggregator endpoints
+- **Database Tables**: 19 tables across 23 migrations
 
 ---
 
@@ -254,7 +255,7 @@ npx tsc --noEmit
 
 ## Remaining Tasks
 
-### Future Enhancements (v2.5+)
+### Future Enhancements (v2.7+)
 
 | Feature | Priority | Description |
 |---|---|---|
@@ -281,7 +282,29 @@ npx tsc --noEmit
 
 ## Session Notes
 
-### February 23, 2026 - Latest Session (v2.5.0)
+### May 15, 2026 - Latest Session (v2.6.0)
+
+**Status**: Browse aggregator + ML detector stack shipped, all 77 backlog tasks closed.
+
+**Headline additions**:
+
+- **Browse aggregator** — 27 sources across 7 client families (gelbooru/moebooru/e621/eporner/redtube/pornhub/xnxx + bluesky + pullpush). Lightbox auto-detects video vs embed vs image with retry chain (sample → file → preview). PullPush filters NSFW subreddit pattern + drops deleted/SFW posts. Pixiv hotlinking solved at the network layer via Electron `webRequest.onBeforeSendHeaders` Referer injection.
+- **Save-to-Library from Browse** — auto-routes xnxx + PornHub through RapidAPI `/download` MP4s, with yt-dlp fallback when all providers 4xx. Multi-host xnxx fallback (3 RapidAPI providers).
+- **Performers tab** — face cluster grid with inline rename (auto-applies `performer:NAME`), merge mode, view modal.
+- **ML detector stack** — 16 ONNX/sidecar wrappers wired into the analysis queue: MoveNet pose, YuNet face, SFace + ArcFace recognition (auto-detected via filename), NudeNet v3, gender classifier, Person ReID, TransNet shot boundaries, Chromaprint fingerprinting, YAMNet (521 audio classes), VideoMAE Kinetics-400, X-CLIP, CLAP, plus Python sidecars for WhisperX (port 8031), F5-TTS (port 8021), and Demucs.
+- **Multi-tagger ensemble** — `tier1-onnx-tagger.ts` runs N WD-Tagger variants in parallel with consensus boost (+10% / +20% on agreement).
+- **Bluesky integration** — AT Protocol `createSession` on `bsky.social` PDS, auto-imported from `.api-keys.env`.
+- **Achievements** — 8 new entries (`first_browse_save`, `browse_explorer`, `crate_digger`, `face_namer`, `ai_pioneer`, `tag_curator`, `performer_dossier`, `bulk_dropper`).
+- **CI / packaging** — release.yml on Node 22 + `npm install --legacy-peer-deps` + yt-dlp.exe fetch step + PowerShell `Remove-Item Env:WIN_CSC_LINK` to defeat the empty-string-isn't-unset trap.
+
+**Files most touched**:
+- `src/renderer/pages/Rule34Page.tsx` (~2.5k lines, the Browse UI)
+- `src/main/services/ai-intelligence/booru-client.ts`
+- `src/main/services/ai-intelligence/tube-url-resolver.ts`
+- `src/main/services/ai-intelligence/index.ts` (auto-imports + IPCs)
+- `src/main/main.ts` (pixiv referer injector)
+
+### February 23, 2026 - v2.5.0
 
 **Status**: UI/UX improvements complete, all systems functional
 
@@ -358,14 +381,25 @@ src/renderer/components/Tooltip.tsx       # Contextual tooltips
 
 ## API Keys & Configuration
 
-### Venice AI
+All keys auto-import from `C:\dev\.api-keys.env` (or `<vault-dir>/.api-keys.env` for portable installs) into Electron `safeStorage` on first run. Each setup card in Settings shows a masked preview ("Confirmed · encrypted").
 
-The Venice AI API is used for Tier 3 cloud AI processing. The API key is stored in settings and can be configured in Settings > AI Tools.
+### Cloud AI / vision
 
-```
-API Endpoint: https://api.venice.ai/api/v1
-Model: qwen3-vl-235b-a22b
-```
+| Service | Purpose |
+|---|---|
+| Venice AI (`venice-uncensored-1-2`) | Tier 2 vision LLM — title/description/rich-tag generation |
+| RapidAPI — PornHub host | xnxx + PornHub `/api/download` for high-quality MP4 fetch |
+
+### Booru / aggregator credentials (Browse tab)
+
+| Source | Required | Notes |
+|---|---|---|
+| e621 | username + API key | Soft-gates uploads/votes; reads work without |
+| rule34.xxx | API key | Lifts rate limit |
+| Danbooru | username + API key | Required for explicit results |
+| AIBooru | username + API key | Same auth model as Danbooru |
+| Gelbooru | user_id + API key | Lifts pagination cap |
+| Bluesky | handle + app password | AT Protocol `createSession` on `bsky.social` PDS |
 
 ### External Dependencies
 
@@ -373,17 +407,25 @@ Model: qwen3-vl-235b-a22b
 |---|---|---|
 | FFmpeg | Bundled in resources | Video processing |
 | FFprobe | Bundled in resources | Media probing |
-| yt-dlp | System PATH or WinGet | URL downloads |
-| Ollama | Local install (optional) | Tier 2 AI |
+| yt-dlp.exe | Bundled in resources | URL downloads + tube-MP4 fallback |
+| ONNX Runtime | Bundled (`onnxruntime-node`) | Tier 1 local detectors / taggers |
+| whisper.cpp | `C:\dev\whisper-cpp\` | Optional transcription (opt-in) |
+| JoyCaption sidecar | `C:\dev\joycaption-sidecar\` | Optional dense captioner — manual start |
+| WhisperX sidecar | `C:\dev\whisperx-sidecar\` | Optional word-level + diarization (port 8031) |
+| F5-TTS sidecar | `C:\dev\f5-tts-sidecar\` | Optional voice clone backend (port 8021) |
+| Xyrene XTTS server | `F:\dev\xyrene-portable\` | Voice synth (port 8020) |
 
 ### Data Locations
 
 | Data | Location |
 |---|---|
-| Database | `%APPDATA%/vault/vault.db` |
+| Database | `%APPDATA%/vault/vault.sqlite3` |
+| Settings | `%APPDATA%/vault/settings.json` |
+| ML models | `%APPDATA%/vault/ai-models/` |
 | Thumbnails | `%APPDATA%/vault/thumbs/` |
+| Voice samples | `%APPDATA%/vault/audio/voice/` |
+| Xyrene brain | `%APPDATA%/vault/xyrene_brain/` |
 | Logs | `%APPDATA%/vault/logs/` |
-| Settings | `%APPDATA%/vault/config.json` |
 
 ---
 
@@ -425,9 +467,10 @@ ipcMain.handle('namespace:method', async (_ev, arg1, arg2) => {
 ### Common Issues
 
 **App won't start**:
-- Check Node.js version (18+ required)
-- Run `npm install` to ensure dependencies
-- Check for port conflicts (5173, 8765)
+- Check Node.js version (20+ required; CI uses Node 22)
+- Run `npm install --legacy-peer-deps` to ensure dependencies
+- Run `npx electron-builder install-app-deps` to rebuild native modules
+- Check for port conflicts (5173 dev server, 8765 mobile sync, 8020 XTTS, 8021 F5-TTS, 8031 WhisperX)
 
 **Videos not playing**:
 - Verify FFmpeg/FFprobe in resources

@@ -1,19 +1,29 @@
 // File: src/main/services/ai-intelligence/arcface-recognizer.ts
 //
-// InsightFace ArcFace 512-D face embeddings (#16). Drop-in higher-
-// accuracy replacement for SFace's 128-D embeddings. Used by Stash,
-// Visage, and most production face-ID pipelines — the de-facto
-// adult-industry standard for clustering performer faces across
-// videos.
+// InsightFace ArcFace 512-D face embeddings (#16). Standalone wrapper
+// for callers that want a typed ArcFace handle (e.g. for StashDB-
+// face-importer-style bulk seeding). For the main face-cluster
+// pipeline, ArcFace is ALREADY supported transparently by
+// sface-recognizer.ts via its MODEL_CANDIDATES list — drop a model
+// file named 'face-recognition-arcface.onnx' at <userData>/models/
+// and the existing extractEmbedding() picks it up + uses ArcFace
+// preprocessing automatically. No setting change needed.
 //
-// ACTIVATION:
+// THIS FILE is for the case where you want a fresh, isolated ArcFace
+// session — e.g., bulk-embedding a directory of performer photos for
+// the centroid-seed DB without touching the main pipeline's session.
+//
+// ACTIVATION (standalone):
 //   1. Download buffalo_l.zip from
 //      github.com/deepinsight/insightface/tree/master/python-package
-//   2. Extract det_10g.onnx + w600k_r50.onnx
-//   3. Drop w600k_r50.onnx (the recognition model) at
-//      <userData>/models/arcface-w600k.onnx
-//   4. Set settings.ai.faceRecognitionModel = 'arcface' (default
-//      'sface'). Falls back to SFace if ArcFace model missing.
+//   2. Extract w600k_r50.onnx
+//   3. Drop at <userData>/models/arcface-w600k.onnx
+//   4. const r = new ArcFaceRecognizer(modelDownloader)
+//      await r.initialize(); const e = await r.embed(facePath)
+//
+// FOR PIPELINE USE: just rename the model to
+//   <userData>/models/face-recognition-arcface.onnx
+// and sface-recognizer.ts uses it automatically.
 //
 // USAGE:
 //   const r = new ArcFaceRecognizer(modelDownloader)

@@ -36,7 +36,7 @@
 
 ## 🆕 v2.6.0 — What's new
 
-- **Browse aggregator** — 26-source parallel search across boorus, AI-gen platforms, tube sites, and social feeds (e621, rule34.xxx, Danbooru, AIBooru, Civitai, Gelbooru, Pixiv R-18, RedGifs, PornHub, RedTube, Eporner, xnxx, Bluesky, Reddit, and more). Multi-select bulk save, custom filename templates, in-library duplicate detection, Vault-tag-blacklist application, and source-family tabs.
+- **Browse aggregator** — 27-source parallel search across boorus, AI-gen platforms, tube sites, and social feeds (e621, rule34.xxx, Danbooru, AIBooru, Civitai, Gelbooru, Pixiv R-18, RedGifs, PornHub, RedTube, Eporner, xnxx, Bluesky, PullPush/Reddit archive, and more). Multi-select bulk save, custom filename templates, in-library duplicate detection, Vault-tag-blacklist application, source-family tabs, and a filter popover with active-count badge.
 - **ML detector stack** — six ONNX models wired into the AI tagging queue: YuNet face detection, SFace face recognition (with face_clusters table), Person ReID body embeddings, MoveNet pose detection, NudeNet v3 body-part detection, and a gender classifier. Plus whisper.cpp transcription, JoyCaption sidecar, and LAION aesthetic predictor.
 - **Performers page** — face-cluster grid driven by SFace. Name a cluster once and every video featuring that face auto-gets a `performer:NAME` tag.
 - **HLS-aware video lightbox** — xnxx + other tube playback now works via `hls.js` with yt-dlp as the universal fallback resolver.
@@ -111,7 +111,9 @@ Stream to smart TVs via DLNA. Control from your phone. Your library, your way.
 ```bash
 # Clone & Install
 git clone https://github.com/Nwund/vault-project.git
-cd vault-project && npm install
+cd vault-project
+npm install --legacy-peer-deps
+npx electron-builder install-app-deps
 
 # Launch
 npm run dev
@@ -180,20 +182,19 @@ npm run dev
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  ☁️  TIER 3: Cloud AI (Venice API)                          │
-│      • Advanced video analysis with qwen3-vl-235b           │
+│  🌐  TIER 3: Synonym → canonical-tag mapping                │
+│      • Maps free-text into Vault's porn-site tag vocab      │
+│      • Atomic tags only, deny-listed clinical/anime meta    │
+├─────────────────────────────────────────────────────────────┤
+│  ☁️  TIER 2: Venice vision LLM (qwen3-vl-235b)              │
 │      • Multi-frame scene understanding                      │
-│      • Intelligent tag & caption generation                 │
+│      • Title + description + rich-tag generation            │
+│      • Library-wide rejection-pattern soft prior            │
 ├─────────────────────────────────────────────────────────────┤
-│  🏠  TIER 2: Local LLM (Ollama)                             │
-│      • Privacy-first processing                             │
-│      • Tag cleanup and organization                         │
-│      • Offline-capable with vision models                   │
-├─────────────────────────────────────────────────────────────┤
-│  ⚡  TIER 1: ONNX Models (Instant)                          │
-│      • NSFWJS detection                                     │
-│      • WD Tagger classification                             │
-│      • Works completely offline                             │
+│  ⚡  TIER 1: Local ONNX (offline, instant)                  │
+│      • Multi-tagger ensemble (WD-Tagger variants + consensus)│
+│      • NSFWJS, NudeNet v3, CLIP                             │
+│      • 16 ML detector wrappers (face, pose, ReID, audio…)   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -260,8 +261,9 @@ Create professional-quality beat-synced videos:
 | **Styling** | Tailwind CSS |
 | **Database** | SQLite (better-sqlite3) |
 | **Media** | FFmpeg + FFprobe |
-| **AI** | ONNX Runtime + Venice + Ollama |
-| **Downloads** | yt-dlp |
+| **AI** | ONNX Runtime + Venice vision LLM |
+| **Browse** | 27-source booru / tube / social aggregator |
+| **Downloads** | yt-dlp (bundled) |
 
 </div>
 
@@ -277,10 +279,11 @@ Create professional-quality beat-synced videos:
 
 | | |
 |:---:|:---:|
-| **40+** Backend Services | **65+** UI Components |
-| **25+** Database Tables | **20+** Visual Overlays |
-| **50+** Achievements | **16** PMV Transitions |
-| **15+** Themes | **3** AI Tiers |
+| **71** Backend Services | **112** UI Components |
+| **19** Database Tables | **23** Migrations |
+| **27** Browse Sources | **16** ML Detector Wrappers |
+| **58** Achievements | **20+** Visual Overlays |
+| **16** PMV Transitions | **15+** Themes |
 
 </div>
 
@@ -334,7 +337,7 @@ Create professional-quality beat-synced videos:
 
 **🌐 Browse Aggregator + 🧠 ML Detector Stack + 👤 Performers UI**
 
-- ✨ **Browse Aggregator** - 26 sources parallel-searched: e621, rule34, Danbooru, AIBooru, Civitai, Gelbooru, Pixiv R-18, RedGifs, PornHub, RedTube, Eporner, xnxx, Bluesky, Reddit, and more
+- ✨ **Browse Aggregator** - 27 sources parallel-searched: e621, rule34, Danbooru, AIBooru, Civitai, Gelbooru, Pixiv R-18, RedGifs, PornHub, RedTube, Eporner, xnxx, Bluesky, PullPush (Reddit archive), and more
 - ✨ **Multi-select + bulk save** with floating action bar and spring animations
 - ✨ **Tag autocomplete** from Vault's canonical-tag vocabulary, with ↑↓ Tab Enter keyboard nav
 - ✨ **Recent + saved searches** dropdown with star-to-pin
@@ -349,6 +352,14 @@ Create professional-quality beat-synced videos:
 - ✨ **XMP sidecar export** for Darktable / Lightroom / Immich interop
 - ✨ **Stash interop** (`.stash.json` import/export)
 - ✨ **Custom filename templates** + in-library duplicate badges + auto-tag `source:browse` on save
+- ✨ **Multi-tagger ensemble** - load multiple WD-style tagger ONNX models simultaneously (`wdTaggerVariants` setting); tags merged with consensus boost (+10% on 2-variant agreement, +20% on 3+)
+- ✨ **Browse UI condensed** - secondary filters collapsed into a single popover with active-count badge; double-click any source chip to mute it from "All sources" fan-out
+- ✨ **PullPush Reddit-archive source** - replaces the gated Reddit Data API entirely (no auth required); NSFW-subreddit-name filter + dead-image URL pattern blocklist + tile auto-hide on load failure
+- ✨ **Pixiv referer injection** - Electron `webRequest.onBeforeSendHeaders` interceptor rewrites Referer/Origin for `pximg.net` requests so Pixiv's hotlink-protected CDN serves images in the lightbox
+- ✨ **Bluesky AT Protocol auth** - app-password session token, queries the user's PDS instead of the public appview to avoid 403s
+- ✨ **xnxx playback** via `yt-dlp` universal fallback when all RapidAPI providers 403; bundled binary, HLS playback via `hls.js`
+- ✨ **11 new ML wrappers** scaffolded — InsightFace ArcFace, TransNet V2 shot detection, VideoMAE Kinetics-400 actions, X-CLIP zero-shot video, Chromaprint audio fingerprint, YAMNet 521-class events, LAION CLAP zero-shot audio, Demucs stem separation, WhisperX word-level transcripts (Python sidecar), F5-TTS voice cloning (Python sidecar), JoyTag + idolsankaku-eva02 (via the multi-tagger ensemble). Each has an in-source ACTIVATION block with download URLs and target paths.
+- ✨ **6 UI library installs** ready for future integration: `@dnd-kit/*` (reorder/merge UX), `@base-ui-components/react` (a11y primitives), `echarts` + `echarts-for-react` (big-data dashboards), `masonic` (variable-aspect virtualized grid), `photoswipe` (standard lightbox)
 
 ### v2.4.0
 
@@ -496,7 +507,7 @@ Create professional-quality beat-synced videos:
 
 <br/>
 
-**Requirements:** Node.js 18+ • npm 9+ • Windows 10+ / macOS 11+ / Linux
+**Requirements:** Node.js 20+ (Node 22 recommended) • npm 10+ • Windows 10+ / macOS 11+ / Linux
 
 <br/>
 
@@ -507,7 +518,7 @@ Create professional-quality beat-synced videos:
 *Built with obsession by developers who understand the mission.*
 
 <sub>
-🔐 Vault v2.6.0 • 61 AI services • 26 Browse sources • 112 components • 6 ML detectors
+🔐 Vault v2.6.0 • 71 AI services • 27 Browse sources • 112 components • 16 ML detector wrappers
 </sub>
 
 <br/>
