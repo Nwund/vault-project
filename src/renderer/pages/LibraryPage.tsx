@@ -70,6 +70,7 @@ import { Btn, TopBar, Dropdown } from '../components/ui'
 import { TagSelector } from '../components/TagSelector'
 import { FloatingVideoPlayer } from '../components/FloatingVideoPlayer'
 import { WatchLaterPanel } from '../components/WatchLaterPanel'
+import { RecentlyViewedStrip } from '../components/RecentlyViewedStrip'
 import { UrlDownloaderPanel } from '../components/UrlDownloaderPanel'
 import { DuplicatesModal } from '../components/DuplicatesModal'
 import { PlaylistPicker, AddToPlaylistPopup } from '../components/PlaylistPickers'
@@ -2411,6 +2412,18 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
           </div>
 
           <div className="w-full min-w-0">
+            {/* Recently viewed — top 12 unique videos from watch history.
+                Hides itself when there's no history yet so it doesn't take
+                up space on a fresh install. Only shows on page 1 — paging
+                deep into the library means the user is browsing, not
+                resuming. */}
+            {currentPage === 1 && (
+              <RecentlyViewedStrip
+                onPlay={(mediaId) => addFloatingPlayer(mediaId)}
+                limit={12}
+                className="mb-4"
+              />
+            )}
             <div ref={gridRef} className="w-full min-w-0" style={getGridStyle()}>
               {/* Loading skeleton grid */}
               {isLoading && sortedMedia.length === 0 && (
