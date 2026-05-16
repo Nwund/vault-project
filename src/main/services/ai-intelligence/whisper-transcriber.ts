@@ -120,6 +120,36 @@ export async function transcribeAudio(
   ffmpegPath: string,
   options?: { maxAudioSec?: number; timeoutMs?: number }
 ): Promise<WhisperTranscript | null> {
+  // Prefer the WhisperX sidecar when it's running — it gives us
+  // word-level + speaker-diarized segments. Caller only consumes the
+  // flat text; word-level/speaker data is preserved on the returned
+  // object for callers that want it (cast to WhisperTranscript & {
+  // segments?: WhisperXSegment[] }).
+  // Side-effect-free probe — does NOT spawn the sidecar. The sidecar
+  // is auto-started at app boot when settings.ai.whisperxAutoStart
+  // is true; otherwise this falls through to whisper.cpp.
+  try {
+    const { isWhisperXReady, whisperxTranscribe } = await import('./whisperx-launcher')
+    if (isWhisperXReady()) {
+      const t0 = Date.now()
+      const segments = await whisperxTranscribe(videoPath)
+      if (segments && segments.length > 0) {
+        const text = segments.map((s) => s.text.trim()).filter(Boolean).join(' ').trim()
+        if (text) {
+          return {
+            text,
+            durationMs: Date.now() - t0,
+            installDir: 'whisperx-sidecar',
+            // Stash the rich segments on the result so downstream
+            // consumers (SFX-on-word triggers, diarized speaker UI)
+            // can access them without re-running transcription.
+            segments,
+          } as WhisperTranscript & { segments: typeof segments }
+        }
+      }
+    }
+  } catch { /* fall through to whisper.cpp */ }
+
   const install = findWhisperInstall()
   if (!install) return null
   if (!fs.existsSync(videoPath)) return null

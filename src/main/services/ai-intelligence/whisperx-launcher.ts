@@ -68,6 +68,13 @@ export async function ensureWhisperXSidecar(): Promise<boolean> {
   return false
 }
 
+/** Side-effect-free probe — returns true only if the sidecar has already
+ *  reported healthy at least once this process lifetime. Callers that
+ *  want auto-spawn should use ensureWhisperXSidecar instead. */
+export function isWhisperXReady(): boolean {
+  return _ready
+}
+
 function ping(): Promise<boolean> {
   return new Promise((resolve) => {
     const req = http.request({ hostname: '127.0.0.1', port: 8031, path: '/health', method: 'GET', timeout: 1000 }, (res) => {
