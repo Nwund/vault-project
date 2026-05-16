@@ -474,6 +474,20 @@ export interface AISettings {
   /** Quantization mode for the auto-start path. bf16 = 8-12GB VRAM,
    *  4bit = ~6GB. Default bf16. */
   joycaptionMode?: 'bf16' | '4bit'
+  /** WhisperX Python sidecar (port 8031, word-level + diarized
+   *  transcripts). startScript: absolute path to start.bat / start.sh
+   *  that activates the venv + runs server.py. autoStart: spawn at
+   *  app boot (default false). When unset / file missing, the sidecar
+   *  stays dormant and whisper.cpp handles transcription. */
+  whisperxStartScript?: string
+  whisperxAutoStart?: boolean
+  /** F5-TTS Python sidecar (port 8021, voice-cloning alternative to
+   *  XTTS). startScript: absolute path to start.bat. autoStart:
+   *  spawn at app boot (default false). xyreneVoiceBackend selects
+   *  which engine xyrene-voice-client speaks to. */
+  f5ttsStartScript?: string
+  f5ttsAutoStart?: boolean
+  xyreneVoiceBackend?: 'xtts' | 'f5tts'
   /** Freesound.org API key (free, register at freesound.org/apiv2/apply).
    *  Used by the foley:freesound-search IPC for CC0/BY soundpack search. */
   freesoundApiKey?: string

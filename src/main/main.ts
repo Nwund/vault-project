@@ -371,6 +371,51 @@ async function main() {
         console.warn('[JoyCaption auto-start] threw (non-fatal):', err)
       }
     })()
+
+    // WhisperX auto-start. Same pattern, opt-in via settings.ai.whisperxAutoStart.
+    // Heavy load (faster-whisper + wav2vec2 + pyannote diarization), so default off
+    // — user explicitly enables when they want word-level + speaker timestamps.
+    // Honors settings.ai.whisperxStartScript (path to start.bat that activates the
+    // sidecar venv and runs server.py on port 8031).
+    void (async () => {
+      try {
+        const { getAISettings } = await import('./settings')
+        const aiSettings = getAISettings() as any
+        if (!aiSettings?.whisperxAutoStart) return
+        if (!aiSettings?.whisperxStartScript) {
+          console.log('[WhisperX auto-start] skipped — settings.ai.whisperxStartScript not configured')
+          return
+        }
+        const { ensureWhisperXSidecar } = await import('./services/ai-intelligence/whisperx-launcher')
+        console.log('[WhisperX auto-start] launching sidecar')
+        const ok = await ensureWhisperXSidecar()
+        console.log(`[WhisperX auto-start] ${ok ? 'ready' : 'failed (see python console)'}`)
+      } catch (err) {
+        console.warn('[WhisperX auto-start] threw (non-fatal):', err)
+      }
+    })()
+
+    // F5-TTS auto-start. Opt-in via settings.ai.f5ttsAutoStart. Required when
+    // settings.ai.xyreneVoiceBackend = 'f5tts' so the engine doesn't have to
+    // wait through a 90s sidecar boot on first synth. Default off (XTTS is the
+    // shipping backend).
+    void (async () => {
+      try {
+        const { getAISettings } = await import('./settings')
+        const aiSettings = getAISettings() as any
+        if (!aiSettings?.f5ttsAutoStart) return
+        if (!aiSettings?.f5ttsStartScript) {
+          console.log('[F5-TTS auto-start] skipped — settings.ai.f5ttsStartScript not configured')
+          return
+        }
+        const { ensureF5TtsSidecar } = await import('./services/ai-intelligence/f5-tts-launcher')
+        console.log('[F5-TTS auto-start] launching sidecar')
+        const ok = await ensureF5TtsSidecar()
+        console.log(`[F5-TTS auto-start] ${ok ? 'ready' : 'failed (see python console)'}`)
+      } catch (err) {
+        console.warn('[F5-TTS auto-start] threw (non-fatal):', err)
+      }
+    })()
   } else {
     logMain('warn', 'FFmpeg not found, AI Intelligence system disabled')
     errorLogger.warn('Main', 'FFmpeg not found - AI features disabled')
