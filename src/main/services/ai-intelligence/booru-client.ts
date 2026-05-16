@@ -326,6 +326,17 @@ function fetchBinary(fileUrl: string, outPath: string): Promise<{ bytes: number 
  *                 for future-proofing when the user adds an API key)
  * Each source returns the canonical BooruPost shape after normalization.
  */
+/** #107 — Bluesky custom feed wrapper. Calls searchBluesky with the
+ *  feedAtUri opt so the feed-skeleton endpoint is used instead of
+ *  searchPosts. Auth still comes from settings (handle + app password). */
+export async function searchBlueskyFeed(args: {
+  feedAtUri: string
+  perPage?: number
+  page?: number
+}): Promise<BooruSearchResult> {
+  return searchBluesky('', args.perPage ?? 30, args.page ?? 0, { feedAtUri: args.feedAtUri })
+}
+
 /** #109 — Pixiv R-18 discovery (daily ranking + recommended).
  *  Public wrapper that calls the internal searchPixiv with a
  *  discoveryMode opt. */
@@ -1201,16 +1212,35 @@ async function bskyAuth(handle: string, appPassword: string): Promise<string | n
   })
 }
 
-async function searchBluesky(tags: string, perPage: number, page: number): Promise<BooruSearchResult> {
+async function searchBluesky(
+  tags: string,
+  perPage: number,
+  page: number,
+  opts?: { feedAtUri?: string }
+): Promise<BooruSearchResult> {
   const q = tags.trim() || 'nsfw'  // empty query returns nothing; default to broad
-  const cursorKey = `${q}|${page}`
-  const cursor = page > 0 ? (_bskyCursors.get(`${q}|${page - 1}`) ?? '') : ''
-  const params = [
-    `q=${encodeURIComponent(q)}`,
-    `limit=${Math.min(100, perPage)}`,
-    cursor ? `cursor=${encodeURIComponent(cursor)}` : '',
-  ].filter(Boolean).join('&')
-  const urlPath = `/xrpc/app.bsky.feed.searchPosts?${params}`
+  const cursorKey = `${opts?.feedAtUri ?? q}|${page}`
+  const cursor = page > 0 ? (_bskyCursors.get(`${opts?.feedAtUri ?? q}|${page - 1}`) ?? '') : ''
+  // #107 — Custom feed subscription. When feedAtUri is set, query the
+  // feed-skeleton endpoint of the feed's generator service instead of
+  // the global searchPosts. The feed generator returns a list of post
+  // URIs which we then resolve via getPosts.
+  let urlPath: string
+  if (opts?.feedAtUri) {
+    const params = [
+      `feed=${encodeURIComponent(opts.feedAtUri)}`,
+      `limit=${Math.min(100, perPage)}`,
+      cursor ? `cursor=${encodeURIComponent(cursor)}` : '',
+    ].filter(Boolean).join('&')
+    urlPath = `/xrpc/app.bsky.feed.getFeed?${params}`
+  } else {
+    const params = [
+      `q=${encodeURIComponent(q)}`,
+      `limit=${Math.min(100, perPage)}`,
+      cursor ? `cursor=${encodeURIComponent(cursor)}` : '',
+    ].filter(Boolean).join('&')
+    urlPath = `/xrpc/app.bsky.feed.searchPosts?${params}`
+  }
 
   // Auth: pull handle + app password from settings; fetch a session
   // token if we don't have a fresh one. Falls through to unauthenticated

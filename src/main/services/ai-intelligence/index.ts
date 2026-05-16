@@ -700,6 +700,31 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
     }
   })
 
+  // #107 — Bluesky custom feed subscriptions. User pastes a feed
+  // AT-URI (e.g. at://did:plc:abc123/app.bsky.feed.generator/my-nsfw-feed);
+  // we hit the feed-skeleton endpoint via the existing Bluesky adapter
+  // and surface results into the Browse grid.
+  ipcMain.handle('booru:bluesky-feed', async (_ev, args: {
+    feedAtUri: string
+    perPage?: number
+    page?: number
+  }) => {
+    try {
+      if (!args.feedAtUri?.startsWith('at://')) {
+        return { ok: false, error: 'Invalid feed URI (must start with at://)', posts: [], hasMore: false, page: 0 }
+      }
+      const { searchBlueskyFeed } = await import('./booru-client')
+      const r = await searchBlueskyFeed({
+        feedAtUri: args.feedAtUri,
+        perPage: args.perPage ?? 30,
+        page: args.page ?? 0,
+      })
+      return { ok: true, ...r }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), posts: [], hasMore: false, page: 0 }
+    }
+  })
+
   // #109 — Pixiv R-18 discovery modes (daily ranking + recommended).
   // Bypasses the search box for high-signal browse without typing a tag.
   ipcMain.handle('booru:pixiv-discover', async (_ev, args: {

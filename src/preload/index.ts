@@ -2600,6 +2600,13 @@ const api = {
       sourceUrl: string
     }>('booru:resolve-url', url),
 
+    /** #107 — Bluesky custom feed (at:// URI). Hits feed-skeleton
+     *  endpoint instead of global search. */
+    blueskyFeed: (args: { feedAtUri: string; perPage?: number; page?: number }) =>
+      invoke<{ ok: boolean; posts?: any[]; hasMore?: boolean; page?: number; error?: string }>(
+        'booru:bluesky-feed', args
+      ),
+
     /** #109 — Pixiv R-18 discovery modes (daily ranking / recommended) */
     pixivDiscover: (args: {
       mode: 'rankingDayR18' | 'recommended'
