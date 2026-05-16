@@ -255,6 +255,17 @@ export function AiTaggerPage() {
     expectedPath: string
     sizeBytes: number
   } | null>(null)
+  // CLIP BPE tokenizer vocab — Apache-2.0 file from openai/CLIP repo.
+  // One-click install (ai:clip-bpe-download). Without it, CLIP text
+  // encoding falls back to a character-code placeholder that gives
+  // useful relative scores for fixed prompts but is useless for
+  // arbitrary text. With it, real zero-shot tag validation works.
+  const [clipBpeStatus, setClipBpeStatus] = useState<{
+    available: boolean
+    expectedPath: string
+    vocabSize: number | null
+  } | null>(null)
+  const [clipBpeBusy, setClipBpeBusy] = useState(false)
   // WD Tagger variant selection — SwinV2 default vs ViT (smaller).
   // WD Tagger variant. Five model families supported — see
   // tier1-onnx-tagger.ts for the filename → variant mapping.
@@ -486,6 +497,12 @@ export function AiTaggerPage() {
     // Gender classifier (manual install).
     window.api.ai.genderClassifierStatus?.().then((s: any) => {
       if (s) setGenderStatus(s)
+    }).catch(() => { /* leave null */ })
+
+    // CLIP BPE vocab — fetched on first probe; subsequent calls are
+    // synchronous map lookups.
+    window.api.ai.clipBpeStatus?.().then((s: any) => {
+      if (s) setClipBpeStatus(s)
     }).catch(() => { /* leave null */ })
 
     // WD Tagger variant + multi-sample setting.
@@ -2462,6 +2479,97 @@ export function AiTaggerPage() {
                     <li>Restart Vault — the queue auto-detects + uses it.</li>
                   </ol>
                 </div>
+              )}
+            </div>
+
+            {/* CLIP BPE tokenizer vocab — Apache-2.0 file from openai/CLIP.
+                Without it, the CLIP text encoder uses a character-code
+                placeholder (works for the fixed CLIP_TAG_CATEGORIES set,
+                useless for arbitrary text). With it, real zero-shot
+                tag validation + free-text CLIP search works correctly.
+                One-click install from the openai/CLIP raw GitHub URL. */}
+            <div className="bg-[var(--panel)] rounded-xl border border-[var(--border)] p-6">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Zap size={20} />
+                CLIP BPE tokenizer (Optional)
+              </h2>
+              <p className="text-sm text-[var(--muted)] mb-4">
+                Real byte-pair-encoding vocab from <span className="font-mono">openai/CLIP</span>.
+                Required for accurate zero-shot tag validation and free-text CLIP image search.
+                ~1.4 MB, Apache-2.0.
+              </p>
+              <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg mb-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  {clipBpeStatus === null ? (
+                    <Loader2 size={18} className="animate-spin text-[var(--muted)]" />
+                  ) : clipBpeStatus.available ? (
+                    <CheckCircle2 size={18} className="text-green-500" />
+                  ) : (
+                    <XCircle size={18} className="text-red-500/60" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="font-medium text-sm">
+                      {clipBpeStatus === null && 'Checking…'}
+                      {clipBpeStatus?.available && (
+                        <>Installed{typeof clipBpeStatus.vocabSize === 'number'
+                          ? <> <span className="text-[var(--muted)] font-normal">· vocab {clipBpeStatus.vocabSize.toLocaleString()}</span></>
+                          : null}</>
+                      )}
+                      {clipBpeStatus && !clipBpeStatus.available && 'Not installed — falling back to character-code placeholder'}
+                    </div>
+                    {clipBpeStatus?.expectedPath && (
+                      <div className="text-[10px] text-[var(--muted)] mt-0.5 font-mono truncate" title={clipBpeStatus.expectedPath}>
+                        {clipBpeStatus.expectedPath}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {clipBpeStatus && !clipBpeStatus.available && (
+                    <button
+                      disabled={clipBpeBusy}
+                      onClick={async () => {
+                        setClipBpeBusy(true)
+                        try {
+                          const r = await window.api.ai.clipBpeDownload?.()
+                          if (r?.ok) {
+                            showToast?.('success', r.alreadyPresent ? 'Already installed' : `Downloaded ${formatBytes(r.sizeBytes ?? 0)} · restart to activate`)
+                            const s = await window.api.ai.clipBpeStatus?.()
+                            setClipBpeStatus(s ?? null)
+                          } else {
+                            showToast?.('error', r?.error ?? 'Download failed')
+                          }
+                        } catch (err: any) {
+                          showToast?.('error', err?.message ?? 'Download failed')
+                        } finally {
+                          setClipBpeBusy(false)
+                        }
+                      }}
+                      className="text-xs px-3 py-1 rounded bg-[var(--primary)] hover:opacity-90 text-white transition disabled:opacity-50"
+                    >
+                      {clipBpeBusy ? 'Downloading…' : 'Install'}
+                    </button>
+                  )}
+                  <button
+                    onClick={async () => {
+                      setClipBpeStatus(null)
+                      try {
+                        const s = await window.api.ai.clipBpeStatus?.()
+                        setClipBpeStatus(s ?? { available: false, expectedPath: '', vocabSize: null })
+                      } catch {
+                        setClipBpeStatus({ available: false, expectedPath: '', vocabSize: null })
+                      }
+                    }}
+                    className="text-xs px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-[var(--primary)] transition"
+                  >
+                    Re-check
+                  </button>
+                </div>
+              </div>
+              {clipBpeStatus?.available && (
+                <p className="text-[11px] text-[var(--muted)]">
+                  Vocab loaded. CLIP text → image search and zero-shot tag validation are using real BPE encoding.
+                </p>
               )}
             </div>
 
