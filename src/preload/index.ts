@@ -456,6 +456,11 @@ const api = {
       invoke<{ ok: boolean; removed?: number; error?: string }>('media:trash:purgeAll'),
     trashAutoPurgeExpired: () =>
       invoke<{ ok: boolean; removed?: number; error?: string }>('media:trash:autoPurgeExpired'),
+    // #110 — Batch MD5 backfill. Walks every media row missing md5,
+    // streams the file through createHash, persists. Idempotent.
+    backfillMd5: () =>
+      invoke<{ ok: boolean; hashed?: number; skipped?: number; total?: number; error?: string }>('media:backfillMd5'),
+
     // #164 — Loudness measurement / cache. measureLufs is heavy
     // (5-30s ffmpeg pass); getLufs is a fast cached lookup.
     measureLufs: (mediaId: string) =>

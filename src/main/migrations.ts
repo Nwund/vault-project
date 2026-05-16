@@ -837,6 +837,22 @@ const migrations: Migration[] = [
         console.log('[Migration v29] Added media.lufs_integrated for #164 loudness normalization')
       }
     }
+  },
+
+  {
+    id: 30,
+    up: (db) => {
+      // #110 MD5 column for source-side dedup. media:allHashes already
+      // queries `md5` but the column never existed — adding it now +
+      // an idx for fast IN-clause lookups when the Browse tile-render
+      // checks "is this post already in my library?".
+      const cols = db.prepare(`PRAGMA table_info(media)`).all() as Array<{ name: string }>
+      if (!cols.find((c) => c.name === 'md5')) {
+        db.exec(`ALTER TABLE media ADD COLUMN md5 TEXT;`)
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_media_md5 ON media(md5) WHERE md5 IS NOT NULL;`)
+        console.log('[Migration v30] Added media.md5 + idx_media_md5 for #110 source-side dedup')
+      }
+    }
   }
 ]
 

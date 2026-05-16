@@ -1324,6 +1324,41 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // #110 — Batch MD5 backfill. Scans every media row missing an md5,
+  // streams the file through crypto.createHash('md5'), persists. Used
+  // by Browse to populate libraryHashes for the in-library-badge check
+  // against booru-returned md5s. Idempotent — skips already-computed rows.
+  ipcMain.handle('media:backfillMd5', async () => {
+    try {
+      const crypto = await import('node:crypto')
+      const rows = db.raw.prepare(
+        `SELECT id, path FROM media WHERE (md5 IS NULL OR md5 = '') LIMIT 5000`
+      ).all() as Array<{ id: string; path: string }>
+      const stmt = db.raw.prepare(`UPDATE media SET md5 = ? WHERE id = ?`)
+      let hashed = 0
+      let skipped = 0
+      for (const r of rows) {
+        try {
+          if (!fs.existsSync(r.path)) { skipped++; continue }
+          const md5 = await new Promise<string>((resolve, reject) => {
+            const hash = crypto.createHash('md5')
+            const stream = fs.createReadStream(r.path)
+            stream.on('error', reject)
+            stream.on('data', (chunk) => hash.update(chunk))
+            stream.on('end', () => resolve(hash.digest('hex')))
+          })
+          stmt.run(md5, r.id)
+          hashed++
+        } catch (err) {
+          skipped++
+        }
+      }
+      return { ok: true, hashed, skipped, total: rows.length }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
   // #197 — Funscript sidecar lookup. Per Funscript convention, the
   // file lives next to the media as <basename>.funscript with JSON
   // payload {version, actions: [{at: ms, pos: 0-100}, ...]}. Vault
