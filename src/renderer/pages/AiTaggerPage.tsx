@@ -2621,10 +2621,11 @@ export function AiTaggerPage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                 <ModelFileCard
                   title="SFace face recognition"
-                  description="128-D face embeddings → face_clusters. Drop sface.onnx or face-recognition-arcface.onnx (auto-detected)."
+                  description="128-D face embeddings → face_clusters. ~36 MB, Apache-2.0."
                   probe={() => window.api.ai.sfaceStatus?.() ?? Promise.resolve(null) as any}
+                  download={() => window.api.ai.sfaceDownload?.() ?? Promise.resolve(undefined) as any}
                   upstreamUrl="https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface"
-                  installHint="Filename face-recognition-arcface.onnx switches the pipeline to ArcFace's 512-D embeddings."
+                  installHint="To swap in ArcFace's 512-D embeddings instead, drop face-recognition-arcface.onnx at the path above (auto-detected)."
                   onToast={showToast}
                 />
                 <ModelFileCard
@@ -2682,10 +2683,11 @@ export function AiTaggerPage() {
                 />
                 <ModelFileCard
                   title="Chromaprint (fpcalc)"
-                  description="Audio fingerprinting for soundpack dedup + video re-encode detection."
+                  description="Audio fingerprinting for soundpack dedup + the new Audio Fingerprint dedup mode. ~600 KB, LGPL-2.1."
                   probe={() => window.api.ai.chromaprintStatus?.() ?? Promise.resolve(null) as any}
+                  download={() => window.api.ai.fpcalcDownload?.() ?? Promise.resolve(undefined) as any}
                   upstreamUrl="https://acoustid.org/chromaprint"
-                  installHint="Drop fpcalc.exe at resources/bin/. Without it, chromaprintFile() still tries PATH but the status card can't see that."
+                  installHint="Auto-download Windows-only. On Linux/macOS install via your package manager (apt install libchromaprint-tools / brew install chromaprint)."
                   onToast={showToast}
                 />
               </div>

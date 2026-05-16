@@ -1234,6 +1234,20 @@ const api = {
       expectedPath: string
       sizeBytes: number
     }>('ai:sface-status'),
+    sfaceDownload: () => invoke<{
+      ok: boolean
+      alreadyPresent?: boolean
+      sizeBytes?: number
+      path?: string
+      error?: string
+    }>('ai:sface-download'),
+    fpcalcDownload: () => invoke<{
+      ok: boolean
+      alreadyPresent?: boolean
+      sizeBytes?: number
+      path?: string
+      error?: string
+    }>('ai:fpcalc-download'),
     clipBpeStatus: () => invoke<{
       available: boolean
       expectedPath: string

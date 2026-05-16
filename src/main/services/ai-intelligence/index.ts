@@ -4171,9 +4171,6 @@ RULES:
   // userData/models/face-recognition-sface.onnx). When installed,
   // each face YuNet detects gets a 128-D embedding and clustered.
   ipcMain.handle('ai:sface-status', async () => {
-    const fs = await import('node:fs')
-    const path = await import('node:path')
-    const { app } = await import('electron')
     const expectedPath = path.join(app.getPath('userData'), 'models', 'face-recognition-sface.onnx')
     let installed = false
     let sizeBytes = 0
@@ -4183,6 +4180,98 @@ RULES:
       sizeBytes = stat.size
     } catch { /* not installed */ }
     return { installed, expectedPath, sizeBytes }
+  })
+
+  // One-click SFace installer. Pulls face_recognition_sface_2021dec.onnx
+  // (~36 MB, Apache-2.0) from the OpenCV opencv_zoo repo. Idempotent —
+  // skips when the target already exists and is >100 KB.
+  ipcMain.handle('ai:sface-download', async () => {
+    const target = path.join(app.getPath('userData'), 'models', 'face-recognition-sface.onnx')
+    try {
+      await fsp.mkdir(path.dirname(target), { recursive: true })
+      if (fs.existsSync(target)) {
+        const stat = await fsp.stat(target)
+        if (stat.size > 100_000) {
+          return { ok: true, alreadyPresent: true, sizeBytes: stat.size, path: target }
+        }
+      }
+      const url = 'https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx'
+      const res = await fetch(url)
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+      const buf = Buffer.from(await res.arrayBuffer())
+      if (buf.length < 100_000) return { ok: false, error: `download too small: ${buf.length} bytes` }
+      await fsp.writeFile(target, buf)
+      return { ok: true, alreadyPresent: false, sizeBytes: buf.length, path: target }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // One-click fpcalc.exe installer. Pulls the Windows binary from the
+  // acoustid.org Chromaprint release. Targets resources/bin/ alongside
+  // ffmpeg/yt-dlp. Skip on non-Windows (caller should rely on PATH).
+  ipcMain.handle('ai:fpcalc-download', async () => {
+    if (process.platform !== 'win32') {
+      return { ok: false, error: 'Auto-download only implemented for Windows. Install fpcalc via your package manager.' }
+    }
+    try {
+      const targetDir = path.join(process.cwd(), 'resources', 'bin')
+      const target = path.join(targetDir, 'fpcalc.exe')
+      await fsp.mkdir(targetDir, { recursive: true })
+      if (fs.existsSync(target)) {
+        const stat = await fsp.stat(target)
+        if (stat.size > 100_000) {
+          return { ok: true, alreadyPresent: true, sizeBytes: stat.size, path: target }
+        }
+      }
+      // Pull from acoustid's official chromaprint v1.5.1 windows zip.
+      // The zip is small (~4MB) and contains a single fpcalc.exe at the root.
+      const url = 'https://github.com/acoustid/chromaprint/releases/download/v1.5.1/chromaprint-fpcalc-1.5.1-windows-x86_64.zip'
+      const res = await fetch(url)
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status} from ${url}` }
+      const zipBuf = Buffer.from(await res.arrayBuffer())
+      if (zipBuf.length < 500_000) return { ok: false, error: `download too small: ${zipBuf.length} bytes` }
+
+      // Use Node's built-in `zlib`/`fflate` won't unzip a real zip. Use
+      // adm-zip if available, otherwise fall back to spawning Windows'
+      // built-in `tar` which on Win10+ understands zip.
+      try {
+        const AdmZip: any = require('adm-zip')
+        const zip = new AdmZip(zipBuf)
+        const entries = zip.getEntries()
+        const exe = entries.find((e: any) => e.entryName.toLowerCase().endsWith('fpcalc.exe'))
+        if (!exe) return { ok: false, error: 'zip did not contain fpcalc.exe' }
+        await fsp.writeFile(target, exe.getData())
+      } catch {
+        // Fallback path: dump zip to temp + use Windows tar to extract
+        const tmpZip = path.join(app.getPath('temp'), `fpcalc-${Date.now()}.zip`)
+        await fsp.writeFile(tmpZip, zipBuf)
+        try {
+          const { spawn } = await import('node:child_process')
+          await new Promise<void>((resolve, reject) => {
+            const p = spawn('tar', ['-xf', tmpZip, '-C', targetDir], { windowsHide: true })
+            p.on('error', reject)
+            p.on('close', (code) => code === 0 ? resolve() : reject(new Error(`tar exit ${code}`)))
+          })
+          // tar may have extracted to chromaprint-fpcalc-1.5.1-windows-x86_64/fpcalc.exe
+          if (!fs.existsSync(target)) {
+            const nested = path.join(targetDir, 'chromaprint-fpcalc-1.5.1-windows-x86_64', 'fpcalc.exe')
+            if (fs.existsSync(nested)) {
+              await fsp.copyFile(nested, target)
+            } else {
+              return { ok: false, error: 'extraction succeeded but fpcalc.exe not found at expected paths' }
+            }
+          }
+        } finally {
+          try { await fsp.unlink(tmpZip) } catch { /* ignore */ }
+        }
+      }
+
+      const stat = await fsp.stat(target)
+      return { ok: true, alreadyPresent: false, sizeBytes: stat.size, path: target }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
   })
 
   // Cluster management IPCs — list, rename, merge, delete.
