@@ -9,6 +9,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Sparkles, X, Loader2, Tag, Zap, Music, Clock, Wand2 } from 'lucide-react'
+import { useEscapeClose } from '../hooks/useEscapeClose'
 
 export interface AutoPmvResult {
   bpm: number
@@ -67,6 +68,8 @@ const AutoPmvModal: React.FC<AutoPmvModalProps> = ({ open, onClose, onGenerated 
   const [generating, setGenerating] = useState(false)
   const [warnings, setWarnings] = useState<string[]>([])
   const [allTags, setAllTags] = useState<Array<{ id: number; name: string; videoCount?: number }>>([])
+
+  useEscapeClose(open, onClose)
 
   // Load tag list once on open so we can show suggestions.
   useEffect(() => {

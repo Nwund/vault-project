@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Copy, Trash2, Check, X, HardDrive, FileText, Hash, Loader2, ChevronDown, ChevronRight, FolderOpen, Eye } from 'lucide-react'
 import { formatBytes } from '../utils/formatters'
 import { useToast } from '../contexts'
+import { useEscapeClose } from '../hooks/useEscapeClose'
 
 interface DuplicateMedia {
   id: string
@@ -52,6 +53,8 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
   const [keepSelected, setKeepSelected] = useState<Map<string, string>>(new Map()) // groupHash -> mediaId to keep
   const [stats, setStats] = useState<any>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  useEscapeClose(isOpen, onClose)
 
   const loadStats = useCallback(async () => {
     try {

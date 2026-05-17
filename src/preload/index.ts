@@ -20,6 +20,22 @@ function on<T = unknown>(channel: string, cb: (payload: T) => void) {
   return () => ipcRenderer.removeListener(channel, listener)
 }
 
+// v2.7 — Some channels (notably 'vault:changed') are broadcast from BOTH
+// the main process (after a DB write) AND from the renderer itself (after
+// a renderer-only state change like blacklist toggling, focus mode, etc.).
+// `onBoth` listens to the IPC channel AND a parallel window CustomEvent
+// of the same name so callers don't have to subscribe twice.
+function onBoth<T = unknown>(channel: string, cb: (payload: T) => void) {
+  const ipcListener = (_ev: Electron.IpcRendererEvent, payload: T) => cb(payload)
+  ipcRenderer.on(channel, ipcListener)
+  const winListener = (ev: Event) => cb((ev as CustomEvent<T>).detail as T)
+  window.addEventListener(channel, winListener)
+  return () => {
+    ipcRenderer.removeListener(channel, ipcListener)
+    window.removeEventListener(channel, winListener)
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // API exposed to renderer via window.api
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1778,7 +1794,7 @@ const api = {
   // EVENTS
   // ═══════════════════════════════════════════════════════════════════════════
   events: {
-    onVaultChanged: (cb: () => void) => on('vault:changed', cb),
+    onVaultChanged: (cb: () => void) => onBoth('vault:changed', cb),
     onJobsChanged: (cb: () => void) => on('vault:jobsChanged', cb),
     onSettingsChanged: (cb: (settings: any) => void) => on('settings:changed', cb),
     onTaggingProgress: (cb: (progress: { current: number; total: number; file: string }) => void) =>

@@ -811,7 +811,9 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
             try {
               await window.api.media?.rename?.(contextMenu.mediaId, newName.trim())
               showToast('success', 'Renamed successfully')
-              window.dispatchEvent(new CustomEvent('media-renamed', { detail: { mediaId: contextMenu.mediaId } }))
+              // media:rename already calls broadcast('vault:changed') in main
+              // (ipc.ts:1695), so the IPC route refreshes consumers — no
+              // local dispatch needed.
             } catch (e: any) {
               showToast('error', e?.message || 'Failed to rename')
             }
@@ -895,8 +897,10 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
               blacklist.mediaIds.push(contextMenu.mediaId)
               await window.api.settings.update?.({ blacklist })
               showToast('success', 'Added to blacklist')
-              // Trigger refresh
-              window.dispatchEvent(new CustomEvent('media-blacklisted', { detail: { mediaId: contextMenu.mediaId } }))
+              // Renderer-only state change — fire vault:changed on window so
+              // every page subscribed via onVaultChanged refreshes. The
+              // preload's onBoth() helper bridges window→subscribers.
+              window.dispatchEvent(new CustomEvent('vault:changed'))
             } else {
               showToast('info', 'Already in blacklist')
             }
@@ -1245,7 +1249,8 @@ export default function App() {
           const result = await window.api.media?.undoDelete?.()
           if (result?.success) {
             globalShowToast('success', 'Restored deleted item')
-            window.dispatchEvent(new CustomEvent('vault:changed'))
+            // media:undoDelete fires broadcast('vault:changed') in main
+            // (ipc.ts:2137) — IPC route handles renderer refresh.
           } else if (result?.error === 'Nothing to undo') {
             globalShowToast('info', 'Nothing to undo')
           } else {

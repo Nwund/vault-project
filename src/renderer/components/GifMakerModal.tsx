@@ -8,6 +8,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { X, Play, Pause, RefreshCw, Sparkles, Shuffle, Zap, Search } from 'lucide-react'
+import { useEscapeClose } from '../hooks/useEscapeClose'
 
 // Local types — kept loose so the modal can be reused outside the brainwash flow.
 type MediaRow = {
@@ -211,6 +212,8 @@ const GifMakerModal: React.FC<GifMakerModalProps> = ({
   const [generating, setGenerating] = useState(false)
   const [search, setSearch] = useState('')
   const videoRef = useRef<HTMLVideoElement | null>(null)
+
+  useEscapeClose(open, onClose)
 
   // Reset state on open / when initialVideo changes
   useEffect(() => {

@@ -10,6 +10,7 @@ import type { MediaRow, MediaStatsRow, TagRow } from '../types'
 import { formatBytes, formatDuration } from '../utils/formatters'
 import { MediaNotesPanel } from './MediaNotesPanel'
 import { BacklinksPanel } from './BacklinksPanel'
+import { useEscapeClose } from '../hooks/useEscapeClose'
 
 export function MediaInfoModal({ media, onClose }: { media: MediaRow; onClose: () => void }) {
   const [stats, setStats] = useState<MediaStatsRow | null>(null)
@@ -18,6 +19,8 @@ export function MediaInfoModal({ media, onClose }: { media: MediaRow; onClose: (
   // v2.7 cross-cutting state: denial timer + featureLess flag for this item.
   const [denialStatus, setDenialStatus] = useState<{ active: boolean; until: number | null; remainingMs: number } | null>(null)
   const [featureLess, setFeatureLess] = useState<boolean | null>(null)
+
+  useEscapeClose(true, onClose)
 
   useEffect(() => {
     Promise.all([
