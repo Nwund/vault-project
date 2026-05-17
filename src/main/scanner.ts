@@ -127,7 +127,16 @@ export async function scanAndUpsertAll(db: DB, mediaDir: string): Promise<void> 
       }))
 
       // Synchronous transaction over the prepared rows.
-      db.raw.transaction(() => {
+      // Use .immediate() to acquire the write lock at BEGIN time. With
+      // the default deferred mode, when another connection (AI pipeline,
+      // migration repair, etc.) commits a write between our SELECT and
+      // first write inside this transaction, SQLite raises
+      // SQLITE_BUSY_SNAPSHOT and we cannot upgrade — every row in the
+      // chunk fails until we retry. busy_timeout=5000 doesn't help here
+      // because BUSY_SNAPSHOT is a non-retryable conflict, not a lock
+      // wait. Immediate-mode lets us wait for the lock at BEGIN with
+      // the normal busy_timeout instead of mid-transaction.
+      const chunkTx = db.raw.transaction(() => {
         for (const item of prepared) {
           if (item.skip) {
             skipped++
@@ -146,7 +155,15 @@ export async function scanAndUpsertAll(db: DB, mediaDir: string): Promise<void> 
             console.warn(`[Scanner] Error processing file: ${item.p}`, e)
           }
         }
-      })()
+      })
+      try {
+        chunkTx.immediate()
+      } catch (txErr: any) {
+        // If the whole chunk's transaction fails (e.g., disk full or
+        // foreign-key violation in one of the upserts), log once with
+        // the count rather than re-spamming a line per file.
+        console.warn(`[Scanner] Chunk transaction failed (${prepared.length} files):`, txErr?.message ?? txErr)
+      }
     }
 
     console.log(`[Scanner] Completed: ${processed} media files (${fastPathHits} unchanged, fast-path), ${skipped} non-media files skipped`)
