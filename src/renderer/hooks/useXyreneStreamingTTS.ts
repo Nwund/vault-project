@@ -44,6 +44,24 @@ function s16leToFloat32(bytes: Uint8Array): Float32Array {
   return out
 }
 
+// #207 — Split a prompt into ordered TTS clauses. We dispatch each in
+// parallel to the server (so the model starts generating clause N+1 the
+// moment we hand the renderer clause N) but play them back in order.
+// Clauses are pruned to drop pure-whitespace or pure-punctuation pieces.
+function splitIntoClauses(text: string): string[] {
+  const out: string[] = []
+  // Capture each clause + the punctuation/whitespace that terminated it
+  // so we keep "hi baby," not "hi baby" — the trailing comma cues the
+  // model to use a slight rising intonation at the boundary.
+  const re = /[^.,;:!?\n]+[.,;:!?\n]?/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    const piece = m[0].trim()
+    if (piece && /[A-Za-z0-9]/.test(piece)) out.push(piece)
+  }
+  return out.length > 0 ? out : (text.trim() ? [text.trim()] : [])
+}
+
 export function useXyreneStreamingTTS() {
   const [isPlaying, setIsPlaying] = useState(false)
   const ctxRef = useRef<AudioContext | null>(null)
@@ -52,6 +70,10 @@ export function useXyreneStreamingTTS() {
   // for the speak() promise plus a leftover-bytes buffer (s16 chunks may
   // arrive misaligned at the byte level when the network splits the
   // response between samples).
+  //
+  // For chunked speak (#207) each entry also carries a clause group id
+  // and clause index so we can hold back later-clause audio until the
+  // earlier clause has finished scheduling all its chunks.
   const inFlightRef = useRef<Map<string, {
     resolve: () => void
     reject: (err: Error) => void
@@ -59,7 +81,13 @@ export function useXyreneStreamingTTS() {
     pendingFloats: Float32Array[]
     pendingSampleCount: number
     lastSourceEndTime: number
+    groupId?: string
+    clauseIdx?: number
   }>>(new Map())
+  // Per-group cursor: which clause is currently allowed to schedule
+  // chunks onto the audio output. Out-of-order arrivals get held in
+  // pendingFloats until their turn.
+  const groupCursorRef = useRef<Map<string, number>>(new Map())
 
   // Ensure AudioContext exists (must be lazy because some browsers
   // require a user gesture for the first AudioContext).
@@ -76,11 +104,20 @@ export function useXyreneStreamingTTS() {
   // Flush any accumulated floats for this stream into a scheduled
   // AudioBufferSourceNode. force=true means schedule whatever's pending
   // even if it's below the threshold (called on stream end).
+  //
+  // For grouped streams (#207 chunked speak), only the clause whose
+  // index matches the group cursor is eligible to schedule. Later-
+  // clause chunks accumulate in pendingFloats until the cursor reaches
+  // them.
   const flush = useCallback((streamId: string, force: boolean) => {
     const state = inFlightRef.current.get(streamId)
     if (!state) return
     if (!force && state.pendingSampleCount < MIN_SAMPLES_PER_SCHEDULE) return
     if (state.pendingSampleCount === 0) return
+    if (state.groupId !== undefined && state.clauseIdx !== undefined) {
+      const cursor = groupCursorRef.current.get(state.groupId) ?? 0
+      if (state.clauseIdx !== cursor) return // hold back until our turn
+    }
 
     const ctx = getCtx()
     const buffer = ctx.createBuffer(1, state.pendingSampleCount, SAMPLE_RATE)
@@ -98,10 +135,14 @@ export function useXyreneStreamingTTS() {
     source.connect(ctx.destination)
     const now = ctx.currentTime
     // Start ASAP but no earlier than the end of the last scheduled
-    // chunk — keeps consecutive buffers seamless.
-    const startTime = Math.max(now + 0.01, state.lastSourceEndTime || (now + 0.01))
-    source.start(startTime)
-    state.lastSourceEndTime = startTime + buffer.duration
+    // chunk — keeps consecutive buffers seamless. For grouped speak,
+    // the previous clause's lastSourceEndTime gets carried forward
+    // through nextStartTimeRef so clause boundaries are also seamless.
+    const earliest = state.groupId !== undefined
+      ? Math.max(nextStartTimeRef.current || 0, state.lastSourceEndTime || 0, now + 0.01)
+      : Math.max(now + 0.01, state.lastSourceEndTime || (now + 0.01))
+    source.start(earliest)
+    state.lastSourceEndTime = earliest + buffer.duration
     nextStartTimeRef.current = state.lastSourceEndTime
   }, [getCtx])
 
@@ -141,6 +182,24 @@ export function useXyreneStreamingTTS() {
       setTimeout(() => {
         state.resolve()
         inFlightRef.current.delete(data.streamId)
+        // If this stream was part of a chunked group, advance the cursor
+        // and try to flush whichever clause now owns the slot.
+        if (state.groupId !== undefined && state.clauseIdx !== undefined) {
+          const groupId = state.groupId
+          const nextIdx = state.clauseIdx + 1
+          groupCursorRef.current.set(groupId, nextIdx)
+          for (const [sid, st] of inFlightRef.current) {
+            if (st.groupId === groupId && st.clauseIdx === nextIdx) {
+              flush(sid, false)
+            }
+          }
+          // If no in-flight stream has the next clauseIdx anymore, the
+          // group is done — drop the cursor.
+          const stillActive = Array.from(inFlightRef.current.values()).some(
+            (st) => st.groupId === groupId,
+          )
+          if (!stillActive) groupCursorRef.current.delete(groupId)
+        }
         if (inFlightRef.current.size === 0) setIsPlaying(false)
       }, remaining * 1000)
     })
@@ -190,6 +249,60 @@ export function useXyreneStreamingTTS() {
     })
   }, [getCtx])
 
+  // #207 — Parallel-dispatch, in-order playback. Splits the prompt into
+  // clauses and fires every TTS call immediately so the model starts
+  // generating clause N+1 while clause N is still streaming. The flush
+  // logic gates by clauseIdx so we never play out of order; the seam
+  // between clauses uses the shared nextStartTimeRef so playback is
+  // continuous.
+  //
+  // Returns a Promise that resolves after the last clause has played.
+  const speakChunked = useCallback(async (text: string, options?: { voice?: string; language?: string }) => {
+    const clauses = splitIntoClauses(text)
+    if (clauses.length === 0) return
+    if (clauses.length === 1) return speak(clauses[0], options)
+
+    const groupId = `xy-grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    groupCursorRef.current.set(groupId, 0)
+    setIsPlaying(true)
+    nextStartTimeRef.current = getCtx().currentTime + 0.05
+
+    const clausePromises = clauses.map((clauseText, clauseIdx) => {
+      const streamId = `${groupId}-${clauseIdx}`
+      return new Promise<void>((resolve, reject) => {
+        inFlightRef.current.set(streamId, {
+          resolve,
+          reject,
+          leftoverByte: null,
+          pendingFloats: [],
+          pendingSampleCount: 0,
+          lastSourceEndTime: 0,
+          groupId,
+          clauseIdx,
+        })
+        window.api.xyreneSpeakStream({
+          text: clauseText,
+          streamId,
+          voice: options?.voice,
+          language: options?.language,
+        }).catch((err: Error) => {
+          const state = inFlightRef.current.get(streamId)
+          if (state) {
+            state.reject(err)
+            inFlightRef.current.delete(streamId)
+          }
+        })
+      })
+    })
+
+    try {
+      await Promise.all(clausePromises)
+    } finally {
+      groupCursorRef.current.delete(groupId)
+      if (inFlightRef.current.size === 0) setIsPlaying(false)
+    }
+  }, [getCtx, speak])
+
   const stop = useCallback(() => {
     // Best-effort cancel: close the AudioContext (drops scheduled buffers),
     // then resolve every pending speak() so callers don't hang.
@@ -199,8 +312,9 @@ export function useXyreneStreamingTTS() {
       try { state.resolve() } catch {}
     }
     inFlightRef.current.clear()
+    groupCursorRef.current.clear()
     setIsPlaying(false)
   }, [])
 
-  return { speak, stop, isPlaying }
+  return { speak, speakChunked, stop, isPlaying }
 }

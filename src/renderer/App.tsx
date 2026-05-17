@@ -1,4 +1,4 @@
-// File: src/renderer/App.tsx
+﻿// File: src/renderer/App.tsx
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
@@ -14,17 +14,24 @@ import {
 import { useDebounce, toFileUrlCached, useLazyLoad } from './hooks/usePerformance'
 import { useVideoPreview } from './hooks/useVideoPreview'
 import { AboutPage } from './pages/AboutPage'
-import { DownloadsPage } from './pages/DownloadsPage'
-import Rule34Page from './pages/Rule34Page'
-import PerformersPage from './pages/PerformersPage'
-import { StatsPage } from './pages/StatsPage'
-import { FeedPage } from './pages/FeedPage'
-import { AiTaggerPage } from './pages/AiTaggerPage'
-import { PlaylistsPage } from './pages/PlaylistsPage'
-import { CaptionsPage } from './pages/CaptionsPage'
-import { SettingsPage } from './pages/SettingsPage'
+import SessionsPage from './pages/SessionsPage'
+// v2.7 — lazy-load every non-essential page so initial bundle shrinks.
+// LibraryPage (the entry page) and SessionsPage (small) stay eager.
+const DownloadsPage = React.lazy(() => import('./pages/DownloadsPage').then((m) => ({ default: m.DownloadsPage })))
+const Rule34Page = React.lazy(() => import('./pages/Rule34Page'))
+const PerformersPage = React.lazy(() => import('./pages/PerformersPage'))
+const FeedPage = React.lazy(() => import('./pages/FeedPage').then((m) => ({ default: m.FeedPage })))
+const PlaylistsPage = React.lazy(() => import('./pages/PlaylistsPage').then((m) => ({ default: m.PlaylistsPage })))
+const CaptionsPage = React.lazy(() => import('./pages/CaptionsPage').then((m) => ({ default: m.CaptionsPage })))
+const SettingsPage = React.lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const StatsPage = React.lazy(() => import('./pages/StatsPage').then((m) => ({ default: m.StatsPage })))
+const AiTaggerPage = React.lazy(() => import('./pages/AiTaggerPage').then((m) => ({ default: m.AiTaggerPage })))
+import { PostNutLockoutOverlay } from './components/PostNutLockoutOverlay'
 import { LibraryPage } from './pages/LibraryPage'
-import { GoonWallPage, resetGoonSlots } from './pages/GoonWallPage'
+// v2.7 — defer GoonWallPage too; it's 1,586 lines and rarely visited first.
+// resetGoonSlots is dynamically imported in the cleanup path so the page's
+// module isn't pulled into the main bundle until needed.
+const GoonWallPage = React.lazy(() => import('./pages/GoonWallPage').then((m) => ({ default: m.GoonWallPage })))
 import { ContextMenuContext, useContextMenu, type ContextMenuState } from './contexts/ContextMenuContext'
 import { cn } from './utils/cn'
 import { extractItems, toFileUrl } from './utils/api'
@@ -53,6 +60,8 @@ import { SessionMediaThumb, PlaylistItemThumb, PlaylistGridThumb } from './compo
 import { HardwareEncoderSettings } from './components/HardwareEncoderSettings'
 import { GIFTile } from './components/GIFTile'
 import { ReviewHoverPreview } from './components/ReviewHoverPreview'
+import { ProfileSwitcher } from './components/ProfileSwitcher'
+import { SubscriptionsBellButton } from './components/SubscriptionsBellButton'
 import { CrossDeviceCard, TaggerQualityCard } from './components/AdminCards'
 import { PlaylistPicker, AddToPlaylistPopup } from './components/PlaylistPickers'
 
@@ -76,6 +85,7 @@ import { FloatingVideoPlayer } from './components/FloatingVideoPlayer'
 import { WatchLaterPanel } from './components/WatchLaterPanel'
 import { MediaNotesPanel } from './components/MediaNotesPanel'
 import { MediaInfoModal } from './components/MediaInfoModal'
+const WhatsNewModal = React.lazy(() => import('./components/WhatsNewModal').then((m) => ({ default: m.WhatsNewModal })))
 import { UrlDownloaderPanel } from './components/UrlDownloaderPanel'
 import { DuplicatesModal } from './components/DuplicatesModal'
 import { HomeDashboard } from './components/HomeDashboard'
@@ -209,7 +219,8 @@ import {
   Sliders,
   Columns,
   Link2,
-  Mic
+  Mic,
+  Share2,
 } from 'lucide-react'
 import { playClimaxForType } from './utils/soundPlayer'
 import vaultLogo from './assets/vault-logo.png'
@@ -556,6 +567,239 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
         hideContextMenu()
       }
     },
+    // v2.7 sharing — Iroh blob ticket. End-to-end encrypted file
+    // share via content addressing; receiver pastes the ticket.
+    {
+      label: 'Share via Iroh',
+      icon: <Share2 size={14} />,
+      action: async () => {
+        if (!contextMenu.mediaPath) return hideContextMenu()
+        try {
+          showToast('info', 'Generating Iroh ticket…')
+          const res = await window.api.iroh.share(contextMenu.mediaPath)
+          await navigator.clipboard.writeText(res.ticket)
+          showToast('success', 'Iroh ticket copied to clipboard')
+        } catch (e: any) {
+          showToast('error', e?.message ?? 'Iroh share failed')
+        }
+        hideContextMenu()
+      }
+    },
+    // v2.7 sharing — Helia (IPFS) pin. Returns a CID + gateway URL.
+    {
+      label: 'Pin to IPFS',
+      icon: <HardDrive size={14} />,
+      action: async () => {
+        if (!contextMenu.mediaPath) return hideContextMenu()
+        try {
+          showToast('info', 'Pinning to local IPFS node…')
+          const res = await window.api.helia.pin(contextMenu.mediaPath)
+          if (res.ok && res.cid) {
+            await navigator.clipboard.writeText(res.gatewayUrl ?? `ipfs://${res.cid}`)
+            showToast('success', `Pinned · ${res.cid.slice(0, 14)}… (gateway URL copied)`)
+          } else {
+            showToast('error', res.error ?? 'IPFS pin failed')
+          }
+        } catch (e: any) {
+          showToast('error', e?.message ?? 'IPFS pin failed')
+        }
+        hideContextMenu()
+      }
+    },
+    // v2.7 export — opens the export-pipeline modal in LibraryPage via
+    // a custom event so we don't have to plumb state through 5 levels.
+    {
+      label: 'Open Export Pipeline',
+      icon: <Download size={14} />,
+      action: () => {
+        window.dispatchEvent(new CustomEvent('vault:openExportPipeline'))
+        hideContextMenu()
+      }
+    },
+    // v2.7 — Re-queue this media for AI tagging at priority 1. Useful
+    // when you've tweaked the Venice prompt or canonical tags and want
+    // an item re-analyzed without scrolling to AI Tools and selecting
+    // it manually.
+    {
+      label: 'Re-tag with AI',
+      icon: <Brain size={14} />,
+      action: async () => {
+        if (!contextMenu.mediaId) return hideContextMenu()
+        try {
+          const res = await window.api.ai.reanalyzeBatch([contextMenu.mediaId])
+          showToast('success', `Queued for re-analysis · ${res.enqueued} item${res.enqueued === 1 ? '' : 's'}`)
+        } catch (e: any) {
+          showToast('error', e?.message ?? 'Re-tag failed')
+        }
+        hideContextMenu()
+      }
+    },
+    // v2.7 — RIFE frame interpolation. Doubles a video's frame rate via
+    // an external RIFE NCNN-Vulkan binary. Output writes to a sibling
+    // <basename>.rife.mp4. Long-running — fire-and-forget with toast.
+    {
+      label: 'RIFE interpolate (60fps)',
+      icon: <Activity size={14} />,
+      action: async () => {
+        if (!contextMenu.mediaPath || contextMenu.mediaType !== 'video') {
+          showToast('info', 'RIFE only works on videos')
+          return hideContextMenu()
+        }
+        showToast('info', 'RIFE started — this may take several minutes')
+        try {
+          const res = await window.api.rife.interpolate(contextMenu.mediaPath, { targetFps: 60 })
+          if (res.ok) {
+            showToast('success', `RIFE done · ${res.dstPath?.split(/[/\\]/).pop() ?? 'output'}`)
+          } else {
+            showToast('error', res.error ?? 'RIFE failed')
+          }
+        } catch (e: any) {
+          showToast('error', e?.message ?? 'RIFE failed')
+        }
+        hideContextMenu()
+      }
+    },
+    // v2.7 — Export an NFO sidecar (Kodi/Jellyfin/Emby compatible) for
+    // this single media item. Writes <basename>.nfo next to the file.
+    {
+      label: 'Export NFO sidecar',
+      icon: <FileText size={14} />,
+      action: async () => {
+        if (!contextMenu.mediaId) return hideContextMenu()
+        try {
+          const res = await window.api.nfo.exportOne(contextMenu.mediaId)
+          if (res.ok) {
+            showToast('success', `NFO written · ${res.path?.split(/[/\\]/).pop() ?? 'sidecar'}`)
+          } else {
+            showToast('error', res.error ?? 'NFO export failed')
+          }
+        } catch (e: any) {
+          showToast('error', e?.message ?? 'NFO export failed')
+        }
+        hideContextMenu()
+      }
+    },
+    // v2.7 — Per-media denial timer. Sets a "can't open this until X"
+    // lockout so users practicing self-control deny themselves a
+    // specific item (rather than the whole library). Uses window.prompt
+    // for the duration since the existing ContextMenuOverlay doesn't
+    // render submenus.
+    {
+      label: 'Deny this for…',
+      icon: <Clock size={14} />,
+      action: async () => {
+        if (!contextMenu.mediaId) return hideContextMenu()
+        const input = window.prompt(
+          'Deny for how long? Enter minutes or examples: 30m / 1h / 1d / 1w',
+          '1h',
+        )
+        if (!input) return hideContextMenu()
+        const m = input.trim().match(/^(\d+(?:\.\d+)?)\s*(m|min|h|hr|hrs|d|day|days|w|wk|week|weeks)?$/i)
+        if (!m) {
+          showToast('error', "Couldn't parse duration")
+          return hideContextMenu()
+        }
+        const n = parseFloat(m[1])
+        const unit = (m[2] ?? 'm').toLowerCase()
+        const minutes =
+          unit.startsWith('w') ? n * 7 * 1440
+          : unit.startsWith('d') ? n * 1440
+          : unit.startsWith('h') ? n * 60
+          : n
+        try {
+          const res = await window.api.tags.denial.set({
+            mediaId: contextMenu.mediaId,
+            durationMin: Math.round(minutes),
+          })
+          if (res.ok) {
+            showToast('success', `Denied for ${Math.round(minutes)} min`)
+          } else {
+            showToast('error', res.error ?? 'Denial set failed')
+          }
+        } catch (e: any) {
+          showToast('error', e?.message ?? 'Denial set failed')
+        }
+        hideContextMenu()
+      }
+    },
+    // v2.7 #294 — Apple Photos "Feature less" suppression. Hides this
+    // media from recommendation rails / random shuffles without
+    // requiring a full hide flag. Toggleable.
+    {
+      label: 'Feature less / suggest less',
+      icon: <EyeOff size={14} />,
+      action: async () => {
+        if (!contextMenu.mediaId) return hideContextMenu()
+        try {
+          // Read current state and flip
+          const cur = await window.api.tags.featureLess.get(contextMenu.mediaId)
+          const nextVal = !(cur?.ok && cur.value)
+          const res = await window.api.tags.featureLess.set({
+            mediaId: contextMenu.mediaId,
+            value: nextVal,
+          })
+          if (res.ok) {
+            showToast(
+              'success',
+              nextVal ? 'Will be featured less' : 'Featuring restored',
+            )
+            // v2.7 — fire global event so LibraryPage (and any other
+            // listener) refreshes its featureLess set without remount.
+            window.dispatchEvent(new CustomEvent('vault:featureLessChanged'))
+          } else {
+            showToast('error', res.error ?? 'Failed to update')
+          }
+        } catch (e: any) {
+          showToast('error', e?.message ?? 'Failed to update')
+        }
+        hideContextMenu()
+      }
+    },
+    // v2.7 — Auto-tease compile via the teaseCut bridge.
+    // Detects spikey-energy events in the source and chains them into a
+    // tease edit. Writes to a sibling MP4 in the source folder.
+    {
+      label: 'Auto-tease this video',
+      icon: <Scissors size={14} />,
+      action: async () => {
+        if (!contextMenu.mediaId || !contextMenu.mediaPath || contextMenu.mediaType !== 'video') {
+          showToast('info', 'Auto-tease only works on videos')
+          return hideContextMenu()
+        }
+        const mediaPath = contextMenu.mediaPath
+        const mediaId = contextMenu.mediaId
+        try {
+          showToast('info', 'Detecting tease events…')
+          const eventsRes = await window.api.tags.teaseCut.events({ mediaId, threshold: 0.6 })
+          if (!eventsRes.ok || !eventsRes.events || eventsRes.events.length === 0) {
+            showToast('error', eventsRes.error ?? 'No tease events detected')
+            return hideContextMenu()
+          }
+          const baseDir = mediaPath.replace(/[/\\][^/\\]+$/, '')
+          const baseName = (mediaPath.split(/[/\\]/).pop() ?? 'tease').replace(/\.[^.]+$/, '')
+          const dstPath = `${baseDir}\\${baseName}.tease.mp4`
+          showToast('info', `Compiling ${eventsRes.events.length} clips…`)
+          const compileRes = await window.api.tags.teaseCut.compile({
+            mediaPath,
+            events: eventsRes.events,
+            dstPath,
+            threshold: 0.6,
+            leadInSec: 0.5,
+            cutawaySec: 1.5,
+            maxClips: 30,
+            videoCodec: 'libx264',
+          })
+          if (compileRes.ok) {
+            showToast('success', `Tease compiled · ${compileRes.clipsUsed ?? 0} clips, ${Math.round(compileRes.durationSec ?? 0)}s`)
+          } else {
+            showToast('error', compileRes.error ?? 'Tease compile failed')
+          }
+        } catch (e: any) {
+          showToast('error', e?.message ?? 'Tease compile failed')
+        }
+        hideContextMenu()
+      }
+    },
     {
       label: 'Rename',
       icon: <Edit2 size={14} />,
@@ -802,7 +1046,8 @@ const NAV = [
   { id: 'pmv', name: 'PMV Editor', tip: 'Create music video compilations with beat sync' },
   { id: 'ai', name: 'AI Tools', tip: 'AI-powered tagging and analysis' },
   { id: 'feed', name: 'Feed', tip: 'Endless scrolling feed of your media' },
-  { id: 'playlists', name: 'Sessions', tip: 'Create and manage playlists' },
+  { id: 'playlists', name: 'Playlists', tip: 'Create and manage playlists' },
+  { id: 'sessions', name: 'Sessions', tip: 'Live session control room — HR, climax verifier, devices, goon-game, history' },
   { id: 'downloads', name: 'Downloads', tip: 'Download videos from URLs' },
   { id: 'rule34', name: 'Browse', tip: 'Search 10 sources in parallel — 8 boorus + 2 tube sites (Eporner, RedTube). Download to library.' },
   { id: 'performers', name: 'Performers', tip: 'SFace face clusters — name them once, get auto-tagged forever' },
@@ -823,6 +1068,7 @@ const NavIcon: React.FC<{ id: string; active?: boolean }> = ({ id, active }) => 
     case 'ai': return <Brain {...iconProps} />
     case 'feed': return <Flame {...iconProps} />
     case 'playlists': return <ListMusic {...iconProps} />
+    case 'sessions': return <Activity {...iconProps} />
     case 'downloads': return <Download {...iconProps} />
     case 'rule34': return <Globe {...iconProps} />
     case 'performers': return <Users {...iconProps} />
@@ -993,6 +1239,30 @@ export default function App() {
   }, [showShortcutsHelp, showCommandPalette, zenMode, globalShowToast])
 
   // Zen mode edge detection - show UI when mouse near edges (throttled)
+  // v2.7 — idle-time prefetch the lazy pages the user is most likely to
+  // visit next. Runs once on app mount, after the renderer has settled.
+  // Uses requestIdleCallback if available so it doesn't compete with
+  // first-paint; falls back to a 2-second setTimeout. Each import()
+  // populates Vite's chunk cache; the actual navigation later is then
+  // instant (no Suspense fallback flash).
+  useEffect(() => {
+    const prefetch = () => {
+      void import('./pages/AiTaggerPage')
+      void import('./pages/SettingsPage')
+      void import('./pages/StatsPage')
+      void import('./pages/PlaylistsPage')
+    }
+    const ric = (window as any).requestIdleCallback as
+      | ((cb: () => void, opts?: { timeout: number }) => number)
+      | undefined
+    if (ric) {
+      ric(() => prefetch(), { timeout: 5000 })
+    } else {
+      const t = setTimeout(prefetch, 2000)
+      return () => clearTimeout(t)
+    }
+  }, [])
+
   useEffect(() => {
     if (!zenMode) {
       setZenModeEdgeActive(false)
@@ -1127,7 +1397,7 @@ export default function App() {
   useEffect(() => {
     if (prevPageRef.current !== page && mainContentRef.current) {
       // Determine slide direction based on nav order
-      const navOrder = ['library', 'goonwall', 'feed', 'playlists', 'stats', 'settings', 'about']
+      const navOrder = ['library', 'goonwall', 'feed', 'playlists', 'sessions', 'stats', 'settings', 'about']
       const prevIndex = navOrder.indexOf(prevPageRef.current)
       const currentIndex = navOrder.indexOf(page)
       const slideDirection = currentIndex > prevIndex ? 'left' : 'right'
@@ -1209,7 +1479,9 @@ export default function App() {
 
     // Reset global video state
     videoPool.releaseAll()
-    resetGoonSlots()
+    // v2.7 lazy import — GoonWallPage stays out of the main bundle.
+    // Fire-and-forget; the slots will be reset when the module loads.
+    void import('./pages/GoonWallPage').then((m) => m.resetGoonSlots())
 
     // Run again after short delays to catch any stragglers created during cleanup
     setTimeout(() => { stopVideos(); stopAudios(); }, 100)
@@ -1236,13 +1508,28 @@ export default function App() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [page])
 
-  // Smooth page navigation with transition
+  // Smooth page navigation with transition.
+  // v2.7 #337 — wraps in the View Transitions API when supported
+  // (Chrome 111+, Safari 18+, Firefox behind flag) so the cross-page
+  // morph is GPU-accelerated and respects reduced-motion. Falls back
+  // to the existing 2-phase exit/enter when the API is missing.
   const navigateTo = useCallback((newPage: NavId) => {
     if (newPage === page) return
 
     // If leaving GoonWall, immediately stop all video/audio
     if (page === 'goonwall') {
       stopAllMediaPlayback()
+    }
+
+    const supportsVT = typeof (document as any).startViewTransition === 'function'
+
+    if (supportsVT) {
+      // Single-frame DOM swap inside the browser's transition pass.
+      ;(document as any).startViewTransition(() => {
+        setPage(newPage)
+        if (page === 'goonwall') stopAllMediaPlayback()
+      })
+      return
     }
 
     setPrevPage(page)
@@ -1587,6 +1874,8 @@ export default function App() {
       className="h-screen w-screen overflow-hidden"
       style={{ background: 'var(--bg)', ...shakeStyle }}
     >
+      {/* #347 — post-nut clarity lockout overlay (renders only when active) */}
+      <PostNutLockoutOverlay />
       {/* Color Blind Mode SVG Filters */}
       <svg className="hidden" aria-hidden="true">
         <defs>
@@ -1694,6 +1983,13 @@ export default function App() {
         onAddToPlaylist={handleContextMenuAddToPlaylist}
         onViewInfo={(media) => setInfoModalMedia(media)}
       />
+
+      {/* v2.7 What's New splash — one-time on first launch after upgrade.
+          Lazy-loaded — chunk only downloads if the user is on a new version
+          or summons it via CommandPalette. */}
+      <React.Suspense fallback={null}>
+        <WhatsNewModal />
+      </React.Suspense>
       {/* Media Info Modal */}
       {infoModalMedia && (
         <MediaInfoModal
@@ -1888,10 +2184,14 @@ export default function App() {
               <div className="h-10 w-10 rounded-2xl overflow-hidden idle-breathe">
                 <img src={vaultLogo} alt="Vault logo" className="w-full h-full object-cover" />
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold">Vault</div>
                 <div className="text-xs text-[var(--muted)]" aria-label="Version 2.1.5">2.1.5</div>
               </div>
+              {/* #113 — Subscriptions inbox bell */}
+              <SubscriptionsBellButton />
+              {/* #195 — Active profile switcher */}
+              <ProfileSwitcher />
             </div>
           </div>
 
@@ -1904,6 +2204,24 @@ export default function App() {
                   onClick={(e) => {
                     anime.pulse(e.currentTarget, 1.05)
                     navigateTo(n.id)
+                  }}
+                  onMouseEnter={() => {
+                    // v2.7 perf — prefetch the lazy chunk for the hovered
+                    // tab so first-click is instant. Fire-and-forget; the
+                    // import() promise hits Vite's chunk cache. No-op for
+                    // pages that aren't lazy or are already loaded.
+                    switch (n.id) {
+                      case 'settings': void import('./pages/SettingsPage'); break
+                      case 'stats': void import('./pages/StatsPage'); break
+                      case 'ai': void import('./pages/AiTaggerPage'); break
+                      case 'captions': void import('./pages/CaptionsPage'); break
+                      case 'playlists': void import('./pages/PlaylistsPage'); break
+                      case 'feed': void import('./pages/FeedPage'); break
+                      case 'rule34': void import('./pages/Rule34Page'); break
+                      case 'performers': void import('./pages/PerformersPage'); break
+                      case 'downloads': void import('./pages/DownloadsPage'); break
+                      case 'goonwall': void import('./pages/GoonWallPage'); break
+                    }
                   }}
                   title={n.tip}
                   aria-label={`${n.name}${isActive ? ' (current page)' : ''}`}
@@ -2068,6 +2386,16 @@ export default function App() {
             pageTransition === 'exit' && 'page-transition-exit'
           )}
         >
+          <React.Suspense
+            fallback={
+              <div className="h-full w-full grid place-items-center">
+                <div className="flex flex-col items-center gap-3 text-[var(--muted)]">
+                  <div className="size-8 rounded-full border-2 border-[var(--primary)] border-t-transparent animate-spin" />
+                  <span className="text-xs">Loading page…</span>
+                </div>
+              </div>
+            }
+          >
           {page === 'home' ? (
             <ErrorBoundary pageName="Home">
               <HomeDashboard
@@ -2165,7 +2493,9 @@ export default function App() {
               <FeedPage />
             </ErrorBoundary>
           ) : page === 'playlists' ? (
-            <ErrorBoundary pageName="Sessions"><PlaylistsPage /></ErrorBoundary>
+            <ErrorBoundary pageName="Playlists"><PlaylistsPage /></ErrorBoundary>
+          ) : page === 'sessions' ? (
+            <ErrorBoundary pageName="Sessions"><SessionsPage /></ErrorBoundary>
           ) : page === 'downloads' ? (
             <ErrorBoundary pageName="Downloads"><DownloadsPage /></ErrorBoundary>
           ) : page === 'rule34' ? (
@@ -2333,6 +2663,7 @@ export default function App() {
           ) : page === 'about' ? (
             <AboutPage />
           ) : null}
+          </React.Suspense>
         </main>
       </div>
 

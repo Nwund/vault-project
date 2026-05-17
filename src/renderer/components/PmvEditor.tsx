@@ -55,6 +55,7 @@ import AutoPmvModal, { type AutoPmvResult } from './AutoPmvModal'
 import { formatDuration } from '../utils/formatters'
 import { toFileUrlCached } from '../hooks/usePerformance'
 import { detectBpmFromBuffer, roundToCommonBpm } from '../utils/bpm-detector'
+import { bindHotkeys as bindRippleRollHotkeys, type TimelineClip as RippleRollClip } from '../utils/pmv-ripple-roll'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -114,7 +115,7 @@ interface CustomTemplate {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Transition types between clips
-type TransitionType = 'cut' | 'crossfade' | 'flash' | 'glitch' | 'zoom' | 'slide' | 'dissolve' | 'wipeLeft' | 'wipeRight' | 'wipeUp' | 'wipeDown' | 'spin' | 'blur' | 'vhs' | 'bounce' | 'pixelate'
+type TransitionType = 'cut' | 'crossfade' | 'flash' | 'glitch' | 'zoom' | 'slide' | 'dissolve' | 'wipeLeft' | 'wipeRight' | 'wipeUp' | 'wipeDown' | 'spin' | 'blur' | 'vhs' | 'bounce' | 'pixelate' | 'rgbSplit' | 'filmBurn' | 'datamoshLite'
 
 // Video effect types
 type VideoEffectType = 'none' | 'saturate' | 'contrast' | 'vignette' | 'filmGrain' | 'slowMo' | 'bw' | 'sepia' | 'invert' | 'chromatic' | 'shake' | 'strobe' | 'thermal' | 'dream' | 'emboss'
@@ -291,7 +292,13 @@ const TRANSITION_TYPES: Record<TransitionType, { name: string; icon: string }> =
   blur: { name: 'Blur', icon: '💨' },
   vhs: { name: 'VHS', icon: '📼' },
   bounce: { name: 'Bounce', icon: '🏀' },
-  pixelate: { name: 'Pixelate', icon: '🎮' }
+  pixelate: { name: 'Pixelate', icon: '🎮' },
+  // #171/#216 — new presets from beat-transitions.ts. Live-preview
+  // overlay is canvas-based; export pipeline currently falls through
+  // to crossfade for these (Phase 2: ffmpeg filter equivalents).
+  rgbSplit: { name: 'RGB Split', icon: '🟥' },
+  filmBurn: { name: 'Film Burn', icon: '🔥' },
+  datamoshLite: { name: 'Datamosh', icon: '🌀' },
 }
 
 const VIDEO_EFFECTS: Record<VideoEffectType, { name: string; filter: string }> = {
@@ -609,6 +616,62 @@ function BeatMarkers({ bpm, duration }: { bpm: number; duration: number }) {
   )
 }
 
+// #167/#215 — Secondary timeline markers from spectral-flux onset
+// detection. BPM-derived beats miss syncopated kicks / snares / vocal
+// stabs; this picks them up by decoding the audio in-renderer and
+// running the energy-flux peak picker.
+//
+// Renders amber tick marks (vs the white beats) at the BOTTOM third
+// of the timeline so they don't compete visually with the beat grid.
+// Falls back silently when the audio can't be decoded.
+function OnsetMarkers({ musicPath, duration }: { musicPath: string; duration: number }) {
+  const [onsets, setOnsets] = useState<Array<{ time: number; strength: number }>>([])
+
+  useEffect(() => {
+    if (!musicPath) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const fileUrl = await window.api.fs.toFileUrl(musicPath)
+        if (!fileUrl) return
+        const audioContext = new AudioContext()
+        const response = await fetch(fileUrl as string)
+        const arrayBuffer = await response.arrayBuffer()
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+        if (cancelled) { try { audioContext.close() } catch {} return }
+        const { detectOnsets } = await import('../utils/onset-detector')
+        const channelData = audioBuffer.getChannelData(0)
+        const result = detectOnsets(channelData, audioBuffer.sampleRate)
+        if (!cancelled) setOnsets(result)
+        try { audioContext.close() } catch { /* noop */ }
+      } catch {
+        // Decode failure — leave onsets empty, marker layer renders nothing.
+      }
+    })()
+    return () => { cancelled = true }
+  }, [musicPath])
+
+  if (onsets.length === 0) return null
+
+  return (
+    <div className="absolute inset-x-0 bottom-0 h-1/3 pointer-events-none" title={`${onsets.length} spectral-flux onsets`}>
+      {onsets.map((o, i) => {
+        const leftPercent = (o.time / duration) * 100
+        // Strength drives both height + opacity so loud hits pop.
+        const heightPct = 30 + 70 * o.strength
+        const opacity = 0.35 + 0.55 * o.strength
+        return (
+          <div
+            key={i}
+            className="absolute bottom-0 w-px bg-amber-400"
+            style={{ left: `${leftPercent}%`, height: `${heightPct}%`, opacity }}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper Components
 // ─────────────────────────────────────────────────────────────────────────────
@@ -918,6 +981,46 @@ export function PmvEditorPage() {
   useEffect(() => {
     setTimelineCurrentTime(waveform.currentTime)
   }, [waveform.currentTime])
+
+  // v2.7 #242 — Premiere-style ripple + roll hotkeys (Q, W, N, Shift+,/.,
+  // Alt+,/.). Adapts the PmvClip data model to the utility's expected
+  // shape (startSec/endSec instead of timelineStart/timelineEnd, plus
+  // sourceInSec/sourceOutSec for trim bookkeeping).
+  useEffect(() => {
+    const toRippleRollClip = (c: PmvClip): RippleRollClip => ({
+      id: c.id,
+      startSec: c.timelineStart,
+      endSec: c.timelineEnd,
+      sourceId: c.videoId,
+      sourceInSec: c.startTime,
+      sourceOutSec: c.endTime,
+    })
+    const fromRippleRollClip = (orig: PmvClip, rr: RippleRollClip): PmvClip => ({
+      ...orig,
+      timelineStart: rr.startSec,
+      timelineEnd: rr.endSec,
+      duration: rr.endSec - rr.startSec,
+      startTime: rr.sourceInSec,
+      endTime: rr.sourceOutSec,
+    })
+    const cleanup = bindRippleRollHotkeys({
+      getTimeline: () => ({ clips: project.clips.map(toRippleRollClip) }),
+      getPlayheadSec: () => timelineCurrentTime,
+      setTimeline: (t) => {
+        setProject((prev) => {
+          const next = prev.clips.map((orig) => {
+            const rr = t.clips.find((c) => c.id === orig.id)
+            return rr ? fromRippleRollClip(orig, rr) : orig
+          })
+          return { ...prev, clips: next }
+        })
+      },
+      // Default ~30fps frame nudge; PMV is music-driven so frame-exact
+      // edits aren't expected to map to a specific source fps.
+      frameDurationSec: 1 / 30,
+    })
+    return cleanup
+  }, [project.clips, timelineCurrentTime])
 
   // Calculate derived values
   const totalClipsDuration = useMemo(() => {
@@ -2900,6 +3003,8 @@ export function PmvEditorPage() {
                   >
                     {/* Beat markers */}
                     <BeatMarkers bpm={project.bpm} duration={project.music.duration} />
+                    {/* #167/#215 — Spectral-flux onsets (amber, bottom third) */}
+                    <OnsetMarkers musicPath={project.music.path} duration={project.music.duration} />
 
                     {/* Clips */}
                     {project.clips.map((clip, index) => (

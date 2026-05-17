@@ -19,6 +19,66 @@ const DEFAULT_OPTIONS: Required<PeakDetectionOptions> = {
   sampleWindowSeconds: 30
 }
 
+// #352 — Cock-Hero beatmap. Returns per-beat data (not just an
+// average BPM) so callers can render falling stroke arrows / generate
+// timed instruction tracks. Each entry includes the beat timestamp
+// (in seconds, relative to the buffer's start), the local intensity
+// at that beat (normalized 0..1, derived from the envelope peak),
+// and a derived stroke direction that alternates up/down at the
+// detected tempo (the strongest beat in each group of 2 becomes the
+// "downstroke" — the harder one).
+export interface BeatEvent {
+  timeSec: number
+  intensity: number    // 0..1
+  stroke: 'up' | 'down'
+  isAccent: boolean    // top 20% of intensity → highlighted
+}
+
+export function detectBeatsFromBuffer(
+  channelData: Float32Array,
+  sampleRate: number,
+  options: PeakDetectionOptions = {},
+): { beats: BeatEvent[]; bpm: number; confidence: number } {
+  const opts = { ...DEFAULT_OPTIONS, ...options }
+  const maxSamples = Math.floor(opts.sampleWindowSeconds * sampleRate)
+  const data = channelData.length > maxSamples ? channelData.slice(0, maxSamples) : channelData
+  const filtered = lowPassFilter(data, sampleRate, 150)
+  const envelope = calculateEnergyEnvelope(filtered, sampleRate)
+  const peakTimes = findPeaks(envelope, sampleRate)
+  if (peakTimes.length < 4) return { beats: [], bpm: 0, confidence: 0 }
+
+  // Look up each peak's envelope value for intensity normalization.
+  const envMax = envelope.values.reduce((m, v) => v > m ? v : m, 0)
+  // Re-find each peak's value by index-aligning to the envelope.
+  const timeToValue = new Map<number, number>()
+  for (let i = 0; i < envelope.times.length; i++) {
+    timeToValue.set(envelope.times[i], envelope.values[i])
+  }
+
+  const intervals: number[] = []
+  for (let i = 1; i < peakTimes.length; i++) {
+    const dt = peakTimes[i] - peakTimes[i - 1]
+    const bpm = 60 / dt
+    if (bpm >= opts.minBpm && bpm <= opts.maxBpm) intervals.push(dt)
+  }
+  const { mostCommonInterval, confidence } = intervals.length > 0
+    ? findMostCommonInterval(intervals)
+    : { mostCommonInterval: 0.5, confidence: 0 }
+  const bpm = Math.max(opts.minBpm, Math.min(opts.maxBpm, Math.round(60 / mostCommonInterval)))
+
+  // Tag accents (top 20% intensity) and alternate up/down strokes.
+  const intensities = peakTimes.map((t) => (timeToValue.get(t) ?? 0) / (envMax || 1))
+  const sortedIntensities = [...intensities].sort((a, b) => b - a)
+  const accentThreshold = sortedIntensities[Math.floor(sortedIntensities.length * 0.2)] ?? 0.7
+  const beats: BeatEvent[] = peakTimes.map((t, i) => ({
+    timeSec: t,
+    intensity: intensities[i],
+    stroke: i % 2 === 0 ? 'down' : 'up',
+    isAccent: intensities[i] >= accentThreshold,
+  }))
+  return { beats, bpm, confidence }
+}
+
 export function detectBpmFromBuffer(
   channelData: Float32Array,
   sampleRate: number,

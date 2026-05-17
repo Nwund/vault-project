@@ -1,4 +1,4 @@
-// File: src/renderer/components/VaultWrappedPanel.tsx
+﻿// File: src/renderer/components/VaultWrappedPanel.tsx
 //
 // Spotify-Wrapped-style monthly recap. Auto-generated from existing
 // data plumbing (advancedStats:getTimeRange + advancedStats:getDashboard
@@ -16,7 +16,7 @@
 //
 // Skips slides for which no data exists (e.g. no top tag → skip slide 3).
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { Sparkles, X, ChevronLeft, ChevronRight, Share2, Clock, Tag, Film, Sunrise } from 'lucide-react'
 import { toFileUrlCached } from '../hooks/usePerformance'
 import { formatDuration } from '../utils/formatters'
@@ -193,7 +193,7 @@ Peak hour: ${hourLabel(stats.peakHour)}`
             </button>
           </SlideShell>
         ) },
-      ].filter(Boolean) as Array<{ key: string; render: () => JSX.Element }>
+      ].filter(Boolean) as Array<{ key: string; render: () => React.JSX.Element }>
     : []
 
   // Auto-advance with pause + progress bar.

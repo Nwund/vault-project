@@ -4,8 +4,10 @@
 // filter snapshots. Click a chip to apply the snapshot; click "Pin
 // current" to save the active filter combination as a new chip.
 //
-// Storage: localStorage key vault_pinned_filters as JSON-array of
-// PinnedFilter records. Cap at 10 entries to keep the bar readable.
+// #206 — Storage moved from localStorage to the catalog DB via the
+// savedSearches:* IPCs so chips replicate through mobile-sync and
+// survive a reinstall. Legacy localStorage entries are imported once
+// on first load.
 //
 // Snapshot fields mirror what LibraryPage already persists to
 // sessionStorage (query / activeTags / typeFilter / sortBy /
@@ -32,9 +34,10 @@ export interface PinnedFilter extends FilterSnapshot {
 }
 
 const STORAGE_KEY = 'vault_pinned_filters'
+const LEGACY_MIGRATION_FLAG = 'vault_pinned_filters_migrated_v206'
 const MAX_PINS = 10
 
-export function loadPinnedFilters(): PinnedFilter[] {
+function readLegacyLocalStorage(): PinnedFilter[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return []
@@ -45,10 +48,31 @@ export function loadPinnedFilters(): PinnedFilter[] {
   }
 }
 
-function savePinnedFilters(filters: PinnedFilter[]): void {
+// Public helper kept for backwards-compat with any caller that still
+// imports it; reads the *current* in-DB list synchronously by reading
+// localStorage as a cache. New callers should subscribe via the
+// PinnedFiltersBar component itself.
+export function loadPinnedFilters(): PinnedFilter[] {
+  return readLegacyLocalStorage()
+}
+
+function rowToPin(row: { id: string; name: string; queryJson: string; createdAt: number }): PinnedFilter | null {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filters))
-  } catch { /* quota / corruption — ignore */ }
+    const snap = JSON.parse(row.queryJson) as FilterSnapshot
+    if (!snap || typeof snap !== 'object') return null
+    return {
+      id: row.id,
+      name: row.name,
+      pinnedAt: row.createdAt,
+      query: String(snap.query ?? ''),
+      activeTags: Array.isArray(snap.activeTags) ? snap.activeTags : [],
+      typeFilter: String(snap.typeFilter ?? 'all'),
+      sortBy: String(snap.sortBy ?? ''),
+      sortAscending: Boolean(snap.sortAscending),
+      pageSize: Number(snap.pageSize ?? 60),
+      layout: String(snap.layout ?? 'grid'),
+    }
+  } catch { return null }
 }
 
 function snapshotMatches(a: FilterSnapshot, b: FilterSnapshot): boolean {
@@ -82,41 +106,112 @@ interface Props {
 }
 
 export function PinnedFiltersBar({ current, onApply, className }: Props) {
-  const [pins, setPins] = useState<PinnedFilter[]>(() => loadPinnedFilters())
+  const [pins, setPins] = useState<PinnedFilter[]>([])
   const [namingPrompt, setNamingPrompt] = useState(false)
   const [draftName, setDraftName] = useState('')
 
-  // Sync to other tabs / windows that mutate the same key.
-  useEffect(() => {
-    const handler = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) setPins(loadPinnedFilters())
+  const refresh = useCallback(async () => {
+    const api: any = (window as any).api
+    if (!api?.savedSearchesList) {
+      // Fallback to legacy localStorage if running against an old main.
+      setPins(readLegacyLocalStorage())
+      return
     }
-    window.addEventListener('storage', handler)
-    return () => window.removeEventListener('storage', handler)
+    try {
+      const res = await api.savedSearchesList()
+      const rows: PinnedFilter[] = []
+      for (const r of (res?.items ?? [])) {
+        const pin = rowToPin(r)
+        if (pin) rows.push(pin)
+      }
+      setPins(rows)
+    } catch {
+      setPins(readLegacyLocalStorage())
+    }
   }, [])
+
+  // First load: import legacy localStorage entries once, then subscribe
+  // to vault:changed so other windows / mobile-sync replication updates
+  // appear without a page refresh.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const api: any = (window as any).api
+      if (api?.savedSearchesImportLegacy && !localStorage.getItem(LEGACY_MIGRATION_FLAG)) {
+        const legacy = readLegacyLocalStorage()
+        if (legacy.length > 0) {
+          try {
+            await api.savedSearchesImportLegacy(legacy.map((p) => ({
+              id: p.id,
+              name: p.name,
+              queryJson: JSON.stringify({
+                query: p.query,
+                activeTags: p.activeTags,
+                typeFilter: p.typeFilter,
+                sortBy: p.sortBy,
+                sortAscending: p.sortAscending,
+                pageSize: p.pageSize,
+                layout: p.layout,
+              }),
+              pinnedAt: p.pinnedAt,
+            })))
+          } catch { /* fall back to localStorage path */ }
+        }
+        try { localStorage.setItem(LEGACY_MIGRATION_FLAG, '1') } catch { /* noop */ }
+      }
+      if (!cancelled) await refresh()
+    })()
+    return () => { cancelled = true }
+  }, [refresh])
+
+  // Live updates via the broadcast — same channel collections + media
+  // mutations use. Mobile-sync replication ultimately triggers this on
+  // the receiving machine.
+  useEffect(() => {
+    const api: any = (window as any).api
+    const off = api?.events?.onVaultChanged?.(() => { void refresh() })
+    return () => { try { off?.() } catch {} }
+  }, [refresh])
 
   const isPinned = pins.find(p => snapshotMatches(p, current))
 
-  const pinCurrent = useCallback((name: string) => {
+  const pinCurrent = useCallback(async (name: string) => {
     if (pins.length >= MAX_PINS) return
-    const next: PinnedFilter = {
-      id: `pin-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      name: name.trim() || autoName(current),
-      pinnedAt: Date.now(),
-      ...current,
+    const finalName = name.trim() || autoName(current)
+    const api: any = (window as any).api
+    if (api?.savedSearchesCreate) {
+      try {
+        await api.savedSearchesCreate({
+          name: finalName,
+          queryJson: JSON.stringify(current),
+        })
+        await refresh()
+      } catch {
+        // Fallback: store locally so the chip doesn't vanish.
+        const fallback: PinnedFilter = {
+          id: `pin-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: finalName,
+          pinnedAt: Date.now(),
+          ...current,
+        }
+        setPins([...pins, fallback])
+      }
     }
-    const updated = [...pins, next]
-    setPins(updated)
-    savePinnedFilters(updated)
     setNamingPrompt(false)
     setDraftName('')
-  }, [pins, current])
+  }, [pins, current, refresh])
 
-  const unpin = useCallback((id: string) => {
-    const updated = pins.filter(p => p.id !== id)
-    setPins(updated)
-    savePinnedFilters(updated)
-  }, [pins])
+  const unpin = useCallback(async (id: string) => {
+    const api: any = (window as any).api
+    if (api?.savedSearchesDelete) {
+      try {
+        await api.savedSearchesDelete(id)
+        await refresh()
+        return
+      } catch { /* fall through */ }
+    }
+    setPins(pins.filter((p) => p.id !== id))
+  }, [pins, refresh])
 
   // Don't render anything until there's at least one pin OR the user
   // is trying to pin something — keeps the chrome quiet for new users.

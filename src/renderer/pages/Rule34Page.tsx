@@ -13,7 +13,8 @@
 // file URL and drops it into the user's first media directory. The
 // existing media scanner picks it up within a few seconds.
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { useBrowsePhashBadges } from '../hooks/useBrowsePhashBadges'
 import Hls from 'hls.js'
 import { AnimatePresence, motion } from 'motion/react'
 import {
@@ -48,7 +49,7 @@ function isGif(url: string): boolean {
   return GIF_EXT.test(url || '')
 }
 
-type Source = 'all' | 'e621' | 'rule34' | 'safebooru' | 'yande.re' | 'konachan' | 'tbib' | 'xbooru' | 'hypnohub' | 'eporner' | 'redtube' | 'pornhub' | 'xnxx' | 'redgifs' | 'e926' | 'gelbooru' | 'realbooru' | 'danbooru' | 'aibooru' | 'civitai' | 'bluesky' | 'reddit' | 'paheal' | 'spankbang' | 'erome' | 'motherless' | 'pixiv' | 'pullpush' | 'coomer' | 'kemono'
+type Source = 'all' | 'e621' | 'rule34' | 'safebooru' | 'yande.re' | 'konachan' | 'tbib' | 'xbooru' | 'hypnohub' | 'eporner' | 'redtube' | 'pornhub' | 'xnxx' | 'redgifs' | 'e926' | 'gelbooru' | 'realbooru' | 'danbooru' | 'aibooru' | 'civitai' | 'bluesky' | 'reddit' | 'paheal' | 'spankbang' | 'erome' | 'motherless' | 'pixiv' | 'pullpush' | 'coomer' | 'kemono' | 'qualityporn'
 
 const SOURCE_OPTIONS: Array<{ id: Source; label: string; auth: 'free' | 'key' | 'broken'; note?: string; family?: 'booru' | 'tube' }> = [
   { id: 'all', label: 'All sources', auth: 'free', note: 'parallel search across every booru + tube site' },
@@ -83,6 +84,7 @@ const SOURCE_OPTIONS: Array<{ id: Source; label: string; auth: 'free' | 'key' | 
   { id: 'pullpush', label: 'PullPush (Reddit)', auth: 'free', note: 'Pushshift successor · Reddit archive · no auth required · fills the gap left by Reddit OAuth gating', family: 'tube' },
   { id: 'coomer', label: 'Coomer', auth: 'free', note: 'Patreon / OnlyFans / Fansly archive · query "<service>:<user>" for a specific creator (e.g. patreon:asanagi)', family: 'tube' },
   { id: 'kemono', label: 'Kemono', auth: 'free', note: 'Patreon / Fanbox / Gumroad / SubscribeStar archive · same query syntax as Coomer', family: 'tube' },
+  { id: 'qualityporn', label: 'Quality Porn', auth: 'key', note: 'NSFW tube aggregator via RapidAPI · returns multiple per-site groups · search by pornstar/keyword', family: 'tube' },
 ]
 
 // Tube embed detection — when file_url is an embed page rather than a
@@ -292,6 +294,7 @@ const SOURCE_FAMILY_4: Record<string, SourceFamily> = {
   // Tubes — explicit
   eporner: 'tube', redtube: 'tube', pornhub: 'tube', xnxx: 'tube',
   redgifs: 'tube', spankbang: 'tube', erome: 'tube', motherless: 'tube',
+  qualityporn: 'tube',
   // Everything else (default) → booru
 }
 function familyOf(id: string): SourceFamily {
@@ -321,7 +324,7 @@ const SOURCE_ICONS: Record<string, string> = {
   bluesky: '☁️', reddit: '👽',
   eporner: '🎬', redtube: '📺', pornhub: '🎥', xnxx: '🎞️',
   redgifs: '⚡', spankbang: '🎬', erome: '📁', motherless: '🎥',
-  pullpush: '📦',
+  pullpush: '📦', qualityporn: '🌐',
 }
 
 // Per-source operator hints. Shown as clickable chips below the search
@@ -357,6 +360,7 @@ const SOURCE_HINTS: Record<string, string[]> = {
   motherless: ['(plain keywords)'],
   coomer:  ['patreon:<id>', 'onlyfans:<id>', '(plain text = global creator search)'],
   kemono:  ['patreon:<id>', 'fanbox:<id>', 'gumroad:<id>', '(plain text = global)'],
+  qualityporn: ['(searches across many tube sites · try a pornstar name · returns groups per site)'],
 }
 
 // #118 — Tube categories. Per-source curated category chips for
@@ -401,6 +405,17 @@ export default function Rule34Page() {
   // can disable the button + show a "Saved" badge.
   const [downloaded, setDownloaded] = useState<Set<number>>(new Set())
   const [downloading, setDownloading] = useState<Set<number>>(new Set())
+  // #208/#210 — pHash near-dup badges. Hook enqueues every visible
+  // tile URL to the background indexer, polls the cache, and asks the
+  // service which ones collide (within distance ≤ 8) with a local
+  // media row. Cheap when results don't change; the indexer dedups
+  // re-enqueues against its own cache.
+  const phashUrls = useMemo(
+    () => posts.map((p) => p.preview_url || p.sample_url || '').filter(Boolean),
+    [posts],
+  )
+  const phashBadges = useBrowsePhashBadges(phashUrls, { enabled: phashUrls.length > 0 })
+
   // Lightbox state — clicking a thumbnail opens the full image.
   const [lightbox, setLightbox] = useState<BooruPost | null>(null)
   // Lightbox display mode: 'window' = sized to fit panel chrome,
@@ -572,7 +587,7 @@ export default function Rule34Page() {
         // Muted sources are excluded — user has explicitly told us to
         // stop wasting query time on them this session. Family-tab
         // narrowing further restricts to one of booru/tube/ai/social.
-        const allSources = ['e621', 'rule34', 'safebooru', 'yande.re', 'konachan', 'tbib', 'xbooru', 'hypnohub', 'eporner', 'redtube', 'pornhub', 'xnxx', 'redgifs', 'e926', 'gelbooru', 'realbooru', 'danbooru', 'aibooru', 'civitai', 'bluesky', 'reddit', 'paheal', 'spankbang', 'erome', 'motherless', 'pixiv', 'pullpush', 'coomer', 'kemono']
+        const allSources = ['e621', 'rule34', 'safebooru', 'yande.re', 'konachan', 'tbib', 'xbooru', 'hypnohub', 'eporner', 'redtube', 'pornhub', 'xnxx', 'redgifs', 'e926', 'gelbooru', 'realbooru', 'danbooru', 'aibooru', 'civitai', 'bluesky', 'reddit', 'paheal', 'spankbang', 'erome', 'motherless', 'pixiv', 'pullpush', 'coomer', 'kemono', 'qualityporn']
         // Per-source independent pagination: when paginating forward,
         // skip sources that returned 0 last time AND sources the user
         // muted AND sources outside the active family. Fresh queries
@@ -2446,6 +2461,26 @@ export default function Rule34Page() {
                           gif
                         </span>
                       )}
+                      {/* #208/#210 — pHash near-dup badge. Lights up when
+                          the background indexer has matched this thumb to a
+                          local media row within Hamming distance 8. */}
+                      {(() => {
+                        const url = post.preview_url || post.sample_url
+                        const hit = url ? phashBadges[url] : null
+                        if (!hit) return null
+                        const exact = hit.distance === 0
+                        return (
+                          <span
+                            className={
+                              'absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded text-[9px] font-medium text-white uppercase tracking-wider flex items-center gap-0.5 ' +
+                              (exact ? 'bg-emerald-500/85' : 'bg-amber-500/85')
+                            }
+                            title={exact ? 'Identical copy in your library' : `Similar copy in your library (Hamming ${hit.distance})`}
+                          >
+                            ✓ {exact ? 'in lib' : 'similar'}
+                          </span>
+                        )
+                      })()}
                       {/* Already-in-library badge — when this post's
                           hash matches anything already in Vault, show
                           a clear "In Library" pill so the user doesn't

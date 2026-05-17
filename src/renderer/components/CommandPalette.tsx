@@ -196,7 +196,21 @@ export function CommandPalette({
     { id: 'custom-filters', title: 'Custom Filters', subtitle: 'Create and manage filter presets', icon: Filter, category: 'tools', keywords: ['filters', 'custom', 'presets', 'search', 'query'], action: () => { onAction?.('custom-filters') } },
     { id: 'favorite-folders', title: 'Favorite Folders', subtitle: 'Quick access to favorite directories', icon: FolderHeart, category: 'navigation', keywords: ['favorites', 'folders', 'quick', 'access', 'directories'], action: () => { onAction?.('favorite-folders') } },
     { id: 'rating-trends', title: 'Rating Trends', subtitle: 'Track rating changes over time', icon: TrendingUp, category: 'library', keywords: ['rating', 'trends', 'history', 'rising', 'falling'], action: () => { onAction?.('rating-trends') } },
-    { id: 'tag-categories', title: 'Tag Categories', subtitle: 'Organize tags into categories', icon: FolderTree, category: 'library', keywords: ['tags', 'categories', 'organize', 'hierarchy'], action: () => { onAction?.('tag-categories') } }
+    { id: 'tag-categories', title: 'Tag Categories', subtitle: 'Organize tags into categories', icon: FolderTree, category: 'library', keywords: ['tags', 'categories', 'organize', 'hierarchy'], action: () => { onAction?.('tag-categories') } },
+    // v2.7 — open any Library tool from the command palette via a
+    // single dispatched event; LibraryPage's useEffect listener opens
+    // the corresponding modal. Each entry navigates to /library first
+    // so the listener is mounted.
+    // v2.7 — dispatch via sessionStorage handoff so the navigation can
+    // complete + LibraryPage can mount + read the pending tool. The
+    // event fires once LibraryPage mounts; no setTimeout race.
+    { id: 'v27-service-health', title: 'Service Health', subtitle: 'v2.7 · status of all sharing/network services', icon: Sparkles, category: 'tools', keywords: ['service', 'health', 'status', 'v27', 'iroh', 'helia', 'tor'], action: () => { sessionStorage.setItem('vault.pendingLibraryTool', 'serviceHealth'); onNavigate('/library') } },
+    { id: 'v27-dup-triage', title: 'Duplicate Triage', subtitle: 'v2.7 · A/B picker for pending duplicate pairs', icon: Eye, category: 'tools', keywords: ['duplicate', 'triage', 'dedup', 'v27'], action: () => { sessionStorage.setItem('vault.pendingLibraryTool', 'dupTriage'); onNavigate('/library') } },
+    { id: 'v27-stack-mode', title: 'Stack Mode', subtitle: 'v2.7 · TikTok-style vertical-swipe pager', icon: Grid, category: 'tools', keywords: ['stack', 'mode', 'tiktok', 'swipe', 'pager', 'v27'], action: () => { sessionStorage.setItem('vault.pendingLibraryTool', 'stack'); onNavigate('/library') } },
+    { id: 'v27-sub-library', title: 'Animated sub-library', subtitle: 'v2.7 · Hentai / Anime / Furry / Cartoon facet picker', icon: Sparkles, category: 'tools', keywords: ['hentai', 'anime', 'furry', 'cartoon', 'animated', 'sublibrary', 'v27'], action: () => { sessionStorage.setItem('vault.pendingLibraryTool', 'subLibrary'); onNavigate('/library') } },
+    { id: 'v27-sprite-chapters', title: 'Sprite-sheet Chapters', subtitle: 'v2.7 · Visual chapter editor for a video', icon: List, category: 'tools', keywords: ['sprite', 'sheet', 'chapters', 'editor', 'v27'], action: () => { sessionStorage.setItem('vault.pendingLibraryTool', 'sprite'); onNavigate('/library') } },
+    { id: 'v27-export-pipeline', title: 'Export Pipeline', subtitle: 'v2.7 · Smart-query → transcode → sidecar → rclone', icon: Download, category: 'tools', keywords: ['export', 'pipeline', 'rclone', 'transcode', 'v27'], action: () => { sessionStorage.setItem('vault.pendingLibraryTool', 'exportPipeline'); onNavigate('/library') } },
+    { id: 'v27-whats-new', title: "What's New in v2.7", subtitle: 'Re-show the v2.7 splash', icon: Sparkles, category: 'settings', keywords: ['whats', 'new', 'v27', 'splash', 'changelog'], action: () => window.dispatchEvent(new CustomEvent('vault:openWhatsNew')) },
   ], [onNavigate, onPlayMedia, onAction])
 
   // Create a map for quick command lookup

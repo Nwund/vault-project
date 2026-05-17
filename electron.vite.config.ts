@@ -39,7 +39,15 @@ export default defineConfig({
   },
 
   renderer: {
-    plugins: [react()],
+    // #325 — React Compiler 1.0. Now active on React 19+. compilationMode
+    // 'annotation' = opt-in per component via `'use memo'` directive,
+    // so existing components aren't compiled unless we ask. Switch to
+    // 'all' once we've audited for compiler-incompat patterns.
+    plugins: [react({
+      babel: {
+        plugins: [['babel-plugin-react-compiler', { compilationMode: 'annotation' }]],
+      },
+    })],
     resolve: {
       alias: {
         '@renderer': path.resolve('src/renderer')
@@ -48,6 +56,19 @@ export default defineConfig({
     server: {
       port: 5173,
       strictPort: false // Auto-find next available port if 5173 is busy
+    },
+    build: {
+      rollupOptions: {
+        // Silence "Module level directives cause errors when bundled" for
+        // 'use memo' — the React Compiler reads + processes the directive
+        // at babel-transform time; rollup sees the residual string and
+        // warns. The warning is benign; the compiler has already done its
+        // memoization work by the time rollup runs.
+        onwarn(warning, warn) {
+          if (warning.code === 'MODULE_LEVEL_DIRECTIVE' && /['"]use memo['"]/.test(warning.message ?? '')) return
+          warn(warning)
+        }
+      }
     }
   }
 })

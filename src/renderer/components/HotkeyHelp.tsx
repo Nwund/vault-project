@@ -69,11 +69,33 @@ const HOTKEY_CATEGORIES: HotkeyCategory[] = [
       { keys: ['F'], description: 'Toggle favorite' },
       { keys: ['1-5'], description: 'Rate 1-5 stars', context: 'media viewer' },
       { keys: ['T'], description: 'Open tag editor' },
-      { keys: ['Q'], description: 'Add to queue' },
+      { keys: ['Q'], description: 'Quick Look (hold)', context: 'library focused tile · v2.7' },
       { keys: ['P'], description: 'Add to playlist' },
       { keys: ['I'], description: 'Show media info' },
       { keys: ['S'], description: 'Take screenshot', context: 'video player' },
       { keys: ['Delete', 'X'], description: 'Delete selected' }
+    ]
+  },
+  {
+    name: 'v2.7 — PMV editor (ripple/roll)',
+    icon: Tag,
+    shortcuts: [
+      { keys: ['Q'], description: 'Ripple-trim from clip in-point to playhead', context: 'PMV editor' },
+      { keys: ['W'], description: 'Ripple-trim from playhead to clip out-point', context: 'PMV editor' },
+      { keys: ['N'], description: 'Toggle Roll between adjacent clips at playhead', context: 'PMV editor' },
+      { keys: ['Shift+,', 'Shift+.'], description: 'Nudge edit by 1 frame', context: 'PMV editor' },
+      { keys: ['Alt+,', 'Alt+.'], description: 'Nudge edit by 5 frames', context: 'PMV editor' },
+    ]
+  },
+  {
+    name: 'v2.7 — Stack Mode pager',
+    icon: ArrowDown,
+    shortcuts: [
+      { keys: ['↓', 'J'], description: 'Next item', context: 'Stack mode' },
+      { keys: ['↑', 'K'], description: 'Previous item', context: 'Stack mode' },
+      { keys: ['Enter'], description: 'Open in floating player', context: 'Stack mode' },
+      { keys: ['Esc'], description: 'Close Stack mode' },
+      { keys: ['Mousewheel', 'Touch swipe'], description: 'Page through items' },
     ]
   },
   {

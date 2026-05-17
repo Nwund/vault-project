@@ -29,6 +29,15 @@ export interface VoiceCommandHandlers {
   onClimax?: () => void
   onMuteXy?: () => void
   onUnmuteXy?: () => void
+  // #364 G-140 — hands-free edging-session controls. Lets you drive
+  // the SelfControlCard scoreboard without touching the keyboard.
+  onSessionStart?: () => void
+  onSessionDenied?: () => void
+  onSessionRuined?: () => void
+  onLockoutTrigger?: () => void
+  onTaskWheelSpin?: () => void
+  onFeatureLess?: () => void  // "show this less"
+  onMarkBookmark?: () => void // "bookmark this"
 }
 
 export interface UseVoiceCommandsState {
@@ -60,6 +69,16 @@ const COMMAND_GRAMMAR: CommandPattern[] = [
   { patterns: [/\b(climax|make me (cum|finish)|i'?m (cumming|close))\b/i], action: 'onClimax',    label: 'climax' },
   { patterns: [/\b(shush|shut up|stop talking|be quiet|quiet)\b/i],     action: 'onMuteXy',       label: 'mute xy' },
   { patterns: [/\b(talk to me|say something|speak|talk)\b/i],           action: 'onUnmuteXy',     label: 'unmute xy' },
+  // #364 — session-control verbs. These map to SelfControlCard /
+  // edging-tracker / lockout / task-wheel actions so a full session
+  // can run hands-free.
+  { patterns: [/\b(start (a )?session|begin (a )?session|start edging|let'?s edge)\b/i], action: 'onSessionStart',   label: 'start session' },
+  { patterns: [/\b(i denied|denied myself|i held|stopped (myself|in time)|good boy|i was good)\b/i], action: 'onSessionDenied', label: 'denied' },
+  { patterns: [/\b(ruined (it|that)|i ruined|that was ruined|ruin it)\b/i],     action: 'onSessionRuined',   label: 'ruined' },
+  { patterns: [/\b(trigger lockout|start lockout|lock me|lock down|cool down)\b/i], action: 'onLockoutTrigger', label: 'lockout' },
+  { patterns: [/\b(spin (the )?wheel|new task|give me a task|task wheel|next task)\b/i], action: 'onTaskWheelSpin', label: 'spin wheel' },
+  { patterns: [/\b(feature less|less of this|show less|hide this one)\b/i],     action: 'onFeatureLess',     label: 'feature less' },
+  { patterns: [/\b(bookmark (this|that|it)|mark (it|this)|save (this )?spot)\b/i], action: 'onMarkBookmark',    label: 'bookmark' },
 ]
 
 export function useVoiceCommands(

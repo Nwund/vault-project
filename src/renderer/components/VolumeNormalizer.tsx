@@ -1,4 +1,4 @@
-// File: src/renderer/components/VolumeNormalizer.tsx
+﻿// File: src/renderer/components/VolumeNormalizer.tsx
 // Audio normalization and loudness controls
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
@@ -70,7 +70,7 @@ export function VolumeNormalizer({
   const compressorRef = useRef<DynamicsCompressorNode | null>(null)
   const limiterRef = useRef<DynamicsCompressorNode | null>(null)
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null)
-  const animationRef = useRef<number>()
+  const animationRef = useRef<number | undefined>(undefined)
 
   // Initialize audio processing
   useEffect(() => {

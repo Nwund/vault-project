@@ -35,8 +35,40 @@ import { Btn, TopBar, ToggleSwitch } from '../components/ui'
 import { HardwareEncoderSettings } from '../components/HardwareEncoderSettings'
 import { XyreneSettings } from '../components/XyreneSettings'
 import { CrossDeviceCard, CloudflareTunnelCard, ZeroTierCard, ResticBackupCard, WebDavCard } from '../components/AdminCards'
+import { HotkeyEditorCard } from '../components/HotkeyEditorCard'
+import { CardLayoutCustomizer } from '../components/CardLayoutCustomizer'
+import { HueCard } from '../components/HueCard'
+import { HostsBlocklistCard } from '../components/HostsBlocklistCard'
+import { HomeAssistantCard } from '../components/HomeAssistantCard'
+import { SelfControlCard } from '../components/SelfControlCard'
+import { AgeBackupCard } from '../components/AgeBackupCard'
+import { ExtraDetectorsCard } from '../components/ExtraDetectorsCard'
 import { WindowsHelloCard } from '../components/WindowsHelloCard'
 import { IntifaceCard } from '../components/IntifaceCard'
+import {
+  IrohShareCard,
+  HyperswarmMeshCard,
+  HeliaIpfsCard,
+  VeilidCard,
+  TorOnionCard,
+  WebTransportCard,
+  NostrSignerCard,
+  SyncthingCard,
+  BlueskyLabelerCard,
+  UnifiedPushCard,
+  ImapWatcherCard,
+  VideoDiffusionCard,
+  WebAuthnCard,
+  ShamirCard,
+  NtfyCard,
+  FolderActionsCard,
+  CoomerArchiveCard,
+  AudioEroticaCard,
+  CaptionPoolCard,
+  VaultMlSidecarCard,
+  YtdlpProfilesCard,
+} from '../components/network'
+import { TagImplicationsCard } from '../components/TagImplicationsCard'
 import { themes, DARK_THEME_LIST, LIGHT_THEME_LIST, GOON_THEME_LIST, type ThemeId } from '../styles/themes'
 import { QRCodeSVG } from 'qrcode.react'
 
@@ -118,6 +150,11 @@ export function SettingsPage(props: {
   const [isPremium, setIsPremium] = useState(false)
   const [allTags, setAllTags] = useState<string[]>([])
   const [settingsSearch, setSettingsSearch] = useState('')
+  // v2.7 — Dismissable intro banner state. Persists to localStorage so
+  // users who close it once don't see it again.
+  const [v27BannerDismissed, setV27BannerDismissed] = useState<boolean>(() => {
+    try { return localStorage.getItem('vault.v27ServicesBannerDismissed') === '1' } catch { return false }
+  })
   // Settings Profiles
   const [profiles, setProfiles] = useState<Array<{ id: string; name: string; description?: string; createdAt: number; updatedAt: number }>>([])
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null)
@@ -978,6 +1015,9 @@ export function SettingsPage(props: {
                 </div>
               </div>
             </div>
+
+            {/* #159 — Customizable card metadata + Home section order */}
+            <CardLayoutCustomizer />
             </>
           )}
 
@@ -2006,6 +2046,9 @@ export function SettingsPage(props: {
 
             {/* Hardware Encoder Settings */}
             <HardwareEncoderSettings />
+
+            {/* #204 — Customizable global hotkeys */}
+            <HotkeyEditorCard />
             </>
           )}
 
@@ -2873,6 +2916,161 @@ export function SettingsPage(props: {
           {activeTab === 'services' && (
             <IntifaceCard />
           )}
+
+          {/* #202 — Phillips Hue cinema-mode dimming */}
+          {activeTab === 'services' && (
+            <HueCard />
+          )}
+
+          {/* #222/223/224 — StevenBlack hosts blocklist (auto-NSFW tagging + nuclear panic mode) */}
+          {activeTab === 'services' && (
+            <HostsBlocklistCard />
+          )}
+
+          {/* #185/219 — Home Assistant MQTT integration */}
+          {activeTab === 'services' && (
+            <HomeAssistantCard />
+          )}
+
+          {/* #347/#348/#363 — Self-control: post-nut lockout + edging scoreboard */}
+          {activeTab === 'services' && (
+            <SelfControlCard />
+          )}
+
+          {/* #191 — age-encrypted backups */}
+          {activeTab === 'services' && (
+            <AgeBackupCard />
+          )}
+
+          {/* #134 / #135 / others — Extra detectors install status */}
+          {activeTab === 'services' && (
+            <ExtraDetectorsCard />
+          )}
+
+          {/* v2.7 banner — one-time intro above the new card sections.
+              Dismissable to localStorage so it doesn't permanently take
+              vertical space once the user is familiar with v2.7. */}
+          {activeTab === 'services' && !v27BannerDismissed && (
+            <div className="mt-8 mb-4 rounded-2xl border border-fuchsia-500/20 bg-gradient-to-br from-fuchsia-500/10 via-pink-500/5 to-violet-500/10 p-4 relative">
+              <button
+                onClick={() => {
+                  try { localStorage.setItem('vault.v27ServicesBannerDismissed', '1') } catch { /* ignore */ }
+                  setV27BannerDismissed(true)
+                }}
+                className="absolute top-2 right-2 p-1 rounded text-fuchsia-200/50 hover:text-fuchsia-200 hover:bg-white/10 transition"
+                aria-label="Dismiss banner"
+                title="Dismiss"
+              >
+                <X size={12} />
+              </button>
+              <div className="flex items-start gap-3">
+                <div className="size-9 rounded-2xl bg-gradient-to-br from-fuchsia-500 via-pink-500 to-violet-500 grid place-items-center shadow-md shadow-black/40 flex-shrink-0">
+                  <Sparkles size={16} className="text-white" />
+                </div>
+                <div className="flex-1 min-w-0 pr-6">
+                  <div className="text-sm font-semibold flex items-center gap-2">
+                    v2.7 services
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-fuchsia-500/20 text-fuchsia-200 border border-fuchsia-500/30 uppercase tracking-wider">23 new cards</span>
+                  </div>
+                  <p className="text-[11px] text-[var(--muted)] mt-1 leading-relaxed">
+                    Six themed sections below — Decentralized sharing · Privacy & anonymizing · Social & inbox · AI generation · Tag intelligence · Security & notifications · Content imports. Each card binds to a previously-orphaned IPC bridge, with consistent expand/status-pill UX.
+                  </p>
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('vault:openLibraryTool', { detail: 'serviceHealth' }))}
+                    className="mt-2 text-[11px] flex items-center gap-1 px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 text-fuchsia-300 hover:text-fuchsia-200 transition"
+                  >
+                    <Shield size={11} /> Open Service Health dashboard →
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════
+              v2.7 — Decentralized & sharing services
+              Preload bridges already exist; these are the UI surfaces.
+          ════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'services' && (
+            <div className="mt-4 mb-2 px-1 flex items-center gap-2">
+              <div className="size-1.5 rounded-full bg-fuchsia-400 animate-pulse" />
+              <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">
+                Decentralized & sharing
+              </span>
+              <div className="flex-1 h-px bg-gradient-to-r from-white/10 via-white/5 to-transparent" />
+            </div>
+          )}
+          {activeTab === 'services' && <IrohShareCard />}
+          {activeTab === 'services' && <HyperswarmMeshCard />}
+          {activeTab === 'services' && <HeliaIpfsCard />}
+          {activeTab === 'services' && <SyncthingCard />}
+
+          {activeTab === 'services' && (
+            <div className="mt-8 mb-2 px-1 flex items-center gap-2">
+              <div className="size-1.5 rounded-full bg-teal-400 animate-pulse" />
+              <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">
+                Privacy & anonymizing
+              </span>
+              <div className="flex-1 h-px bg-gradient-to-r from-white/10 via-white/5 to-transparent" />
+            </div>
+          )}
+          {activeTab === 'services' && <VeilidCard />}
+          {activeTab === 'services' && <TorOnionCard />}
+          {activeTab === 'services' && <WebTransportCard />}
+          {activeTab === 'services' && <NostrSignerCard />}
+
+          {activeTab === 'services' && (
+            <div className="mt-8 mb-2 px-1 flex items-center gap-2">
+              <div className="size-1.5 rounded-full bg-blue-400 animate-pulse" />
+              <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">
+                Social & inbox
+              </span>
+              <div className="flex-1 h-px bg-gradient-to-r from-white/10 via-white/5 to-transparent" />
+            </div>
+          )}
+          {activeTab === 'services' && <BlueskyLabelerCard />}
+          {activeTab === 'services' && <UnifiedPushCard />}
+          {activeTab === 'services' && <ImapWatcherCard />}
+
+          {activeTab === 'services' && (
+            <div className="mt-8 mb-2 px-1 flex items-center gap-2">
+              <div className="size-1.5 rounded-full bg-pink-400 animate-pulse" />
+              <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">
+                AI generation
+              </span>
+              <div className="flex-1 h-px bg-gradient-to-r from-white/10 via-white/5 to-transparent" />
+            </div>
+          )}
+          {activeTab === 'services' && <VideoDiffusionCard />}
+
+          {activeTab === 'services' && (
+            <div className="mt-8 mb-2 px-1 flex items-center gap-2">
+              <div className="size-1.5 rounded-full bg-amber-400 animate-pulse" />
+              <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">
+                Tag intelligence
+              </span>
+              <div className="flex-1 h-px bg-gradient-to-r from-white/10 via-white/5 to-transparent" />
+            </div>
+          )}
+          {activeTab === 'services' && <TagImplicationsCard />}
+          {activeTab === 'services' && <FolderActionsCard />}
+          {activeTab === 'services' && <CoomerArchiveCard />}
+          {activeTab === 'services' && <AudioEroticaCard />}
+          {activeTab === 'services' && <CaptionPoolCard />}
+          {activeTab === 'services' && <VaultMlSidecarCard />}
+          {activeTab === 'services' && <YtdlpProfilesCard />}
+
+          {activeTab === 'services' && (
+            <div className="mt-8 mb-2 px-1 flex items-center gap-2">
+              <div className="size-1.5 rounded-full bg-violet-400 animate-pulse" />
+              <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">
+                Security & notifications
+              </span>
+              <div className="flex-1 h-px bg-gradient-to-r from-white/10 via-white/5 to-transparent" />
+            </div>
+          )}
+          {activeTab === 'services' && <WebAuthnCard />}
+          {activeTab === 'services' && <ShamirCard />}
+          {activeTab === 'services' && <NtfyCard />}
 
           {/* Mobile Sync Section - under Services */}
           {activeTab === 'services' && (

@@ -8,7 +8,7 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["node", "electron"]
+    "types": ["node", "electron", "web-bluetooth"]
   },
   "include": ["src", "electron.vite.config.ts"]
 }

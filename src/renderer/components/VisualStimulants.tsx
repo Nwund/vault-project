@@ -1,7 +1,7 @@
-// File: src/renderer/components/VisualStimulants.tsx
+﻿// File: src/renderer/components/VisualStimulants.tsx
 // 15 Visual Sexual Stimulants for Maximum Arousal Experience
 
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useMemo, useState, useRef } from 'react'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. PULSING BORDER - Rhythmic breathing effect
@@ -1215,7 +1215,7 @@ export const CRTCurveOverlay: React.FC<{
   activeGlitchGif
 }) => {
   const [flickerOpacity, setFlickerOpacity] = useState(0)
-  const flickerRef = useRef<number>()
+  const flickerRef = useRef<number | undefined>(undefined)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   // Screen flicker effect - random subtle brightness variations
@@ -2243,6 +2243,112 @@ export const HypnoSpiralOverlay: React.FC<{
       `}</style>
     </>
   )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 25b. HYPNO SPIRAL OVERLAY V2 (#G-131) - True archimedean spiral + dual-
+// layer counter-rotation + optional pulsing text overlay. Built on SVG
+// instead of conic-gradient so we get a real spiral shape (the kind
+// that actually triggers vertigo) rather than a wheel of spokes.
+// ═══════════════════════════════════════════════════════════════════════════
+export const HypnoSpiralOverlayV2: React.FC<{
+  enabled?: boolean
+  speed?: number       // 1-10 (rotations per minute when 10 = fastest)
+  color?: string       // primary spiral color
+  secondary?: string   // counter-rotating layer color
+  opacity?: number     // 0..1
+  textLines?: string[] // optional cycling text ("OBEY", "RELAX", "DEEPER")
+  textIntervalMs?: number  // ms per line; default 3000
+}> = ({
+  enabled = true,
+  speed = 5,
+  color = '#ff6b9d',
+  secondary = '#7ec5ff',
+  opacity = 0.18,
+  textLines,
+  textIntervalMs = 3000,
+}) => {
+  const [textIdx, setTextIdx] = useState(0)
+  useEffect(() => {
+    if (!enabled || !textLines || textLines.length === 0) return
+    const t = setInterval(() => setTextIdx((i) => (i + 1) % textLines.length), textIntervalMs)
+    return () => clearInterval(t)
+  }, [enabled, textLines, textIntervalMs])
+
+  if (!enabled) return null
+
+  // RPM → seconds-per-revolution. speed=10 → 4s/rev, speed=1 → 40s/rev.
+  const spinSec = Math.max(2, 44 - speed * 4)
+  // Archimedean spiral path: r = a + b*θ, drawn as a polyline of
+  // ~720 sampled points across 5 full turns. Precomputed once.
+  const spiralPath = useMemo(() => buildSpiralPath({ turns: 5, samples: 720, scale: 16 }), [])
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 pointer-events-none z-[9950] flex items-center justify-center"
+        style={{ opacity, mixBlendMode: 'screen' }}
+      >
+        <svg
+          viewBox="-300 -300 600 600"
+          width="200vmax"
+          height="200vmax"
+          style={{ position: 'absolute' }}
+        >
+          <g style={{ animation: `vaultHypnoSpinCw ${spinSec}s linear infinite`, transformOrigin: 'center' }}>
+            <path d={spiralPath} fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" />
+          </g>
+          <g style={{ animation: `vaultHypnoSpinCcw ${spinSec * 1.4}s linear infinite`, transformOrigin: 'center' }}>
+            <path d={spiralPath} fill="none" stroke={secondary} strokeWidth={2} strokeLinecap="round" opacity={0.7} />
+          </g>
+        </svg>
+        {textLines && textLines.length > 0 && (
+          <div
+            key={textIdx}
+            className="absolute font-bold tracking-widest uppercase select-none"
+            style={{
+              fontSize: 'min(14vw, 200px)',
+              color,
+              textShadow: `0 0 30px ${color}, 0 0 80px ${color}`,
+              animation: 'vaultHypnoText 1.4s ease-in-out infinite alternate',
+              opacity: 0.9,
+              mixBlendMode: 'screen',
+            }}
+          >
+            {textLines[textIdx]}
+          </div>
+        )}
+      </div>
+      <style>{`
+        @keyframes vaultHypnoSpinCw {
+          0%   { transform: rotate(0deg) scale(1); }
+          50%  { transform: rotate(180deg) scale(1.08); }
+          100% { transform: rotate(360deg) scale(1); }
+        }
+        @keyframes vaultHypnoSpinCcw {
+          0%   { transform: rotate(0deg) scale(1.1); }
+          50%  { transform: rotate(-180deg) scale(1); }
+          100% { transform: rotate(-360deg) scale(1.1); }
+        }
+        @keyframes vaultHypnoText {
+          0%   { transform: scale(0.92); letter-spacing: 0.2em; opacity: 0.7; }
+          100% { transform: scale(1.06); letter-spacing: 0.45em; opacity: 1; }
+        }
+      `}</style>
+    </>
+  )
+}
+
+function buildSpiralPath({ turns, samples, scale }: { turns: number; samples: number; scale: number }): string {
+  const points: string[] = []
+  for (let i = 0; i <= samples; i++) {
+    const t = (i / samples) * turns * 2 * Math.PI
+    const r = scale * t / (2 * Math.PI)  // Archimedean: r grows linearly with θ
+    const x = r * Math.cos(t)
+    const y = r * Math.sin(t)
+    points.push(`${i === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`)
+  }
+  return points.join(' ')
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

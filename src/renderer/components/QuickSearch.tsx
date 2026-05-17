@@ -1,4 +1,4 @@
-// File: src/renderer/components/QuickSearch.tsx
+﻿// File: src/renderer/components/QuickSearch.tsx
 // Inline search with instant results and filtering
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
@@ -57,7 +57,7 @@ export function QuickSearch({
 
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const searchTimeoutRef = useRef<NodeJS.Timeout>()
+  const searchTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
 
   // Debounced search
   useEffect(() => {

@@ -1,19 +1,58 @@
-// File: src/renderer/components/SpeedRamp.tsx
+﻿// File: src/renderer/components/SpeedRamp.tsx
 // Variable speed control with ramping
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Gauge, Plus, Trash2, Play, Pause, RotateCcw, Save, Zap, Clock } from 'lucide-react'
 import { formatDuration } from '../utils/formatters'
 
-interface SpeedPoint { time: number; speed: number }
-interface SpeedRampProps { videoRef: React.RefObject<HTMLVideoElement>; duration: number; onApply: (points: SpeedPoint[]) => void; className?: string }
+// #170 — Added optional Bezier easing curves per point. Each point's
+// `curve` describes how the segment FROM this point to the next one
+// interpolates speed. 'linear' preserves the old straight-line behavior.
+type SpeedCurve = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut'
+interface SpeedPoint { time: number; speed: number; curve?: SpeedCurve }
+interface SpeedRampProps { videoRef: React.RefObject<HTMLVideoElement | null>; duration: number; onApply: (points: SpeedPoint[]) => void; className?: string }
 
 const PRESETS = [
   { name: 'Slow Motion', points: [{ time: 0, speed: 0.25 }] },
-  { name: 'Speed Up', points: [{ time: 0, speed: 1 }, { time: 0.5, speed: 2 }] },
-  { name: 'Dramatic', points: [{ time: 0, speed: 1 }, { time: 0.3, speed: 0.25 }, { time: 0.5, speed: 0.25 }, { time: 0.7, speed: 2 }] },
-  { name: 'Punch', points: [{ time: 0, speed: 1 }, { time: 0.4, speed: 0.1 }, { time: 0.5, speed: 3 }] }
+  { name: 'Speed Up', points: [{ time: 0, speed: 1 }, { time: 0.5, speed: 2, curve: 'easeInOut' as SpeedCurve }] },
+  { name: 'Dramatic', points: [{ time: 0, speed: 1, curve: 'easeOut' as SpeedCurve }, { time: 0.3, speed: 0.25 }, { time: 0.5, speed: 0.25, curve: 'easeIn' as SpeedCurve }, { time: 0.7, speed: 2 }] },
+  { name: 'Punch', points: [{ time: 0, speed: 1, curve: 'easeIn' as SpeedCurve }, { time: 0.4, speed: 0.1 }, { time: 0.5, speed: 3 }] }
 ]
+
+// Cubic-bezier evaluators tuned for "natural" easing — the same
+// curves CSS transition-timing-function uses internally so the
+// feel matches user expectations from other tools.
+//   linear:     (0,0) (1,1)
+//   easeIn:     (0.42,0) (1,1)     — accelerates into the next point
+//   easeOut:    (0,0) (0.58,1)     — decelerates as it approaches
+//   easeInOut:  (0.42,0) (0.58,1)  — both
+function bezier1D(p1x: number, p1y: number, p2x: number, p2y: number, t: number): number {
+  // Approximate the cubic-bezier curve by solving for x given t,
+  // then evaluating y. We use 4 Newton-Raphson steps which is plenty
+  // accurate for human-perceptible speed ramps (<0.5% error).
+  const cx = 3 * p1x
+  const bx = 3 * (p2x - p1x) - cx
+  const ax = 1 - cx - bx
+  const cy = 3 * p1y
+  const by = 3 * (p2y - p1y) - cy
+  const ay = 1 - cy - by
+  const sampleX = (t: number) => ((ax * t + bx) * t + cx) * t
+  const sampleDx = (t: number) => (3 * ax * t + 2 * bx) * t + cx
+  let x = t
+  for (let i = 0; i < 4; i++) {
+    const cur = sampleX(x) - t
+    const slope = sampleDx(x) || 1
+    x -= cur / slope
+  }
+  return ((ay * x + by) * x + cy) * x
+}
+
+function easeT(curve: SpeedCurve, t: number): number {
+  if (curve === 'linear') return t
+  if (curve === 'easeIn') return bezier1D(0.42, 0, 1, 1, t)
+  if (curve === 'easeOut') return bezier1D(0, 0, 0.58, 1, t)
+  return bezier1D(0.42, 0, 0.58, 1, t) // easeInOut
+}
 
 export function SpeedRamp({ videoRef, duration, onApply, className = '' }: SpeedRampProps) {
   const [points, setPoints] = useState<SpeedPoint[]>([{ time: 0, speed: 1 }])
@@ -34,7 +73,10 @@ export function SpeedRamp({ videoRef, duration, onApply, className = '' }: Speed
         const t1 = sortedPoints[i].time, t2 = sortedPoints[i + 1].time
         const s1 = sortedPoints[i].speed, s2 = sortedPoints[i + 1].speed
         const progress = (normalizedTime - t1) / (t2 - t1)
-        return s1 + (s2 - s1) * progress
+        // #170 — apply each point's outgoing easing curve so the
+        // segment from i→i+1 honors the curve the user selected.
+        const eased = easeT(sortedPoints[i].curve ?? 'linear', progress)
+        return s1 + (s2 - s1) * eased
       }
     }
     return sortedPoints[0].speed
@@ -73,10 +115,35 @@ export function SpeedRamp({ videoRef, duration, onApply, className = '' }: Speed
   const reset = useCallback(() => { setPoints([{ time: 0, speed: 1 }]) }, [])
   const togglePlay = useCallback(() => { const v = videoRef.current; v && (isPlaying ? v.pause() : v.play()); setIsPlaying(!isPlaying) }, [videoRef, isPlaying])
 
+  // #170 — Render the curve in SVG as a polyline of N sub-segments
+  // per segment so non-linear easings draw correctly. 16 samples per
+  // segment is more than enough for a 600px-wide graph and still
+  // renders instantly even with many points.
   const pathD = useMemo(() => {
     if (sortedPoints.length === 0) return ''
-    const pts = sortedPoints.map(p => ({ x: p.time * 100, y: 100 - ((p.speed - 0.1) / 2.9) * 100 }))
-    return `M ${pts[0].x} ${pts[0].y} ` + pts.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ')
+    const samplesPerSeg = 16
+    const xy = (time: number, speed: number) => ({ x: time * 100, y: 100 - ((speed - 0.1) / 2.9) * 100 })
+    const first = xy(sortedPoints[0].time, sortedPoints[0].speed)
+    let d = `M ${first.x} ${first.y} `
+    for (let i = 0; i < sortedPoints.length - 1; i++) {
+      const a = sortedPoints[i]
+      const b = sortedPoints[i + 1]
+      const curve = a.curve ?? 'linear'
+      if (curve === 'linear') {
+        const p = xy(b.time, b.speed)
+        d += `L ${p.x} ${p.y} `
+      } else {
+        for (let s = 1; s <= samplesPerSeg; s++) {
+          const t = s / samplesPerSeg
+          const eased = easeT(curve, t)
+          const speed = a.speed + (b.speed - a.speed) * eased
+          const time = a.time + (b.time - a.time) * t
+          const p = xy(time, speed)
+          d += `L ${p.x} ${p.y} `
+        }
+      }
+    }
+    return d.trim()
   }, [sortedPoints])
 
   return (
@@ -109,6 +176,31 @@ export function SpeedRamp({ videoRef, duration, onApply, className = '' }: Speed
           <div><label className="text-xs text-zinc-500">Time</label><input type="range" min={0} max={1} step={0.01} value={sortedPoints[selectedPoint].time} onChange={e => updatePoint(selectedPoint, { time: parseFloat(e.target.value) })} className="w-full accent-[var(--primary)]" /></div>
           <div><label className="text-xs text-zinc-500">Speed ({sortedPoints[selectedPoint].speed.toFixed(2)}x)</label><input type="range" min={0.1} max={3} step={0.1} value={sortedPoints[selectedPoint].speed} onChange={e => updatePoint(selectedPoint, { speed: parseFloat(e.target.value) })} className="w-full accent-[var(--primary)]" /></div>
         </div>
+        {/* #170 — Outgoing curve picker. Disabled on the last point
+            since there's no segment after it to ease. */}
+        {selectedPoint < sortedPoints.length - 1 && (
+          <div className="mt-3">
+            <label className="text-xs text-zinc-500 mb-1 block">Curve to next point</label>
+            <div className="flex gap-1">
+              {(['linear', 'easeIn', 'easeOut', 'easeInOut'] as const).map((c) => {
+                const isActive = (sortedPoints[selectedPoint].curve ?? 'linear') === c
+                return (
+                  <button
+                    key={c}
+                    onClick={() => updatePoint(selectedPoint, { curve: c })}
+                    className={`px-2 py-1 rounded text-[11px] transition flex-1 ${
+                      isActive
+                        ? 'bg-[var(--primary)] text-white'
+                        : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                    }`}
+                  >
+                    {c === 'linear' ? 'Linear' : c === 'easeIn' ? 'Ease in' : c === 'easeOut' ? 'Ease out' : 'Both'}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>}
       {/* Controls */}
       <div className="flex items-center justify-center gap-4 px-4 py-3 border-t border-zinc-800">

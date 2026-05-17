@@ -213,12 +213,32 @@ export function MetadataEditor({ media, mediaId, onSave, onClose, className = ''
             </div>
             <div>
               <label className="text-xs text-zinc-500">Rating</label>
-              <div className="flex items-center gap-1 mt-2">
-                {[1, 2, 3, 4, 5].map(r => (
-                  <button key={r} onClick={() => update({ rating: r === data.rating ? 0 : r })}>
-                    <Star size={20} className={r <= data.rating ? 'text-yellow-400 fill-yellow-400' : 'text-zinc-600'} />
-                  </button>
-                ))}
+              {/* #287 — Letterboxd half-step ratings. Clicking the left
+                  half of a star sets X-0.5; right half sets X.0. Same
+                  value clicked twice clears the rating. */}
+              <div className="flex items-center gap-0.5 mt-2">
+                {[1, 2, 3, 4, 5].map(r => {
+                  const filled = r <= Math.floor(data.rating)
+                  const halfFilled = !filled && r - 0.5 <= data.rating
+                  const onClickHalf = (e: React.MouseEvent<HTMLButtonElement>) => {
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    const isLeftHalf = (e.clientX - rect.left) < rect.width / 2
+                    const newRating = isLeftHalf ? r - 0.5 : r
+                    update({ rating: newRating === data.rating ? 0 : newRating })
+                  }
+                  return (
+                    <button key={r} onClick={onClickHalf} className="relative" title={`${r - 0.5}/5 (left half) or ${r}/5 (right half)`}>
+                      <Star size={20} className={filled ? 'text-yellow-400 fill-yellow-400' : 'text-zinc-600'} />
+                      {halfFilled && (
+                        <Star
+                          size={20}
+                          className="text-yellow-400 fill-yellow-400 absolute top-0 left-0"
+                          style={{ clipPath: 'inset(0 50% 0 0)' }}
+                        />
+                      )}
+                    </button>
+                  )
+                })}
                 {data.rating > 0 && <span className="ml-2 text-xs text-zinc-500">{data.rating}/5</span>}
               </div>
             </div>

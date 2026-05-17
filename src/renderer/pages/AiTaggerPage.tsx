@@ -1,4 +1,4 @@
-// File: src/renderer/pages/AiTaggerPage.tsx
+﻿// File: src/renderer/pages/AiTaggerPage.tsx
 //
 // AI Tools page — Setup / Queue / Review / Utilities. Wraps the Tier 1
 // (local ONNX) + Tier 2 (Venice AI) tagging pipeline. Extracted from
@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  Activity,
   AlertCircle,
   Brain,
   CheckCircle2,
@@ -36,6 +37,8 @@ import { cn } from '../utils/cn'
 import { ReviewHoverPreview } from '../components/ReviewHoverPreview'
 import { TaggerQualityCard } from '../components/AdminCards'
 import { ModelFileCard } from '../components/ModelFileCard'
+import { QualityAuditCard } from '../components/QualityAuditCard'
+import { ClipSimilarityCard } from '../components/ClipSimilarityCard'
 import { toFileUrlCached } from '../hooks/usePerformance'
 import { DebouncedInput, DebouncedTextarea } from '../components/DebouncedField'
 
@@ -2690,6 +2693,40 @@ export function AiTaggerPage() {
                   installHint="Auto-download Windows-only. On Linux/macOS install via your package manager (apt install libchromaprint-tools / brew install chromaprint)."
                   onToast={showToast}
                 />
+                <ModelFileCard
+                  title="JoyTag (second-opinion tagger)"
+                  description="ViT trained on photographic NSFW with full Danbooru vocab. Runs alongside WD Tagger; consensus boost lifts confidence on agreed tags."
+                  probe={() => (window.api as any).media?.joytag?.status?.() ?? Promise.resolve(null)}
+                  upstreamUrl="https://huggingface.co/fancyfeast/joytag"
+                  installHint="Drop joytag.onnx + joytag-tags.txt at <userData>/models/. Once present, the tagger ensemble auto-includes it."
+                  onToast={showToast}
+                />
+                <ModelFileCard
+                  title="Image upscaler (Real-ESRGAN)"
+                  description="4× SR for stills + thumbnails. Used by the 'Upscale' action in the right-click menu."
+                  probe={() => (window.api as any).media?.upscaler?.status?.() ?? Promise.resolve(null)}
+                  upstreamUrl="https://github.com/xinntao/Real-ESRGAN"
+                  installHint="Drop realesrgan-x4plus.onnx (or realesrgan-anime-x4.onnx for cartoons) at <userData>/models/. Tile size auto-tuned to VRAM."
+                  onToast={showToast}
+                />
+              </div>
+            </div>
+
+            {/* v2.7 — Quality auditor + Clip similarity (action tools, not
+                status probes). Both consume window.api.tags.quality/clipSimilarity
+                bridges that previously had no UI surface. */}
+            <div className="bg-[var(--panel)] rounded-xl border border-[var(--border)] p-4">
+              <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                <Activity size={18} className="text-emerald-400" />
+                Audits & analysis
+              </h2>
+              <p className="text-sm text-[var(--muted)] mb-4">
+                Action tools that probe a single media item: encode quality grade
+                and visual-similarity neighbors.
+              </p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <QualityAuditCard onToast={showToast} />
+                <ClipSimilarityCard onToast={showToast} />
               </div>
             </div>
 

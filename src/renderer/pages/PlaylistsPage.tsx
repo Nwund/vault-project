@@ -400,8 +400,15 @@ export function PlaylistsPage() {
 
   const openAddMedia = async () => {
     try {
-      const media = await window.api.media.list({ limit: 500 })
-      setAllMedia(media)
+      const res: any = await window.api.media.list({ limit: 500 })
+      // media:list returns { items, total } shape; older callsites expected
+      // a flat array. Tolerate both so this works regardless.
+      const items: MediaRow[] = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.items)
+          ? res.items
+          : []
+      setAllMedia(items)
       setShowAddMedia(true)
       setMediaSearch('')
     } catch (err: any) {

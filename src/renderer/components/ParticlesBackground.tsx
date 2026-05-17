@@ -1,4 +1,4 @@
-// File: src/renderer/components/ParticlesBackground.tsx
+﻿// File: src/renderer/components/ParticlesBackground.tsx
 // Pure React particle system - foundation for theme particles
 // No external dependencies, fully integrated with React lifecycle
 
@@ -223,7 +223,7 @@ export function ParticlesBackground({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const particlesRef = useRef<Particle[]>([])
   const mouseRef = useRef({ x: -1000, y: -1000 })
-  const animationRef = useRef<number>()
+  const animationRef = useRef<number | undefined>(undefined)
   const configRef = useRef<ParticleConfig>(
     typeof preset === 'string' ? PRESETS[preset] : preset
   )

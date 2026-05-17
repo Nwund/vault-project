@@ -1,4 +1,4 @@
-// File: src/renderer/hooks/usePerformance.ts
+﻿// File: src/renderer/hooks/usePerformance.ts
 // Performance hooks for optimization
 
 import { useState, useEffect, useRef, useCallback } from 'react'
@@ -52,7 +52,7 @@ export function useThrottle<T extends (...args: any[]) => any>(
  */
 export function useLazyLoad(
   rootMargin = '600px' // Increased for earlier preload
-): [React.RefObject<HTMLDivElement>, boolean] {
+): [React.RefObject<HTMLDivElement | null>, boolean] {
   const ref = useRef<HTMLDivElement>(null)
   const [isVisible, setIsVisible] = useState(false)
 
@@ -254,7 +254,7 @@ export function useStableCallback<T extends (...args: any[]) => any>(
  * Use previous value for comparison
  */
 export function usePrevious<T>(value: T): T | undefined {
-  const ref = useRef<T>()
+  const ref = useRef<T | undefined>(undefined)
   useEffect(() => {
     ref.current = value
   })

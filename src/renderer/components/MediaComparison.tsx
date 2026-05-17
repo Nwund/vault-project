@@ -1,4 +1,4 @@
-// File: src/renderer/components/MediaComparison.tsx
+﻿// File: src/renderer/components/MediaComparison.tsx
 // Side-by-side media comparison view
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
@@ -348,7 +348,7 @@ function ComparisonPane({
   canNavigateNext
 }: {
   item: MediaItem
-  videoRef: React.RefObject<HTMLVideoElement>
+  videoRef: React.RefObject<HTMLVideoElement | null>
   isPlaying: boolean
   zoom: number
   pan: { x: number; y: number }

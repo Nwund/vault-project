@@ -1,4 +1,4 @@
-// File: src/renderer/components/MediaPreview.tsx
+﻿// File: src/renderer/components/MediaPreview.tsx
 // Quick preview popup on hover with video scrubbing
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
@@ -321,7 +321,7 @@ export function useMediaPreview() {
     viewCount?: number
     position: { x: number; y: number }
   } | null>(null)
-  const timeoutRef = useRef<NodeJS.Timeout>()
+  const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
 
   const show = useCallback((
     e: React.MouseEvent,
@@ -369,7 +369,7 @@ export function ThumbnailPreview({
   const [isHovered, setIsHovered] = useState(false)
   const [previewTime, setPreviewTime] = useState(0)
   const videoRef = useRef<HTMLVideoElement>(null)
-  const intervalRef = useRef<NodeJS.Timeout>()
+  const intervalRef = useRef<NodeJS.Timeout | undefined>(undefined)
 
   // Animate through video on hover
   useEffect(() => {

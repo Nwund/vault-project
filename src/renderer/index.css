@@ -3006,6 +3006,29 @@ button:focus-visible,
 .media-card-enhanced {
   transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
               box-shadow 0.25s ease-out;
+  /* #336 — let the browser skip render+layout for off-screen cards.
+     contain-intrinsic-size reserves the slot so scrollbar geometry
+     stays correct. Aspect ratio defaults to 16:9; tile components
+     can override via inline style if needed. */
+  content-visibility: auto;
+  contain-intrinsic-size: 240px 160px;
+}
+
+/* #339 — Scroll-driven reveal on grid cards. Cards fade + slide up
+   as they enter the viewport. Falls back to no animation in browsers
+   without animation-timeline support (Firefox <129 etc.) — cards
+   simply start visible. The keyframe pair stays cheap: only opacity
+   + transform, both compositor-friendly. */
+@supports (animation-timeline: view()) {
+  .media-card-enhanced {
+    animation: vault-card-reveal linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 25%;
+  }
+  @keyframes vault-card-reveal {
+    from { opacity: 0; transform: translateY(12px) scale(0.985); }
+    to   { opacity: 1; transform: translateY(0)    scale(1);     }
+  }
 }
 
 .media-card-enhanced:hover {
@@ -3432,4 +3455,23 @@ button:focus-visible,
 .progress-ring-indeterminate .progress-ring-value {
   animation: progressRingDash 1.4s ease-in-out infinite;
   stroke: var(--primary);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   v2.7 focus mode
+   When [data-focus-mode=on] is set on documentElement, every selector in
+   this block hides itself. The Library grid + floating exit pill remain.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root[data-focus-mode='on'] [data-focus-hide],
+:root[data-focus-mode='on'] [aria-label='Main navigation'],
+:root[data-focus-mode='on'] [data-side-nav],
+:root[data-focus-mode='on'] nav[role='navigation'],
+:root[data-focus-mode='on'] [data-library-topbar],
+:root[data-focus-mode='on'] [data-library-tagbar],
+:root[data-focus-mode='on'] [data-library-quickfilters] {
+  display: none !important;
+}
+:root[data-focus-mode='on'] main,
+:root[data-focus-mode='on'] [role='main'] {
+  padding-top: 0 !important;
 }

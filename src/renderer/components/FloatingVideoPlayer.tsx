@@ -4,10 +4,13 @@
 
 import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2, RectangleHorizontal, Crop, Minus, Square, Scissors, Check, Download, Library, Palette, Sliders, Activity, Gauge, Repeat, Wrench, Mic } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2, RectangleHorizontal, Crop, Minus, Square, Scissors, Check, Download, Library, Palette, Sliders, Activity, Gauge, Repeat, Wrench, Mic, Eye } from 'lucide-react'
 import { RelatedMediaPanel } from './RelatedMediaPanel'
 import { FunscriptHeatmap } from './FunscriptHeatmap'
 import { WatchWithXy } from './WatchWithXy'
+import { SpotlightOverlay } from './SpotlightOverlay'
+import { PlayerOverlayRail } from './PlayerOverlayRail'
+import { useToast } from '../contexts'
 import { MediaNotesPanel } from './MediaNotesPanel'
 import { BookmarksPanel } from './BookmarksPanel'
 import { ColorGrading } from './ColorGrading'
@@ -44,6 +47,7 @@ interface FloatingVideoPlayerProps {
 }
 
 export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, instanceIndex = 0, initialPosition, otherPlayerBounds = [], onBoundsChange }: FloatingVideoPlayerProps) {
+  const { showToast } = useToast()
   const [url, setUrl] = useState('')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isTheaterMode, setIsTheaterMode] = useState(false) // Expanded view within window
@@ -89,6 +93,10 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   // DLNA casting state
   const [showCastMenu, setShowCastMenu] = useState(false)
   const [dlnaDevices, setDlnaDevices] = useState<Array<{ id: string; name: string; host: string; type: string; status: string }>>([])
+  // #184/#217 — AirPlay receivers discovered via mDNS. Phase 1 only:
+  // we show the receivers + offer a copy-stream-URL action since
+  // actual AirPlay video streaming isn't implemented yet.
+  const [airplayReceivers, setAirplayReceivers] = useState<Array<{ name: string; host: string; port: number; model: string | null; requiresAuth: boolean }>>([])
   const [isScanning, setIsScanning] = useState(false)
   const [isCasting, setIsCasting] = useState(false)
   const [activeDevice, setActiveDevice] = useState<{ id: string; name: string } | null>(null)
@@ -108,6 +116,8 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [showAudioVisualizer, setShowAudioVisualizer] = useState(false)
   const [showSpeedRamp, setShowSpeedRamp] = useState(false)
   const [showThumbnailStrip, setShowThumbnailStrip] = useState(false)
+  // #163 — Motion-tracked spotlight / pixelate overlay
+  const [showSpotlight, setShowSpotlight] = useState(false)
   const [showLoopRegion, setShowLoopRegion] = useState(false)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
 
@@ -540,24 +550,63 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       .catch(() => setMarkers([]))
   }, [media.id, media.type])
 
-  // Preload next 3 videos for smoother navigation
+  // #165 — Predictive next-clip pre-buffer.
+  //
+  // Resolves the URL for the next 3 items and warms the first ~2 MB
+  // of the immediate next video via a Range request so that pressing
+  // "next" feels instant (the moov atom + initial mdat fragment sit
+  // in the OS page cache by the time we point the <video> at it).
+  //
+  // Aborts in flight when the user navigates so we don't pin bytes
+  // for a video that's no longer next.
   useEffect(() => {
     if (currentIndex < 0 || mediaList.length === 0) return
+    const controller = new AbortController()
 
-    const preloadPromises: Promise<void>[] = []
-    for (let i = 1; i <= 3; i++) {
-      const nextIdx = currentIndex + i
-      if (nextIdx < mediaList.length) {
+    ;(async () => {
+      const tasks: Promise<unknown>[] = []
+      for (let i = 1; i <= 3; i++) {
+        const nextIdx = currentIndex + i
+        if (nextIdx >= mediaList.length) break
         const nextMedia = mediaList[nextIdx]
-        // Preload the URL (just warm the cache, don't store result)
-        preloadPromises.push(
-          window.api.media.getPlayableUrl(nextMedia.id).catch(() => {})
-        )
+        // Resolve playable URL for all 3 (cheap).
+        const urlPromise = window.api.media.getPlayableUrl(nextMedia.id).catch(() => null)
+        tasks.push(urlPromise)
+        // Only the immediate next gets the byte warmup — beyond that
+        // we'd waste bandwidth on stuff the user may never reach.
+        if (i === 1 && nextMedia.type === 'video') {
+          tasks.push((async () => {
+            const resolvedUrl = await urlPromise
+            if (!resolvedUrl || controller.signal.aborted) return
+            try {
+              const res = await fetch(resolvedUrl, {
+                method: 'GET',
+                headers: { Range: 'bytes=0-2097151' }, // first 2 MB
+                signal: controller.signal,
+                // Don't keep the body in memory — we just want the
+                // bytes to land in disk/page cache.
+                cache: 'force-cache' as RequestCache,
+              })
+              if (!res.body) return
+              const reader = res.body.getReader()
+              // Drain quickly; bytes flow through OS cache regardless.
+              // 4 MB cap as a safety stop in case the server ignores Range.
+              let drained = 0
+              while (drained < 4 * 1024 * 1024) {
+                if (controller.signal.aborted) { try { reader.cancel() } catch { /* noop */ } return }
+                const { done, value } = await reader.read()
+                if (done) break
+                drained += value?.byteLength ?? 0
+              }
+              try { reader.cancel() } catch { /* noop */ }
+            } catch { /* aborted or offline — fine */ }
+          })())
+        }
       }
-    }
+      await Promise.all(tasks)
+    })()
 
-    // Execute preloads in parallel
-    Promise.all(preloadPromises)
+    return () => controller.abort()
   }, [currentIndex, mediaList])
 
   // Loading timeout - if video doesn't load within 10 seconds, auto-skip or show error
@@ -742,11 +791,19 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     setIsScanning(true)
 
     try {
-      // Start discovery
+      // Start discovery in parallel — DLNA via its background scan,
+      // AirPlay via one mDNS multicast burst.
       await window.api.dlna?.startDiscovery?.()
-      // Get initial devices
-      const devices = await window.api.dlna?.getDevices?.() || []
+      const [devices, airplayRes] = await Promise.all([
+        Promise.resolve(window.api.dlna?.getDevices?.()).then((r) => r ?? []),
+        ((window as any).api?.airplayDiscover?.(3500) ?? Promise.resolve(null)),
+      ])
       setDlnaDevices(devices)
+      if (airplayRes?.ok && Array.isArray(airplayRes.receivers)) {
+        setAirplayReceivers(airplayRes.receivers)
+      } else {
+        setAirplayReceivers([])
+      }
     } catch (err: any) {
       console.error('[DLNA] Discovery error:', err)
       setCastError(err.message || 'Failed to scan for devices')
@@ -991,6 +1048,41 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         if (!isFullscreen) {
           setIsTheaterMode(prev => !prev)
         }
+      } else if ((e.key === 'i' || e.key === 'I') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // #302 D-78 — Adobe Bridge-style I-key info pane toggle.
+        // Broadcasts an event the parent can hook to show/hide an
+        // info side panel. Keeping it lightweight: no opinion on what
+        // gets rendered, just a signal.
+        e.preventDefault()
+        try { window.dispatchEvent(new CustomEvent('vault:toggle-info-pane', { detail: { mediaId: media.id } })) } catch { /* ignore */ }
+      } else if (e.key === 'C' && e.shiftKey) {
+        // #244 — Shift+C: moment capture. Grab the current video frame
+        // as WebP and save to userData/moments/. C alone stays bound
+        // to Crop Mode.
+        e.preventDefault()
+        if (media.type === 'video' && videoRef.current) {
+          const v = videoRef.current
+          if (v.videoWidth && v.videoHeight) {
+            const canvas = document.createElement('canvas')
+            canvas.width = v.videoWidth
+            canvas.height = v.videoHeight
+            const ctx = canvas.getContext('2d')
+            if (ctx) {
+              ctx.drawImage(v, 0, 0, canvas.width, canvas.height)
+              canvas.toBlob(async (blob) => {
+                if (!blob) return
+                const buf = await blob.arrayBuffer()
+                const ts = new Date().toISOString().replace(/[:.]/g, '-')
+                const filename = `moment_${media.id}_${ts}.webp`
+                try {
+                  await (window.api as any).moments?.save?.({ filename, data: Array.from(new Uint8Array(buf)) })
+                } catch (err) {
+                  console.warn('[moment-capture] save failed:', err)
+                }
+              }, 'image/webp', 0.92)
+            }
+          }
+        }
       } else if (e.key === 'c' || e.key === 'C') {
         // Toggle Crop Mode
         e.preventDefault()
@@ -1070,6 +1162,74 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     }
     document.addEventListener('fullscreenchange', handleFullscreenChange)
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  }, [])
+
+  // #202 — Auto-trigger Hue cinema dim on fullscreen enter, restore
+  // on fullscreen exit. Reads the persisted hue settings each
+  // transition so the user's brightness pick + light selection is
+  // honored without a render-tick subscription.
+  //
+  // Gated to the primary player (instanceIndex === 0) — otherwise
+  // multiple open players would each fight over the bridge and
+  // overwrite each other's brightness snapshots, breaking restore.
+  //
+  // We also remember whether THIS player triggered a dim so the
+  // unmount cleanup can restore — preventing a "player closed mid-
+  // fullscreen → lights stay dim forever" failure mode.
+  const dimmedByUsRef = useRef(false)
+  useEffect(() => {
+    if (instanceIndex !== 0) return
+    let cancelled = false
+    void (async () => {
+      const api: any = (window as any).api
+      if (!api?.settings?.get || !api?.hueCinemaDim) return
+      try {
+        const s = await api.settings.get()
+        const hue = s?.hue ?? {}
+        if (!hue.bridgeIp || !hue.username || !hue.autoDimOnFullscreen) return
+        if (cancelled) return
+        const lightIds = Array.isArray(hue.cinemaLightIds) ? hue.cinemaLightIds : []
+        if (lightIds.length === 0) return
+        if (isFullscreen) {
+          await api.hueCinemaDim({
+            bridgeIp: hue.bridgeIp,
+            username: hue.username,
+            lightIds,
+            targetBri: typeof hue.cinemaTargetBri === 'number' ? hue.cinemaTargetBri : 30,
+          })
+          dimmedByUsRef.current = true
+        } else if (dimmedByUsRef.current) {
+          await api.hueCinemaRestore({
+            bridgeIp: hue.bridgeIp,
+            username: hue.username,
+            lightIds,
+          })
+          dimmedByUsRef.current = false
+        }
+      } catch { /* offline / unpaired — silently noop */ }
+    })()
+    return () => { cancelled = true }
+  }, [isFullscreen, instanceIndex])
+
+  // Component-unmount: if we left lights dimmed (e.g. user closed the
+  // player while fullscreen), restore them so the room isn't stuck
+  // dark. Best-effort + silent failure.
+  useEffect(() => {
+    return () => {
+      if (!dimmedByUsRef.current) return
+      const api: any = (window as any).api
+      if (!api?.settings?.get || !api?.hueCinemaRestore) return
+      void (async () => {
+        try {
+          const s = await api.settings.get()
+          const hue = s?.hue ?? {}
+          const lightIds = Array.isArray(hue.cinemaLightIds) ? hue.cinemaLightIds : []
+          if (hue.bridgeIp && hue.username && lightIds.length > 0) {
+            await api.hueCinemaRestore({ bridgeIp: hue.bridgeIp, username: hue.username, lightIds })
+          }
+        } catch { /* offline */ }
+      })()
+    }
   }, [])
 
   // Drag handling (only when not fullscreen)
@@ -1838,6 +1998,29 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                 mediaId={media.id}
                 durationSec={media.durationSec ?? null}
                 titleVisible={showControls}
+              />
+            )}
+
+            {/* v2.7 player overlay rail — LUT / Subs / Scopes / Quick Look.
+                Self-contained: button strip + popovers + active overlays
+                all live inside this component. Gated to primary player
+                (instanceIndex 0) for the same reason as WatchWithXy. */}
+            {instanceIndex === 0 && (
+              <PlayerOverlayRail
+                videoRef={videoRef}
+                storageKey={`vault.player.overlays.${media.id}`}
+                mediaId={media.id}
+                duration={duration}
+              />
+            )}
+
+            {/* #163 — Spotlight / pixelate overlay. Renders a canvas
+                on top of the video; user clicks to position center,
+                sliders adjust radius + effect parameters. */}
+            {showSpotlight && (
+              <SpotlightOverlay
+                videoRef={videoRef}
+                onClose={() => setShowSpotlight(false)}
               />
             )}
 
@@ -2620,6 +2803,102 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                         <span className="text-[9px] text-white/70">Timeline</span>
                       </button>
                     )}
+                    {/* #163 — Spotlight / pixelate overlay */}
+                    {media.type === 'video' && (
+                      <button
+                        onClick={() => { setShowSpotlight(!showSpotlight); setShowMoreMenu(false) }}
+                        className={`flex flex-col items-center gap-1 p-2 rounded-lg transition ${showSpotlight ? 'bg-yellow-500/80' : 'bg-white/5 hover:bg-yellow-500/60'}`}
+                        title="Spotlight / pixelate overlay (click in video to set center)"
+                      >
+                        <Eye size={16} />
+                        <span className="text-[9px] text-white/70">Spotlight</span>
+                      </button>
+                    )}
+                    {/* #179 — Auto-trailer (30s highlight reel) */}
+                    {media.type === 'video' && (
+                      <button
+                        onClick={async () => {
+                          setShowMoreMenu(false)
+                          const api: any = (window as any).api
+                          if (!api?.mediaGenerateAutoTrailer) { showToast?.('error', 'Auto-trailer IPC missing'); return }
+                          showToast?.('info', 'Generating 30s trailer…')
+                          try {
+                            const r = await api.mediaGenerateAutoTrailer({ mediaId: media.id, useAudioPeaks: true })
+                            if (r?.ok && r.path) {
+                              showToast?.('success', r.alreadyExisted ? 'Trailer ready (cached)' : 'Trailer generated')
+                              try { await api.shell?.showItemInFolder?.(r.path) } catch { /* noop */ }
+                            } else {
+                              showToast?.('error', r?.error ?? 'Trailer failed')
+                            }
+                          } catch (err: any) {
+                            showToast?.('error', err?.message ?? 'Trailer failed')
+                          }
+                        }}
+                        className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white/5 hover:bg-rose-500/60 transition"
+                        title="Generate 30s highlight-reel trailer (#179)"
+                      >
+                        <Scissors size={16} />
+                        <span className="text-[9px] text-white/70">Trailer</span>
+                      </button>
+                    )}
+                    {/* #169 — Auto-reframe to vertical / square */}
+                    {media.type === 'video' && (
+                      <button
+                        onClick={async () => {
+                          setShowMoreMenu(false)
+                          const api: any = (window as any).api
+                          if (!api?.mediaGenerateAutoReframe) { showToast?.('error', 'Reframe IPC missing'); return }
+                          // Pick aspect via small inline prompt — keep
+                          // it lightweight; a full picker UI is overkill.
+                          const choice = prompt('Reframe to: 9:16 (vertical), 1:1 (square), or 4:5 (IG)?', '9:16')
+                          if (!choice) return
+                          const aspectRatio = (['9:16', '1:1', '4:5'].includes(choice) ? choice : '9:16') as '9:16' | '1:1' | '4:5'
+                          showToast?.('info', `Reframing to ${aspectRatio}…`)
+                          try {
+                            const r = await api.mediaGenerateAutoReframe({ mediaId: media.id, aspectRatio })
+                            if (r?.ok && r.path) {
+                              showToast?.('success', `Reframed → ${aspectRatio}`)
+                              try { await api.shell?.showItemInFolder?.(r.path) } catch { /* noop */ }
+                            } else {
+                              showToast?.('error', r?.error ?? 'Reframe failed')
+                            }
+                          } catch (err: any) {
+                            showToast?.('error', err?.message ?? 'Reframe failed')
+                          }
+                        }}
+                        className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white/5 hover:bg-cyan-500/60 transition"
+                        title="Auto-reframe to 9:16 / 1:1 / 4:5 via face detection (#169)"
+                      >
+                        <Crop size={16} />
+                        <span className="text-[9px] text-white/70">Reframe</span>
+                      </button>
+                    )}
+                    {/* #135 — Aesthetic-aware thumbnail picker */}
+                    {media.type === 'video' && (
+                      <button
+                        onClick={async () => {
+                          setShowMoreMenu(false)
+                          const api: any = (window as any).api
+                          if (!api?.mediaRegenerateAestheticThumb) { showToast?.('error', 'Aesthetic thumb IPC missing'); return }
+                          showToast?.('info', 'Scoring frames…')
+                          try {
+                            const r = await api.mediaRegenerateAestheticThumb({ mediaId: media.id })
+                            if (r?.ok && r.thumbPath) {
+                              showToast?.('success', `Thumb updated (score ${(r.pick?.bestScore ?? 0).toFixed(1)}/10)`)
+                            } else {
+                              showToast?.('error', r?.error ?? 'Aesthetic ranker unavailable — install CLIP + LAION weights')
+                            }
+                          } catch (err: any) {
+                            showToast?.('error', err?.message ?? 'Aesthetic ranker failed')
+                          }
+                        }}
+                        className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white/5 hover:bg-amber-500/60 transition"
+                        title="Pick the best-looking frame as the new thumbnail (#135)"
+                      >
+                        <Sparkles size={16} />
+                        <span className="text-[9px] text-white/70">Best Thumb</span>
+                      </button>
+                    )}
                     {/* Xyrene watch-along — vision commentary in her voice */}
                     {media.type === 'video' && (
                       <button
@@ -2790,6 +3069,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
             videoRef={videoRef}
             duration={duration}
             currentTime={currentTime}
+            videoPath={media.path}
             onSeek={(time) => {
               if (videoRef.current) videoRef.current.currentTime = time
             }}
@@ -2886,7 +3166,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                     </button>
                   ))}
                 </div>
-              ) : !isScanning ? (
+              ) : !isScanning && airplayReceivers.length === 0 ? (
                 <div className="text-center py-8 text-white/40">
                   <Monitor size={32} className="mx-auto mb-2 opacity-50" />
                   <div className="text-sm">No devices found</div>
@@ -2899,12 +3179,50 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                   </button>
                 </div>
               ) : null}
+
+              {/* #184/#217 — AirPlay receivers (mDNS-discovered).
+                  No native sender yet, so we surface a copy-stream-URL
+                  action the user can paste into VLC / Infuse / etc.
+                  on the receiving device. */}
+              {airplayReceivers.length > 0 && (
+                <div className="space-y-2 mt-4">
+                  <div className="text-xs text-white/50 uppercase tracking-wider mb-2">
+                    AirPlay receivers
+                  </div>
+                  {airplayReceivers.map((r) => (
+                    <button
+                      key={`${r.host}:${r.port}`}
+                      onClick={async () => {
+                        try {
+                          const playable = await window.api.media.getPlayableUrl(media.id)
+                          if (!playable) { showToast?.('error', 'No playable URL'); return }
+                          await navigator.clipboard.writeText(playable)
+                          showToast?.('success', `Stream URL copied — paste in AirPlay app on ${r.name}`)
+                        } catch (err: any) {
+                          showToast?.('error', err?.message ?? 'Copy failed')
+                        }
+                      }}
+                      className="w-full flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition"
+                      title={`${r.host}:${r.port}${r.model ? ' · ' + r.model : ''}${r.requiresAuth ? ' · requires PIN' : ''}`}
+                    >
+                      <Monitor size={20} className="text-amber-400" />
+                      <div className="flex-1 text-left">
+                        <div className="text-sm font-medium">{r.name}</div>
+                        <div className="text-xs text-white/40">{r.host}{r.model ? ` · ${r.model}` : ''}</div>
+                      </div>
+                      <span className="text-[9px] uppercase tracking-wider text-amber-400/80">
+                        copy URL
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Footer */}
             <div className="px-4 py-3 border-t border-white/10 bg-white/5">
               <div className="text-[10px] text-white/40 text-center">
-                Supports DLNA/UPnP compatible TVs and devices
+                Supports DLNA/UPnP and discovers AirPlay receivers (Phase 1: copy stream URL)
               </div>
             </div>
           </div>

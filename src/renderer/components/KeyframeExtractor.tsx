@@ -6,7 +6,7 @@ import { Image, Download, Grid3X3, Loader2, Settings, Trash2, Check, Copy, Save,
 import { formatDuration } from '../utils/formatters'
 
 interface Keyframe { id: string; time: number; dataUrl: string; width: number; height: number }
-interface KeyframeExtractorProps { videoRef: React.RefObject<HTMLVideoElement>; duration: number; onExtract?: (frames: Keyframe[]) => void; className?: string }
+interface KeyframeExtractorProps { videoRef: React.RefObject<HTMLVideoElement | null>; duration: number; onExtract?: (frames: Keyframe[]) => void; className?: string }
 
 export function KeyframeExtractor({ videoRef, duration, onExtract, className = '' }: KeyframeExtractorProps) {
   const [frames, setFrames] = useState<Keyframe[]>([])

@@ -22,6 +22,7 @@ import {
 import { useToast } from '../contexts'
 import { cn } from '../utils/cn'
 import { toFileUrlCached } from '../hooks/usePerformance'
+import { MultiAngleViewer } from '../components/MultiAngleViewer'
 
 type Tab = 'faces' | 'bodies' | 'watchlist'
 
@@ -61,6 +62,28 @@ export default function PerformersPage() {
   const [browsingLoading, setBrowsingLoading] = useState(false)
   // Merge mode — when a cluster is being prepared to merge INTO another.
   const [mergeSourceId, setMergeSourceId] = useState<string | null>(null)
+  // #211 — Multi-angle viewer session opened from the cluster modal.
+  const [angleSession, setAngleSession] = useState<ClusterMedia[] | null>(null)
+  // Resolved playable URLs per session media id. Resolved lazily once
+  // the user opens MultiAngleViewer so we don't fan out the IPC for
+  // every cluster the user merely browses.
+  const [angleUrls, setAngleUrls] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (!angleSession || angleSession.length === 0) return
+    let cancelled = false
+    void (async () => {
+      const urlMap: Record<string, string> = {}
+      for (const m of angleSession) {
+        try {
+          const u = await window.api.media.getPlayableUrl(m.mediaId)
+          if (u) urlMap[m.mediaId] = u
+        } catch { /* skip — angle will render with no source */ }
+      }
+      if (!cancelled) setAngleUrls(urlMap)
+    })()
+    return () => { cancelled = true }
+  }, [angleSession])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -471,6 +494,18 @@ export default function PerformersPage() {
         )}
       </div>
 
+      {/* #211 — Multi-angle synchronized viewer launched from cluster modal.
+          Each pane is one media item from the cluster; one pane drives the
+          master clock + audio, the others stay muted + drift-corrected. */}
+      {angleSession && Object.keys(angleUrls).length >= 2 && (
+        <MultiAngleViewer
+          angles={angleSession
+            .filter((m) => !!angleUrls[m.mediaId])
+            .map((m) => ({ id: m.mediaId, url: angleUrls[m.mediaId], label: m.filename ?? m.mediaId }))}
+          onClose={() => { setAngleSession(null); setAngleUrls({}) }}
+        />
+      )}
+
       {/* Cluster browse modal */}
       {browsingCluster && (
         <div
@@ -483,21 +518,42 @@ export default function PerformersPage() {
             className="max-w-5xl max-h-[85vh] w-full bg-[var(--panel)] rounded-xl border border-[var(--border)] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex-none px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">
+            <div className="flex-none px-4 py-3 border-b border-[var(--border)] flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="font-semibold truncate">
                   {browsingCluster.name ?? `Cluster ${browsingCluster.id.slice(0, 8)}`}
                 </h3>
                 <p className="text-xs text-[var(--muted)]">
                   {browsingCluster.mediaCount} media items · {browsingCluster.sampleCount} face samples
                 </p>
               </div>
-              <button
-                onClick={() => setBrowsingCluster(null)}
-                className="p-1.5 rounded bg-white/5 hover:bg-white/10"
-              >
-                <X size={16} />
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* #211 — launch MultiAngleViewer with up to 4 cluster videos */}
+                {browsingMedia.length >= 2 && (
+                  <button
+                    onClick={() => {
+                      const candidates = browsingMedia
+                        .filter((m: any) => (m.type ?? 'video') === 'video')
+                        .slice(0, 4)
+                      if (candidates.length < 2) {
+                        showToast('info', 'Need at least 2 video clips for multi-angle viewer')
+                        return
+                      }
+                      setAngleSession(candidates)
+                    }}
+                    className="px-2 py-1 rounded text-xs bg-[var(--primary)]/20 hover:bg-[var(--primary)]/30 text-[var(--primary)] border border-[var(--primary)]/30"
+                    title="Play up to 4 clips in lockstep with a master audio clock"
+                  >
+                    Play as angles
+                  </button>
+                )}
+                <button
+                  onClick={() => setBrowsingCluster(null)}
+                  className="p-1.5 rounded bg-white/5 hover:bg-white/10"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
               {browsingLoading ? (

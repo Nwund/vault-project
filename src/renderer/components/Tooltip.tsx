@@ -1,4 +1,4 @@
-// File: src/renderer/components/Tooltip.tsx
+﻿// File: src/renderer/components/Tooltip.tsx
 // Contextual tooltip with keyboard shortcut display and position awareness
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
@@ -100,7 +100,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
   const [tooltipPos, setTooltipPos] = useState<TooltipPosition | null>(null)
   const triggerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const showTooltip = useCallback(() => {
     if (disabled) return

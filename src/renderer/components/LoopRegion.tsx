@@ -1,4 +1,4 @@
-// File: src/renderer/components/LoopRegion.tsx
+﻿// File: src/renderer/components/LoopRegion.tsx
 // A/B loop region selector for video playback
 
 import React, { useState, useCallback, useEffect, useRef } from 'react'
@@ -6,7 +6,7 @@ import { Repeat, X, ChevronLeft, ChevronRight, Lock, Unlock, Scissors, Save } fr
 import { formatDuration } from '../utils/formatters'
 
 interface Loop { id: string; start: number; end: number; name?: string }
-interface LoopRegionProps { videoRef: React.RefObject<HTMLVideoElement>; duration: number; currentTime: number; savedLoops?: Loop[]; onSaveLoop?: (loop: Loop) => void; className?: string }
+interface LoopRegionProps { videoRef: React.RefObject<HTMLVideoElement | null>; duration: number; currentTime: number; savedLoops?: Loop[]; onSaveLoop?: (loop: Loop) => void; className?: string }
 
 export function LoopRegion({ videoRef, duration, currentTime, savedLoops = [], onSaveLoop, className = '' }: LoopRegionProps) {
   const [active, setActive] = useState(false)

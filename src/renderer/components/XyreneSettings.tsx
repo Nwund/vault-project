@@ -18,7 +18,7 @@
 //   4. The original soundpack file is left untouched.
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { Volume2, X, Plus, RefreshCw, Sparkles, AlertCircle, Loader2, Mic, Brain, Save, Check, Wand2, Play, Square } from 'lucide-react'
+import { Volume2, X, Plus, RefreshCw, Sparkles, AlertCircle, Loader2, Mic, Brain, Save, Check, Wand2, Play, Square, FolderOpen, Upload, FileAudio } from 'lucide-react'
 import { useToast } from '../contexts'
 
 // ─── Session preview engine ─────────────────────────────────────────────────
@@ -903,6 +903,12 @@ export function XyreneSettings() {
         onChange={(v) => savePatch({ voiceSample: v })}
       />
 
+      {/* Voice intake — drop .wav/.mp3 into a watched folder OR pick a
+          file; service silence-trims + denoises + loudness-normalizes,
+          copies to xyrene-portable voice_samples/, pre-warms XTTS via
+          /cache_voice, and registers metadata. */}
+      <VoiceIntakeCard />
+
       {/* Climax voice — when enabled, the engine overlays an XTTS synth
           in her cloned voice on top of the climax sample burst. User
           edits the line pool below; engine picks one at random per fire. */}
@@ -1210,22 +1216,39 @@ function VoicePicker({ currentVoice, onChange }: { currentVoice: string; onChang
   const [voices, setVoices] = useState<string[] | null>(null)
   const [previewing, setPreviewing] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [metadata, setMetadata] = useState<Record<string, { displayName?: string; description?: string; durationSec?: number | null; source?: string }>>({})
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     let alive = true
     void (async () => {
       try {
-        const list = await window.api.ai.xyreneListVoices()
+        const [list, meta] = await Promise.all([
+          window.api.ai.xyreneListVoices(),
+          (window.api.ai as any).xyreneVoiceMetadata?.() ?? Promise.resolve({}),
+        ])
         if (!alive) return
         setVoices(list)
+        setMetadata(meta ?? {})
       } catch (err) {
         if (!alive) return
         setError('XTTS server not reachable — start xyrene-portable first.')
         setVoices([])
       }
     })()
-    return () => { alive = false }
+    // Refresh when intake processes a new file.
+    const off = (window.api as any).on?.('xyrene:intakeProcessed', async () => {
+      try {
+        const [list, meta] = await Promise.all([
+          window.api.ai.xyreneListVoices(),
+          (window.api.ai as any).xyreneVoiceMetadata?.() ?? Promise.resolve({}),
+        ])
+        if (!alive) return
+        setVoices(list)
+        setMetadata(meta ?? {})
+      } catch { /* ignore */ }
+    })
+    return () => { alive = false; try { off?.() } catch { /* ignore */ } }
   }, [])
 
   // Cleanup preview on unmount.
@@ -1276,6 +1299,9 @@ function VoicePicker({ currentVoice, onChange }: { currentVoice: string; onChang
           {voices.map((v) => {
             const isSelected = v === currentVoice
             const isPreviewing = previewing === v
+            const meta = metadata[v]
+            const display = meta?.displayName?.trim() || v.replace(/\.wav$/i, '')
+            const dur = meta?.durationSec
             return (
               <div
                 key={v}
@@ -1285,9 +1311,15 @@ function VoicePicker({ currentVoice, onChange }: { currentVoice: string; onChang
                     : 'bg-black/20 border-white/5 hover:bg-white/5'
                 }`}
                 onClick={() => onChange(v)}
+                title={meta?.description ? `${v} — ${meta.description}` : v}
               >
                 <div className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 ${isSelected ? 'border-pink-300 bg-pink-400' : 'border-white/30'}`} />
-                <span className="text-[12px] font-mono flex-1 truncate">{v}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] font-medium truncate">{display}</div>
+                  <div className="text-[10px] text-white/40 font-mono truncate">
+                    {v}{typeof dur === 'number' ? ` · ${dur.toFixed(1)}s` : ''}{meta?.source === 'intake' ? ' · intake' : ''}
+                  </div>
+                </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); void previewVoice(v) }}
                   disabled={isPreviewing}
@@ -1680,6 +1712,329 @@ function ToggleRow({ label, hint, checked, onChange }: { label: string; hint: st
         className={`relative w-10 h-5 rounded-full transition ${checked ? 'bg-pink-500' : 'bg-white/15'}`}
       >
         <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition ${checked ? 'left-5' : 'left-0.5'}`} />
+      </button>
+    </div>
+  )
+}
+
+// Voice intake card — watch folder + manual file picker + cleanup-mode
+// selector + editable display-name/description per cached voice. Status
+// row shows running state, queue depth, processed count, last error.
+function VoiceIntakeCard() {
+  const { showToast } = useToast()
+  const [status, setStatus] = useState<{
+    running: boolean
+    folder: string | null
+    cleanupMode: 'conservative' | 'standard' | 'aggressive'
+    queueDepth: number
+    processedCount: number
+    failedCount: number
+    lastError: string | null
+    voiceSamplesDir: string
+  } | null>(null)
+  const [metadata, setMetadata] = useState<Record<string, { displayName?: string; description?: string; durationSec?: number | null; source?: string; addedAt?: string }>>({})
+  const [voices, setVoices] = useState<string[]>([])
+  const [busy, setBusy] = useState<'start' | 'stop' | 'pick' | null>(null)
+  const [folderDraft, setFolderDraft] = useState('')
+  const [cleanup, setCleanup] = useState<'conservative' | 'standard' | 'aggressive'>('standard')
+  const [editingVoice, setEditingVoice] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState<{ displayName: string; description: string }>({ displayName: '', description: '' })
+
+  const refresh = useCallback(async () => {
+    try {
+      const [st, meta, list] = await Promise.all([
+        (window.api.ai as any).xyreneIntakeStatus?.() ?? Promise.resolve(null),
+        (window.api.ai as any).xyreneVoiceMetadata?.() ?? Promise.resolve({}),
+        window.api.ai.xyreneListVoices().catch(() => [] as string[]),
+      ])
+      if (st) {
+        setStatus(st)
+        setFolderDraft(st.folder ?? '')
+        setCleanup(st.cleanupMode ?? 'standard')
+      }
+      setMetadata(meta ?? {})
+      setVoices(list ?? [])
+    } catch (err: any) {
+      console.warn('[VoiceIntakeCard] refresh failed:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    void refresh()
+    const off = (window.api as any).on?.('xyrene:intakeProcessed', () => { void refresh() })
+    const t = setInterval(() => { void refresh() }, 4000)
+    return () => {
+      try { off?.() } catch { /* ignore */ }
+      clearInterval(t)
+    }
+  }, [refresh])
+
+  const pickFolder = useCallback(async () => {
+    setBusy('pick')
+    try {
+      const folder = await (window.api as any).dialogOpenFolder?.({ title: 'Pick voice intake folder' })
+      if (folder) setFolderDraft(folder)
+    } finally {
+      setBusy(null)
+    }
+  }, [])
+
+  const startWatcher = useCallback(async () => {
+    if (!folderDraft.trim()) {
+      showToast('error', 'Pick a folder first.')
+      return
+    }
+    setBusy('start')
+    try {
+      const r = await (window.api.ai as any).xyreneIntakeStart?.({ folder: folderDraft.trim(), cleanup })
+      if (r?.ok) {
+        showToast('success', `Watching ${r.folder ?? folderDraft}`)
+        await refresh()
+      } else {
+        showToast('error', r?.error ?? 'Failed to start watcher')
+      }
+    } finally {
+      setBusy(null)
+    }
+  }, [folderDraft, cleanup, refresh, showToast])
+
+  const stopWatcher = useCallback(async () => {
+    setBusy('stop')
+    try {
+      await (window.api.ai as any).xyreneIntakeStop?.()
+      await refresh()
+    } finally {
+      setBusy(null)
+    }
+  }, [refresh])
+
+  const processFile = useCallback(async () => {
+    const src = await (window.api as any).dialogOpenFile?.({
+      title: 'Pick voice sample (wav/mp3/m4a/ogg/flac)',
+      filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'm4a', 'ogg', 'flac'] }],
+    })
+    if (!src) return
+    showToast('info', `Processing ${src.split(/[\\\/]/).pop()}…`)
+    const r = await (window.api.ai as any).xyreneIntakeProcess?.({ srcPath: src, cleanup })
+    if (r?.ok) {
+      showToast('success', `Cached ${r.voiceFilename} (${r.durationSec?.toFixed?.(1)}s)`)
+      await refresh()
+    } else {
+      showToast('error', r?.error ?? 'Processing failed')
+    }
+  }, [cleanup, refresh, showToast])
+
+  const startEdit = useCallback((voice: string) => {
+    const m = metadata[voice]
+    setEditingVoice(voice)
+    setEditDraft({
+      displayName: m?.displayName ?? voice.replace(/\.wav$/i, ''),
+      description: m?.description ?? '',
+    })
+  }, [metadata])
+
+  const saveEdit = useCallback(async () => {
+    if (!editingVoice) return
+    const r = await (window.api.ai as any).xyreneVoiceMetadataSet?.({
+      filename: editingVoice,
+      displayName: editDraft.displayName.trim() || editingVoice.replace(/\.wav$/i, ''),
+      description: editDraft.description.trim(),
+    })
+    if (r?.ok) {
+      setEditingVoice(null)
+      await refresh()
+    } else {
+      showToast('error', r?.error ?? 'Save failed')
+    }
+  }, [editingVoice, editDraft, refresh, showToast])
+
+  const running = status?.running ?? false
+
+  return (
+    <div className="bg-white/5 rounded-lg border border-white/10 p-4 space-y-3" data-no-ui-sound>
+      <div className="flex items-center gap-2">
+        <FileAudio size={14} className="text-pink-300" />
+        <h3 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider">Voice Intake</h3>
+        <span className="text-[10px] text-[var(--muted)] opacity-60 ml-auto">
+          drop wav/mp3/m4a → cleanup → XTTS clone
+        </span>
+      </div>
+
+      {/* Status row */}
+      <div className="flex items-center gap-3 text-[11px]">
+        <span className={`px-2 py-0.5 rounded-full ${running ? 'bg-green-500/15 text-green-300 border border-green-500/30' : 'bg-white/5 text-white/50 border border-white/10'}`}>
+          {running ? '● Watching' : '○ Stopped'}
+        </span>
+        {status && status.queueDepth > 0 && (
+          <span className="text-amber-300">queue: {status.queueDepth}</span>
+        )}
+        {status && (
+          <span className="text-white/40">
+            {status.processedCount} done · {status.failedCount} failed
+          </span>
+        )}
+      </div>
+
+      {status?.lastError && (
+        <div className="text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1">
+          {status.lastError}
+        </div>
+      )}
+
+      {/* Folder picker */}
+      <div className="space-y-1.5">
+        <label className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Watch folder</label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={folderDraft}
+            onChange={(e) => setFolderDraft(e.target.value)}
+            placeholder="C:\Users\you\Documents\Vault\xyrene_voice_intake"
+            className="flex-1 px-2 py-1.5 rounded bg-black/40 border border-white/10 text-[11px] font-mono text-white/80 focus:outline-none focus:border-pink-500/40"
+          />
+          <button
+            onClick={pickFolder}
+            disabled={busy !== null}
+            className="px-2 py-1.5 rounded bg-white/5 border border-white/10 hover:bg-white/10 transition flex items-center gap-1.5 text-[11px] disabled:opacity-40"
+          >
+            <FolderOpen size={12} /> Browse
+          </button>
+        </div>
+      </div>
+
+      {/* Cleanup mode */}
+      <div className="space-y-1.5">
+        <label className="text-[10px] uppercase tracking-wider text-[var(--muted)]">Cleanup intensity</label>
+        <div className="flex gap-1">
+          {(['conservative', 'standard', 'aggressive'] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setCleanup(mode)}
+              className={`flex-1 px-2 py-1.5 rounded text-[11px] capitalize transition border ${
+                cleanup === mode
+                  ? 'bg-pink-500/15 border-pink-500/40 text-pink-200'
+                  : 'bg-black/20 border-white/10 text-white/60 hover:bg-white/5'
+              }`}
+              title={
+                mode === 'conservative' ? 'Trim leading/trailing silence only'
+                : mode === 'standard' ? 'Trim silence + denoise + loudness-normalize (recommended)'
+                : 'Standard + stronger denoise + de-essing (use for harsh source)'
+              }
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="flex gap-2">
+        {!running ? (
+          <button
+            onClick={startWatcher}
+            disabled={busy !== null || !folderDraft.trim()}
+            className="flex-1 px-3 py-1.5 rounded bg-pink-500/20 hover:bg-pink-500/30 border border-pink-500/40 text-pink-100 text-[11px] flex items-center justify-center gap-2 transition disabled:opacity-40"
+          >
+            {busy === 'start' ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+            Start watching
+          </button>
+        ) : (
+          <button
+            onClick={stopWatcher}
+            disabled={busy !== null}
+            className="flex-1 px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] flex items-center justify-center gap-2 transition disabled:opacity-40"
+          >
+            {busy === 'stop' ? <Loader2 size={12} className="animate-spin" /> : <Square size={12} />}
+            Stop
+          </button>
+        )}
+        <button
+          onClick={processFile}
+          disabled={busy !== null}
+          className="px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] flex items-center gap-2 transition disabled:opacity-40"
+          title="Pick a file and run cleanup + clone immediately"
+        >
+          <Upload size={12} /> Process file…
+        </button>
+      </div>
+
+      {status?.voiceSamplesDir && (
+        <div className="text-[10px] text-white/40 font-mono break-all">
+          → {status.voiceSamplesDir}
+        </div>
+      )}
+
+      {/* Cached voices with editable metadata */}
+      {voices.length > 0 && (
+        <div className="space-y-1.5 pt-2 border-t border-white/5">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--muted)]">
+            Cached voices ({voices.length})
+          </div>
+          {voices.map((v) => {
+            const m = metadata[v]
+            const isEditing = editingVoice === v
+            return (
+              <div key={v} className="rounded border border-white/5 bg-black/20 p-2">
+                {isEditing ? (
+                  <div className="space-y-1.5">
+                    <input
+                      type="text"
+                      value={editDraft.displayName}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, displayName: e.target.value }))}
+                      placeholder="Display name"
+                      className="w-full px-2 py-1 rounded bg-black/40 border border-white/10 text-[11px]"
+                    />
+                    <input
+                      type="text"
+                      value={editDraft.description}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value }))}
+                      placeholder="Description (e.g. soft, breathy, dommy)"
+                      className="w-full px-2 py-1 rounded bg-black/40 border border-white/10 text-[10px] text-white/70"
+                    />
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={saveEdit}
+                        className="px-2 py-1 rounded bg-pink-500/20 hover:bg-pink-500/30 border border-pink-500/40 text-[10px] flex items-center gap-1"
+                      >
+                        <Save size={10} /> Save
+                      </button>
+                      <button
+                        onClick={() => setEditingVoice(null)}
+                        className="px-2 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-[10px]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[11px] font-medium truncate">{m?.displayName ?? v.replace(/\.wav$/i, '')}</div>
+                      <div className="text-[10px] text-white/40 font-mono truncate">
+                        {v}{typeof m?.durationSec === 'number' ? ` · ${m.durationSec.toFixed(1)}s` : ''}
+                      </div>
+                      {m?.description && <div className="text-[10px] text-white/50 italic truncate">{m.description}</div>}
+                    </div>
+                    <button
+                      onClick={() => startEdit(v)}
+                      className="p-1 rounded hover:bg-white/10 text-white/50"
+                      title="Edit display name + description"
+                    >
+                      <Wand2 size={11} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <button
+        onClick={() => { void refresh() }}
+        className="text-[10px] text-white/40 hover:text-white/70 flex items-center gap-1 mx-auto transition"
+      >
+        <RefreshCw size={10} /> Refresh
       </button>
     </div>
   )

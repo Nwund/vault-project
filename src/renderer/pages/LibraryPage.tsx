@@ -25,6 +25,7 @@ import {
   Crop,
   Download,
   Eye,
+  EyeOff,
   FileText,
   Film,
   Grid3x3 as Grid3X3,
@@ -54,6 +55,7 @@ import {
   Volume2,
   VolumeX,
   Wand2,
+  Workflow,
   X,
   Zap,
 } from 'lucide-react'
@@ -73,9 +75,27 @@ import { TagSelector } from '../components/TagSelector'
 import { FloatingVideoPlayer } from '../components/FloatingVideoPlayer'
 import { WatchLaterPanel } from '../components/WatchLaterPanel'
 import { RecentlyViewedStrip } from '../components/RecentlyViewedStrip'
+import { RecommendationsRail } from '../components/RecommendationsRail'
 import { TrashPanel } from '../components/TrashPanel'
 import { LibraryHealthPanel } from '../components/LibraryHealthPanel'
 import { PinnedFiltersBar } from '../components/PinnedFiltersBar'
+import { MediaListRow } from '../components/MediaListRow'
+import { ColorPaletteFilter, COLOR_FILTER_EVENT, type ColorPaletteFilterEvent } from '../components/ColorPaletteFilter'
+import { SidecarWatcherBadge } from '../components/SidecarWatcherBadge'
+import { QuickLookPreview } from '../components/QuickLookPreview'
+import { FocusModeToggle } from '../components/FocusModeToggle'
+// v2.7 — heavy modals lazy-loaded so their code defers until first open.
+// The Suspense fallback is `null` because each modal handles its own
+// open/closed visual (returns null when !open), so the very brief gap
+// while the chunk loads is invisible.
+const ExportPipelineModal = React.lazy(() => import('../components/ExportPipelineModal').then((m) => ({ default: m.ExportPipelineModal })))
+const StackModeOverlay = React.lazy(() => import('../components/StackModeOverlay').then((m) => ({ default: m.StackModeOverlay })))
+const DupTriageModal = React.lazy(() => import('../components/DupTriageModal').then((m) => ({ default: m.DupTriageModal })))
+const SubLibraryModal = React.lazy(() => import('../components/SubLibraryModal').then((m) => ({ default: m.SubLibraryModal })))
+const SpriteSheetChapterEditor = React.lazy(() => import('../components/SpriteSheetChapterEditor').then((m) => ({ default: m.SpriteSheetChapterEditor })))
+const ServiceHealthDashboard = React.lazy(() => import('../components/ServiceHealthDashboard').then((m) => ({ default: m.ServiceHealthDashboard })))
+import { useCardLayoutPrefs } from '../hooks/useCardLayoutPrefs'
+import { useSpriteHoverScrub } from '../hooks/useSpriteHoverScrub'
 import { SlideshowController } from '../components/SlideshowController'
 import { VaultWrappedPanel } from '../components/VaultWrappedPanel'
 import { AnalyticsDashboardPanel } from '../components/AnalyticsDashboardPanel'
@@ -134,7 +154,7 @@ const PAGE_SIZE_OPTIONS = [
   { value: 200, label: '200' },
   { value: -1, label: 'All' },
 ] as const
-type LayoutOption = 'mosaic' | 'grid' | 'wall'
+type LayoutOption = 'mosaic' | 'grid' | 'wall' | 'list'
 
 const MAX_FLOATING_PLAYERS = 10
 const DEFAULT_PAGE_SIZE = 60
@@ -155,6 +175,100 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
   const { showContextMenu } = useContextMenu()
   const [media, setMedia] = useState<MediaRow[]>([])
   const [tags, setTags] = useState<TagRow[]>([])
+  // Color-palette filter: when a swatch is picked in ColorPaletteFilter,
+  // it dispatches COLOR_FILTER_EVENT with a set of matching mediaIds. We
+  // intersect with that set in the sortedMedia memo. Null = no filter.
+  const [colorFilterIds, setColorFilterIds] = useState<Set<string> | null>(null)
+  const [colorFilterLabel, setColorFilterLabel] = useState<string | null>(null)
+
+  // v2.7 #294 — Featured-less items. Persisted server-side via
+  // tags.featureLess; we fetch the full set once on mount + on toggle.
+  // When showFeatureLess is false (default), items in this set are
+  // hidden from sortedMedia. The set also propagates to MediaTile so
+  // it can render the EyeOff badge when an item is featureLess.
+  const [featureLessSet, setFeatureLessSet] = useState<Set<string>>(new Set())
+  const [showFeatureLess, setShowFeatureLess] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const refresh = async () => {
+      try {
+        const r = await window.api.tags?.featureLess?.list?.()
+        if (cancelled) return
+        if (r?.ok && Array.isArray(r.mediaIds)) {
+          setFeatureLessSet(new Set(r.mediaIds))
+        }
+      } catch { /* ignore */ }
+    }
+    refresh()
+    // Re-fetch whenever the user toggles via context menu — listen for
+    // a broadcast event the App.tsx context menu fires after a flip.
+    const onFlip = () => refresh()
+    window.addEventListener('vault:featureLessChanged', onFlip)
+    return () => { cancelled = true; window.removeEventListener('vault:featureLessChanged', onFlip) }
+  }, [])
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<ColorPaletteFilterEvent>).detail
+      if (!detail || detail.rgb == null) {
+        setColorFilterIds(null)
+        setColorFilterLabel(null)
+        return
+      }
+      setColorFilterIds(new Set(detail.mediaIds))
+      setColorFilterLabel(detail.swatchName)
+    }
+    window.addEventListener(COLOR_FILTER_EVENT, handler)
+    return () => window.removeEventListener(COLOR_FILTER_EVENT, handler)
+  }, [])
+
+  // v2.7 — open the Export Pipeline modal in response to a global event
+  // (dispatched from the right-click context menu in App.tsx).
+  useEffect(() => {
+    const handler = () => setShowExportPipeline(true)
+    window.addEventListener('vault:openExportPipeline', handler)
+    return () => window.removeEventListener('vault:openExportPipeline', handler)
+  }, [])
+
+  // v2.7 — single dispatcher for all the v2.7 Library tools so things
+  // like CommandPalette and right-click can summon any modal by name.
+  // Two entry points:
+  //   1. Live `vault:openLibraryTool` CustomEvent (right-click menu,
+  //      any subcomponent on the page)
+  //   2. sessionStorage `vault.pendingLibraryTool` set BEFORE
+  //      navigating to /library — read once on mount and cleared. This
+  //      is the race-free path for CommandPalette which navigates and
+  //      then mounts the page; the live event would arrive before the
+  //      listener installs.
+  useEffect(() => {
+    const openTool = (tool: string) => {
+      switch (tool) {
+        case 'serviceHealth': setShowServiceHealth(true); break
+        case 'dupTriage': setShowDupTriage(true); break
+        case 'stack': setShowStackMode(true); break
+        case 'subLibrary': setShowSubLibrary(true); break
+        case 'sprite': setShowSpriteEditor(true); break
+        case 'exportPipeline': setShowExportPipeline(true); break
+      }
+    }
+    const handler = (e: Event) => openTool((e as CustomEvent<string>).detail)
+    window.addEventListener('vault:openLibraryTool', handler as EventListener)
+    // On mount: drain any pending tool that was set by another surface
+    // (e.g., CommandPalette) before navigating here.
+    const pending = sessionStorage.getItem('vault.pendingLibraryTool')
+    if (pending) {
+      sessionStorage.removeItem('vault.pendingLibraryTool')
+      openTool(pending)
+    }
+    return () => window.removeEventListener('vault:openLibraryTool', handler as EventListener)
+  }, [])
+
+  // v2.7 #291 — Quick Look state. The actual hold-Q effect is installed
+  // below sortedMedia/focusedIndex so the closure can read them.
+  const [quickLookOpen, setQuickLookOpen] = useState(false)
+  const [quickLookMedia, setQuickLookMedia] = useState<MediaRow | null>(null)
+  const quickLookTimerRef = useRef<number | null>(null)
 
   // Restore persisted filter state on mount
   const persisted = useMemo(() => getPersistedFilters(), [])
@@ -237,6 +351,12 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
   const [showWatchLaterPanel, setShowWatchLaterPanel] = useState(false) // Watch Later queue panel
   const [showTrashPanel, setShowTrashPanel] = useState(false) // Persistent trash / recycle bin
   const [showLibraryHealth, setShowLibraryHealth] = useState(false) // Actionable health dashboard
+  const [showExportPipeline, setShowExportPipeline] = useState(false) // v2.7 #322 export pipeline modal
+  const [showStackMode, setShowStackMode] = useState(false) // v2.7 #296 TikTok-style stack pager
+  const [showDupTriage, setShowDupTriage] = useState(false) // v2.7 #354 dedup triage queue
+  const [showSubLibrary, setShowSubLibrary] = useState(false) // v2.7 #378 animated sub-library
+  const [showSpriteEditor, setShowSpriteEditor] = useState(false) // v2.7 #316 sprite-sheet chapter editor
+  const [showServiceHealth, setShowServiceHealth] = useState(false) // v2.7 service health dashboard
   const [showSlideshow, setShowSlideshow] = useState(false) // Stills slideshow with Ken Burns / transitions
   const [showVaultWrapped, setShowVaultWrapped] = useState(false) // Spotify-style monthly recap
   const [showAnalytics, setShowAnalytics] = useState(false) // Personal analytics dashboard
@@ -349,17 +469,38 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
 
   // Add a video to floating players (max 4) - STRICT: no duplicates, no exceeding max
   const addFloatingPlayer = useCallback((mediaId: string) => {
-    setOpenIds(prev => {
-      // Already open - do nothing
-      if (prev.includes(mediaId)) return prev
-      // At max capacity - do nothing (don't replace)
-      if (prev.length >= MAX_FLOATING_PLAYERS) return prev
-      // Track the watch
-      window.api.goon?.recordWatch?.(mediaId).catch((err: unknown) => console.warn('[Player] Failed to record watch:', err))
-      // Add new player
-      return [...prev, mediaId]
+    // v2.7 — Check denial state. If the user has denied this media for
+    // a duration that hasn't elapsed, refuse to open + show a toast
+    // with the remaining time. They can still clear via the right-click
+    // menu's "Deny this for…" → 0m, or from MediaInfoModal.
+    window.api.tags?.denial?.status?.(mediaId).then((r: any) => {
+      if (r?.ok && r.status?.active) {
+        const ms = r.status.remainingMs ?? 0
+        const human = ms > 86400_000 ? `${Math.floor(ms / 86400_000)}d`
+          : ms > 3600_000 ? `${Math.floor(ms / 3600_000)}h ${Math.floor((ms % 3600_000) / 60_000)}m`
+          : ms > 60_000 ? `${Math.floor(ms / 60_000)}m`
+          : `${Math.ceil(ms / 1000)}s`
+        showToast('info', `Denied · ${human} remaining. Clear via right-click → Media Info → Clear.`)
+        return
+      }
+      // Not denied — proceed normally
+      setOpenIds(prev => {
+        if (prev.includes(mediaId)) return prev
+        if (prev.length >= MAX_FLOATING_PLAYERS) return prev
+        window.api.goon?.recordWatch?.(mediaId).catch((err: unknown) => console.warn('[Player] Failed to record watch:', err))
+        return [...prev, mediaId]
+      })
+    }).catch(() => {
+      // Denial check failed (probably the bridge isn't available);
+      // proceed as if not denied.
+      setOpenIds(prev => {
+        if (prev.includes(mediaId)) return prev
+        if (prev.length >= MAX_FLOATING_PLAYERS) return prev
+        window.api.goon?.recordWatch?.(mediaId).catch((err: unknown) => console.warn('[Player] Failed to record watch:', err))
+        return [...prev, mediaId]
+      })
     })
-  }, [])
+  }, [showToast])
 
   // Change media in a specific player slot (for skip/prev/next)
   const changeFloatingPlayerMedia = useCallback((oldMediaId: string, newMediaId: string) => {
@@ -715,7 +856,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
         if (t) excludes.push(t)
       }
     }
-    const filtered = excludes.length > 0
+    let filtered = excludes.length > 0
       ? media.filter((m: any) => {
           const mediaTags = (m.tags as string[] | undefined) ?? []
           if (mediaTags.length === 0) return true
@@ -724,6 +865,18 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
           return true
         })
       : media
+
+    // Color-palette filter intersection (#286).
+    if (colorFilterIds) {
+      filtered = filtered.filter((m: MediaRow) => colorFilterIds.has(m.id))
+    }
+
+    // v2.7 #294 — Hide featureLess items unless the user has toggled
+    // them visible. When visible, they still get a badge via MediaTile
+    // so they're recognizable.
+    if (!showFeatureLess && featureLessSet.size > 0) {
+      filtered = filtered.filter((m: MediaRow) => !featureLessSet.has(m.id))
+    }
 
     // Database handles: newest, oldest, name, views, duration, size, random
     // Only 'type' needs local sorting
@@ -739,12 +892,44 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
     }
     // For all other sorts, database already sorted the data
     return filtered
-  }, [media, sortBy, debouncedQuery])
+  }, [media, sortBy, debouncedQuery, colorFilterIds, showFeatureLess, featureLessSet])
 
   // Effective page size: -1 means show all
   const effectivePageSize = pageSize === -1 ? sortedMedia.length : pageSize
   const totalPages = effectivePageSize > 0 ? Math.ceil(sortedMedia.length / effectivePageSize) : 1
   const showPagination = pageSize !== -1 && sortedMedia.length > effectivePageSize
+
+  // v2.7 #291 — Quick Look: hold Q on a focused tile to pop a centered
+  // enlarged preview. Release Q to close. Q because Space is already
+  // bound to "open floating player".
+  useEffect(() => {
+    const onDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.code !== 'KeyQ' || e.repeat || quickLookTimerRef.current != null) return
+      if (focusedIndex < 0 || focusedIndex >= sortedMedia.length) return
+      const m = sortedMedia[focusedIndex]
+      quickLookTimerRef.current = window.setTimeout(() => {
+        setQuickLookMedia(m)
+        setQuickLookOpen(true)
+      }, 220)
+    }
+    const onUp = (e: KeyboardEvent) => {
+      if (e.code !== 'KeyQ') return
+      if (quickLookTimerRef.current != null) {
+        clearTimeout(quickLookTimerRef.current)
+        quickLookTimerRef.current = null
+      }
+      setQuickLookOpen(false)
+      setQuickLookMedia(null)
+    }
+    window.addEventListener('keydown', onDown)
+    window.addEventListener('keyup', onUp)
+    return () => {
+      window.removeEventListener('keydown', onDown)
+      window.removeEventListener('keyup', onUp)
+      if (quickLookTimerRef.current != null) clearTimeout(quickLookTimerRef.current)
+    }
+  }, [focusedIndex, sortedMedia])
 
   // Keyboard navigation handler
   useEffect(() => {
@@ -1211,6 +1396,17 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
         width: '100%',
       }
     }
+    // #153 — List view: single dense column. Each row is its own
+    // grid-item; MediaTile's own renderer adapts to wide cards.
+    if (layout === 'list') {
+      return {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '4px',
+        width: '100%',
+        minWidth: 0,
+      }
+    }
     return {
       display: 'grid',
       gridTemplateColumns: `repeat(auto-fill, minmax(${tileSize}px, 1fr))`,
@@ -1255,6 +1451,17 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                 title="StashDB-style wall with auto-playing previews"
               >
                 Wall
+              </button>
+              {/* #153 — Notion-style List view: dense rows + metadata columns. */}
+              <button
+                onClick={() => setLayout('list')}
+                className={cn(
+                  'px-2.5 py-1.5 text-[10px] font-medium transition',
+                  layout === 'list' ? 'bg-[var(--primary)]/30 text-white' : 'text-white/50 hover:text-white/80'
+                )}
+                title="Dense list with metadata columns"
+              >
+                List
               </button>
             </div>
 
@@ -1394,8 +1601,30 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                 below to keep the toolbar lean — only Watch Later stays
                 as a peer button. */}
 
+            {/* v2.7 #323 — Sidecar watcher status pill. Tiny click-to-expand
+                control showing watched-roots count + start/stop + add-root. */}
+            <SidecarWatcherBadge />
+
+            {/* v2.7 — Distraction-free focus mode toggle. Hides all chrome
+                when active; the exit pill stays accessible at top-right. */}
+            <FocusModeToggle />
+
             {/* Advanced Tools Dropdown */}
-            <div className="relative group">
+            <div
+              className="relative group"
+              onMouseEnter={() => {
+                // v2.7 — prefetch every lazy v2.7 modal chunk in one hover
+                // sweep on the Tools button itself, not just per-entry.
+                // The user has clearly opened the dropdown, so warming all
+                // six is much faster than waiting for the per-entry hover.
+                void import('../components/ExportPipelineModal')
+                void import('../components/StackModeOverlay')
+                void import('../components/DupTriageModal')
+                void import('../components/SubLibraryModal')
+                void import('../components/SpriteSheetChapterEditor')
+                void import('../components/ServiceHealthDashboard')
+              }}
+            >
               <Btn
                 tone="ghost"
                 className="flex items-center gap-1.5"
@@ -1420,6 +1649,59 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                   <button onClick={() => setShowUrlDownloaderPanel(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Download size={14} />URL Downloader</button>
                   <button onClick={() => setShowTrashPanel(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Trash2 size={14} />Trash</button>
                   <button onClick={() => setShowLibraryHealth(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Activity size={14} />Library Health</button>
+                </div>
+                <div className="p-2 border-t border-b border-white/10 bg-gradient-to-r from-fuchsia-500/5 to-transparent">
+                  <span className="text-xs text-fuchsia-300 font-medium flex items-center gap-1.5"><Sparkles size={11} />v2.7 — Integration tools</span>
+                </div>
+                <div className="p-1">
+                  <button onClick={() => setShowExportPipeline(true)} onMouseEnter={() => { void import('../components/ExportPipelineModal') }} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-emerald-500/15 rounded-md text-[13px] text-left text-white"><Workflow size={14} />Export Pipeline</button>
+                  <button onClick={() => setShowStackMode(true)} onMouseEnter={() => { void import('../components/StackModeOverlay') }} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-violet-500/15 rounded-md text-[13px] text-left text-white"><Layers size={14} />Stack Mode</button>
+                  <button onClick={() => setShowDupTriage(true)} onMouseEnter={() => { void import('../components/DupTriageModal') }} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-amber-500/15 rounded-md text-[13px] text-left text-white"><AlertCircle size={14} />Duplicate Triage</button>
+                  <button onClick={() => setShowSubLibrary(true)} onMouseEnter={() => { void import('../components/SubLibraryModal') }} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Sparkles size={14} />Animated sub-library</button>
+                  <button onClick={() => setShowSpriteEditor(true)} onMouseEnter={() => { void import('../components/SpriteSheetChapterEditor') }} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-cyan-500/15 rounded-md text-[13px] text-left text-white"><Film size={14} />Sprite-sheet Chapters</button>
+                  <button onClick={() => setShowServiceHealth(true)} onMouseEnter={() => { void import('../components/ServiceHealthDashboard') }} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-emerald-500/15 rounded-md text-[13px] text-left text-white"><Activity size={14} />Service Health</button>
+                </div>
+                <div className="p-2 border-t border-b border-white/10">
+                  <span className="text-xs text-white/50 font-medium">Sidecar interop</span>
+                </div>
+                <div className="p-1">
+                  <button
+                    onClick={async () => {
+                      showToast('info', 'Exporting NFO sidecars across library…')
+                      try {
+                        const res = await window.api.nfo.exportAll()
+                        showToast('success', `NFO export: ${res.written} written · ${res.skipped} skipped · ${res.failed} failed`)
+                      } catch (e: any) {
+                        showToast('error', e?.message ?? 'NFO export failed')
+                      }
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-orange-500/15 rounded-md text-[13px] text-left text-white"
+                  >
+                    <FileText size={14} />Export NFO sidecars (all)
+                  </button>
+                  <button
+                    onClick={async () => {
+                      showToast('info', 'Scanning for .stash.json sidecars…')
+                      try {
+                        const res = await window.api.stash.importSidecars()
+                        if (res.ok) {
+                          showToast('success', `Stash import: ${res.matched}/${res.scanned} matched · ${res.tagsImported} tags · ${res.performersImported} performers`)
+                        } else {
+                          showToast('error', 'Stash import failed')
+                        }
+                      } catch (e: any) {
+                        showToast('error', e?.message ?? 'Stash import failed')
+                      }
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-indigo-500/15 rounded-md text-[13px] text-left text-white"
+                  >
+                    <Layers size={14} />Import .stash.json sidecars
+                  </button>
+                </div>
+                <div className="p-2 border-t border-b border-white/10">
+                  <span className="text-xs text-white/50 font-medium">Insights & recaps</span>
+                </div>
+                <div className="p-1">
                   <button onClick={() => setShowSlideshow(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Play size={14} />Slideshow</button>
                   <button onClick={() => setShowVaultWrapped(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Sparkles size={14} />Vault Wrapped</button>
                   <button onClick={() => setShowAnalytics(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><BarChart3 size={14} />Analytics</button>
@@ -1619,15 +1901,36 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                   </div>
                 )}
 
-                {/* Search tips */}
+                {/* Search tips — click any chip to insert into the search.
+                    v2.7 #308 — these snippets compile through smartQuery
+                    when the input matches the DSL grammar. */}
                 {!query && (
                   <div id="search-tips" className="px-3 py-2 border-t border-[var(--border)] bg-black/20">
-                    <div className="text-[10px] text-[var(--muted)] uppercase tracking-wide mb-1.5">Search Tips</div>
-                    <div className="text-[11px] text-white/60 space-y-1">
-                      <div><code className="bg-white/10 px-1 rounded">tag:name</code> filter by tag</div>
-                      <div><code className="bg-white/10 px-1 rounded">-tag:name</code> exclude tag</div>
-                      <div><code className="bg-white/10 px-1 rounded">type:video</code> video/image/gif</div>
-                      <div><code className="bg-white/10 px-1 rounded">rating:5</code> or <code className="bg-white/10 px-1 rounded">rating:&gt;3</code></div>
+                    <div className="text-[10px] text-[var(--muted)] uppercase tracking-wide mb-1.5">Search Tips · click to insert</div>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        'tag:performer',
+                        '-tag:compilation',
+                        'type:video',
+                        'rating:>=4',
+                        'duration:30..',
+                        'duration:..120',
+                      ].map((chip) => (
+                        <button
+                          key={chip}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            setQuery((prev) => (prev ? `${prev} ${chip}` : chip))
+                          }}
+                          className="px-1.5 py-0.5 rounded bg-white/10 hover:bg-[var(--primary)]/20 hover:text-[var(--primary)] text-[11px] font-mono transition"
+                        >
+                          {chip}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="text-[10px] text-white/40 mt-1.5">
+                      Combine any of these — smart-query DSL grammar applies.
                     </div>
                   </div>
                 )}
@@ -1684,6 +1987,31 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
               {typeCounts.gif > 0 && <span className="text-[9px] opacity-60">({typeCounts.gif})</span>}
             </button>
           </div>
+
+          {/* Color-palette filter — discover by dominant color (#286).
+              Self-contained popover; dispatches COLOR_FILTER_EVENT which
+              we listen for above to intersect the displayed media set. */}
+          <ColorPaletteFilter />
+
+          {/* v2.7 #294 — Show featureLess items toggle. Hidden by default.
+              Only shown when there ARE featureLess items so the chip
+              doesn't clutter the topbar when unused. */}
+          {featureLessSet.size > 0 && (
+            <button
+              onClick={() => setShowFeatureLess((v) => !v)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all hover:scale-105 ${
+                showFeatureLess
+                  ? 'bg-zinc-500/20 border-zinc-400/40 text-zinc-200'
+                  : 'bg-black/20 border-[var(--border)] text-[var(--muted)] hover:text-white'
+              }`}
+              title={showFeatureLess ? 'Featured-less items are visible — click to hide' : `${featureLessSet.size} featured-less item${featureLessSet.size === 1 ? '' : 's'} hidden — click to show`}
+            >
+              <EyeOff size={12} />
+              <span className="text-[10px] font-medium tabular-nums">
+                {showFeatureLess ? 'Show -less' : `+${featureLessSet.size}`}
+              </span>
+            </button>
+          )}
 
           {/* Pinned filter chips — sticky quick-access for the user's most-used
               filter combinations. Click "Pin current" to save the active
@@ -2511,6 +2839,13 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                 className="mb-4"
               />
             )}
+            {/* #213 — Personalized rail blending co-watch + tag-affinity */}
+            {currentPage === 1 && (
+              <RecommendationsRail
+                onPlay={(mediaId) => addFloatingPlayer(mediaId)}
+                limit={12}
+              />
+            )}
             <div ref={gridRef} className="w-full min-w-0" style={getGridStyle()}>
               {/* Loading skeleton grid */}
               {isLoading && sortedMedia.length === 0 && (
@@ -2563,54 +2898,96 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                     animationFillMode: 'backwards'
                   }}
                 >
-                  <MediaTile
-                    media={m}
-                    selected={selectionMode ? selectedIds.has(m.id) : isPlaying}
-                    onClick={() => {
-                      if (selectionMode) {
-                        setSelectedIds(prev => {
-                          const next = new Set(prev)
-                          if (next.has(m.id)) next.delete(m.id)
-                          else next.add(m.id)
-                          return next
-                        })
-                      } else if (canOpen) {
-                        // Single-click: open in floating player directly (more intuitive)
-                        addFloatingPlayer(m.id)
-                      }
-                    }}
-                    onDoubleClick={() => {
-                      // Double-click: also opens (for users who expect this behavior)
-                      if (!selectionMode && canOpen) {
-                        addFloatingPlayer(m.id)
-                      }
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      showContextMenu(m, e.clientX, e.clientY)
-                    }}
-                    onToggleSelect={() => {
-                      if (selectionMode) {
-                        setSelectedIds(prev => {
-                          const next = new Set(prev)
-                          if (next.has(m.id)) next.delete(m.id)
-                          else next.add(m.id)
-                          return next
-                        })
-                      } else {
-                        canOpen && addFloatingPlayer(m.id)
-                      }
-                    }}
-                    compact={(layout === 'mosaic' && mosaicCols >= 6) || layout === 'wall'}
-                    layout={layout}
-                    disabled={selectionMode ? false : !canOpen}
-                    showStats={sortBy === 'views'}
-                    stats={mediaStats.get(m.id)}
-                    previewMuted={previewMuted}
-                    liked={likedIds.has(m.id)}
-                    onToggleLike={() => toggleLike(m.id)}
-                    selectionMode={selectionMode}
-                  />
+                  {layout === 'list' ? (
+                    <MediaListRow
+                      media={m}
+                      selected={selectionMode ? selectedIds.has(m.id) : false}
+                      isPlaying={isPlaying}
+                      selectionMode={selectionMode}
+                      onClick={() => {
+                        if (selectionMode) {
+                          setSelectedIds(prev => {
+                            const next = new Set(prev)
+                            if (next.has(m.id)) next.delete(m.id)
+                            else next.add(m.id)
+                            return next
+                          })
+                        } else if (canOpen) {
+                          addFloatingPlayer(m.id)
+                        }
+                      }}
+                      onDoubleClick={() => {
+                        if (!selectionMode && canOpen) {
+                          addFloatingPlayer(m.id)
+                        }
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        showContextMenu(m, e.clientX, e.clientY)
+                      }}
+                      onToggleSelect={() => {
+                        if (selectionMode) {
+                          setSelectedIds(prev => {
+                            const next = new Set(prev)
+                            if (next.has(m.id)) next.delete(m.id)
+                            else next.add(m.id)
+                            return next
+                          })
+                        } else if (canOpen) {
+                          addFloatingPlayer(m.id)
+                        }
+                      }}
+                    />
+                  ) : (
+                    <MediaTile
+                      media={m}
+                      selected={selectionMode ? selectedIds.has(m.id) : isPlaying}
+                      onClick={() => {
+                        if (selectionMode) {
+                          setSelectedIds(prev => {
+                            const next = new Set(prev)
+                            if (next.has(m.id)) next.delete(m.id)
+                            else next.add(m.id)
+                            return next
+                          })
+                        } else if (canOpen) {
+                          // Single-click: open in floating player directly (more intuitive)
+                          addFloatingPlayer(m.id)
+                        }
+                      }}
+                      onDoubleClick={() => {
+                        // Double-click: also opens (for users who expect this behavior)
+                        if (!selectionMode && canOpen) {
+                          addFloatingPlayer(m.id)
+                        }
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        showContextMenu(m, e.clientX, e.clientY)
+                      }}
+                      onToggleSelect={() => {
+                        if (selectionMode) {
+                          setSelectedIds(prev => {
+                            const next = new Set(prev)
+                            if (next.has(m.id)) next.delete(m.id)
+                            else next.add(m.id)
+                            return next
+                          })
+                        } else {
+                          canOpen && addFloatingPlayer(m.id)
+                        }
+                      }}
+                      compact={(layout === 'mosaic' && mosaicCols >= 6) || layout === 'wall'}
+                      layout={layout}
+                      disabled={selectionMode ? false : !canOpen}
+                      showStats={sortBy === 'views'}
+                      stats={mediaStats.get(m.id)}
+                      previewMuted={previewMuted}
+                      liked={likedIds.has(m.id)}
+                      onToggleLike={() => toggleLike(m.id)}
+                      selectionMode={selectionMode}
+                    />
+                  )}
                 </div>
               )
             })}
@@ -3306,6 +3683,55 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
         showToast={showToast}
       />
 
+      {/* v2.7 lazy-loaded modals — each only mounts when its `show*` state
+          flips true, and the bundle chunk only loads at that moment. */}
+      <React.Suspense fallback={null}>
+        {showExportPipeline && (
+          <ExportPipelineModal
+            open={showExportPipeline}
+            onClose={() => setShowExportPipeline(false)}
+          />
+        )}
+        {showStackMode && (
+          <StackModeOverlay
+            open={showStackMode}
+            media={sortedMedia}
+            initialIndex={Math.max(0, focusedIndex)}
+            onClose={() => setShowStackMode(false)}
+            onOpenMedia={(m) => {
+              setShowStackMode(false)
+              if (openIds.length < MAX_FLOATING_PLAYERS && !openIds.includes(m.id)) {
+                addFloatingPlayer(m.id)
+              }
+            }}
+          />
+        )}
+        {showDupTriage && (
+          <DupTriageModal open={showDupTriage} onClose={() => setShowDupTriage(false)} />
+        )}
+        {showSubLibrary && (
+          <SubLibraryModal
+            open={showSubLibrary}
+            onClose={() => setShowSubLibrary(false)}
+            onOpenMedia={(m) => {
+              setShowSubLibrary(false)
+              if (openIds.length < MAX_FLOATING_PLAYERS && !openIds.includes(m.id)) {
+                addFloatingPlayer(m.id)
+              }
+            }}
+          />
+        )}
+        {showSpriteEditor && (
+          <SpriteSheetChapterEditor open={showSpriteEditor} onClose={() => setShowSpriteEditor(false)} />
+        )}
+        {showServiceHealth && (
+          <ServiceHealthDashboard open={showServiceHealth} onClose={() => setShowServiceHealth(false)} />
+        )}
+      </React.Suspense>
+
+      {/* v2.7 #291 — Quick Look preview while Q is held on a focused tile (sync, lightweight) */}
+      <QuickLookPreview open={quickLookOpen} media={quickLookMedia} />
+
       {/* Actionable Library Health dashboard with one-click fixes */}
       <LibraryHealthPanel
         isOpen={showLibraryHealth}
@@ -3613,6 +4039,10 @@ const MediaTile = memo(function MediaTile(props: {
   selectionMode?: boolean
 }) {
   const { media, compact, layout, disabled, showStats, stats, previewMuted = true, liked, onToggleLike } = props
+  // #209 — Live-subscribed card-layout prefs. Hooked here so toggling
+  // any field in Settings → Appearance flips the visible affordances
+  // without a tile remount.
+  const { fields: cardFields } = useCardLayoutPrefs()
   const [showPlaylistPopup, setShowPlaylistPopup] = useState(false)
   const playlistBtnRef = useRef<HTMLButtonElement>(null)
   const [thumbUrl, setThumbUrl] = useState<string>('')
@@ -3701,12 +4131,22 @@ const MediaTile = memo(function MediaTile(props: {
     return () => { alive = false }
   }, [media.path, isVideo, isVisible])
 
+  // #214 — Sprite-sheet hover scrub. Lazy: only fires on first hover
+  // so we don't pre-fetch sprite sheets for every visible tile. The
+  // hook handles ffmpeg-generation on demand if the sheet doesn't
+  // exist yet.
+  const sprite = useSpriteHoverScrub({ mediaId: media.id, enabled: isVideo })
+
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true)
+    if (isVideo && !disabled) {
+      // Kick off sprite-sheet lazy-load on first hover.
+      try { sprite.ensure() } catch { /* noop */ }
+    }
     if (isVideo && videoUrl && !disabled) {
       startPreview(videoUrl, media.durationSec ?? undefined)
     }
-  }, [isVideo, videoUrl, disabled, startPreview, media.durationSec])
+  }, [isVideo, videoUrl, disabled, startPreview, media.durationSec, sprite])
 
   const handleMouseLeave = useCallback(() => {
     setIsHovered(false)
@@ -3839,6 +4279,20 @@ const MediaTile = memo(function MediaTile(props: {
                 loop
               />
             )}
+            {/* #214 — Sprite-sheet hover scrub overlay. Shows while
+                hovering, before the video preview's 2-second delay
+                kicks in. Once the actual video preview starts playing
+                it fades out so the user sees real motion. */}
+            {isVideo && sprite.ready && isHovered && !isPreviewPlaying && (
+              <div
+                ref={sprite.containerRef}
+                className={cn(
+                  'absolute inset-0 w-full h-full transition-opacity duration-200',
+                  layout === 'mosaic' || layout === 'wall' ? '' : '',
+                )}
+                style={sprite.style}
+              />
+            )}
           </>
         ) : thumbError ? (
           <div className="w-full h-full bg-gradient-to-br from-white/5 to-black/60 flex flex-col items-center justify-center gap-1">
@@ -3877,8 +4331,9 @@ const MediaTile = memo(function MediaTile(props: {
           {media.type === 'image' && <Eye size={compact ? 8 : 10} />}
         </div>
 
-        {/* Duration badge for videos with glow effect - hidden during preview */}
-        {media.type === 'video' && media.durationSec ? (
+        {/* Duration badge for videos with glow effect - hidden during preview.
+            #209 — gated on cardFields.duration so users can hide it. */}
+        {media.type === 'video' && media.durationSec && cardFields.has('duration') ? (
           <div className={cn(
             'absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded backdrop-blur-sm transition-all duration-200',
             'bg-black/70 border border-white/10',
@@ -4054,12 +4509,23 @@ const MediaTile = memo(function MediaTile(props: {
               {media.type}
             </span>
             <div className="flex items-center gap-2">
-              {media.width && media.height && (
+              {/* #209 — resolution + fileSize gated on cardFields prefs */}
+              {media.width && media.height && cardFields.has('resolution') && (
                 <span className={cn('transition-opacity', isHovered ? 'opacity-100' : 'opacity-0')}>
                   {media.width}×{media.height}
                 </span>
               )}
-              {typeof media.size === 'number' && <span>{formatBytes(media.size)}</span>}
+              {typeof media.size === 'number' && cardFields.has('fileSize') && <span>{formatBytes(media.size)}</span>}
+              {/* #209 — rating badge (compact star + number) */}
+              {typeof stats?.rating === 'number' && stats.rating > 0 && cardFields.has('rating') && (
+                <span className="text-amber-400 font-semibold tabular-nums">★ {stats.rating.toFixed(1)}</span>
+              )}
+              {/* #209 — added-date as a compact "Mar 5" pill */}
+              {typeof media.addedAt === 'number' && cardFields.has('addedDate') && (
+                <span className="text-[var(--muted)] tabular-nums">
+                  {new Date(media.addedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                </span>
+              )}
             </div>
           </div>
         </div>

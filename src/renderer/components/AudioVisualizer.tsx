@@ -1,11 +1,11 @@
-// File: src/renderer/components/AudioVisualizer.tsx
+﻿// File: src/renderer/components/AudioVisualizer.tsx
 // Real-time audio visualization with multiple modes
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Activity, BarChart3, Waves, Radio, Settings, Volume2 } from 'lucide-react'
 
 type VisualizerMode = 'bars' | 'wave' | 'circular' | 'spectrum'
-interface AudioVisualizerProps { videoRef: React.RefObject<HTMLVideoElement>; mode?: VisualizerMode; color?: string; height?: number; className?: string }
+interface AudioVisualizerProps { videoRef: React.RefObject<HTMLVideoElement | null>; mode?: VisualizerMode; color?: string; height?: number; className?: string }
 
 export function AudioVisualizer({ videoRef, mode: initialMode = 'bars', color = 'var(--primary)', height = 80, className = '' }: AudioVisualizerProps) {
   const [mode, setMode] = useState<VisualizerMode>(initialMode)
@@ -14,7 +14,7 @@ export function AudioVisualizer({ videoRef, mode: initialMode = 'bars', color = 
   const audioCtxRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null)
-  const rafRef = useRef<number>()
+  const rafRef = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     const video = videoRef.current, canvas = canvasRef.current
