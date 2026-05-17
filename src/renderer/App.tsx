@@ -1586,6 +1586,31 @@ export default function App() {
     return () => window.removeEventListener('navigate-tab', onNavigateTab)
   }, [navigateTo])
 
+  // #302 D-78 — FloatingVideoPlayer's I-key dispatches
+  // `vault:toggle-info-pane` so the parent can pop the MediaInfo modal
+  // without taking a prop. Was dispatched but never listened for —
+  // I-key did nothing. Now opens the modal for the active media,
+  // or closes it if the same item is already showing.
+  const infoModalMediaRef = useRef<MediaRow | null>(null)
+  useEffect(() => { infoModalMediaRef.current = infoModalMedia }, [infoModalMedia])
+  useEffect(() => {
+    const onTogglePane = async (e: Event) => {
+      const detail = (e as CustomEvent<{ mediaId?: string }>).detail
+      const id = detail?.mediaId
+      if (!id) return
+      if (infoModalMediaRef.current?.id === id) {
+        setInfoModalMedia(null)
+        return
+      }
+      try {
+        const row = (await (window.api as any).media?.getById?.(id)) as MediaRow | null | undefined
+        if (row) setInfoModalMedia(row)
+      } catch { /* ignore */ }
+    }
+    window.addEventListener('vault:toggle-info-pane', onTogglePane)
+    return () => window.removeEventListener('vault:toggle-info-pane', onTogglePane)
+  }, [])
+
   // Random climax trigger effect - use ref to properly track timer across recursive scheduling
   const climaxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {

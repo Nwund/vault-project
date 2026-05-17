@@ -102,6 +102,35 @@ export function DownloadsPage() {
     return () => unsubs.forEach(fn => fn())
   }, [showToast])
 
+  // Pick up a pending URL handed off via sessionStorage from elsewhere
+  // in the app (Rule34Page's "save tube embed" route). The dispatcher
+  // navigates here separately; we just drain the key on mount.
+  useEffect(() => {
+    try {
+      const pending = sessionStorage.getItem('vault.pendingDownloadUrl')
+      if (!pending) return
+      sessionStorage.removeItem('vault.pendingDownloadUrl')
+      const trimmed = pending.trim()
+      if (!trimmed) return
+      try { new URL(trimmed) } catch { return }
+      setUrlInput(trimmed)
+      void (window.api.urlDownloader.addDownload(trimmed, {
+        quality: quality === 'audio' ? 'best' : quality,
+        audioOnly: quality === 'audio',
+      }) as Promise<{ success: boolean; error?: string }>).then((result) => {
+        if (result.success) {
+          setUrlInput('')
+          showToast('success', 'Download added to queue')
+        } else {
+          showToast('error', `Failed: ${result.error}`)
+        }
+      })
+    } catch { /* ignore */ }
+    // Only on mount — we intentionally don't depend on quality so a
+    // later quality change doesn't re-fire an already-queued URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const handleAddDownload = async () => {
     const url = urlInput.trim()
     if (!url) return

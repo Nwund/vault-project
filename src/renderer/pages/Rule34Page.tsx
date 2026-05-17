@@ -1082,9 +1082,12 @@ export default function Rule34Page() {
     if (isEmbedUrl(post.file_url)) {
       const sourceUrl = post.source || post.file_url
       try {
-        // Open Downloads with the source URL pre-filled by dispatching
-        // a custom event. The Downloads page listens for these.
-        window.dispatchEvent(new CustomEvent('vault-add-url-download', { detail: { url: sourceUrl } }))
+        // Stash the URL in sessionStorage + navigate to Downloads. The
+        // page reads the key on mount and auto-queues. Previously this
+        // dispatched a window event the Downloads page never listened
+        // for (it isn't mounted until you navigate there).
+        sessionStorage.setItem('vault.pendingDownloadUrl', sourceUrl)
+        window.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'downloads' }))
         showToast('info', `Queued for yt-dlp download: ${sourceUrl}`)
       } catch (err: any) {
         showToast('error', err?.message ?? 'Tube download requires Downloads tab')
