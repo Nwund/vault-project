@@ -3740,7 +3740,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
         onOpenAiTagger={() => {
           // Switch to the AI Tools page via the global nav event
           setShowLibraryHealth(false)
-          window.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'aiTagger' }))
+          window.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'ai' }))
         }}
         showToast={showToast}
       />

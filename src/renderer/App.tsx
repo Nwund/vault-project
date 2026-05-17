@@ -1197,6 +1197,7 @@ export default function App() {
     return () => window.removeEventListener('vault:toggleFocusMode', onToggleFocus)
   }, [])
 
+
   // Global keyboard shortcuts (? for help, Z for zen mode, Ctrl+Z for undo, Ctrl+K for command palette)
   useEffect(() => {
     const handleGlobalKeys = async (e: KeyboardEvent) => {
@@ -1565,6 +1566,25 @@ export default function App() {
       setTimeout(() => setPageTransition(null), 250)
     }, 150)
   }, [page, stopAllMediaPlayback])
+
+  // v2.7 — Global 'navigate-tab' event handler. WhatsNewModal, the
+  // ServiceHealthDashboard, and the Library health-modal dispatch this
+  // with a NavId string in `detail` so deep buttons can route to a
+  // top-level page without taking a prop. Was dispatched but never
+  // listened for — the "Open AI Tools" / "Open Settings → Services"
+  // buttons in the v2.7 splash silently did nothing until now.
+  useEffect(() => {
+    const onNavigateTab = (e: Event) => {
+      const detail = (e as CustomEvent<unknown>).detail
+      if (typeof detail !== 'string') return
+      const valid: NavId[] = ['home', 'library', 'goonwall', 'captions', 'pmv', 'ai', 'feed', 'playlists', 'sessions', 'downloads', 'rule34', 'performers', 'stats', 'settings', 'about']
+      if ((valid as string[]).includes(detail)) {
+        navigateTo(detail as NavId)
+      }
+    }
+    window.addEventListener('navigate-tab', onNavigateTab)
+    return () => window.removeEventListener('navigate-tab', onNavigateTab)
+  }, [navigateTo])
 
   // Random climax trigger effect - use ref to properly track timer across recursive scheduling
   const climaxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
