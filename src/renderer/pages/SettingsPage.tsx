@@ -2976,7 +2976,14 @@ export function SettingsPage(props: {
                     Six themed sections below — Decentralized sharing · Privacy & anonymizing · Social & inbox · AI generation · Tag intelligence · Security & notifications · Content imports. Each card binds to a previously-orphaned IPC bridge, with consistent expand/status-pill UX.
                   </p>
                   <button
-                    onClick={() => window.dispatchEvent(new CustomEvent('vault:openLibraryTool', { detail: 'serviceHealth' }))}
+                    onClick={() => {
+                      // LibraryPage isn't mounted yet from here — stash the
+                      // pending tool name in sessionStorage and navigate.
+                      // The page drains the key on mount. Same handoff
+                      // pattern as CommandPalette uses.
+                      sessionStorage.setItem('vault.pendingLibraryTool', 'serviceHealth')
+                      window.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'library' }))
+                    }}
                     className="mt-2 text-[11px] flex items-center gap-1 px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 text-fuchsia-300 hover:text-fuchsia-200 transition"
                   >
                     <Shield size={11} /> Open Service Health dashboard →
