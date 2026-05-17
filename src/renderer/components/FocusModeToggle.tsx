@@ -18,14 +18,12 @@ const STORAGE_KEY = 'vault.focusMode'
 const ATTR = 'data-focus-mode'
 
 export function FocusModeToggle() {
+  // Local mirror of the document attribute. Canonical writer is App.tsx
+  // (which handles the global `vault:toggleFocusMode` event); we just
+  // observe and re-render the button accordingly.
   const [active, setActive] = useState<boolean>(() => {
     try { return localStorage.getItem(STORAGE_KEY) === 'on' } catch { return false }
   })
-
-  useEffect(() => {
-    document.documentElement.setAttribute(ATTR, active ? 'on' : 'off')
-    try { localStorage.setItem(STORAGE_KEY, active ? 'on' : 'off') } catch { /* ignore */ }
-  }, [active])
 
   // Esc exits focus mode globally
   useEffect(() => {
@@ -39,13 +37,28 @@ export function FocusModeToggle() {
       // itself, the toggle won't fire here.
       const hasModal = document.querySelector('[role="dialog"], [aria-modal="true"]')
       if (hasModal) return
-      setActive(false)
+      window.dispatchEvent(new CustomEvent('vault:toggleFocusMode'))
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [active])
 
-  const toggle = useCallback(() => setActive((v) => !v), [])
+  // Button click dispatches the same global event the CommandPalette
+  // uses. App.tsx owns the canonical toggle (document attribute +
+  // localStorage); we just stay in sync by observing the attribute.
+  const toggle = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('vault:toggleFocusMode'))
+  }, [])
+
+  // Sync our local `active` state with the document attribute so the
+  // button reflects toggles fired from the CommandPalette/hotkeys.
+  useEffect(() => {
+    const sync = () => setActive(document.documentElement.getAttribute(ATTR) === 'on')
+    sync()
+    const mo = new MutationObserver(sync)
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: [ATTR] })
+    return () => mo.disconnect()
+  }, [])
 
   return (
     <>
@@ -74,7 +87,7 @@ export function FocusModeToggle() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.92 }}
             transition={SPRINGS.standard}
-            onClick={() => setActive(false)}
+            onClick={toggle}
             className="fixed top-3 right-3 z-[260] flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-950/90 backdrop-blur-md border border-violet-500/40 text-violet-200 text-[11px] font-medium shadow-2xl shadow-black/40 hover:bg-zinc-900"
             aria-label="Exit focus mode"
           >

@@ -1176,6 +1176,27 @@ export default function App() {
   // Toast context for global notifications
   const { showToast: globalShowToast } = useToast()
 
+  // v2.7 — Focus mode toggle handler at the app level so it works from
+  // anywhere (CommandPalette, hotkeys, etc.) even if FocusModeToggle is
+  // not currently mounted (it only lives on LibraryPage). The button
+  // re-reads its initial state from localStorage on mount, so they stay
+  // in sync next time the user opens the Library.
+  useEffect(() => {
+    const onToggleFocus = () => {
+      const next = document.documentElement.getAttribute('data-focus-mode') !== 'on'
+      document.documentElement.setAttribute('data-focus-mode', next ? 'on' : 'off')
+      try { localStorage.setItem('vault.focusMode', next ? 'on' : 'off') } catch { /* ignore */ }
+    }
+    window.addEventListener('vault:toggleFocusMode', onToggleFocus)
+    // Also restore the persisted attribute on cold start so the Library
+    // doesn't flash un-focused chrome before FocusModeToggle hydrates.
+    try {
+      const saved = localStorage.getItem('vault.focusMode')
+      if (saved === 'on') document.documentElement.setAttribute('data-focus-mode', 'on')
+    } catch { /* ignore */ }
+    return () => window.removeEventListener('vault:toggleFocusMode', onToggleFocus)
+  }, [])
+
   // Global keyboard shortcuts (? for help, Z for zen mode, Ctrl+Z for undo, Ctrl+K for command palette)
   useEffect(() => {
     const handleGlobalKeys = async (e: KeyboardEvent) => {

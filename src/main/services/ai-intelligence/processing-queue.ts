@@ -118,6 +118,14 @@ export class ProcessingQueue {
   // marked approved silently. 0 disables (default — preserves existing review flow).
   private autoApproveThreshold = 0
 
+  // Cached fresh sqlite connection for getReviewList. The primary connection
+  // (this.rawDb) sometimes has a stale schema-cache for ai_analysis_results
+  // (review_status column "not found" despite PRAGMA showing it). Once we hit
+  // that error we open a parallel connection and keep it for the rest of the
+  // session so the workaround doesn't pay open/close cost on every poll.
+  // WAL + 5s busy_timeout matches the primary connection.
+  private freshReviewDb: any = null
+
   // Single-level undo for the most recent approve/reject. Snapshot is
   // taken before the decision runs; ai:undo-last-review restores it.
   // In-memory only — does not survive restart. One slot is enough for
@@ -2236,71 +2244,52 @@ export class ProcessingQueue {
       return this._getReviewListInner(opts0, '')
     } catch (err: any) {
       if (String(err?.message ?? '').includes('no such column')) {
-        console.warn('[AI Review] getReviewList failed — opening fresh sqlite connection to bypass cache:', err.message)
-        // Open a brand-new better-sqlite3 connection at the same path.
-        // No cached prepared statements, no schema state, completely
-        // independent of `this.rawDb`. Run the entire query path
-        // against the fresh connection, then close it. This bypasses
-        // whatever poisons the primary connection's view of the
-        // schema (likely a SQLITE_PREPARE_PERSISTENT issue or schema
-        // cookie miss).
-        const Database = require('better-sqlite3')
-        const { app } = require('electron')
-        const dbPath = path.join(app.getPath('userData'), 'db', 'vault.sqlite3')
-        console.log(`[AI Review] Fresh-conn opening: ${dbPath}`)
-        let freshDb: any = null
+        // First miss: open + cache a parallel connection. Subsequent calls
+        // reuse this.freshReviewDb so we don't pay open/close on every poll
+        // (the review panel polls every few seconds in some UIs).
+        let freshDb: any = this.freshReviewDb
+        const firstOpen = !freshDb
+        if (firstOpen) {
+          console.warn('[AI Review] primary connection schema-cache stale — opening parallel connection for review queries:', err.message)
+        }
         try {
-          freshDb = new Database(dbPath)
-          freshDb.pragma('journal_mode = WAL')
-          freshDb.pragma('busy_timeout = 5000')
-          // Verify the fresh connection actually sees the schema we expect.
-          try {
-            const freshCols = freshDb.prepare(`PRAGMA table_info(ai_analysis_results)`).all() as Array<{ name: string }>
-            const hasReview = freshCols.some((c) => c.name === 'review_status')
-            console.log(`[AI Review] Fresh-conn sees ${freshCols.length} cols on ai_analysis_results, review_status=${hasReview}`)
-            if (!hasReview) {
-              console.log(`[AI Review] Fresh-conn cols: ${freshCols.map((c) => c.name).join(', ')}`)
-            }
-            // Direct sanity SELECT — the exact query that getReviewList
-            // tries. If this fails, the issue is at the better-sqlite3
-            // binding level, not in our code.
+          if (firstOpen) {
+            const Database = require('better-sqlite3')
+            const { app } = require('electron')
+            const dbPath = path.join(app.getPath('userData'), 'db', 'vault.sqlite3')
+            console.log(`[AI Review] Fresh-conn opening: ${dbPath}`)
+            freshDb = new Database(dbPath)
+            freshDb.pragma('journal_mode = WAL')
+            freshDb.pragma('busy_timeout = 5000')
+            // One-time schema sanity log + belt-and-suspenders ALTER pass
+            // for missing columns. Logs only on first open so steady-state
+            // calls are silent. ALTERs are idempotent — failures (column
+            // already exists) are expected and swallowed.
             try {
-              const directResult = freshDb.prepare(`SELECT COUNT(*) as count FROM ai_analysis_results ar INNER JOIN media m ON ar.media_id = m.id WHERE ar.review_status = 'pending'`).get()
-              console.log(`[AI Review] Fresh-conn direct SELECT succeeded:`, directResult)
-            } catch (directErr: any) {
-              console.error(`[AI Review] Fresh-conn direct SELECT FAILED:`, directErr?.message)
+              const freshCols = freshDb.prepare(`PRAGMA table_info(ai_analysis_results)`).all() as Array<{ name: string }>
+              const hasReview = freshCols.some((c: { name: string }) => c.name === 'review_status')
+              console.log(`[AI Review] Fresh-conn sees ${freshCols.length} cols on ai_analysis_results, review_status=${hasReview}`)
+            } catch (probeErr) {
+              console.warn('[AI Review] Fresh-conn schema probe failed:', probeErr)
             }
-            // Also try the simplest possible query.
-            try {
-              const simpleResult = freshDb.prepare(`SELECT COUNT(*) as count FROM ai_analysis_results WHERE review_status = 'pending'`).get()
-              console.log(`[AI Review] Fresh-conn simple SELECT succeeded:`, simpleResult)
-            } catch (simpleErr: any) {
-              console.error(`[AI Review] Fresh-conn simple SELECT FAILED:`, simpleErr?.message)
+            const repairCols: Array<[string, string]> = [
+              ['review_status', `TEXT NOT NULL DEFAULT 'pending'`],
+              ['rich_tags', `TEXT`],
+              ['approved_tag_ids', `TEXT`],
+              ['approved_title', `TEXT`],
+              ['reviewed_at', `TEXT`],
+              ['suggested_filename', `TEXT`],
+              ['rejection_history', `TEXT`],
+            ]
+            for (const [name, def] of repairCols) {
+              try { freshDb.exec(`ALTER TABLE ai_analysis_results ADD COLUMN ${name} ${def};`) }
+              catch { /* already exists */ }
             }
-          } catch (probeErr) {
-            console.warn('[AI Review] Fresh-conn schema probe failed:', probeErr)
-          }
-          // Belt-and-suspenders: ALTER any missing columns on the
-          // fresh connection too — harmless if already present.
-          const repairCols: Array<[string, string]> = [
-            ['review_status', `TEXT NOT NULL DEFAULT 'pending'`],
-            ['rich_tags', `TEXT`],
-            ['approved_tag_ids', `TEXT`],
-            ['approved_title', `TEXT`],
-            ['reviewed_at', `TEXT`],
-            ['suggested_filename', `TEXT`],
-            ['rejection_history', `TEXT`],
-          ]
-          for (const [name, def] of repairCols) {
-            try { freshDb.exec(`ALTER TABLE ai_analysis_results ADD COLUMN ${name} ${def};`) }
-            catch { /* already exists */ }
+            this.freshReviewDb = freshDb
           }
           // Direct minimal implementation against freshDb — skip the
           // full _getReviewListInner because something in that path
           // is using a different connection / cached compiled SQL.
-          // The diagnostic above already proved this exact SELECT
-          // works on freshDb, so we know we can build a real response
-          // without touching the original code path.
           const status = opts0?.status ?? 'pending'
           const limit = opts0?.limit ?? 50
           const offset = opts0?.offset ?? 0
@@ -2366,10 +2355,18 @@ export class ProcessingQueue {
             }
           })
 
-          console.log(`[AI Review] Fresh-conn direct response: ${items.length} items of ${total} total`)
+          if (firstOpen) {
+            console.log(`[AI Review] Fresh-conn direct response: ${items.length} items of ${total} total (subsequent calls silent)`)
+          }
           return { items, total } as any
-        } finally {
-          try { freshDb?.close() } catch { /* ignore */ }
+        } catch (freshErr) {
+          // If the parallel connection itself fails, drop the cache so a
+          // future call can try opening a new one.
+          if (this.freshReviewDb === freshDb) {
+            try { this.freshReviewDb?.close() } catch { /* ignore */ }
+            this.freshReviewDb = null
+          }
+          throw freshErr
         }
       }
       throw err
