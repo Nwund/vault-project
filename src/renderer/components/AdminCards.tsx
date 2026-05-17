@@ -240,7 +240,7 @@ export function CloudflareTunnelCard() {
           <button
             disabled={busy}
             onClick={start}
-            className="w-full px-3 py-2 rounded-lg bg-[#f6821f] hover:bg-[#ff9f3d] text-white text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full px-3 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
             {busy ? 'Starting tunnel…' : 'Start tunnel'}
@@ -415,7 +415,7 @@ export function ResticBackupCard() {
           <button
             disabled={busy || configured === false}
             onClick={backupNow}
-            className="px-3 py-1.5 rounded text-xs bg-[#9333ea] hover:bg-[#a855f7] text-white transition disabled:opacity-40 flex items-center gap-1.5"
+            className="px-3 py-1.5 rounded text-xs bg-purple-600 hover:bg-purple-500 text-white transition disabled:opacity-40 flex items-center gap-1.5"
           >
             {busy ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
             {busy ? 'Snapshotting…' : 'Backup now'}

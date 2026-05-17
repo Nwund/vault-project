@@ -217,7 +217,7 @@ export function ContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-[9999] min-w-[200px] bg-zinc-900/95 backdrop-blur-xl rounded-xl border border-zinc-700 shadow-2xl overflow-hidden py-1"
+      className="fixed z-[9999] min-w-[200px] bg-zinc-900/95 backdrop-blur-xl rounded-xl border border-[var(--border)] shadow-2xl overflow-hidden py-1"
       style={{ left: position.x, top: position.y }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -256,7 +256,7 @@ export function ContextMenu({
             {/* Submenu */}
             {item.submenu && activeSubmenu === item.id && (
               <div
-                className="fixed min-w-[160px] bg-zinc-900/95 backdrop-blur-xl rounded-xl border border-zinc-700 shadow-2xl overflow-hidden py-1"
+                className="fixed min-w-[160px] bg-zinc-900/95 backdrop-blur-xl rounded-xl border border-[var(--border)] shadow-2xl overflow-hidden py-1"
                 style={{ left: submenuPosition.x, top: submenuPosition.y }}
               >
                 {item.submenu.map((subItem) => (
@@ -351,7 +351,7 @@ export function SelectionContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-[9999] min-w-[180px] bg-zinc-900/95 backdrop-blur-xl rounded-xl border border-zinc-700 shadow-2xl overflow-hidden py-1"
+      className="fixed z-[9999] min-w-[180px] bg-zinc-900/95 backdrop-blur-xl rounded-xl border border-[var(--border)] shadow-2xl overflow-hidden py-1"
       style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
     >

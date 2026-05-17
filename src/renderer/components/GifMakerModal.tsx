@@ -327,7 +327,7 @@ const GifMakerModal: React.FC<GifMakerModalProps> = ({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="relative w-[min(92vw,980px)] max-h-[92vh] overflow-y-auto rounded-2xl bg-[var(--panel)] border border-[var(--border)] shadow-2xl"
+        className="relative w-[min(92vw,980px)] max-h-[92vh] overflow-y-auto rounded-3xl bg-[var(--panel)] border border-[var(--border)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

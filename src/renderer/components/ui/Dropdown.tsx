@@ -32,13 +32,13 @@ export function Dropdown<T extends string>(props: {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-[#1a1a1c] border border-[var(--border)] text-sm text-white cursor-pointer hover:border-[var(--primary)]/40 outline-none min-w-[100px]"
+        className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-[var(--panel)] border border-[var(--border)] text-sm text-white cursor-pointer hover:border-[var(--primary)]/40 outline-none min-w-[100px]"
       >
         <span>{selectedOption?.label ?? 'Select...'}</span>
         <ChevronDown size={12} className={cn('transition-transform', isOpen && 'rotate-180')} />
       </button>
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 w-full min-w-[120px] rounded-xl bg-[#1a1a1c] border border-[var(--border)] shadow-xl z-50 overflow-hidden">
+        <div className="absolute top-full left-0 mt-1 w-full min-w-[120px] rounded-xl bg-[var(--panel)] border border-[var(--border)] shadow-xl z-50 overflow-hidden">
           {props.options.map((option) => (
             <button
               key={option.value}

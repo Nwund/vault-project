@@ -97,7 +97,7 @@ export function MediaInfoModal({ media, onClose }: { media: MediaRow; onClose: (
       onClick={onClose}
     >
       <div
-        className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl w-full max-w-lg mx-4 shadow-2xl overflow-hidden"
+        className="bg-[var(--panel)] border border-[var(--border)] rounded-3xl w-full max-w-lg mx-4 shadow-2xl overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">

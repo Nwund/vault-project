@@ -288,9 +288,9 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-zinc-900 rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col border border-zinc-700">
+      <div className="bg-[var(--panel)] rounded-3xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col border border-[var(--border)]">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+        <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
           <div className="flex items-center gap-3">
             <Copy className="w-5 h-5 text-orange-400" />
             <h2 className="text-lg font-semibold text-white">Duplicate Finder</h2>
@@ -445,7 +445,7 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
                 const keepId = keepSelected.get(group.hash)
 
                 return (
-                  <div key={group.hash} className="border border-zinc-700 rounded-lg overflow-hidden">
+                  <div key={group.hash} className="border border-[var(--border)] rounded-lg overflow-hidden">
                     {/* Group Header */}
                     <button
                       onClick={() => toggleGroup(group)}
@@ -475,7 +475,7 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
 
                     {/* Group Details */}
                     {isExpanded && details.length > 0 && (
-                      <div className="border-t border-zinc-700 p-2 space-y-1 bg-zinc-800/30">
+                      <div className="border-t border-[var(--border)] p-2 space-y-1 bg-zinc-800/30">
                         {details.map((media) => {
                           const isKeep = media.id === keepId
                           const isSelected = selectedForDeletion.has(media.id)
@@ -587,7 +587,7 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
 
         {/* Footer */}
         {scanResult && scanResult.groups.length > 0 && (
-          <div className="flex items-center justify-between p-4 border-t border-zinc-700 bg-zinc-800/50">
+          <div className="flex items-center justify-between p-4 border-t border-[var(--border)] bg-zinc-800/50">
             <div className="text-sm text-zinc-400">
               {selectedForDeletion.size} files selected for deletion
             </div>
