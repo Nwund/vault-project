@@ -853,6 +853,365 @@ const migrations: Migration[] = [
         console.log('[Migration v30] Added media.md5 + idx_media_md5 for #110 source-side dedup')
       }
     }
+  },
+
+  {
+    id: 31,
+    up: (db) => {
+      // #208 Browse-side phash cache. Stores the aHash of every
+      // remote thumbnail URL we've ever rendered in Browse so the
+      // near-dup badge becomes a single Hamming-distance lookup at
+      // render time instead of N fresh HTTP fetches. Worker fills
+      // this table in the background; rows are keyed by URL.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS browse_phash_cache (
+          url TEXT PRIMARY KEY,
+          phash TEXT NOT NULL,
+          fetched_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_browse_phash_cache_phash ON browse_phash_cache(phash);
+      `)
+      console.log('[Migration v31] Added browse_phash_cache for #208 near-dup badge')
+    }
+  },
+
+  {
+    id: 32,
+    up: (db) => {
+      // #206 Saved searches / pinned filters table — promotes the
+      // PinnedFiltersBar from localStorage to the catalog so chips
+      // ride along with the existing mobile-sync replication and
+      // survive a reinstall. query_json is the FilterSnapshot blob
+      // the renderer already serializes; position drives chip order.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS saved_searches (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          query_json TEXT NOT NULL,
+          position INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_saved_searches_position ON saved_searches(position);
+      `)
+      console.log('[Migration v32] Added saved_searches for #206 pinned filter sync')
+    }
+  },
+
+  {
+    id: 33,
+    up: (db) => {
+      // #101 Saved Subscriptions — Hydrus-style "this query, this
+      // source, re-fetch on a schedule" with last-seen tracking so
+      // only NEW posts surface in the inbox.
+      //
+      //   subscriptions       one pinned (source, query) tuple
+      //   subscription_seen   per-subscription post_id high-water mark
+      //   subscription_inbox  newly-discovered posts the user hasn't
+      //                       dismissed yet (id, thumb url, source url)
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS subscriptions (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          source TEXT NOT NULL,
+          query TEXT NOT NULL,
+          interval_minutes INTEGER NOT NULL DEFAULT 360,
+          last_run_at INTEGER,
+          last_error TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS subscription_inbox (
+          id TEXT PRIMARY KEY,
+          subscription_id TEXT NOT NULL,
+          post_id TEXT NOT NULL,
+          thumb_url TEXT,
+          full_url TEXT,
+          source_page_url TEXT,
+          discovered_at INTEGER NOT NULL,
+          dismissed_at INTEGER,
+          saved_at INTEGER,
+          UNIQUE (subscription_id, post_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_subscription_inbox_sub_discovered
+          ON subscription_inbox(subscription_id, discovered_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_subscription_inbox_pending
+          ON subscription_inbox(dismissed_at) WHERE dismissed_at IS NULL;
+      `)
+      console.log('[Migration v33] Added subscriptions + subscription_inbox for #101')
+    }
+  },
+
+  {
+    id: 34,
+    up: (db) => {
+      // #195 Multi-user profiles. Profiles share the underlying media
+      // + AI tags but maintain their own watch history, ratings, and
+      // (future) collections. Phase 1 = profiles table + active-profile
+      // tracking via settings; per-user scoping of watch_sessions follows.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS profiles (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          color TEXT,
+          avatar_path TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+      `)
+      // Seed a default profile so existing installs still have one
+      // "current user" the renderer can attach state to.
+      const existing = db.prepare(`SELECT COUNT(*) AS c FROM profiles`).get() as { c: number }
+      if (existing.c === 0) {
+        const now = Date.now()
+        db.prepare(`
+          INSERT INTO profiles (id, name, color, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run('default', 'Default', '#7c3aed', now, now)
+      }
+      // Add profile_id to watch_sessions if missing (so each session
+      // remembers which profile recorded it).
+      const cols = db.prepare(`PRAGMA table_info(watch_sessions)`).all() as Array<{ name: string }>
+      if (!cols.find((c) => c.name === 'profile_id')) {
+        db.exec(`ALTER TABLE watch_sessions ADD COLUMN profile_id TEXT;`)
+        db.exec(`UPDATE watch_sessions SET profile_id = 'default' WHERE profile_id IS NULL;`)
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_watch_sessions_profile ON watch_sessions(profile_id);`)
+      }
+      console.log('[Migration v34] Added profiles + watch_sessions.profile_id for #195')
+    }
+  },
+
+  {
+    id: 35,
+    up: (db) => {
+      // #106 Stash-style local performers database. Holds canonical
+      // performer metadata + cross-source ids (StashDB, ThePornDB,
+      // FansDB) + a JSON aliases array for tag normalization. Headshot
+      // is a local cached image path (downloaded from whichever source
+      // first matched the performer).
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS performers_db (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          aliases TEXT,         -- JSON array of strings
+          gender TEXT,
+          country TEXT,
+          ethnicity TEXT,
+          birthdate TEXT,       -- ISO date
+          bio TEXT,
+          headshot_path TEXT,
+          stashdb_id TEXT,
+          tpdb_id TEXT,
+          fansdb_id TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_performers_db_name ON performers_db(name COLLATE NOCASE);
+        CREATE INDEX IF NOT EXISTS idx_performers_db_stashdb ON performers_db(stashdb_id) WHERE stashdb_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_performers_db_tpdb ON performers_db(tpdb_id) WHERE tpdb_id IS NOT NULL;
+      `)
+      console.log('[Migration v35] Added performers_db for #106 Stash-style performer database')
+    }
+  },
+  {
+    // #348 + #363 — edging-session log and per-media denial cooldown.
+    id: 36,
+    up: (db) => {
+      // Add denialUntilTs to media_stats so favorited items can carry
+      // a self-imposed cooldown timestamp. NULL = no cooldown.
+      const cols = db.prepare(`PRAGMA table_info(media_stats)`).all() as Array<{ name: string }>
+      if (!cols.some((c) => c.name === 'denialUntilTs')) {
+        db.exec(`ALTER TABLE media_stats ADD COLUMN denialUntilTs REAL;`)
+      }
+      // Edging session log: one row per session (whether climaxed or
+      // denied). XP is summed externally for leaderboards / streaks.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS edging_sessions (
+          id TEXT PRIMARY KEY,
+          startedAt REAL NOT NULL,
+          endedAt REAL,
+          durationSec INTEGER,
+          climaxed INTEGER NOT NULL DEFAULT 0,
+          xpEarned INTEGER NOT NULL DEFAULT 0,
+          notes TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_edging_started ON edging_sessions(startedAt);
+        CREATE INDEX IF NOT EXISTS idx_edging_climaxed ON edging_sessions(climaxed);
+      `)
+      console.log('[Migration v36] Added media_stats.denialUntilTs + edging_sessions for #348/#363')
+    }
+  },
+  {
+    // #290 D-66 — Stash-style scene markers. Per-media timestamp
+    // bookmarks the user creates with M-key during playback.
+    id: 37,
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS scene_markers (
+          id TEXT PRIMARY KEY,
+          mediaId TEXT NOT NULL,
+          timestampSec REAL NOT NULL,
+          title TEXT NOT NULL DEFAULT '',
+          color TEXT,
+          createdAt REAL NOT NULL,
+          FOREIGN KEY (mediaId) REFERENCES media(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_scene_markers_media ON scene_markers(mediaId, timestampSec);
+      `)
+      console.log('[Migration v37] Added scene_markers table for #290')
+    }
+  },
+  {
+    // #294 D-70 — Apple Photos "Feature less" suppression. Boolean flag
+    // on media_stats; recommender (daily mix, suggestions, smart play-
+    // lists) weights these down or excludes them outright when true.
+    id: 38,
+    up: (db) => {
+      const cols = db.prepare(`PRAGMA table_info(media_stats)`).all() as Array<{ name: string }>
+      if (!cols.some((c) => c.name === 'featureLess')) {
+        db.exec(`ALTER TABLE media_stats ADD COLUMN featureLess INTEGER NOT NULL DEFAULT 0;`)
+      }
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_media_stats_featureLess ON media_stats(featureLess) WHERE featureLess = 1;`)
+      console.log('[Migration v38] Added media_stats.featureLess for #294')
+    }
+  },
+  {
+    // #380 H-156 — per-segment transcript storage for phrase-triggered
+    // supercut compiler. Whisper VTT segments persist alongside the
+    // flat text so we can search "find all moments where X is said"
+    // and slice the source videos at the exact timestamps.
+    id: 39,
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS media_transcript_segments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          media_id TEXT NOT NULL,
+          idx INTEGER NOT NULL,
+          start_sec REAL NOT NULL,
+          end_sec REAL NOT NULL,
+          text TEXT NOT NULL,
+          FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_transcript_seg_media ON media_transcript_segments(media_id);
+        CREATE VIRTUAL TABLE IF NOT EXISTS media_transcript_segments_fts USING fts5(
+          text, media_id UNINDEXED, idx UNINDEXED,
+          content='media_transcript_segments',
+          content_rowid='id',
+          tokenize='unicode61 remove_diacritics 1'
+        );
+        CREATE TRIGGER IF NOT EXISTS mts_ai AFTER INSERT ON media_transcript_segments BEGIN
+          INSERT INTO media_transcript_segments_fts(rowid, text, media_id, idx) VALUES (new.id, new.text, new.media_id, new.idx);
+        END;
+        CREATE TRIGGER IF NOT EXISTS mts_ad AFTER DELETE ON media_transcript_segments BEGIN
+          INSERT INTO media_transcript_segments_fts(media_transcript_segments_fts, rowid, text, media_id, idx) VALUES('delete', old.id, old.text, old.media_id, old.idx);
+        END;
+      `)
+      console.log('[Migration v39] Added media_transcript_segments + FTS5 for #380')
+    }
+  },
+  {
+    // #299 D-75 — Stash-style Studios entity. Studios are parent
+    // groupings of performers (Brazzers / Vixen / Adult Time / etc).
+    // Each studio has a name, optional logo path, optional parent
+    // company. Performers get an optional studio_id FK; media get an
+    // optional studio_id derived from filename or tag matching.
+    id: 40,
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS studios (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          aliases TEXT,           -- JSON array of alternate names
+          logo_path TEXT,
+          parent_company TEXT,
+          website TEXT,
+          url_patterns TEXT,      -- JSON array of regex strings for URL matching
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_studios_name ON studios(name COLLATE NOCASE);
+      `)
+      // Add studio_id to performers_db (idempotent).
+      const cols = db.prepare(`PRAGMA table_info(performers_db)`).all() as Array<{ name: string }>
+      if (cols.length > 0 && !cols.some((c) => c.name === 'studio_id')) {
+        db.exec(`ALTER TABLE performers_db ADD COLUMN studio_id TEXT REFERENCES studios(id) ON DELETE SET NULL;`)
+      }
+      // Add studio_id to media (idempotent).
+      const mcols = db.prepare(`PRAGMA table_info(media)`).all() as Array<{ name: string }>
+      if (!mcols.some((c) => c.name === 'studio_id')) {
+        db.exec(`ALTER TABLE media ADD COLUMN studio_id TEXT REFERENCES studios(id) ON DELETE SET NULL;`)
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_media_studio ON media(studio_id) WHERE studio_id IS NOT NULL;`)
+      }
+      console.log('[Migration v40] Added studios + performers_db.studio_id + media.studio_id for #299')
+    }
+  },
+  {
+    // #298 D-74 — Linear-style triage inbox for new imports. Each
+    // media row gets a `triage_status` column ('pending' | 'active' |
+    // 'archived' | 'rejected'). New scans default to 'active' unless
+    // settings.triageInboxEnabled = true, in which case they land in
+    // 'pending' and the user reviews them in the Triage tab.
+    id: 41,
+    up: (db) => {
+      const cols = db.prepare(`PRAGMA table_info(media)`).all() as Array<{ name: string }>
+      if (!cols.some((c) => c.name === 'triage_status')) {
+        db.exec(`ALTER TABLE media ADD COLUMN triage_status TEXT NOT NULL DEFAULT 'active';`)
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_media_triage ON media(triage_status) WHERE triage_status != 'active';`)
+      }
+      console.log('[Migration v41] Added media.triage_status for #298')
+    }
+  },
+  {
+    // #317 E-93 — Tag implication import is handled by the existing
+    // JSON-file based tag-implications.ts service (#103). Migration
+    // intentionally a no-op to bump the schema version monotonically.
+    id: 42,
+    up: (db) => {
+      void db
+      console.log('[Migration v42] no-op (tag implications live in JSON store)')
+    }
+  },
+  {
+    // #328 F-104 — FTS5 trigram tokenizer for substring search.
+    // SQLite 3.40+ ships the trigram tokenizer which enables
+    // contains-style matching ("LIKE %xxx%" with index) on the
+    // existing media_transcripts text. We add a second FTS index
+    // alongside the unicode61 one so callers can pick:
+    //   - existing media_transcripts_fts → fast word search
+    //   - new media_transcripts_fts_tri → substring search
+    id: 43,
+    up: (db) => {
+      try {
+        db.exec(`
+          CREATE VIRTUAL TABLE IF NOT EXISTS media_transcripts_fts_tri USING fts5(
+            text,
+            content='media_transcripts',
+            content_rowid='rowid',
+            tokenize='trigram'
+          );
+          -- Backfill from existing transcripts.
+          INSERT INTO media_transcripts_fts_tri(rowid, text)
+            SELECT rowid, text FROM media_transcripts
+            WHERE rowid NOT IN (SELECT rowid FROM media_transcripts_fts_tri);
+          -- Keep in sync via triggers (separate from the unicode61 ones).
+          CREATE TRIGGER IF NOT EXISTS media_transcripts_tri_ai AFTER INSERT ON media_transcripts BEGIN
+            INSERT INTO media_transcripts_fts_tri(rowid, text) VALUES (new.rowid, new.text);
+          END;
+          CREATE TRIGGER IF NOT EXISTS media_transcripts_tri_ad AFTER DELETE ON media_transcripts BEGIN
+            INSERT INTO media_transcripts_fts_tri(media_transcripts_fts_tri, rowid, text) VALUES('delete', old.rowid, old.text);
+          END;
+          CREATE TRIGGER IF NOT EXISTS media_transcripts_tri_au AFTER UPDATE ON media_transcripts BEGIN
+            INSERT INTO media_transcripts_fts_tri(media_transcripts_fts_tri, rowid, text) VALUES('delete', old.rowid, old.text);
+            INSERT INTO media_transcripts_fts_tri(rowid, text) VALUES (new.rowid, new.text);
+          END;
+        `)
+        console.log('[Migration v43] Added FTS5 trigram tokenizer index for substring search')
+      } catch (err) {
+        // SQLite < 3.40 doesn't have trigram — log + carry on, the
+        // unicode61 index is still usable for exact-word matches.
+        console.warn('[Migration v43] trigram tokenizer unavailable (SQLite version too old?):', err)
+      }
+    }
   }
 ]
 
@@ -902,10 +1261,12 @@ function repairAiAnalysisResultsColumns(db: Database.Database): void {
   const cols = db.prepare(`PRAGMA table_info(ai_analysis_results)`).all() as Array<{ name: string }>
   if (cols.length === 0) return  // table doesn't exist yet — nothing to repair
   const has = (name: string) => cols.some((c) => c.name === name)
+  let mutated = false
   const ensure = (name: string, def: string) => {
     if (!has(name)) {
       db.exec(`ALTER TABLE ai_analysis_results ADD COLUMN ${name} ${def};`)
       console.log(`[Schema-repair] Added ai_analysis_results.${name}`)
+      mutated = true
     }
   }
   ensure('review_status', `TEXT NOT NULL DEFAULT 'pending'`)
@@ -916,4 +1277,20 @@ function repairAiAnalysisResultsColumns(db: Database.Database): void {
   ensure('rejection_history', `TEXT`)
   ensure('suggested_filename', `TEXT`)
   db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_results_review ON ai_analysis_results(review_status);`)
+  // ALWAYS force the connection's schema cache to refresh, even when no
+  // ALTER ran this boot. better-sqlite3 caches each Database's view of
+  // the schema; if a prior process added the column but didn't refresh
+  // the cache before getting recycled, the NEXT boot's primary
+  // connection can still throw "no such column: ar.review_status" on
+  // queries against it. Touching sqlite_schema + a no-row SELECT
+  // forces the parser to re-walk the master table at the connection
+  // level. This is the hook that closes the "fresh-conn workaround"
+  // class of bug we shipped in v2.6 (see processing-queue.ts:2236).
+  try {
+    db.prepare(`SELECT name FROM sqlite_schema WHERE type='table' AND name='ai_analysis_results'`).all()
+    db.prepare(`SELECT * FROM ai_analysis_results LIMIT 0`).all()
+    if (mutated) console.log('[Schema-repair] Connection schema cache refreshed after ALTERs')
+  } catch (err) {
+    console.warn('[Schema-repair] schema-refresh dance failed (non-fatal):', err)
+  }
 }

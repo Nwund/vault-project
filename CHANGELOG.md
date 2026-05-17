@@ -7,6 +7,107 @@ For per-session work logs (the live ground truth), see **[SESSION_NOTES.md](SESS
 
 ---
 
+## v2.7.0 — 2026-05-17 — The integration sweep: 160 backlog items wired through to UI
+
+The largest release since v2.6.0. The 160-item v2.7 research backlog (#220–#385) shipped as backend services + utilities + hooks throughout May 16; this release turns all of it into user-facing UI. **32 new components**, **23 new Settings cards**, **6 player overlay buttons**, **8 Library Tools entries**, **React 19 + React Compiler**, a new MessagePort fast-path for scrub-thumbs, and View Transitions API across page swaps.
+
+### Settings → Services tab gained 23 new cards across 6 themed sections
+
+**Decentralized & sharing** — IrohShareCard (#265), HyperswarmMeshCard (#266), HeliaIpfsCard (#267), SyncthingCard (#269)
+
+**Privacy & anonymizing** — VeilidCard (#268), TorOnionCard (#283), WebTransportCard (#276), NostrSignerCard (#282)
+
+**Social & inbox** — BlueskyLabelerCard (#273), UnifiedPushCard (#275), ImapWatcherCard (#313)
+
+**AI generation** — VideoDiffusionCard (#377), VaultMlSidecarCard (Florence-2 / DINOv3 / Demucs / CodeFormer / MusicGen)
+
+**Tag intelligence** — TagImplicationsCard (#317), FolderActionsCard (#321)
+
+**Security & notifications** — WebAuthnCard (#281), ShamirCard (#284), NtfyCard (#274)
+
+**Content imports** — CoomerArchiveCard (#384), AudioEroticaCard (#367), CaptionPoolCard (#365), YtdlpProfilesCard (#307)
+
+All share a `NetworkServiceCard` shell with a status pill, expand/collapse animation, and accent-ring vocabulary so the Services tab reads as one design language. Each card binds to a previously-orphaned `window.api.tags.*` preload bridge.
+
+### Library page got 8 new Tools entries + a sidecar status pill + a color filter
+
+- **Stack Mode** (#296) — TikTok-style vertical-swipe pager over the current results. Swipe / wheel / arrows to navigate, Enter to open, Esc to close.
+- **Quick Look** (#291) — hold Q on a focused tile for a centered enlarged preview. Release to close.
+- **Color Palette filter** (#286) — 16-swatch popover above the grid; pick a color, library intersects with palette-matching media. Includes one-click "Index all" with progress.
+- **Duplicate Triage** (#349/#354) — modal that pulls pending duplicate pairs from the `dup_triage` queue. Side-by-side A/B picker with Keep A / Keep B / Keep both / Delete both.
+- **Animated sub-library** (#378) — facet pill picker (All animated / Hentai / Anime / Furry / Cartoon) with classifier-driven results.
+- **Sprite-sheet Chapters** (#316) — chapter editor that generates an N-cell sprite sheet, lets you click cells to mark chapter starts, names each pick, resolves to a chapter array with copy-JSON.
+- **Export Pipeline** (#322) — smart-query → transcode → sidecar → rclone recipe builder with saved presets and live-streaming progress.
+- **SidecarWatcherBadge** (#323) — status pill in the TopBar showing watched-roots count + start/stop/add-root popover.
+
+### Player overlay rail — 7 toggleable overlays
+
+The `FloatingVideoPlayer` gained a right-edge button strip:
+
+- **LUT grade** (#228) — pick a `.cube` LUT file, apply in real-time via WebGL2 3D-texture with strength slider
+- **Subtitles** (#239) — load `.ass`/`.srt`/`.vtt` via libass-wasm
+- **Scopes** (#226) — vectorscope + RGB parade pinned to bottom-left at 30 fps
+- **Beats (Cock-Hero)** (#352) — BPM-detect from audio, render pulse rings synced to the beat with intensity-arc HUD
+- **Heatmap** (#369) — body-part heatmap timeline strip; click any segment to seek
+- **Quick Look** flash — visual focus ring overlay
+- **Capture moment** (#244) — saves the current frame as a WebP into `<userData>/moments/`
+
+### Right-click context menu — 6 new v2.7 entries
+
+Share via Iroh · Pin to IPFS · Open Export Pipeline · Auto-tease this video · Deny this for… · Feature less / suggest less
+
+### MediaInfoModal — Obsidian-style backlinks panel (#297)
+
+Below the existing notes section, a `BacklinksPanel` shows references grouped by source (playlist / performer / studio / platform / wikilink / bookmark / tag) with per-source accent colors and thumb previews.
+
+### AI Tools page — 2 ModelFileCards + Audits section
+
+- **JoyTag** + **Real-ESRGAN Upscaler** added to the existing detector grid
+- New "Audits & analysis" section:
+  - **QualityAuditCard** (#324) — ffprobe + heuristic findings with severity-coded warnings
+  - **ClipSimilarityCard** (#230) — CLIP cosine "more like this" with threshold slider + thumb grid
+
+### App-level
+
+- **View Transitions API** (#337) — `navigateTo()` now wraps page swaps in `document.startViewTransition()` for GPU-accelerated cross-page morph on Chrome 111+/Safari 18+. Graceful fallback on older browsers.
+- **MessagePort scrub-thumb fast-path** (#331) — `ThumbnailStrip` and a new `useScrubThumbs` hook open a direct MessagePort to the main process. Main shells `ffmpeg -ss <T> -frames:v 1 -vf scale=160:-2 -q:v 5` per thumbnail, 1-second bucketed, disk-cached at `<userData>/thumbs/scrub/`. Second-pass scrubbing over the same video is near-instant. Falls back to in-renderer video-seek when the MessagePort path isn't available.
+
+### Main process — auto-start hooks
+
+- **Sidecar watcher** auto-starts on boot when `library.mediaDirs` is non-empty (opt-out via `library.sidecarWatcherAutoStart`)
+- **IMAP watcher** + **Bluesky labeler** auto-resume blocks (opt-in via `network.imapAutoStart` / `network.bskyLabelerAutoStart` with saved port)
+
+### React 19 + React Compiler
+
+- Bumped `react`, `react-dom`, `@types/react`, `@types/react-dom` from 18.3 → 19.2.6
+- Re-enabled `babel-plugin-react-compiler` in `electron.vite.config.ts` (`compilationMode: 'annotation'`)
+- **21 new v2.7 components** opted in via `'use memo'` directive for auto-memoization
+- 56 React-19 breaking-change TS errors fixed in 3 categories: `JSX.Element` → `React.JSX.Element`, `useRef<T>()` → `useRef<T | undefined>(undefined)`, `RefObject<T>` widened to `RefObject<T | null>`
+
+### Bug fixes
+
+- **Watch-history boot error** — `[Watch] listWithMedia error: no such column: m.rating` resolved by adding a LEFT JOIN on `media_stats`. Watch-history-fed UI surfaces (RecentlyViewedStrip, WatchHistoryTimeline) populate properly now.
+- **PlaylistsPage crash** — `allMedia.filter is not a function` when adding media to a playlist. Tolerant unwrap of the `{items,total}` paginated shape.
+- **Bridge-path correctness** — bulk-fixed 9 files where v2.7 IPC bridges were called via `window.api.media.X` or `window.api.X`; the bridges live at `window.api.tags.X` (preload nesting). TS didn't catch this because of `as any` casts on `window.api`.
+
+### TS clean
+
+`npx tsc --noEmit` is at 0 errors across the entire codebase under React 19.2.6.
+
+### Code-splitting + perf (post-integration)
+
+After the integration sweep, aggressive code-splitting cut the **main renderer bundle from 5,478 KB → 2,858 KB (−48%)**:
+
+- 6 v2.7 modals deferred (ExportPipelineModal, StackModeOverlay, DupTriageModal, SubLibraryModal, SpriteSheetChapterEditor, ServiceHealthDashboard) — 75 KB total
+- 10 top-level pages deferred (Rule34Page 1,247 KB · SettingsPage 548 KB · AiTaggerPage 249 KB · CaptionsPage 200 KB · PlaylistsPage 77 KB · PerformersPage 62 KB · FeedPage 52 KB · StatsPage 33 KB · DownloadsPage 17 KB · GoonWallPage ~50 KB). LibraryPage + SessionsPage + HomeDashboard stay eager.
+- WhatsNewModal also lazy-loaded (8 KB) since it's a once-per-version splash.
+- Page-switch wrapped in a single `<React.Suspense fallback={spinner}>` boundary in `App.tsx` showing a centered "Loading page…" spinner while a chunk loads.
+- **Nav prefetch-on-hover** — sidebar nav buttons fire `void import('./pages/...')` on `onMouseEnter` so the chunk is in Vite's cache by the time the user clicks. First-click latency on a never-visited tab is now ~0.
+- **Modal prefetch-on-hover** — same pattern applied to the 6 v2.7 Tools-dropdown entries.
+- `GoonWallPage.resetGoonSlots()` extracted into a dynamic-import inside the cleanup callback so the module isn't pulled into the main bundle just for one helper call.
+
+---
+
 ## v2.6.1 — 2026-05-15 — Polish pass: one-click installs, more detector cards, WhisperX wiring
 
 Patch release on top of v2.6.0. No new top-level surfaces — just lower

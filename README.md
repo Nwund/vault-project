@@ -4,10 +4,10 @@
 
 ### *Your Private Media Sanctuary*
 
-[![Version](https://img.shields.io/badge/v2.6.1-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
+[![Version](https://img.shields.io/badge/v2.7.0-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
 [![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-Platform-blue?style=for-the-badge)](https://github.com/Nwund/vault-project)
 [![Electron](https://img.shields.io/badge/Electron-32.0-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
-[![React](https://img.shields.io/badge/React-18.3-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://react.dev)
+[![React](https://img.shields.io/badge/React-19.2-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
 
 <br/>
@@ -33,6 +33,23 @@
 </div>
 
 <br/>
+
+## 🆕 v2.7.0 — The integration sweep (2026-05-17)
+
+The largest release since v2.6.0. Every preload bridge that had no UI surface now has one. **32 new components**, **23 new Settings cards**, **6 player overlay buttons**, **8 Library Tools entries**, plus React 19 + React Compiler.
+
+- **Settings → Services tab** gained 23 cards across themed sections: Decentralized (Iroh / Hyperswarm / Helia / Syncthing), Privacy (Veilid / Tor / WebTransport / Nostr), Social (Bluesky labeler / UnifiedPush / IMAP), AI gen (Video Diffusion / VaultMl sidecar), Tag intelligence (Tag implications / Folder actions), Security (WebAuthn / Shamir / ntfy), Content imports (Coomer / AudioErotica / CaptionPool / yt-dlp profiles)
+- **Library page** got Stack Mode pager, Quick Look (hold-Q), Color Palette filter chip, Duplicate Triage modal, Animated sub-library facet picker, Sprite-sheet Chapter editor, Export Pipeline recipe builder, SidecarWatcher status badge in TopBar
+- **Floating player** gained a right-edge overlay rail with 7 toggles: LUT grade · Subtitles · Scopes · Beats (Cock-Hero) · Heatmap · Quick Look · Capture moment
+- **Right-click context menu** added Share via Iroh, Pin to IPFS, Open Export Pipeline, Auto-tease, Deny for, Feature less
+- **MediaInfoModal** gained an Obsidian-style backlinks panel
+- **AI Tools** added JoyTag + Real-ESRGAN cards + an Audits section (Quality auditor + Clip similarity)
+- **MessagePort scrub-thumb fast-path** — ffmpeg-backed disk-cached thumbnails, second-pass scrubbing is near-instant
+- **View Transitions API** wrapping page navigation for GPU-accelerated cross-page morph
+- **React 19.2 + React Compiler** in annotation mode, 21 v2.7 components opted in
+- **Bug fixes**: watch-history `m.rating` SQL error, PlaylistsPage `allMedia.filter` crash, bridge access paths corrected across 9 files
+
+See [CHANGELOG.md](CHANGELOG.md) for the full v2.7.0 notes.
 
 ## 🆕 v2.6.1 — Polish patch
 
@@ -268,7 +285,7 @@ Create professional-quality beat-synced videos:
 | Layer | Technology |
 |:---:|:---:|
 | **Framework** | Electron 32 |
-| **Frontend** | React 18 + TypeScript |
+| **Frontend** | React 19 + TypeScript + React Compiler |
 | **Styling** | Tailwind CSS |
 | **Database** | SQLite (better-sqlite3) |
 | **Media** | FFmpeg + FFprobe |
@@ -290,9 +307,10 @@ Create professional-quality beat-synced videos:
 
 | | |
 |:---:|:---:|
-| **71** Backend Services | **112** UI Components |
+| **134** Backend Services | **140+** UI Components |
 | **19** Database Tables | **23** Migrations |
 | **27** Browse Sources | **16** ML Detector Wrappers |
+| **23** Services-tab cards | **7** Player overlays |
 | **58** Achievements | **20+** Visual Overlays |
 | **16** PMV Transitions | **15+** Themes |
 
@@ -514,7 +532,7 @@ Create professional-quality beat-synced videos:
 
 <br/>
 
-[![Download Latest](https://img.shields.io/badge/Download-v2.6.1-success?style=for-the-badge&logo=windows)](https://github.com/Nwund/vault-project/releases/latest)
+[![Download Latest](https://img.shields.io/badge/Download-v2.7.0-success?style=for-the-badge&logo=windows)](https://github.com/Nwund/vault-project/releases/latest)
 
 <br/>
 
@@ -529,7 +547,7 @@ Create professional-quality beat-synced videos:
 *Built with obsession by developers who understand the mission.*
 
 <sub>
-🔐 Vault v2.6.1 • 71 AI services • 27 Browse sources • 114 components • 16 ML detector wrappers
+🔐 Vault v2.7.0 • 134 backend services • 27 Browse sources • 140+ components • 16 ML detector wrappers • 23 v2.7 Settings cards
 </sub>
 
 <br/>

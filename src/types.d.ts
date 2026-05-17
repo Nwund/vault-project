@@ -19,11 +19,13 @@ declare module 'canvas-confetti' {
   export = confetti
 }
 
-// Window.api uses 'any' because:
-// 1. The API is defined in preload/index.ts with full type exports
-// 2. App.tsx uses window.api.invoke() for many handlers not in the typed API
-// 3. Full strict typing would require significant refactoring
-// See src/preload/index.ts for the full typed API definition
+// Window.api type lives in src/renderer/window.d.ts so this file
+// stays an ambient script (the `declare module 'better-sqlite3'` etc.
+// stanzas above require it). The Window.api type uses the inferred
+// `Api` type from src/preload/index.ts so wrong-path bridge calls
+// (e.g. window.api.foo when it lives at window.api.tags.foo) are
+// caught at compile time — preventing the class of bugs uncovered in
+// the v2.7 integration sweep.
 interface Window {
   api: any
   vaultDiagnostics: {

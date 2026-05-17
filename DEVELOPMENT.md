@@ -1,7 +1,7 @@
-# VAULT v2.6.0 - Development Guide
+# VAULT v2.7.0 - Development Guide
 
-**Last Updated:** May 15, 2026
-**Current Version:** 2.6.0
+**Last Updated:** May 17, 2026
+**Current Version:** 2.7.0
 **Build Status:** Stable
 
 ---
@@ -35,23 +35,29 @@ Vault is a private media library application for discerning adults. It provides:
 | Layer | Technology |
 |:---:|:---:|
 | **Framework** | Electron 32 |
-| **Frontend** | React 18.3 + TypeScript 5.7 |
-| **Styling** | Tailwind CSS |
+| **Frontend** | React 19.2 + TypeScript 5.7 + React Compiler (annotation mode) |
+| **Styling** | Tailwind CSS + Motion 12 (motion/react) |
 | **Database** | SQLite (better-sqlite3) |
 | **Media** | FFmpeg + FFprobe |
-| **AI** | ONNX Runtime + Venice API + Ollama |
+| **AI** | ONNX Runtime + Venice API + Ollama + Python ML sidecar (Florence-2 / DINOv3 / Demucs / CodeFormer / MusicGen) |
 | **Downloads** | yt-dlp |
 | **Build** | Electron-Vite |
+| **Sharing** | Iroh / Hyperswarm / Helia (IPFS) / Tor / WebTransport / Nostr / Veilid |
 
 ### Build Stats
 
-- **Main Process**: ~85 modules
-- **Preload**: 38 KB
-- **Renderer**: ~1.9 MB
-- **Components**: 112 React components
-- **Services**: 71 backend services (incl. 16 ML detector wrappers)
+- **Main Process**: ~134 modules + 81 ai-intelligence modules
+- **Preload**: ~150 KB (3800+ lines of typed bridges)
+- **Renderer initial bundle**: **2,858 KB** (down from 5,478 KB pre-split — 48% reduction)
+- **Lazy chunks**: 17 modal + page chunks deferred (~2.6 MB total) with prefetch-on-hover for nav/Tools entries
+- **Largest deferred chunks**: Rule34Page 1,247 KB · SettingsPage 548 KB · AiTaggerPage 249 KB · CaptionsPage 200 KB
+- **Always-eager pages**: HomeDashboard, LibraryPage, SessionsPage (always loaded; first-paint critical path)
+- **Components**: 140+ React components (32 new in v2.7, 21 of which opted into React Compiler via `'use memo'`)
+- **Services**: 134 backend services (incl. 16 ML detector wrappers + 21 v2.7 cards' worth of sharing/security/import services)
 - **Browse Sources**: 27 booru / tube aggregator endpoints
 - **Database Tables**: 19 tables across 23 migrations
+- **v2.7 Settings cards**: 23 (Decentralized × 4, Privacy × 4, Social × 3, AI gen × 2, Tag intelligence × 2, Security × 3, Content imports × 5)
+- **Player overlay rail**: 7 toggleable layers (LUT, Subs, Scopes, Beats, Heatmap, Quick Look, Capture moment)
 
 ---
 
@@ -158,21 +164,33 @@ npx tsc --noEmit
 
 | File | Lines | Purpose |
 |---|---|---|
-| `src/renderer/App.tsx` | ~19,700 | Main app UI, pages, state |
-| `src/main/ipc.ts` | ~7,700 | All IPC handlers |
+| `src/renderer/App.tsx` | ~3,300 | App shell, providers, context menu, navigation |
+| `src/renderer/pages/LibraryPage.tsx` | ~4,500 | Library grid, tools, filters, color palette, stack mode, dup-triage |
+| `src/renderer/pages/AiTaggerPage.tsx` | ~5,000 | AI tagger queue, review, detector cards, audits |
+| `src/renderer/pages/SettingsPage.tsx` | ~3,300 | Settings — 23 v2.7 cards + legacy admin cards |
+| `src/main/ipc.ts` | ~8,000 | All IPC handlers + MessagePort opener |
 | `src/main/db.ts` | ~1,500 | Database operations |
-| `src/main/main.ts` | ~380 | App initialization |
+| `src/main/main.ts` | ~600 | App init + auto-start blocks (XTTS / JoyCaption / WhisperX / F5-TTS / SidecarWatcher / IMAP / BskyLabeler) |
+| `src/preload/index.ts` | ~3,800 | Typed contextBridge — every IPC + MessagePort gateway |
 
 ### Important Services
 
 | Service | Purpose |
 |---|---|
-| `ai-intelligence/` | Multi-tier AI processing |
+| `ai-intelligence/` | Multi-tier AI processing + 81 sub-services |
 | `transcode.ts` | Video transcoding with HW acceleration |
 | `dlna-service.ts` | DLNA/UPnP streaming |
-| `url-downloader-service.ts` | yt-dlp integration |
+| `url-downloader-service.ts` | yt-dlp integration (consumed by IMAP watcher + Coomer archive importer) |
 | `duplicates-finder.ts` | SHA-256 duplicate detection |
 | `error-logger.ts` | Centralized logging with rotation |
+| `message-port-bus.ts` | MessagePort hot IPC for scrub-thumbs + haptic + audio-meter (ffmpeg + disk cache) |
+| `iroh-share.ts` / `hyperswarm-mesh.ts` / `helia-pin.ts` | Decentralized sharing substrates |
+| `veilid-bridge.ts` / `tor-onion.ts` / `webtransport-server.ts` / `nostr-remote-signer.ts` | Privacy/anonymizing |
+| `bluesky-labeler.ts` / `imap-watcher.ts` / `unifiedpush-distributor.ts` | Social/inbox integrations |
+| `sidecar-watcher.ts` | chokidar-driven `.xmp` / `.nfo` / `.stash.json` auto-tag importer |
+| `export-pipeline.ts` | Smart-query → transcode → sidecar → rclone recipe engine |
+| `backlinks.ts` | Obsidian-style backlink resolver (playlist / performer / studio / wikilink / bookmark) |
+| `color-palette.ts` | node-vibrant 6-swatch indexer for "discover by color" |
 
 ---
 
