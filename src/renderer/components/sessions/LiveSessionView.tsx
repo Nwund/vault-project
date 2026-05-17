@@ -15,6 +15,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { HeartPulse, Webcam, Crown, Activity, Lock, Mic, MicOff, ChevronDown, X } from 'lucide-react'
+import { SPRINGS } from '../network/motion-tokens'
+import { useToast } from '../../contexts'
 import { Btn } from '../ui/Btn'
 import { connectHeartRateBand, EdgeZoneMonitor, type HrReading, type HrHandle } from '../../utils/heart-rate-ble'
 import { startVerifier } from '../../utils/climax-verifier'
@@ -62,7 +64,7 @@ function Tile({
   return (
     <motion.div
       layout
-      transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+      transition={SPRINGS.standard}
       className={`relative overflow-hidden rounded-2xl border border-white/5 bg-zinc-900/60 backdrop-blur-xl shadow-xl shadow-black/30 ${span === 2 ? 'lg:col-span-2' : span === 3 ? 'lg:col-span-3' : ''}`}
     >
       <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${accent}`} />
@@ -518,6 +520,7 @@ function StrokeTempoTile() {
 // ── Voice mic + persona narrative ───────────────────────────────────────────
 
 function VoiceCoachTile({ persona }: { persona: Persona }) {
+  const { showToast } = useToast()
   const [micOn, setMicOn] = useState(false)
   const [transcript, setTranscript] = useState<string[]>([])
   const recRef = useRef<any>(null)
@@ -529,7 +532,7 @@ function VoiceCoachTile({ persona }: { persona: Persona }) {
       return
     }
     const SR: any = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
-    if (!SR) { alert('Speech recognition unavailable'); return }
+    if (!SR) { showToast('error', 'Speech recognition unavailable in this browser'); return }
     const rec = new SR()
     rec.continuous = true
     rec.interimResults = true

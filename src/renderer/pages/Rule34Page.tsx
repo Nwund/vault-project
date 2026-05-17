@@ -17,6 +17,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useBrowsePhashBadges } from '../hooks/useBrowsePhashBadges'
 import Hls from 'hls.js'
 import { AnimatePresence, motion } from 'motion/react'
+import { SPRINGS } from '../components/network/motion-tokens'
 import {
   Search, Download, Loader2, Globe, X, ChevronLeft, ChevronRight, ExternalLink, Play,
   Maximize2, Minimize2,
@@ -2638,7 +2639,7 @@ export default function Rule34Page() {
           initial={{ y: 80, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 80, opacity: 0 }}
-          transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+          transition={SPRINGS.snappy}
           className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--panel)]/95 border border-[var(--primary)]/40 shadow-2xl backdrop-blur"
         >
           <span className="text-sm font-medium text-white tabular-nums">

@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
+import { SPRINGS } from '../network/motion-tokens'
 import {
   Gamepad2, Flame, Crown, RotateCcw, Trophy, Heart,
   Zap, Clock, Star, Skull,
@@ -76,7 +77,7 @@ function StartScreen({ pbs, onStart }: { pbs: PersonalBests; onStart: () => void
           <motion.div
             initial={{ scale: 0.8, rotate: -8 }}
             animate={{ scale: 1, rotate: 0 }}
-            transition={{ type: 'spring', stiffness: 220 }}
+            transition={SPRINGS.standard}
             className="size-12 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-700 grid place-items-center shadow-2xl shadow-violet-500/30"
           >
             <Gamepad2 size={26} className="text-white" />
@@ -240,7 +241,7 @@ function EncounterCard({ card, index, onPick }: { card: Encounter; index: number
       exit={{ opacity: 0, y: -24, rotate: 4 - index * 2, transition: { duration: 0.2 } }}
       whileHover={{ y: -6, scale: 1.02 }}
       whileTap={{ scale: 0.97 }}
-      transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+      transition={SPRINGS.standard}
       onClick={onPick}
       className="text-left rounded-2xl border border-white/5 bg-zinc-900/60 backdrop-blur-xl shadow-xl shadow-black/40 p-4 hover:border-white/20 transition-colors"
     >
@@ -268,7 +269,7 @@ function RunEnded({ state, pbs, onAgain, onHome }: { state: GameState; pbs: Pers
       <motion.div
         initial={{ scale: 0, rotate: -90 }}
         animate={{ scale: 1, rotate: 0 }}
-        transition={{ type: 'spring', stiffness: 200, damping: 18, delay: 0.1 }}
+        transition={{ ...SPRINGS.soft, delay: 0.1 }}
         className={`mx-auto size-24 rounded-3xl bg-gradient-to-br ${won ? bossMeta.accent : 'from-zinc-700 to-zinc-900'} grid place-items-center shadow-2xl mb-5`}
       >
         <span className="text-5xl">{won ? bossMeta.emoji : '💀'}</span>

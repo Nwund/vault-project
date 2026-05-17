@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
+import { SPRINGS } from '../network/motion-tokens'
 import { Calendar, BarChart3, Sparkles, TrendingUp, Flame } from 'lucide-react'
 
 interface BudgetHistoryRow { monthStart: number; monthLabel: string; climaxes: number; ruined: number; relapses: number }
@@ -96,14 +97,14 @@ function BudgetLedger() {
                   <motion.div
                     initial={{ height: 0 }}
                     animate={{ height: `${climaxH}%` }}
-                    transition={{ type: 'spring', stiffness: 200, damping: 22 }}
+                    transition={SPRINGS.soft}
                     className="w-full bg-gradient-to-t from-amber-500 to-amber-400 rounded-t-sm"
                     title={`${row.climaxes} climax`}
                   />
                   <motion.div
                     initial={{ height: 0 }}
                     animate={{ height: `${ruinedH}%` }}
-                    transition={{ type: 'spring', stiffness: 200, damping: 22, delay: 0.05 }}
+                    transition={{ ...SPRINGS.soft, delay: 0.05 }}
                     className="w-full bg-gradient-to-t from-zinc-700 to-zinc-600 rounded-t-sm"
                     title={`${row.ruined} ruined`}
                   />
@@ -174,7 +175,7 @@ function RecapCard() {
                   <motion.div
                     layoutId="recap-period-pill"
                     className="absolute inset-0 rounded-md bg-emerald-500/30 -z-10"
-                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                    transition={SPRINGS.snappy}
                   />
                 )}
                 {p === 'halfYear' ? '6mo' : p === 'monthly' ? '30d' : '365d'}

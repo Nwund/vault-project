@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
+import { SPRINGS } from '../components/network/motion-tokens'
 import {
   Activity,
   Cable,
@@ -53,7 +54,7 @@ export default function SessionsPage() {
           <motion.div
             initial={{ rotate: -10, scale: 0.9 }}
             animate={{ rotate: 0, scale: 1 }}
-            transition={{ type: 'spring', stiffness: 200, damping: 18 }}
+            transition={SPRINGS.soft}
             className={`size-10 rounded-2xl bg-gradient-to-br ${active.accent} grid place-items-center shadow-lg shadow-black/40`}
           >
             <Sparkles size={20} className="text-white drop-shadow" />
@@ -80,7 +81,7 @@ export default function SessionsPage() {
                   <motion.div
                     layoutId="sessions-tab-pill"
                     className={`absolute inset-0 rounded-xl bg-gradient-to-br ${tab.accent} -z-10 shadow-md`}
-                    transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                    transition={SPRINGS.snappy}
                   />
                 )}
                 <tab.Icon size={14} strokeWidth={isActive ? 2.5 : 1.75} />

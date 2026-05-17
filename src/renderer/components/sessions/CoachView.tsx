@@ -9,6 +9,7 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
+import { SPRINGS } from '../network/motion-tokens'
 import { RotateCw, ScrollText, Play, Pause, Volume2 } from 'lucide-react'
 import { Btn } from '../ui/Btn'
 
@@ -97,7 +98,7 @@ function TaskWheelTile() {
                 initial={{ opacity: 0, scale: 0.8, rotate: -8 }}
                 animate={{ opacity: 1, scale: 1, rotate: 0 }}
                 exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ type: 'spring', stiffness: 220 }}
+                transition={SPRINGS.standard}
                 className="text-center px-6"
               >
                 <div className={`inline-block px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider mb-2 bg-gradient-to-r ${CATEGORY_COLORS[task.category] ?? 'from-zinc-500 to-zinc-700'} text-white`}>

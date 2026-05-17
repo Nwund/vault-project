@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
+import { SPRINGS } from '../network/motion-tokens'
 import { Bluetooth, Watch, Usb, HeartPulse, Power, Zap, Waves } from 'lucide-react'
 import { Btn } from '../ui/Btn'
 import { connectHapticDevice, HAPTIC_PATTERNS, type HapticDeviceHandle } from '../../utils/esp32-haptic'
@@ -45,7 +46,7 @@ function DeviceTile({
   return (
     <motion.div
       layout
-      transition={{ type: 'spring', stiffness: 240, damping: 24 }}
+      transition={SPRINGS.standard}
       className="relative overflow-hidden rounded-2xl border border-white/5 bg-zinc-900/60 backdrop-blur-xl shadow-xl shadow-black/30"
     >
       <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${accent}`} />
