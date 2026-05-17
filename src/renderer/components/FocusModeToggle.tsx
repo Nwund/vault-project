@@ -13,17 +13,19 @@ import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { Focus, X } from 'lucide-react'
 import { SPRINGS } from './network/motion-tokens'
+import { useLocalStorage } from '../hooks/useLocalStorage'
 
 const STORAGE_KEY = 'vault.focusMode'
 const ATTR = 'data-focus-mode'
 
 export function FocusModeToggle() {
-  // Local mirror of the document attribute. Canonical writer is App.tsx
-  // (which handles the global `vault:toggleFocusMode` event); we just
-  // observe and re-render the button accordingly.
-  const [active, setActive] = useState<boolean>(() => {
-    try { return localStorage.getItem(STORAGE_KEY) === 'on' } catch { return false }
-  })
+  // Persist last-seen state via useLocalStorage; the canonical writer
+  // for the runtime toggle is App.tsx (which handles the global
+  // `vault:toggleFocusMode` event + the document attribute). We just
+  // observe the attribute via MutationObserver below to keep our local
+  // state — and through it, the button label — in sync.
+  const [stored, setStored] = useLocalStorage<string>(STORAGE_KEY, 'off')
+  const [active, setActive] = useState<boolean>(stored === 'on')
 
   // Esc exits focus mode globally
   useEffect(() => {
@@ -50,15 +52,20 @@ export function FocusModeToggle() {
     window.dispatchEvent(new CustomEvent('vault:toggleFocusMode'))
   }, [])
 
-  // Sync our local `active` state with the document attribute so the
-  // button reflects toggles fired from the CommandPalette/hotkeys.
+  // Sync our local `active` state + persisted preference with the
+  // document attribute so the button reflects toggles fired from
+  // CommandPalette/hotkeys.
   useEffect(() => {
-    const sync = () => setActive(document.documentElement.getAttribute(ATTR) === 'on')
+    const sync = () => {
+      const next = document.documentElement.getAttribute(ATTR) === 'on'
+      setActive(next)
+      setStored(next ? 'on' : 'off')
+    }
     sync()
     const mo = new MutationObserver(sync)
     mo.observe(document.documentElement, { attributes: true, attributeFilter: [ATTR] })
     return () => mo.disconnect()
-  }, [])
+  }, [setStored])
 
   return (
     <>

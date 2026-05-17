@@ -16,6 +16,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import { Shield, RefreshCw, AlertTriangle, Loader2, Search, Power, PowerOff, Check } from 'lucide-react'
+import { formatBytes } from '../utils/formatters'
 
 interface Meta { url: string; fetchedAt: string; domainCount: number; bytes: number }
 interface DiscoveryCandidate { domain: string; category: 'tube' | 'cam' | 'cdn' | 'gallery' | 'other' }
@@ -52,7 +53,7 @@ export function HostsBlocklistCard(): React.JSX.Element {
       const api: any = (window as any).api
       const r = await api.hostsBlocklistRefresh()
       if (r?.ok && r.meta) {
-        setInfo(`Cached ${r.meta.domainCount.toLocaleString()} domains (${(r.meta.bytes / 1024).toFixed(0)} KB)`)
+        setInfo(`Cached ${r.meta.domainCount.toLocaleString()} domains (${formatBytes(r.meta.bytes)})`)
         await refreshStatus()
       } else {
         setError(r?.error ?? 'Refresh failed')

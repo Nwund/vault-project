@@ -19,6 +19,7 @@ import {
 import { useToast } from '../contexts'
 import { useEscapeClose } from '../hooks/useEscapeClose'
 import { SPRINGS, SCALE_IN, FADE_SLIDE } from './network/motion-tokens'
+import { formatBytes } from '../utils/formatters'
 
 interface MediaPreview {
   id: string
@@ -230,7 +231,7 @@ function DupTile({ media, accent }: { media: MediaPreview; accent: 'left' | 'rig
           <span>{media.type}</span>
           {media.width && media.height && <span>{media.width}×{media.height}</span>}
           {media.durationSec != null && <span>{media.durationSec.toFixed(1)}s</span>}
-          {media.sizeBytes != null && <span>{(media.sizeBytes / 1024 / 1024).toFixed(1)} MB</span>}
+          {media.sizeBytes != null && <span>{formatBytes(media.sizeBytes)}</span>}
         </div>
         <code className="block text-[9px] text-[var(--muted)] truncate font-mono" title={media.path}>
           {media.path}

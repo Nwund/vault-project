@@ -18,6 +18,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import { Cpu, Check, X as XIcon, FolderOpen, RefreshCw } from 'lucide-react'
+import { formatBytes } from '../utils/formatters'
 
 interface DetectorRow {
   id: string
@@ -222,7 +223,7 @@ export function ExtraDetectorsCard(): React.JSX.Element {
               </div>
               {installed && r.status?.sizeBytes ? (
                 <div className="text-[10px] text-zinc-500 tabular-nums shrink-0 mt-1">
-                  {(r.status.sizeBytes / 1024 / 1024).toFixed(1)} MB
+                  {formatBytes(r.status.sizeBytes)}
                 </div>
               ) : null}
               <button

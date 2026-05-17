@@ -1610,11 +1610,15 @@ export default function App() {
       try {
         const row = (await window.api.media?.getById?.(id)) as MediaRow | null | undefined
         if (row) setInfoModalMedia(row)
-      } catch { /* ignore */ }
+        else globalShowToast?.('error', 'Media not found')
+      } catch (err: any) {
+        console.warn('[info-pane] media.getById failed:', err)
+        globalShowToast?.('error', err?.message ?? 'Failed to load media info')
+      }
     }
     window.addEventListener('vault:toggle-info-pane', onTogglePane)
     return () => window.removeEventListener('vault:toggle-info-pane', onTogglePane)
-  }, [])
+  }, [globalShowToast])
 
   // Random climax trigger effect - use ref to properly track timer across recursive scheduling
   const climaxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -2368,6 +2372,7 @@ export default function App() {
                 {/* AI Quick Tools */}
                 <button
                   onClick={() => setPage('ai')}
+                  onMouseEnter={() => { void import('./pages/AiTaggerPage') }}
                   className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
                 >
                   <Wand2 size={14} />
@@ -2392,6 +2397,7 @@ export default function App() {
                     setPage('settings')
                     // Could scroll to tags section
                   }}
+                  onMouseEnter={() => { void import('./pages/SettingsPage') }}
                   className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
                 >
                   <Tags size={14} />

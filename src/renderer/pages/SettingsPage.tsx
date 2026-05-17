@@ -29,6 +29,7 @@ import {
   X,
 } from 'lucide-react'
 import type { VaultSettings } from '../types'
+import { formatBytes } from '../utils/formatters'
 import { useToast } from '../contexts'
 import { cn } from '../utils/cn'
 import { Btn, TopBar, ToggleSwitch } from '../components/ui'
@@ -515,7 +516,7 @@ export function SettingsPage(props: {
                         try {
                           const result = await window.api.cache?.clearThumbnails?.()
                           if (result?.success) {
-                            showToast('success', `Cleared ${result.count} thumbnails (${(result.freedBytes / 1024 / 1024).toFixed(1)} MB freed)`)
+                            showToast('success', `Cleared ${result.count} thumbnails (${formatBytes(result.freedBytes)} freed)`)
                           } else {
                             showToast('error', 'Failed to clear cache')
                           }
