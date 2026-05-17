@@ -528,7 +528,7 @@ function StartXttsButton({ onStarted, showToast }: {
         setBusy(true)
         showToast('info', 'Starting XTTS server (30-60s on first launch)…')
         try {
-          const result = await (window.api as any).xyreneStartServer?.()
+          const result = await window.api.xyreneStartServer?.()
           if (result?.ok) {
             showToast('success', 'XTTS server is online')
             onStarted()
@@ -1237,7 +1237,7 @@ function VoicePicker({ currentVoice, onChange }: { currentVoice: string; onChang
       }
     })()
     // Refresh when intake processes a new file.
-    const off = (window.api as any).on?.('xyrene:intakeProcessed', async () => {
+    const off = window.api.events.onXyreneIntakeProcessed(async () => {
       try {
         const [list, meta] = await Promise.all([
           window.api.ai.xyreneListVoices(),
@@ -1761,7 +1761,7 @@ function VoiceIntakeCard() {
 
   useEffect(() => {
     void refresh()
-    const off = (window.api as any).on?.('xyrene:intakeProcessed', () => { void refresh() })
+    const off = window.api.events.onXyreneIntakeProcessed(() => { void refresh() })
     const t = setInterval(() => { void refresh() }, 4000)
     return () => {
       try { off?.() } catch { /* ignore */ }
@@ -1772,7 +1772,7 @@ function VoiceIntakeCard() {
   const pickFolder = useCallback(async () => {
     setBusy('pick')
     try {
-      const folder = await (window.api as any).dialogOpenFolder?.({ title: 'Pick voice intake folder' })
+      const folder = await window.api.dialogOpenFolder?.({ title: 'Pick voice intake folder' })
       if (folder) setFolderDraft(folder)
     } finally {
       setBusy(null)
@@ -1809,7 +1809,7 @@ function VoiceIntakeCard() {
   }, [refresh])
 
   const processFile = useCallback(async () => {
-    const src = await (window.api as any).dialogOpenFile?.({
+    const src = await window.api.dialogOpenFile?.({
       title: 'Pick voice sample (wav/mp3/m4a/ogg/flac)',
       filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'm4a', 'ogg', 'flac'] }],
     })

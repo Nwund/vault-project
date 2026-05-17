@@ -60,7 +60,7 @@ export function TrashPanel({ isOpen, onClose, showToast }: Props) {
   const load = useCallback(async () => {
     setItems(null)
     try {
-      const r = await (window.api as any).media?.trashList?.()
+      const r = await window.api.media?.trashList?.()
       if (!r?.ok) {
         setItems([])
         return
@@ -132,7 +132,7 @@ export function TrashPanel({ isOpen, onClose, showToast }: Props) {
                   onClick={async () => {
                     setBusy('all')
                     try {
-                      const r = await (window.api as any).media?.trashPurgeAll?.()
+                      const r = await window.api.media?.trashPurgeAll?.()
                       if (r?.ok) {
                         showToast?.('success', `Emptied ${r.removed ?? 0} item${r.removed === 1 ? '' : 's'}`)
                         await load()
@@ -212,7 +212,7 @@ export function TrashPanel({ isOpen, onClose, showToast }: Props) {
                         onClick={async () => {
                           setBusy(it.id)
                           try {
-                            const r = await (window.api as any).media?.trashRestore?.(it.id)
+                            const r = await window.api.media?.trashRestore?.(it.id)
                             if (r?.ok) {
                               showToast?.('success', `Restored ${it.filename}`)
                               await load()
@@ -234,7 +234,7 @@ export function TrashPanel({ isOpen, onClose, showToast }: Props) {
                         onClick={async () => {
                           setBusy(it.id)
                           try {
-                            const r = await (window.api as any).media?.trashPurgeOne?.(it.id)
+                            const r = await window.api.media?.trashPurgeOne?.(it.id)
                             if (r?.ok) {
                               showToast?.('success', `Purged ${it.filename}`)
                               await load()

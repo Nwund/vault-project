@@ -2696,7 +2696,7 @@ export function AiTaggerPage() {
                 <ModelFileCard
                   title="JoyTag (second-opinion tagger)"
                   description="ViT trained on photographic NSFW with full Danbooru vocab. Runs alongside WD Tagger; consensus boost lifts confidence on agreed tags."
-                  probe={() => (window.api as any).media?.joytag?.status?.() ?? Promise.resolve(null)}
+                  probe={() => window.api.media?.joytag?.status?.() ?? Promise.resolve(null)}
                   upstreamUrl="https://huggingface.co/fancyfeast/joytag"
                   installHint="Drop joytag.onnx + joytag-tags.txt at <userData>/models/. Once present, the tagger ensemble auto-includes it."
                   onToast={showToast}
@@ -2704,7 +2704,7 @@ export function AiTaggerPage() {
                 <ModelFileCard
                   title="Image upscaler (Real-ESRGAN)"
                   description="4× SR for stills + thumbnails. Used by the 'Upscale' action in the right-click menu."
-                  probe={() => (window.api as any).media?.upscaler?.status?.() ?? Promise.resolve(null)}
+                  probe={() => window.api.media?.upscaler?.status?.() ?? Promise.resolve(null)}
                   upstreamUrl="https://github.com/xinntao/Real-ESRGAN"
                   installHint="Drop realesrgan-x4plus.onnx (or realesrgan-anime-x4.onnx for cartoons) at <userData>/models/. Tile size auto-tuned to VRAM."
                   onToast={showToast}

@@ -68,7 +68,7 @@ export function FunscriptHeatmap({ mediaId, durationMs, buckets = 200, className
     setActions(null)
     ;(async () => {
       try {
-        const r = await (window.api as any).media?.loadFunscript?.(mediaId)
+        const r = await window.api.media?.loadFunscript?.(mediaId)
         if (!alive) return
         if (r?.ok && Array.isArray(r.actions)) setActions(r.actions)
         else setActions([])

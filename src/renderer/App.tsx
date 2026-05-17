@@ -1608,7 +1608,7 @@ export default function App() {
         return
       }
       try {
-        const row = (await (window.api as any).media?.getById?.(id)) as MediaRow | null | undefined
+        const row = (await window.api.media?.getById?.(id)) as MediaRow | null | undefined
         if (row) setInfoModalMedia(row)
       } catch { /* ignore */ }
     }

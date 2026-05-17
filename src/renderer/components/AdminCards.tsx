@@ -175,7 +175,7 @@ export function CloudflareTunnelCard() {
 
   const refresh = useCallback(async () => {
     try {
-      const r = await (window.api as any).network?.cloudflareTunnelStatus?.()
+      const r = await window.api.network?.cloudflareTunnelStatus?.()
       setStatus(r ?? { running: false, url: null })
     } catch {
       setStatus({ running: false, url: null })
@@ -187,7 +187,7 @@ export function CloudflareTunnelCard() {
   const start = async () => {
     setBusy(true)
     try {
-      const r = await (window.api as any).network?.cloudflareTunnelStart?.()
+      const r = await window.api.network?.cloudflareTunnelStart?.()
       if (r?.ok) {
         showToast?.('success', `Tunnel up: ${r.url}`)
         await refresh()
@@ -199,7 +199,7 @@ export function CloudflareTunnelCard() {
   const stop = async () => {
     setBusy(true)
     try {
-      await (window.api as any).network?.cloudflareTunnelStop?.()
+      await window.api.network?.cloudflareTunnelStop?.()
       showToast?.('info', 'Tunnel stopped')
       await refresh()
     } finally { setBusy(false) }
@@ -291,7 +291,7 @@ export function ZeroTierCard() {
 
   const refresh = useCallback(async () => {
     try {
-      const r = await (window.api as any).network?.zerotierStatus?.()
+      const r = await window.api.network?.zerotierStatus?.()
       setInfo({
         installed: !!r?.installed,
         addresses: Array.isArray(r?.addresses) ? r.addresses : [],
@@ -371,7 +371,7 @@ export function ResticBackupCard() {
 
   const refresh = useCallback(async () => {
     try {
-      const r = await (window.api as any).network?.resticSnapshots?.()
+      const r = await window.api.network?.resticSnapshots?.()
       if (r?.ok) {
         setSnapshots(r.snapshots)
         setConfigured(true)
@@ -391,7 +391,7 @@ export function ResticBackupCard() {
   const backupNow = async () => {
     setBusy(true)
     try {
-      const r = await (window.api as any).network?.resticSnapshot?.({ tag: 'manual' })
+      const r = await window.api.network?.resticSnapshot?.({ tag: 'manual' })
       if (r?.ok) {
         showToast?.('success',
           `Snapshot ${r.snapshotId ?? ''} created · ${r.filesNew ?? '?'} new files · ${r.dataAdded ?? 'unknown size'}`)
@@ -461,7 +461,7 @@ export function WebDavCard() {
 
   const refresh = useCallback(async () => {
     try {
-      const r = await (window.api as any).network?.webdavStatus?.()
+      const r = await window.api.network?.webdavStatus?.()
       setStatus(r ?? { running: false, port: null })
     } catch {
       setStatus({ running: false, port: null })
@@ -473,7 +473,7 @@ export function WebDavCard() {
   const start = async () => {
     setBusy(true)
     try {
-      const r = await (window.api as any).network?.webdavStart?.({ port: 9997 })
+      const r = await window.api.network?.webdavStart?.({ port: 9997 })
       if (r?.ok) {
         showToast?.('success', `WebDAV server on port ${r.port}`)
         await refresh()
@@ -485,7 +485,7 @@ export function WebDavCard() {
   const stop = async () => {
     setBusy(true)
     try {
-      await (window.api as any).network?.webdavStop?.()
+      await window.api.network?.webdavStop?.()
       showToast?.('info', 'WebDAV server stopped')
       await refresh()
     } finally { setBusy(false) }

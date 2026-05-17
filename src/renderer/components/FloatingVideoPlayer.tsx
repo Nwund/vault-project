@@ -343,7 +343,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     let alive = true
     void (async () => {
       try {
-        const r = await (window.api as any).media?.getLufs?.(media.id)
+        const r = await window.api.media?.getLufs?.(media.id)
         if (!alive) return
         if (r?.ok && typeof r.lufs === 'number' && Number.isFinite(r.lufs)) {
           const targetLufs = -16
@@ -1075,7 +1075,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                 const ts = new Date().toISOString().replace(/[:.]/g, '-')
                 const filename = `moment_${media.id}_${ts}.webp`
                 try {
-                  await (window.api as any).moments?.save?.({ filename, data: Array.from(new Uint8Array(buf)) })
+                  await window.api.moments?.save?.({ filename, data: Array.from(new Uint8Array(buf)) })
                 } catch (err) {
                   console.warn('[moment-capture] save failed:', err)
                 }

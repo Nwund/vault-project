@@ -46,8 +46,8 @@ export function PostNutLockoutOverlay(): React.JSX.Element | null {
 
   useEffect(() => {
     void refresh()
-    const off = (window.api as any).on?.('lockout:changed', (payload: LockoutState) => {
-      setState(payload)
+    const off = window.api.events.onLockoutChanged((payload: any) => {
+      setState(payload as LockoutState)
     })
     const tick = setInterval(() => setNow(Date.now()), 1000)
     const poll = setInterval(() => { void refresh() }, 30_000)

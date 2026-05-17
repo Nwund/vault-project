@@ -1814,6 +1814,11 @@ const api = {
       on('aiTools:generateTagsProgress', cb),
     onAiRenameProgress: (cb: (progress: { current: number; total: number; filename: string }) => void) =>
       on('aiTools:renameProgress', cb),
+    // Post-nut lockout
+    onLockoutChanged: (cb: (state: any) => void) => on('lockout:changed', cb),
+    // Xyrene voice intake pipeline
+    onXyreneIntakeProcessed: (cb: (payload: { srcPath: string; result: any }) => void) =>
+      on('xyrene:intakeProcessed', cb),
     // Goon events
     onGoonStatsChanged: (cb: (stats: any) => void) => on('goon:statsChanged', cb),
     onAchievementUnlocked: (cb: (achievements: string[]) => void) => on('goon:achievementUnlocked', cb),

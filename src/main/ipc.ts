@@ -4219,58 +4219,6 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // AI - Deprecated Diabella handlers (return disabled status)
-  // ═══════════════════════════════════════════════════════════════════════════
-  ipcMain.handle('ai:chat', async () => {
-    return {
-      response: "AI chat is not available. Diabella was removed in v2.1.5.",
-      error: 'disabled'
-    }
-  })
-
-  ipcMain.handle('ai:summarize', async () => {
-    return { summary: '', error: 'AI features disabled' }
-  })
-
-  ipcMain.handle('ai:getVoiceLine', async () => {
-    return null // Voice lines disabled
-  })
-
-  ipcMain.handle('ai:ping', async () => {
-    return { ok: false, provider: 'none', error: 'AI disabled in v2.1.5' }
-  })
-
-  ipcMain.handle('ai:speak', async () => {
-    return { audio: null, error: 'TTS disabled - will be replaced with local TTS' }
-  })
-
-  ipcMain.handle('ai:generateImage', async () => {
-    return { image: null, error: 'Image generation disabled' }
-  })
-
-  ipcMain.handle('ai:generateAvatar', async () => {
-    return { success: false, error: 'Feature removed' }
-  })
-
-  ipcMain.handle('ai:clearAvatarCache', async () => {
-    return { success: true }
-  })
-
-  ipcMain.handle('ai:getAvatarOptions', async () => {
-    return { styles: [], outfits: [], expressions: [] }
-  })
-
-  // Get available TTS voices
-  ipcMain.handle('ai:getVoices', async () => {
-    return [
-      { id: 'af_sky', name: 'Sky', description: 'Soft, breathy, intimate' },
-      { id: 'af_bella', name: 'Bella', description: 'Confident, warm, alluring' },
-      { id: 'af_sarah', name: 'Sarah', description: 'Mature, commanding' },
-      { id: 'af_nicole', name: 'Nicole', description: 'Sultry, mysterious' }
-    ]
-  })
-
-  // ═══════════════════════════════════════════════════════════════════════════
   // VAULT / MISC
   // ═══════════════════════════════════════════════════════════════════════════
 
