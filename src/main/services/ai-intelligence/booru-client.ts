@@ -54,8 +54,12 @@ export type BooruSource =
   | 'pullpush'    // api.pullpush.io — Pushshift successor (Reddit archive). No auth required.
   | 'coomer'      // coomer.su — Patreon/OnlyFans/Fansly archive. No auth required.
   | 'kemono'      // kemono.su — Patreon/Fanbox/Gumroad/SubscribeStar/etc archive. No auth.
-  // NOTE: rule34.us / XVideos / xHamster don't expose usable public
-  // APIs — would need scraping. Add later if demand warrants.
+  | 'qualityporn' // quality-porn.p.rapidapi.com — meta-aggregator over PornHUB / ePorner /
+                  // RedTube / xHamster / XVideos / YouPorn / PornHD / SpankBang / YouJizz.
+                  // ONE request fans out to all 9 server-side. Auth: existing RapidAPI key.
+  // NOTE: rule34.us doesn't expose a usable public API. xVideos /
+  // xHamster / YouPorn / PornHD / SpankBang / YouJizz are now covered
+  // via the qualityporn meta-source.
 
 const SOURCE_HOSTS: Record<BooruSource, string> = {
   e621: 'e621.net',
@@ -87,9 +91,10 @@ const SOURCE_HOSTS: Record<BooruSource, string> = {
   pullpush: 'api.pullpush.io',
   coomer: 'coomer.su',
   kemono: 'kemono.su',
+  qualityporn: 'quality-porn.p.rapidapi.com',
 }
 
-const SOURCE_FAMILY: Record<BooruSource, 'e621' | 'moebooru' | 'gelbooru' | 'eporner' | 'redtube' | 'pornhub' | 'xnxx' | 'redgifs' | 'e926' | 'danbooru' | 'civitai' | 'bluesky' | 'reddit' | 'paheal' | 'spankbang' | 'erome' | 'motherless' | 'pixiv' | 'pullpush' | 'coomer' | 'kemono'> = {
+const SOURCE_FAMILY: Record<BooruSource, 'e621' | 'moebooru' | 'gelbooru' | 'eporner' | 'redtube' | 'pornhub' | 'xnxx' | 'redgifs' | 'e926' | 'danbooru' | 'civitai' | 'bluesky' | 'reddit' | 'paheal' | 'spankbang' | 'erome' | 'motherless' | 'pixiv' | 'pullpush' | 'coomer' | 'kemono' | 'qualityporn'> = {
   e621: 'e621',
   'yande.re': 'moebooru',
   konachan: 'moebooru',
@@ -119,6 +124,7 @@ const SOURCE_FAMILY: Record<BooruSource, 'e621' | 'moebooru' | 'gelbooru' | 'epo
   pullpush: 'pullpush',
   coomer: 'coomer',
   kemono: 'kemono',
+  qualityporn: 'qualityporn',
 }
 
 /** CDN base for URL reconstruction on gelbooru-style boorus. Most
@@ -397,7 +403,163 @@ export async function searchBooru(
   if (family === 'motherless') return searchMotherless(tags, perPage, page)
   if (family === 'pixiv') return searchPixiv(tags, perPage, page)
   if (family === 'coomer' || family === 'kemono') return searchCoomerKemono(family, tags, perPage, page)
+  if (family === 'qualityporn') return searchQualityPorn(tags, perPage, page)
   return searchGelbooruStyle(host, tags, perPage, page)
+}
+
+// #220 — quality-porn.p.rapidapi.com meta-aggregator. One request
+// fans out server-side to 9 tube sites (PornHUB, ePorner, RedTube,
+// xHamster, XVideos, YouPorn, PornHD, SpankBang, YouJizz) and returns
+// a flat per-site array. We merge all sites into a single BooruPost[]
+// so users see one stream instead of a per-site picker.
+//
+// Auth: existing settings.ai.rapidApiKey (same key used by xnxx +
+// pornhub). The user has confirmed the key has unlimited tier on
+// rule34 + this Quality Porn endpoint.
+//
+// The API's `url` field points at the tube site's player page (NOT a
+// direct .mp4) — Save-to-Library routes through the existing
+// tube-url-resolver.ts which calls yt-dlp under the hood, same as
+// existing spankbang / xvideos save paths.
+async function searchQualityPorn(tags: string, perPage: number, page: number): Promise<BooruSearchResult> {
+  const { getSettings } = await import('../../settings')
+  const { decryptString } = await import('../secure-storage')
+  const aiSettings = (getSettings().ai as any) || {}
+  const storedKey = String(aiSettings.rapidApiKey ?? '')
+  const apiKey = decryptString(storedKey) ?? storedKey
+  if (!apiKey) {
+    throw new Error('Quality Porn requires the RapidAPI key (set under AI Tools → Setup → API keys)')
+  }
+  const q = tags.trim() || 'amateur'
+  const pageNum = Math.max(1, page + 1) // API is 1-indexed
+  const urlPath = `/search?query=${encodeURIComponent(q)}&page=${pageNum}&timeout=8000`
+  const body = await getJsonWithHeaders('quality-porn.p.rapidapi.com', urlPath, {
+    'x-rapidapi-key': apiKey,
+    'x-rapidapi-host': 'quality-porn.p.rapidapi.com',
+  })
+  const parsed = JSON.parse(body) as {
+    data?: Array<{
+      site?: { name?: string; host?: string; videoResults?: number }
+      links?: Array<{
+        title?: string; url?: string; image?: string
+        previewVideo?: string; views?: string; duration?: string
+        quality?: string; channel?: { name?: string; url?: string }
+        added?: string
+      }>
+    }>
+  }
+  const posts: BooruPost[] = []
+  let idCounter = page * perPage * 10 // stable pseudo-id basis per page
+  for (const block of parsed.data ?? []) {
+    const siteName = block.site?.name?.toLowerCase() ?? 'qualityporn'
+    for (const link of block.links ?? []) {
+      if (!link.url || !link.image) continue
+      // Stable hash-based id so paging doesn't reuse ids; the source
+      // page URL is the natural primary key.
+      const id = stableHash(link.url) >>> 0
+      const post = {
+        id,
+        file_url: link.url,               // landing page; yt-dlp resolves on save
+        preview_url: link.image,
+        sample_url: link.image,
+        tags: [siteName, q, link.quality, link.channel?.name]
+          .filter(Boolean).join(' ').toLowerCase(),
+        rating: 'e',                      // explicit by default for tube sites
+        score: parseViews(link.views ?? ''),
+        source: link.url,
+        width: 0,
+        height: 0,
+      } as BooruPost
+      // Attach site/duration metadata as ad-hoc fields (BooruPost is
+      // open-shape; renderer reads source_booru + duration_label).
+      ;(post as any).source_booru = `qualityporn:${siteName}`
+      ;(post as any).duration_label = link.duration ?? null
+      ;(post as any).quality_label = link.quality ?? null
+      ;(post as any).preview_video = link.previewVideo ?? null
+      posts.push(post)
+      idCounter++
+      if (posts.length >= perPage) break
+    }
+    if (posts.length >= perPage) break
+  }
+  return {
+    posts,
+    page,
+    perPage,
+    total: posts.length,
+    hasMore: posts.length === perPage,
+  } as BooruSearchResult
+}
+
+// Cheap deterministic 32-bit hash for synthesizing stable ids from
+// arbitrary strings (the API doesn't expose numeric ids).
+function stableHash(s: string): number {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h
+}
+
+// "1.7M" / "579.6k" / "" → number score. Used for the existing
+// score-sort heuristics; missing views land at 0.
+function parseViews(v: string): number {
+  if (!v) return 0
+  const m = v.match(/^([\d.]+)\s*([kKmMbB]?)/)
+  if (!m) return 0
+  const n = parseFloat(m[1])
+  if (!Number.isFinite(n)) return 0
+  const mult = m[2].toLowerCase() === 'b' ? 1e9
+    : m[2].toLowerCase() === 'm' ? 1e6
+    : m[2].toLowerCase() === 'k' ? 1e3 : 1
+  return Math.round(n * mult)
+}
+
+// #104 — Pool / set aggregation. e621 + Danbooru store curated post
+// orderings as pools (and Danbooru also has separate "sets"). This
+// helper resolves a pool id back to the full ordered post list so
+// the lightbox can offer a "Save entire pool" action.
+//
+// Returns a single BooruSearchResult so callers can re-use the same
+// bulk-save plumbing they already have for searches.
+export async function fetchPool(
+  source: BooruSource,
+  poolId: number | string,
+): Promise<BooruSearchResult> {
+  const family = SOURCE_FAMILY[source]
+  const idNum = typeof poolId === 'string' ? Number(poolId.replace(/\D+/g, '')) : poolId
+  if (!idNum || Number.isNaN(idNum)) {
+    return { posts: [], page: 0, perPage: 0, total: 0, hasMore: false } as BooruSearchResult
+  }
+  if (family === 'e621' || family === 'e926') {
+    // e621 supports `pool:N` as a search-tags shortcut that returns
+    // pool members in pool order (newest revision). Up to 320 posts
+    // in 100-per-page batches keeps us under the API's max-page limit.
+    const host = family === 'e926' ? 'e926.net' : 'e621.net'
+    const all: BooruPost[] = []
+    for (let p = 0; p < 4; p++) {
+      const sub = await searchE621(`pool:${idNum}`, 100, p, host)
+      if (sub.posts.length === 0) break
+      all.push(...sub.posts)
+      if (!sub.hasMore) break
+    }
+    return {
+      posts: all,
+      page: 0,
+      perPage: all.length,
+      total: all.length,
+      hasMore: false,
+      poolName: `pool-${idNum}`,
+    } as BooruSearchResult & { poolName?: string }
+  }
+  if (family === 'danbooru') {
+    const host = source === 'aibooru' ? 'aibooru.online' : 'danbooru.donmai.us'
+    // Danbooru exposes pool members directly via tags=pool:N; ordering
+    // is preserved by the API.
+    return searchDanbooru(`pool:${idNum}`, 100, 0, host)
+  }
+  throw new Error(`Pool aggregation not supported for source: ${source}`)
 }
 
 // #105 — Coomer / Kemono shared adapter. Both sites speak the same
@@ -2061,6 +2223,40 @@ export async function resolvePornhubDownload(
     console.warn('[PornHub] resolvePornhubDownload failed:', err)
     return null
   }
+}
+
+// GET companion to postJsonWithHeaders — same custom-header pattern,
+// used by RapidAPI sources (qualityporn, gifporn) that need
+// x-rapidapi-key + x-rapidapi-host on every request.
+function getJsonWithHeaders(host: string, urlPath: string, headers: Record<string, string>): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: host,
+      port: 443,
+      path: urlPath,
+      method: 'GET',
+      headers: {
+        'User-Agent': USER_AGENT,
+        Accept: 'application/json',
+        ...headers,
+      },
+      timeout: 25_000,
+    }, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (c: Buffer) => chunks.push(c))
+      res.on('end', () => {
+        const data = Buffer.concat(chunks).toString('utf8')
+        if (!res.statusCode || res.statusCode >= 400) {
+          reject(new Error(`${host}${urlPath} → ${res.statusCode}: ${data.slice(0, 200)}`))
+        } else {
+          resolve(data)
+        }
+      })
+    })
+    req.on('error', reject)
+    req.on('timeout', () => req.destroy(new Error(`${host}${urlPath} timed out`)))
+    req.end()
+  })
 }
 
 function postJsonWithHeaders(host: string, urlPath: string, payload: any, headers: Record<string, string>): Promise<string> {

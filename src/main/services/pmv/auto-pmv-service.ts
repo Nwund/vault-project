@@ -360,6 +360,148 @@ export class AutoPmvService {
       }
     }
   }
+
+  /**
+   * #178 — Build a PMV from a single folder + an externally-supplied BPM.
+   *
+   * Skips the tag-ranker entirely. Walks `folderPath` for video files,
+   * uses ffprobe to read each one's duration, treats every video as an
+   * equally-weighted candidate, then runs the same beat-grid allocator
+   * + caption pipeline as `generate()`.
+   *
+   * The renderer is responsible for detecting BPM from the user-supplied
+   * music file (bpm-detector.ts already handles that with Web Audio) and
+   * passing the number in here.
+   */
+  async generateFromFolder(
+    options: {
+      folderPath: string
+      bpm: number
+      targetDurationSec?: number
+      beatsPerClip?: number
+      maxClipSources?: number
+      generateCaptions?: boolean
+      videoActiveWindow?: number
+    },
+    tier2: { generateCaptions: (path: string, style: any) => Promise<{ topText: string | null; bottomText: string | null }> } | null,
+    frameExtractor: { extractFrames: (path: string, type: 'video', durationSec?: number | null) => Promise<Array<{ path: string }>> } | null,
+  ): Promise<AutoPmvProject> {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const targetDuration = Math.max(15, Math.min(600, options.targetDurationSec ?? 90))
+    const bpm = Math.max(60, Math.min(220, options.bpm))
+    const beatsPerClip = Math.max(1, Math.min(16, options.beatsPerClip ?? 2))
+    const maxSources = Math.max(1, Math.min(48, options.maxClipSources ?? 12))
+    const activeWindow = Math.max(0.3, Math.min(1, options.videoActiveWindow ?? 0.6))
+    const generateCaptions = options.generateCaptions !== false
+    const warnings: string[] = []
+
+    // Recursive scan with depth cap so a misclick on a huge tree
+    // doesn't lock up the main process.
+    const VIDEO_EXT = new Set(['.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v', '.mpg', '.mpeg', '.wmv'])
+    const found: string[] = []
+    const stack: Array<{ dir: string; depth: number }> = [{ dir: options.folderPath, depth: 0 }]
+    while (stack.length > 0 && found.length < maxSources * 4) {
+      const cur = stack.pop()!
+      let entries: import('node:fs').Dirent[] = []
+      try { entries = fs.readdirSync(cur.dir, { withFileTypes: true }) } catch { continue }
+      for (const e of entries) {
+        const full = path.join(cur.dir, e.name)
+        if (e.isDirectory()) {
+          if (cur.depth < 3) stack.push({ dir: full, depth: cur.depth + 1 })
+        } else if (e.isFile() && VIDEO_EXT.has(path.extname(e.name).toLowerCase())) {
+          found.push(full)
+        }
+      }
+    }
+
+    if (found.length === 0) {
+      return {
+        bpm, beatsPerClip, totalBeats: 0, totalDurationSec: 0, clips: [],
+        meta: { tags: [], candidatesConsidered: 0, clipsGenerated: 0, captionsGenerated: 0, captionsRequested: 0, warnings: [`No video files under ${options.folderPath}`] }
+      }
+    }
+
+    // Probe each file for duration via ffprobe.
+    const ffpaths = await import('../../ffpaths')
+    const probe = ffpaths.ffprobeBin
+    const { spawnSync } = await import('node:child_process')
+    const candidates: CandidateRow[] = []
+    for (const filePath of found.slice(0, maxSources)) {
+      let durationSec: number | null = null
+      if (probe) {
+        try {
+          const r = spawnSync(probe, [
+            '-v', 'error', '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1', filePath,
+          ], { encoding: 'utf8' })
+          const d = Number(r.stdout.trim())
+          if (Number.isFinite(d) && d > 0) durationSec = d
+        } catch { /* skip */ }
+      }
+      candidates.push({
+        // Use the path as id since these are unindexed files; the
+        // PmvEditor only displays it, so the format doesn't matter.
+        id: `folder:${filePath}`,
+        path: filePath,
+        filename: path.basename(filePath),
+        durationSec,
+        rating: 0,
+        views: 0,
+        matchedTagCount: 1,
+        avgTagConf: 0.5,
+      })
+    }
+
+    const slots = this.allocateSlots(candidates, targetDuration, bpm, beatsPerClip, activeWindow)
+    let captionsGenerated = 0
+    let captionsRequested = 0
+    const clips: AutoPmvClip[] = []
+    for (const slot of slots) {
+      const { candidate: c } = slot
+      let caption: string | null = null
+      if (generateCaptions && tier2 && frameExtractor) {
+        captionsRequested += 1
+        try {
+          const frames = await frameExtractor.extractFrames(c.path, 'video', c.durationSec ?? null)
+          if (frames.length > 0) {
+            const f = frames[Math.floor(frames.length / 2)]
+            const cap = await tier2.generateCaptions(f.path, 'pov')
+            caption = (cap.bottomText || cap.topText || null) || null
+            if (caption) captionsGenerated += 1
+          }
+        } catch (err) {
+          warnings.push(`Caption gen failed for ${c.filename}: ${(err as Error)?.message ?? err}`)
+        }
+      }
+      clips.push({
+        mediaId: c.id,
+        filename: c.filename,
+        path: c.path,
+        startSec: slot.startSec,
+        endSec: slot.endSec,
+        beatStart: slot.beatStart,
+        beatEnd: slot.beatEnd,
+        reason: `Folder-scan pick @ beat ${slot.beatStart}`,
+        caption,
+        score: 0.5,
+      })
+    }
+
+    return {
+      bpm, beatsPerClip, totalBeats: clips[clips.length - 1]?.beatEnd ?? 0,
+      totalDurationSec: clips.reduce((s, c) => s + (c.endSec - c.startSec), 0),
+      clips,
+      meta: {
+        tags: [`folder:${path.basename(options.folderPath)}`],
+        candidatesConsidered: candidates.length,
+        clipsGenerated: clips.length,
+        captionsGenerated,
+        captionsRequested,
+        warnings,
+      },
+    }
+  }
 }
 
 let singleton: AutoPmvService | null = null

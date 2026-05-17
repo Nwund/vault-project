@@ -130,6 +130,49 @@ export class FrameExtractor {
   }
 
   /**
+   * #263 — TransNet V2 path. Extracts 27×48 frames at 12fps from
+   * [startSec, endSec], feeds them through the TransNet model, and
+   * maps boundary frame indices back to absolute timestamps.
+   * Returns [] if the model isn't ready (caller falls back to scdet).
+   */
+  private async detectScenesViaTransNet(
+    videoPath: string,
+    startSec: number,
+    endSec: number,
+  ): Promise<number[]> {
+    const FPS = 12
+    const { ModelDownloader } = await import('./model-downloader')
+    const { TransNetDetector } = await import('./transnet-detector')
+    const downloader = new ModelDownloader()
+    const detector = new TransNetDetector(downloader as any)
+    const ok = await detector.initialize()
+    if (!ok) return []
+    // Stream low-res frames to a tmp dir for TransNet input.
+    const dir = path.join(this.tempDir, `transnet-${nanoid(8)}`)
+    fs.mkdirSync(dir, { recursive: true })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const proc = spawn(this.ffmpegPath, [
+          '-hide_banner', '-loglevel', 'error',
+          '-ss', startSec.toFixed(2), '-to', endSec.toFixed(2),
+          '-i', videoPath,
+          '-vf', `fps=${FPS},scale=48:27`,
+          '-an',
+          path.join(dir, 'f_%06d.png'),
+        ], { windowsHide: true })
+        proc.on('error', reject)
+        proc.on('close', (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exit ${code}`)))
+      })
+      const framePaths = fs.readdirSync(dir).filter((n) => n.endsWith('.png')).sort().map((n) => path.join(dir, n))
+      if (framePaths.length === 0) return []
+      const boundaries = await detector.detectBoundaries(framePaths, 0.5)
+      return boundaries.map((b) => startSec + b.frameIndex / FPS).sort((a, b) => a - b)
+    } finally {
+      try { fs.rmSync(dir, { recursive: true, force: true }) } catch { /* ignore */ }
+    }
+  }
+
+  /**
    * Detect scene-change timestamps via ffmpeg's `scdet` filter, restricted
    * to the [startSec, endSec] window. Returns an ascending list of
    * timestamps where significant motion / cuts happen — used to bias frame
@@ -257,11 +300,31 @@ export class FrameExtractor {
     // usable window is just as good and avoids the scene-detect latency.
     let sceneTimes: number[] = []
     if (duration > 180) {
+      // #263 — TransNet V2 opt-in path. When settings.ai.useTransNet is
+      // true AND the model file exists, use the 3D-CNN for higher
+      // precision on gradual fades / slow zooms. Falls through to
+      // ffmpeg scdet on any failure so this never regresses the
+      // baseline detection.
+      let useTransNet = false
       try {
-        sceneTimes = await this.detectSceneChanges(videoPath, startSec, endSec)
-        console.log(`[FrameExtractor] Found ${sceneTimes.length} scene changes in [${startSec.toFixed(0)}, ${endSec.toFixed(0)}]`)
-      } catch (err) {
-        console.warn('[FrameExtractor] Scene detection failed, falling back to even sampling:', err)
+        const { getAISettings } = await import('../../settings')
+        useTransNet = !!(getAISettings() as any)?.useTransNet
+      } catch { /* ignore */ }
+      if (useTransNet) {
+        try {
+          sceneTimes = await this.detectScenesViaTransNet(videoPath, startSec, endSec)
+          console.log(`[FrameExtractor] TransNet found ${sceneTimes.length} scene changes in [${startSec.toFixed(0)}, ${endSec.toFixed(0)}]`)
+        } catch (err) {
+          console.warn('[FrameExtractor] TransNet failed, falling back to scdet:', err)
+        }
+      }
+      if (sceneTimes.length === 0) {
+        try {
+          sceneTimes = await this.detectSceneChanges(videoPath, startSec, endSec)
+          console.log(`[FrameExtractor] Found ${sceneTimes.length} scene changes in [${startSec.toFixed(0)}, ${endSec.toFixed(0)}]`)
+        } catch (err) {
+          console.warn('[FrameExtractor] Scene detection failed, falling back to even sampling:', err)
+        }
       }
     }
 

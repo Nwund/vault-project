@@ -87,3 +87,44 @@ export function expandImplications(tagName: string): string[] {
   }
   return out
 }
+
+// #317 — bulk import from a Danbooru-format CSV. Two-column format
+// "antecedent,consequent" (additional columns like is_pending are
+// ignored). Hydrus PTR exports work with the same shape after the
+// user dumps the names table. Existing implications are merged: a
+// new (a, b) pair is appended to map[a] only if b isn't already a
+// known consequent.
+export interface CsvImportResult {
+  inserted: number
+  skipped: number
+  errors: string[]
+}
+
+export function importImplicationsCsv(csvText: string): CsvImportResult {
+  const result: CsvImportResult = { inserted: 0, skipped: 0, errors: [] }
+  const map = load()
+  const merged = new Map(map)
+  const lines = csvText.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+    if (!line || line.startsWith('#')) continue
+    const parts = line.split(',').map((p) => p.trim())
+    if (parts.length < 2) { result.skipped++; continue }
+    const ante = parts[0].toLowerCase().replace(/_/g, ' ').trim()
+    const cons = parts[1].toLowerCase().replace(/_/g, ' ').trim()
+    if (!ante || !cons || ante === cons) { result.skipped++; continue }
+    if (i === 0 && (/antecedent|tag|name/.test(ante) || /consequent|implied|parent/.test(cons))) {
+      result.skipped++  // header row
+      continue
+    }
+    const existing = merged.get(ante) ?? []
+    if (existing.includes(cons)) { result.skipped++; continue }
+    merged.set(ante, [...existing, cons])
+    result.inserted++
+  }
+  // Persist merged result.
+  const serialized = Object.fromEntries(merged.entries())
+  const saveResult = saveImplications(serialized)
+  if (!saveResult.ok) result.errors.push(saveResult.error ?? 'save failed')
+  return result
+}

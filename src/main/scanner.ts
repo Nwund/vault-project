@@ -207,6 +207,19 @@ function upsertOneSync(
     phash: existing?.phash ?? null,
   })
 
+  // #298 — if the triage inbox is enabled AND this row is freshly
+  // created (no `existing`), park it in 'pending' so the user reviews
+  // before it shows up in the main library. No-op when toggle is off
+  // or when the row is just being touched/re-scanned.
+  if (!existing) {
+    try {
+      const { getSettings } = require('./settings') as { getSettings: () => any }
+      if (getSettings()?.triageInboxEnabled) {
+        ;(db as any).raw?.prepare?.(`UPDATE media SET triage_status = 'pending' WHERE id = ?`).run(row.id)
+      }
+    } catch { /* settings module not loaded yet — default 'active' is fine */ }
+  }
+
   enqueueAnalyze(db, {
     mediaId: row.id,
     path: filePath,

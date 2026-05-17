@@ -488,6 +488,28 @@ export interface AISettings {
   f5ttsStartScript?: string
   f5ttsAutoStart?: boolean
   xyreneVoiceBackend?: 'xtts' | 'f5tts'
+  /** #175 — Real-time RVC voice conversion sidecar. Path to a
+   *  start.bat / launch.sh that spawns the user's RVC Flask wrapper
+   *  on 127.0.0.1:8030. Empty = feature disabled. */
+  rvcStartScript?: string
+  /** #385 — Xyrene voice-intake folder. Audio dropped here is
+   *  silence-trimmed, denoised, normalized, copied to xtts
+   *  voice_samples/, and registered with metadata below. */
+  xyreneVoiceIntakeFolder?: string
+  /** Cleanup aggression for the intake pipeline. */
+  xyreneVoiceCleanupMode?: 'conservative' | 'standard' | 'aggressive'
+  /** Per-voice display name + description, keyed by the .wav filename
+   *  in the xtts voice_samples/ folder. Populated by the intake
+   *  pipeline + editable from the renderer voice picker. */
+  xyreneVoiceMetadata?: Record<string, { displayName: string; description: string; language: string }>
+  /** #131 — VideoLLaMA3 / Qwen2.5-VL-7B local video QA sidecar on 8040. */
+  videoLlama3StartScript?: string
+  /** #136 — AnimateDiff-Lightning animated thumbs sidecar on 8041. */
+  animateDiffStartScript?: string
+  /** #162 — RIFE optical-flow interpolation sidecar on 8042. */
+  rifeStartScript?: string
+  /** #180 — MusicGen backing-track sidecar on 8043. */
+  musicGenStartScript?: string
   /** Freesound.org API key (free, register at freesound.org/apiv2/apply).
    *  Used by the foley:freesound-search IPC for CC0/BY soundpack search. */
   freesoundApiKey?: string
@@ -690,6 +712,16 @@ export interface VaultSettings {
     synologyPassword?: string   // stored plaintext for now; rotate-via-DSM is the user's responsibility
     synologyTargetDir?: string  // e.g. "/photo/vault"
   }
+  // #202 — Cinema-mode Hue integration
+  hue?: {
+    bridgeIp?: string
+    username?: string          // generated via huePair()
+    cinemaLightIds?: string[]  // bulb ids that should dim on fullscreen
+    cinemaTargetBri?: number   // 0-254; default 30 (~12%)
+    autoDimOnFullscreen?: boolean // default true once paired
+  }
+  // #195 — Active profile id (Multi-user profiles, shared catalog)
+  activeProfileId?: string
   // Legacy support
   mediaDirs?: string[]
   cacheDir?: string

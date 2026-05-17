@@ -124,7 +124,37 @@ async function createMainWindow(): Promise<BrowserWindow> {
     callback({ requestHeaders: details.requestHeaders })
   })
 
-  win.once('ready-to-show', () => win.show())
+  win.once('ready-to-show', () => {
+    win.show()
+    // #379 — re-apply persisted stealth window-title profile so the
+    // disguise survives across restarts.
+    void (async () => {
+      try {
+        const { getSettings } = await import('./settings')
+        const s = getSettings() as any
+        if (!s?.stealthProfile) return
+        const STEALTH_PROFILES: Record<string, { title: string; aumid?: string }> = {
+          excel: { title: 'Book1 - Excel', aumid: 'Microsoft.Office.Excel' },
+          sheets: { title: 'Untitled spreadsheet - Google Sheets - Google Chrome', aumid: 'Google Chrome' },
+          teams: { title: 'Microsoft Teams', aumid: 'Microsoft.Teams' },
+          outlook: { title: 'Inbox - Outlook', aumid: 'Microsoft.Office.Outlook' },
+          word: { title: 'Document1 - Word', aumid: 'Microsoft.Office.Winword' },
+          code: { title: 'Visual Studio Code', aumid: 'Microsoft.VisualStudio.Code' },
+          notepad: { title: 'Untitled - Notepad' },
+          chrome: { title: 'New Tab - Google Chrome', aumid: 'Google Chrome' },
+        }
+        const p = STEALTH_PROFILES[s.stealthProfile]
+        if (p) {
+          try { win.setTitle(p.title) } catch { /* ignore */ }
+          if (process.platform === 'win32' && p.aumid) {
+            try { (await import('electron')).app.setAppUserModelId(p.aumid) } catch { /* ignore */ }
+          }
+        }
+      } catch (err) {
+        console.warn('[stealth] boot re-apply failed (non-fatal):', err)
+      }
+    })()
+  })
 
   if (isDevMode()) {
     const devUrl = resolveViteDevServerUrl()
@@ -299,6 +329,32 @@ async function main() {
     logMain('info', 'Toggled diagnostics overlay (hotkey)')
   })
 
+  // #314 — global clipboard URL grabber. Reads the clipboard; if it
+  // looks like a downloadable media URL, queue it via the existing
+  // url-downloader service. Skip clipboard images / file lists.
+  globalShortcut.register('CommandOrControl+Shift+V', () => {
+    void (async () => {
+      try {
+        const { clipboard } = await import('electron')
+        const text = clipboard.readText().trim()
+        if (!text) return
+        // Match http/https URLs that look like media pages, not random text.
+        if (!/^https?:\/\/\S+$/.test(text)) return
+        const { getUrlDownloaderService } = await import('./services/url-downloader-service')
+        await getUrlDownloaderService().addDownload(text, undefined, 'desktop')
+        logMain('info', `[hotkey] queued URL from clipboard: ${text}`)
+        // Notify the user via the main window.
+        try {
+          for (const w of BrowserWindow.getAllWindows()) {
+            w.webContents.send('hotkey:url-queued', { url: text })
+          }
+        } catch { /* ignore */ }
+      } catch (err) {
+        logMain('warn', '[hotkey] clipboard URL grab failed', { error: String(err) })
+      }
+    })()
+  })
+
   const mainWindow = await createMainWindow()
 
   // Initialize AI Intelligence system with graceful degradation
@@ -312,6 +368,41 @@ async function main() {
       logMain('error', 'AI Intelligence initialization failed - continuing without AI', { error: String(err) })
       errorLogger.error('Main', 'AI Intelligence initialization failed - app will continue without AI features', err)
     }
+
+    // #101 — Subscription poller. Hooks the booru-client into the
+    // subscriptions service so each saved (source, query) refreshes
+    // on its configured cadence and routes new posts to the inbox.
+    void (async () => {
+      try {
+        const { getSubscriptionsService } = await import('./services/subscriptions-service')
+        const booru = await import('./services/ai-intelligence/booru-client')
+        const svc = getSubscriptionsService(db)
+        svc.configure({
+          fetcher: async (source, query) => {
+            try {
+              const res = await booru.searchBooru(source as any, query, { perPage: 30, page: 0 })
+              return (res.posts ?? []).map((p) => ({
+                postId: String(p.id),
+                thumbUrl: p.preview_url ?? p.sample_url ?? null,
+                fullUrl: p.file_url ?? null,
+                sourcePageUrl: p.source ?? null,
+              }))
+            } catch (err) {
+              throw err
+            }
+          },
+          onUpdate: () => {
+            try {
+              mainWindow.webContents.send('vault:changed')
+            } catch { /* window closed */ }
+          },
+        })
+        svc.start()
+        console.log('[Subscriptions] poller started')
+      } catch (err) {
+        console.warn('[Subscriptions] failed to start:', err)
+      }
+    })()
 
     // Background: kick off XTTS server auto-start. Fire-and-forget so it
     // doesn't block app startup; the server itself takes 15-60s to load
@@ -433,6 +524,125 @@ async function main() {
         console.log(`[F5-TTS auto-start] ${ok ? 'ready' : 'failed (see python console)'}`)
       } catch (err) {
         console.warn('[F5-TTS auto-start] threw (non-fatal):', err)
+      }
+    })()
+
+    // v2.7 #323 — Sidecar metadata watcher auto-start. When configured
+    // library mediaDirs exist, start chokidar watching for *.xmp / *.nfo /
+    // *.stash.json drops so dropped sidecars apply tags to the DB without
+    // a manual scan. Opt-out via settings.library.sidecarWatcherAutoStart
+    // = false (default on). The watcher is cheap (chokidar + 1 file read
+    // per event) so the default is "on when the user has mediaDirs."
+    // Stores the handle on globalThis so the sidecarWatcher:* IPCs find it.
+    void (async () => {
+      try {
+        const { getSettings, getMediaDirs } = await import('./settings')
+        const settings = getSettings() as any
+        if (settings?.library?.sidecarWatcherAutoStart === false) {
+          console.log('[SidecarWatcher auto-start] skipped — user opted out')
+          return
+        }
+        const roots = getMediaDirs().filter(Boolean)
+        if (roots.length === 0) {
+          console.log('[SidecarWatcher auto-start] skipped — no library mediaDirs configured')
+          return
+        }
+        if ((globalThis as any).__vaultSidecarWatcher) {
+          console.log('[SidecarWatcher auto-start] skipped — already running')
+          return
+        }
+        const { startSidecarWatcher } = await import('./services/sidecar-watcher')
+        ;(globalThis as any).__vaultSidecarWatcher = startSidecarWatcher(db, roots)
+        console.log(`[SidecarWatcher auto-start] watching ${roots.length} root(s)`)
+      } catch (err) {
+        console.warn('[SidecarWatcher auto-start] threw (non-fatal):', err)
+      }
+    })()
+
+    // v2.7 — Network/sharing services auto-resume. Opt-in by setting
+    // each `network.{service}AutoStart` flag in settings. The IMAP
+    // watcher resumes from its saved config; the Bluesky labeler from
+    // its saved port. Both are no-ops if not configured. We don't
+    // auto-resume Iroh / Hyperswarm / Helia / WebTransport / Tor /
+    // Veilid / UnifiedPush yet — those are user-driven one-shots whose
+    // "running" state isn't meaningful to recover automatically.
+    void (async () => {
+      try {
+        const { getSettings } = await import('./settings')
+        const settings = getSettings() as any
+        const net = settings?.network ?? {}
+
+        // IMAP inbox watcher
+        if (net.imapAutoStart) {
+          const { startWatcher } = await import('./services/imap-watcher')
+          const { getUrlDownloaderService } = await import('./services/url-downloader-service')
+          const res = await startWatcher(db, async (url: string) => {
+            try { await getUrlDownloaderService().addDownload(url, {}, 'desktop') }
+            catch (err) { console.error('[imap auto-resume] enqueue failed', err) }
+          })
+          console.log(`[IMAP auto-resume] ${(res as any)?.ok ? 'watching' : 'skipped (no saved config)'}`)
+        }
+
+        // Bluesky labeler
+        if (net.bskyLabelerAutoStart) {
+          const { start } = await import('./services/bluesky-labeler')
+          const port = typeof net.bskyLabelerPort === 'number' ? net.bskyLabelerPort : 2470
+          const res = await start(db, port)
+          console.log(`[BskyLabeler auto-resume] ${(res as any)?.ok ? `live on :${(res as any).port ?? port}` : 'failed'}`)
+        }
+      } catch (err) {
+        console.warn('[Network auto-resume] threw (non-fatal):', err)
+      }
+    })()
+
+    // #312 RSS poller + #318 cron scheduler auto-start. Both are
+    // cheap (interval timers that no-op when their store is empty)
+    // so they always boot; users opt in by adding feeds/jobs.
+    void (async () => {
+      try {
+        const { startScheduler: startRss } = await import('./services/rss-importer')
+        startRss()
+        const { startScheduler: startCron } = await import('./services/cron-scheduler')
+        startCron()
+        console.log('[automation] RSS + cron schedulers started')
+      } catch (err) {
+        console.warn('[automation] scheduler start failed (non-fatal):', err)
+      }
+    })()
+
+    // Generic ML sidecar auto-start. Same pattern as JoyCaption — opt-in
+    // via settings.ai.vaultMlAutoStart (default off; the sidecar pulls
+    // 5+ GB of torch wheels into venv on first install).
+    void (async () => {
+      try {
+        const { getAISettings } = await import('./settings')
+        const aiSettings = getAISettings() as any
+        if (!aiSettings?.vaultMlAutoStart) return
+        const { ensureVaultMlSidecar } = await import('./services/ai-intelligence/vault-ml-launcher')
+        console.log('[vault-ml auto-start] launching sidecar')
+        const ok = await ensureVaultMlSidecar()
+        console.log(`[vault-ml auto-start] ${ok ? 'ready' : 'failed (see python console)'}`)
+      } catch (err) {
+        console.warn('[vault-ml auto-start] threw (non-fatal):', err)
+      }
+    })()
+
+    // #385 Xyrene voice intake watcher auto-start. Fires only if the
+    // user has set settings.xyreneVoiceIntakeFolder. The watcher itself
+    // is cheap (chokidar on a single dir) but ffmpeg cleanup runs per
+    // dropped file, so we don't enable it implicitly.
+    void (async () => {
+      try {
+        const { getSettings } = await import('./settings')
+        const s = getSettings() as any
+        const folder = s?.xyreneVoiceIntakeFolder
+        if (!folder) return
+        const cleanup = s?.xyreneVoiceCleanupMode ?? 'standard'
+        const { startIntakeWatcher } = await import('./services/xyrene/voice-intake')
+        console.log(`[Voice intake auto-start] watching ${folder} (${cleanup})`)
+        await startIntakeWatcher(folder, {}, { cleanup })
+      } catch (err) {
+        console.warn('[Voice intake auto-start] threw (non-fatal):', err)
       }
     })()
   } else {
@@ -651,6 +861,33 @@ app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,Au
 app.commandLine.appendSwitch('disable-blink-features', 'AutofillAddress,AutofillCreditCard,AutofillAddressDetails,AutofillUploadOnFormSubmission')
 app.commandLine.appendSwitch('disable-component-update')
 
+// #240 — Vulkan / D3D11 hardware-accelerated video decode toggle.
+// Reads settings.hwAccelMode synchronously at app boot (before
+// `ready`) so the Chromium GPU process picks up the switches.
+// Modes:
+//   'auto'  (default) — Chromium decides per-stream
+//   'd3d11' — force D3D11VA on Windows (best compat for 4K H.264/HEVC)
+//   'vulkan' — force Vulkan video acceleration (experimental, newer drivers)
+//   'off'   — disable all HW decode (CPU only, debugging)
+try {
+  const settingsPath = require('node:path').join(app.getPath('userData'), 'settings.json')
+  const fs = require('node:fs') as typeof import('node:fs')
+  if (fs.existsSync(settingsPath)) {
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
+    const mode = settings?.hwAccelMode ?? 'auto'
+    if (mode === 'd3d11') {
+      app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport,D3D11VideoDecoder')
+      app.commandLine.appendSwitch('use-angle', 'd3d11')
+    } else if (mode === 'vulkan') {
+      app.commandLine.appendSwitch('enable-features', 'Vulkan,VulkanFromANGLE,DefaultANGLEVulkan,VaapiVideoDecoder')
+      app.commandLine.appendSwitch('use-angle', 'vulkan')
+    } else if (mode === 'off') {
+      app.commandLine.appendSwitch('disable-gpu-rasterization')
+      app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling,Vulkan,VaapiVideoDecoder,D3D11VideoDecoder')
+    }
+  }
+} catch { /* ignore — falls through to auto */ }
+
 app.whenReady().then(() => void main())
 
 app.on('window-all-closed', () => {
@@ -659,4 +896,6 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  // Drain exiftool-vendored process (#243 / #309).
+  import('./services/exif-sidecar').then(m => m.shutdownExif()).catch(() => { /* ignore */ })
 })

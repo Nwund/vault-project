@@ -43,7 +43,7 @@ export interface ContactSheetOptions {
  *   wall       5×4 @ 240px tiles — high-density playlist wall view
  *   summary    2×2 @ 640px tiles — 4-frame summary for export
  */
-export type ContactSheetPreset = 'review' | 'thumb' | 'hover' | 'wall' | 'summary'
+export type ContactSheetPreset = 'review' | 'thumb' | 'hover' | 'wall' | 'summary' | 'scrub'
 
 const PRESET_LAYOUTS: Record<ContactSheetPreset, { cols: number; rows: number; tileWidth: number }> = {
   review:  { cols: 4, rows: 3, tileWidth: 480 },
@@ -51,6 +51,11 @@ const PRESET_LAYOUTS: Record<ContactSheetPreset, { cols: number; rows: number; t
   hover:   { cols: 4, rows: 1, tileWidth: 240 },
   wall:    { cols: 5, rows: 4, tileWidth: 240 },
   summary: { cols: 2, rows: 2, tileWidth: 640 },
+  // #146 — 6×6 = 36 tiles for fine-grained hover-scrub on cards.
+  // Dense enough that pointer movement across a 200px-wide card
+  // surfaces ~1.5 distinct frames per pixel without going so dense
+  // the sheet itself balloons past 2 MB.
+  scrub:   { cols: 6, rows: 6, tileWidth: 240 },
 }
 
 /**
@@ -87,10 +92,13 @@ export async function generateContactSheet(
   const totalTiles = cols * rows
   const duration = options.durationSec ?? 0
 
-  // Output goes in userData/contact-sheets/<mediaId>-sheet.png
+  // Output goes in userData/contact-sheets/<mediaId>-<preset>-sheet.png
+  // (legacy reviews without preset stay at -sheet.png so existing
+  // contact-sheet UI doesn't break)
   const outDir = path.join(app.getPath('userData'), 'contact-sheets')
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true })
-  const outPath = path.join(outDir, `${mediaId}-sheet.png`)
+  const suffix = options.preset && options.preset !== 'review' ? `-${options.preset}-sheet.png` : '-sheet.png'
+  const outPath = path.join(outDir, `${mediaId}${suffix}`)
 
   // If duration is known, sample N frames at even spacing using
   // `fps=<rate>` where rate = totalTiles / duration. Otherwise sample
@@ -143,7 +151,8 @@ export async function generateContactSheet(
 }
 
 /** Return the existing contact sheet path (if generated). */
-export function contactSheetPathFor(mediaId: string): string | null {
-  const p = path.join(app.getPath('userData'), 'contact-sheets', `${mediaId}-sheet.png`)
+export function contactSheetPathFor(mediaId: string, preset?: ContactSheetPreset): string | null {
+  const suffix = preset && preset !== 'review' ? `-${preset}-sheet.png` : '-sheet.png'
+  const p = path.join(app.getPath('userData'), 'contact-sheets', `${mediaId}${suffix}`)
   return fs.existsSync(p) ? p : null
 }

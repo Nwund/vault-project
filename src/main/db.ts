@@ -61,10 +61,39 @@ export function createDb() {
   db.pragma('journal_mode = WAL')
   db.pragma('synchronous = NORMAL')
   db.pragma('busy_timeout = 5000')
-  db.pragma('cache_size = -32000')
+  // #327 — bumped cache 32MB → 96MB. Library now holds 100k+ rows in
+  // media + media_stats + media_tags + ai_analysis_results; the larger
+  // page cache keeps hot indexes resident and dramatically cuts
+  // duplicate-detection scan time.
+  db.pragma('cache_size = -96000')
   db.pragma('temp_store = MEMORY')
   db.pragma('foreign_keys = ON')
+  // #327 — mmap_size lets SQLite read directly from the OS page cache
+  // instead of via pread(). 256MB upper bound is conservative; the
+  // kernel only commits what's actually touched. Huge win on cold
+  // queries after first warmup. Set via PRAGMA so it applies per
+  // connection; better-sqlite3 is single-process so this is fine.
+  db.pragma('mmap_size = 268435456')
+  // #327 — checkpoint WAL more aggressively (default 1000 pages = 4MB)
+  // so a long browse session doesn't pile up a 100MB+ WAL file that
+  // delays the next read. 500 pages = 2MB triggers a passive checkpoint.
+  db.pragma('wal_autocheckpoint = 500')
   runMigrations(db)
+
+  // #330 — PRAGMA optimize on idle. Runs ANALYZE on tables whose
+  // statistics are stale or whose query planner has guessed wrong
+  // since the last optimize. Cheap (<100ms typically), runs every
+  // 4 hours so it costs nothing during interactive use.
+  // Reference: https://www.sqlite.org/lang_analyze.html#periodic_optimization
+  const optimizeTimer = setInterval(() => {
+    try {
+      db.pragma('optimize')
+    } catch (err) {
+      console.warn('[DB] periodic PRAGMA optimize failed (non-fatal):', err)
+    }
+  }, 4 * 60 * 60 * 1000)
+  // Don't pin the process alive just for the timer.
+  if (typeof (optimizeTimer as any)?.unref === 'function') (optimizeTimer as any).unref()
 
   const stmts = {
     upsertMedia: db.prepare(`

@@ -3,6 +3,9 @@
 
 import type { DB } from '../db'
 import { nanoid } from 'nanoid'
+// #195 — Active-profile lookup. Imported eagerly so Vite includes
+// it in the bundle (runtime `require` doesn't resolve through Vite).
+import { getProfilesService } from './profiles-service'
 
 export interface WatchSession {
   id: string
@@ -74,10 +77,16 @@ export class WatchHistoryService {
 
     this.activeSessions.set(mediaId, session)
 
+    // #195 — Stamp the row with whichever profile is active right now.
+    let activeProfileId = 'default'
+    try {
+      activeProfileId = getProfilesService(this.db).getActive() || 'default'
+    } catch { /* fallback to 'default' */ }
+
     this.db.raw.prepare(`
-      INSERT INTO watch_sessions (id, mediaId, startedAt, watchedSeconds, completionPercent, resumePosition)
-      VALUES (?, ?, ?, 0, 0, 0)
-    `).run(id, mediaId, session.startedAt)
+      INSERT INTO watch_sessions (id, mediaId, startedAt, watchedSeconds, completionPercent, resumePosition, profile_id)
+      VALUES (?, ?, ?, 0, 0, 0, ?)
+    `).run(id, mediaId, session.startedAt, activeProfileId)
 
     return id
   }
@@ -135,28 +144,87 @@ export class WatchHistoryService {
    * Get resume position for a media item
    */
   getResumePosition(mediaId: string): number {
+    const profileId = getActiveProfileId(this.db)
     const row = this.db.raw.prepare(`
       SELECT resumePosition FROM watch_sessions
       WHERE mediaId = ? AND completionPercent < 90
+        AND COALESCE(profile_id, 'default') = ?
       ORDER BY startedAt DESC LIMIT 1
-    `).get(mediaId) as { resumePosition: number } | undefined
+    `).get(mediaId, profileId) as { resumePosition: number } | undefined
 
     return row?.resumePosition || 0
   }
 
   /**
-   * Get recent watch history
+   * Get recent watch history. Filtered by the active profile (#195
+   * Phase 2) so each user sees their own list. Falls back to the
+   * 'default' profile when no profile-scoping helper is available.
    */
   getRecentHistory(limit = 50): Array<{ mediaId: string; watchedAt: number; duration: number }> {
+    const profileId = getActiveProfileId(this.db)
     const rows = this.db.raw.prepare(`
       SELECT mediaId, MAX(startedAt) as watchedAt, SUM(watchedSeconds) as duration
       FROM watch_sessions
+      WHERE COALESCE(profile_id, 'default') = ?
       GROUP BY mediaId
       ORDER BY watchedAt DESC
       LIMIT ?
-    `).all(limit) as any[]
+    `).all(profileId, limit) as any[]
 
     return rows
+  }
+
+  // Rich variant used by RecentlyViewedStrip + WatchHistoryTimeline:
+  // joins media so renderer doesn't have to follow up with N media:get calls.
+  listWithMedia(opts: { limit?: number; since?: number } = {}): Array<{
+    id: string
+    mediaId: string
+    filename: string
+    thumbPath: string | null
+    type: string
+    viewedAt: number
+    watchDuration: number
+    rating: number | null
+    isFavorite: boolean
+  }> {
+    const limit = opts.limit ?? 50
+    const since = opts.since
+    const sinceClause = since ? `AND ws.startedAt >= ${Number(since)}` : ''
+    const profileId = getActiveProfileId(this.db)
+    // Rating lives in media_stats, not media — older versions of this
+    // query selected m.rating which throws "no such column" on boot.
+    // Fixed via LEFT JOIN on media_stats with COALESCE for missing rows.
+    const rows = this.db.raw.prepare(`
+      SELECT
+        ws.id AS id,
+        ws.mediaId AS mediaId,
+        m.filename AS filename,
+        m.thumbPath AS thumbPath,
+        m.type AS type,
+        MAX(ws.startedAt) AS viewedAt,
+        SUM(ws.watchedSeconds) AS watchDuration,
+        COALESCE(ms.rating, 0) AS rating
+      FROM watch_sessions ws
+      JOIN media m ON m.id = ws.mediaId
+      LEFT JOIN media_stats ms ON ms.mediaId = m.id
+      WHERE COALESCE(ws.profile_id, 'default') = ? ${sinceClause}
+      GROUP BY ws.mediaId
+      ORDER BY viewedAt DESC
+      LIMIT ?
+    `).all(profileId, limit) as any[]
+    return rows.map(r => ({
+      id: String(r.id ?? r.mediaId),
+      mediaId: String(r.mediaId),
+      filename: String(r.filename ?? ''),
+      thumbPath: r.thumbPath ?? null,
+      type: String(r.type ?? ''),
+      viewedAt: Number(r.viewedAt) || 0,
+      watchDuration: Number(r.watchDuration) || 0,
+      rating: r.rating == null ? null : Number(r.rating),
+      // Mirror Vault's "favorite = rating ≥ 4" convention so the UI
+      // heart icon shows up for highly-rated rewatches.
+      isFavorite: Number(r.rating ?? 0) >= 4,
+    }))
   }
 
   /**
@@ -166,21 +234,24 @@ export class WatchHistoryService {
     const now = Date.now()
     const dayStart = now - (24 * 60 * 60 * 1000)
     const weekStart = now - (7 * 24 * 60 * 60 * 1000)
+    // #195 Phase 2 — every stat query scopes to the active profile.
+    const profileId = getActiveProfileId(this.db)
+    const PROF_FILTER = `COALESCE(profile_id, 'default') = ?`
 
     // Total watch time
     const totalRow = this.db.raw.prepare(`
-      SELECT SUM(watchedSeconds) as total FROM watch_sessions
-    `).get() as { total: number | null }
+      SELECT SUM(watchedSeconds) as total FROM watch_sessions WHERE ${PROF_FILTER}
+    `).get(profileId) as { total: number | null }
 
     // Today's watch time
     const todayRow = this.db.raw.prepare(`
-      SELECT SUM(watchedSeconds) as total FROM watch_sessions WHERE startedAt > ?
-    `).get(dayStart) as { total: number | null }
+      SELECT SUM(watchedSeconds) as total FROM watch_sessions WHERE startedAt > ? AND ${PROF_FILTER}
+    `).get(dayStart, profileId) as { total: number | null }
 
     // Week's watch time
     const weekRow = this.db.raw.prepare(`
-      SELECT SUM(watchedSeconds) as total FROM watch_sessions WHERE startedAt > ?
-    `).get(weekStart) as { total: number | null }
+      SELECT SUM(watchedSeconds) as total FROM watch_sessions WHERE startedAt > ? AND ${PROF_FILTER}
+    `).get(weekStart, profileId) as { total: number | null }
 
     // Session stats
     const sessionStats = this.db.raw.prepare(`
@@ -188,13 +259,13 @@ export class WatchHistoryService {
         COUNT(*) as count,
         AVG(watchedSeconds) as avg,
         MAX(watchedSeconds) as max
-      FROM watch_sessions WHERE endedAt IS NOT NULL
-    `).get() as { count: number; avg: number | null; max: number | null }
+      FROM watch_sessions WHERE endedAt IS NOT NULL AND ${PROF_FILTER}
+    `).get(profileId) as { count: number; avg: number | null; max: number | null }
 
     // Unique videos
     const uniqueRow = this.db.raw.prepare(`
-      SELECT COUNT(DISTINCT mediaId) as count FROM watch_sessions
-    `).get() as { count: number }
+      SELECT COUNT(DISTINCT mediaId) as count FROM watch_sessions WHERE ${PROF_FILTER}
+    `).get(profileId) as { count: number }
 
     // Favorite time of day
     const timeRows = this.db.raw.prepare(`
@@ -207,10 +278,11 @@ export class WatchHistoryService {
         END as period,
         COUNT(*) as count
       FROM watch_sessions
+      WHERE ${PROF_FILTER}
       GROUP BY period
       ORDER BY count DESC
       LIMIT 1
-    `).get() as { period: string; count: number } | undefined
+    `).get(profileId) as { period: string; count: number } | undefined
 
     // Most watched tags
     const tagRows = this.db.raw.prepare(`
@@ -218,10 +290,11 @@ export class WatchHistoryService {
       FROM watch_sessions ws
       JOIN media_tags mt ON ws.mediaId = mt.mediaId
       JOIN tags t ON mt.tagId = t.id
+      WHERE COALESCE(ws.profile_id, 'default') = ?
       GROUP BY t.id
       ORDER BY count DESC
       LIMIT 10
-    `).all() as Array<{ tag: string; count: number }>
+    `).all(profileId) as Array<{ tag: string; count: number }>
 
     return {
       totalWatchTime: totalRow.total || 0,
@@ -320,6 +393,7 @@ export class WatchHistoryService {
    * Get "Continue Watching" list
    */
   getContinueWatching(limit = 10): Array<{ mediaId: string; resumePosition: number; completionPercent: number; lastWatched: number }> {
+    const profileId = getActiveProfileId(this.db)
     const rows = this.db.raw.prepare(`
       SELECT
         mediaId,
@@ -328,10 +402,11 @@ export class WatchHistoryService {
         MAX(startedAt) as lastWatched
       FROM watch_sessions
       WHERE completionPercent BETWEEN 5 AND 90
+        AND COALESCE(profile_id, 'default') = ?
       GROUP BY mediaId
       ORDER BY lastWatched DESC
       LIMIT ?
-    `).all(limit) as any[]
+    `).all(profileId, limit) as any[]
 
     return rows
   }
@@ -340,14 +415,16 @@ export class WatchHistoryService {
    * Get most viewed media
    */
   getMostViewed(limit = 12): Array<{ id: string; viewCount: number }> {
+    const profileId = getActiveProfileId(this.db)
     const rows = this.db.raw.prepare(`
       SELECT mediaId as id, COUNT(*) as viewCount
       FROM watch_sessions
       WHERE endedAt IS NOT NULL
+        AND COALESCE(profile_id, 'default') = ?
       GROUP BY mediaId
       ORDER BY viewCount DESC
       LIMIT ?
-    `).all(limit) as any[]
+    `).all(profileId, limit) as any[]
 
     return rows
   }
@@ -375,4 +452,16 @@ export function getWatchHistoryService(db: DB): WatchHistoryService {
     instance = new WatchHistoryService(db)
   }
   return instance
+}
+
+// #195 Phase 2 — resolve which profile is currently active so reads
+// scope to that profile's history. Defaults to 'default' both when
+// the service isn't reachable (early boot) and when the user hasn't
+// created any other profiles yet.
+function getActiveProfileId(db: DB): string {
+  try {
+    return getProfilesService(db).getActive() || 'default'
+  } catch {
+    return 'default'
+  }
 }

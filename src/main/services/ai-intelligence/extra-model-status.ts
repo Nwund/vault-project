@@ -31,6 +31,17 @@ export type ExtraModelKind =
   | 'sexual-audio-classifier'    // YAMNet/AST head
   | 'essentia-musicnn'           // BPM / key / mood
   | 'videochat-flash'            // long-video VLM (HF sidecar config)
+  // 100-ideas backlog wrappers (#121-#132 + #136)
+  | 'beats'                      // BEATs 527-class AudioSet (#121)
+  | 'panns-cnn14'                // PANNs music/speech/SFX segmenter (#122)
+  | 'wav2vec2-emotion'           // wav2vec2 emotion classifier (#123)
+  | 'internvideo2'               // InternVideo2-Stage2 1B distilled (#126)
+  | 'solider'                    // SOLIDER / TransReID-SSL body re-id (#127)
+  | 'adaface'                    // AdaFace / TopoFR face recognition (#128)
+  | 'neuralfp'                   // NeuralFP background-music fingerprint (#129)
+  | 'mert'                       // MERT-v1-330M music understanding (#130)
+  | 'longclip'                   // LongCLIP chapter labeling (#132)
+  | 'animatediff-lightning'      // AnimateDiff-Lightning animated thumbs (#136)
 
 interface ExtraModel {
   kind: ExtraModelKind
@@ -119,6 +130,80 @@ const MODEL_REGISTRY: ExtraModel[] = [
     description: 'Sidecar config pointer for the HF videochat-flash hierarchical VLM. Used for >5min videos where Tier 2 frame-sampling loses temporal coherence.',
     stage: 'video',
     companions: ['videochat-flash-config.json'],
+  },
+  // 100-ideas backlog wrappers
+  {
+    kind: 'beats',
+    filename: 'beats-iter3-plus.onnx',
+    label: 'BEATs (Microsoft, 527-class AudioSet) — #121',
+    description: 'High-accuracy audio tagging across 527 AudioSet classes. Detects moans / slaps / music / ambient — gates Tier 2 prompt style.',
+    stage: 'audio',
+  },
+  {
+    kind: 'panns-cnn14',
+    filename: 'panns-cnn14.onnx',
+    label: 'PANNs CNN14 (music/speech/SFX) — #122',
+    description: 'Frame-level music vs speech vs SFX probabilities. Powers "skip to dialogue / skip to action" + chapter detection.',
+    stage: 'audio',
+    companions: ['panns-cnn14-class-map.csv'],
+  },
+  {
+    kind: 'wav2vec2-emotion',
+    filename: 'wav2vec2-emotion.onnx',
+    label: 'Wav2Vec2-Large emotion classifier — #123',
+    description: 'Per-utterance valence / arousal / dominance. Mood-aware filters + affect dimensions for Today\'s Mix.',
+    stage: 'audio',
+  },
+  {
+    kind: 'internvideo2',
+    filename: 'internvideo2-stage2-1b-distilled.onnx',
+    label: 'InternVideo2-Stage2 1B distilled — #126',
+    description: 'SOTA video-text retrieval. Tier 1.5 between shot detection and Tier 2 — "video gist" embedding per scene to ground Tier 2 titles.',
+    stage: 'video',
+  },
+  {
+    kind: 'solider',
+    filename: 'solider-transreid-ssl.onnx',
+    label: 'SOLIDER / TransReID-SSL body re-id — #127',
+    description: 'Transformer-based body re-identification (+~7 mAP over current). Drop-in replacement for body_embeddings extractor.',
+    stage: 'vision',
+  },
+  {
+    kind: 'adaface',
+    filename: 'adaface-topofr.onnx',
+    label: 'AdaFace / TopoFR face recognition — #128',
+    description: 'Modern face-recognition head; handles low-quality crops 2-3% better than SFace on IJB-C. Re-embed face_clusters + merge.',
+    stage: 'vision',
+  },
+  {
+    kind: 'neuralfp',
+    filename: 'neuralfp.onnx',
+    label: 'NeuralFP background music ID — #129',
+    description: 'CNN-over-mel learned fingerprint for short-clip music ID against a local AcoustID mirror. New bgm_track field on media.',
+    stage: 'audio',
+    companions: ['acoustid-mirror.sqlite'],
+  },
+  {
+    kind: 'mert',
+    filename: 'mert-v1-330m.onnx',
+    label: 'MERT-v1-330M music understanding — #130',
+    description: 'Genre / instrument / mood embeddings from background music. Feeds Today\'s Mix profiles + music-style recommendations.',
+    stage: 'audio',
+  },
+  {
+    kind: 'longclip',
+    filename: 'longclip.onnx',
+    label: 'LongCLIP (chapter auto-labeling) — #132',
+    description: 'Long-form text-image alignment for YouTube-style chapter labeling. Required by #201 scene-aware hover preview.',
+    stage: 'vision',
+  },
+  {
+    kind: 'animatediff-lightning',
+    filename: 'animatediff-lightning-config.json',
+    label: 'AnimateDiff-Lightning animated thumbs — #136',
+    description: 'Sidecar config pointer for the 4-step LCM video diffusion. Generates 1.5s looping WebP previews per video on idle.',
+    stage: 'vision',
+    companions: ['animatediff-lightning-config.json'],
   },
 ]
 

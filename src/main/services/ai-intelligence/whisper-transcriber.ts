@@ -105,6 +105,17 @@ export interface WhisperTranscript {
   installDir: string
 }
 
+// #229 — Word-level VTT transcript. Returned by transcribeAudioToVtt().
+// `vtt` is the raw WebVTT text (header + cues with HH:MM:SS.mmm
+// timestamps); `segments` is a parsed convenience view.
+export interface WhisperVttTranscript {
+  text: string
+  vtt: string
+  segments: Array<{ startSec: number; endSec: number; text: string }>
+  durationMs: number
+  installDir: string
+}
+
 /**
  * Extract a 16kHz mono PCM WAV from the source video via FFmpeg, run
  * whisper.cpp on it, parse the plaintext output. Returns null if the
@@ -236,6 +247,113 @@ export async function transcribeAudio(
   } finally {
     try { fs.unlinkSync(tmpWav) } catch { /* ignore */ }
   }
+}
+
+// #229 — Word-level VTT transcript. Same audio prep + whisper.cpp
+// pipeline as transcribeAudio(), but emits WebVTT instead of stripping
+// timestamps. Caller gets the raw VTT text (suitable for
+// `<track kind="subtitles" src="data:text/vtt;...">`) plus a parsed
+// segment view for indexing/search.
+export async function transcribeAudioToVtt(
+  videoPath: string,
+  ffmpegPath: string,
+  options?: { maxAudioSec?: number; timeoutMs?: number; maxLenTokens?: number }
+): Promise<WhisperVttTranscript | null> {
+  const install = findWhisperInstall()
+  if (!install || !fs.existsSync(videoPath)) return null
+  const maxAudioSec = options?.maxAudioSec ?? 600  // longer default than text-only — VTT is for full transcripts
+  const timeoutMs = options?.timeoutMs ?? 15 * 60_000
+  const maxLenTokens = options?.maxLenTokens ?? 12
+  const start = Date.now()
+
+  const tmpWav = path.join(
+    app.getPath('temp'),
+    `vault-whisper-vtt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.wav`
+  )
+  const tmpVttBase = tmpWav.replace(/\.wav$/, '')
+  try {
+    // Extract 16kHz mono audio (no silenceremove this time — we want
+    // accurate timestamps relative to the source). Loudnorm still
+    // helps soft-spoken stretches stay above whisper's threshold.
+    const wavOk = await new Promise<boolean>((resolve) => {
+      const proc = spawn(ffmpegPath, [
+        '-y', '-hide_banner', '-loglevel', 'error',
+        '-i', videoPath,
+        '-t', String(maxAudioSec),
+        '-vn', '-ac', '1', '-ar', '16000',
+        '-af', 'loudnorm=I=-16:LRA=11:TP=-1.5',
+        '-f', 'wav', tmpWav,
+      ], { windowsHide: true })
+      proc.on('error', () => resolve(false))
+      proc.on('close', (code) => resolve(code === 0 && fs.existsSync(tmpWav)))
+    })
+    if (!wavOk) return null
+
+    // Run whisper-cli with -ovtt to write a .vtt file next to the wav.
+    // -ml N caps per-line tokens so subtitle cues stay readable.
+    const ok = await new Promise<boolean>((resolve) => {
+      const proc = spawn(install.binaryPath, [
+        '-m', install.modelPath,
+        '-f', tmpWav,
+        '--no-prints',
+        '-l', 'en',
+        '-ovtt',
+        '-of', tmpVttBase,
+        '-ml', String(maxLenTokens),
+        '--threads', String(Math.max(2, Math.floor((os.cpus()?.length ?? 4) / 2))),
+      ], { windowsHide: true })
+      let stderr = ''
+      proc.stderr?.on('data', (d) => { stderr += d.toString('utf8') })
+      const killTimer = setTimeout(() => {
+        try { proc.kill('SIGKILL') } catch { /* ignore */ }
+        resolve(false)
+      }, timeoutMs)
+      proc.on('error', () => { clearTimeout(killTimer); resolve(false) })
+      proc.on('close', (code) => {
+        clearTimeout(killTimer)
+        if (code !== 0) {
+          console.warn(`[Whisper VTT] Exit ${code}: ${stderr.slice(-300)}`)
+        }
+        resolve(code === 0)
+      })
+    })
+    if (!ok) return null
+
+    const vttPath = `${tmpVttBase}.vtt`
+    if (!fs.existsSync(vttPath)) return null
+    const vtt = fs.readFileSync(vttPath, 'utf8')
+    try { fs.unlinkSync(vttPath) } catch { /* ignore */ }
+
+    const segments = parseVttSegments(vtt)
+    const text = segments.map((s) => s.text).join(' ').trim()
+    return {
+      text,
+      vtt,
+      segments,
+      durationMs: Date.now() - start,
+      installDir: install.installDir,
+    }
+  } finally {
+    try { fs.unlinkSync(tmpWav) } catch { /* ignore */ }
+  }
+}
+
+function parseVttSegments(vtt: string): Array<{ startSec: number; endSec: number; text: string }> {
+  const out: Array<{ startSec: number; endSec: number; text: string }> = []
+  const blocks = vtt.split(/\r?\n\r?\n/)
+  const cueRe = /(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s+-->\s+(\d{2}):(\d{2}):(\d{2})\.(\d{3})/
+  for (const block of blocks) {
+    const m = cueRe.exec(block)
+    if (!m) continue
+    const startSec = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000
+    const endSec = Number(m[5]) * 3600 + Number(m[6]) * 60 + Number(m[7]) + Number(m[8]) / 1000
+    // Cue text = everything after the timestamp line.
+    const lines = block.split(/\r?\n/)
+    const tsIdx = lines.findIndex((l) => cueRe.test(l))
+    const text = lines.slice(tsIdx + 1).join(' ').trim()
+    if (text) out.push({ startSec, endSec, text })
+  }
+  return out
 }
 
 export interface TranscriptTagPrior {

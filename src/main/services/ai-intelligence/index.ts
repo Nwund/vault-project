@@ -1783,6 +1783,14 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
       return                              { label: 'Insomnia Hour',    vibe: 'compilations and longer scenes',             tags: ['compilation', 'milf', 'big breasts'], preferLong: true }
     })()
 
+    // #294 — load the "feature less" id set so we can exclude those
+    // from the candidate pool. Cheap query (indexed partial-WHERE).
+    const featureLessSet = new Set<string>()
+    try {
+      const rows = db.raw.prepare(`SELECT mediaId FROM media_stats WHERE featureLess = 1`).all() as Array<{ mediaId: string }>
+      for (const r of rows) featureLessSet.add(r.mediaId)
+    } catch { /* table column may not exist on very old DBs */ }
+
     // Query the library for any-of matches against the mood tags. Pull
     // a generous slice to allow type filtering + dedupe + shuffle.
     const seenIds = new Set<string>()
@@ -1792,6 +1800,7 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
         const result = db.listMedia({ q: '', type: 'video', tag, limit: 80, offset: 0 })
         for (const item of result.items) {
           if (seenIds.has(item.id)) continue
+          if (featureLessSet.has(item.id)) continue
           seenIds.add(item.id)
           candidates.push(item)
         }
@@ -3950,6 +3959,43 @@ RULES:
     return getAiImageDetectorStatus()
   })
 
+  // #121 BEATs — 527-class AudioSet audio tagger.
+  ipcMain.handle('ai:beats-status', async () => {
+    const { getBeatsStatus } = await import('./beats-tagger')
+    return getBeatsStatus()
+  })
+
+  // #122 PANNs CNN14 — music vs speech vs SFX segmenter.
+  ipcMain.handle('ai:panns-status', async () => {
+    const { getPannsStatus } = await import('./panns-segmenter')
+    return getPannsStatus()
+  })
+
+  // #128 AdaFace / TopoFR — drop-in face recognition upgrade over SFace.
+  ipcMain.handle('ai:adaface-status', async () => {
+    const { getAdaFaceStatus } = await import('./adaface-recognizer')
+    return getAdaFaceStatus()
+  })
+
+  // #123 / #124 / #125 / #126 / #127 / #129 / #130 / #132 — ONNX
+  // scaffold status getters. Each is a thin wrapper that returns
+  // installed/missing for the corresponding model file under
+  // <userData>/models/. Real inference wraps in when the user drops
+  // the .onnx file.
+  ipcMain.handle('ai:scaffold-statuses', async () => {
+    const m = await import('./onnx-scaffolds')
+    return {
+      wav2vec2Emotion: m.getWav2Vec2EmotionStatus(),
+      xClip: m.getXClipStatus(),
+      videoMaeV2: m.getVideoMaeV2Status(),
+      internVideo2: m.getInternVideo2Status(),
+      solider: m.getSoliderStatus(),
+      neuralFp: m.getNeuralFpStatus(),
+      mert: m.getMertStatus(),
+      longClip: m.getLongClipStatus(),
+    }
+  })
+
   // Registry of "optional ONNX you can drop in" models — TransNet,
   // VideoMAE, X-CLIP, TBT-Former, YAMNet, CLAP, Demucs, Essentia,
   // VideoChat-Flash. Returns one row per kind with installed flag +
@@ -5320,4 +5366,10 @@ export function getTier2VisionInstance(): Tier2VisionLLM | null {
 }
 export function getFrameExtractorInstance(): FrameExtractor | null {
   return frameExtractor
+}
+// #135 — Aesthetic-thumb-picker needs the CLIP image-embedding entry
+// point on the Tier 1 tagger. Returning the same shared instance keeps
+// us off a second ONNX session.
+export function getTier1Instance(): Tier1OnnxTagger | null {
+  return tier1Tagger
 }

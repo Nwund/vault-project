@@ -564,11 +564,823 @@ const api = {
       targetId: string
       kind: 'parent' | 'child' | 'alternate' | 'companion'
       notes?: string
-    }) => invoke<{ ok: boolean; id?: string; error?: string }>('relationships:create', args),
+    }) => invoke<{ ok: boolean; id?: string; error?: string }>('relationships:createSimple', args),
     relationshipsDelete: (id: string) =>
-      invoke<{ ok: boolean; error?: string }>('relationships:delete', id),
+      invoke<{ ok: boolean; error?: string }>('relationships:deleteSimple', id),
     relationshipsInfer: (mediaId: string) =>
       invoke<{ ok: boolean; candidates: any[]; error?: string }>('relationships:infer', mediaId),
+    // #208 — Background pHash indexer for Browse-tab thumbnails
+    browsePhashEnqueue: (urls: string[]) =>
+      invoke<{ queued: number; alreadyCached: number }>('browse:phash-enqueue', urls),
+    browsePhashLookup: (urls: string[]) =>
+      invoke<Record<string, string | null>>('browse:phash-lookup', urls),
+    browsePhashFindSimilar: (phashes: string[], maxDist?: number) =>
+      invoke<Record<string, { mediaId: string; distance: number } | null>>('browse:phash-find-similar', phashes, maxDist),
+    browsePhashStats: () =>
+      invoke<{ cachedUrls: number; queueDepth: number; inFlight: number }>('browse:phash-stats'),
+    browsePhashSetEnabled: (enabled: boolean) =>
+      invoke<{ ok: boolean; error?: string }>('browse:phash-set-enabled', enabled),
+    // #206 — DB-backed saved searches (pinned filter chips)
+    savedSearchesList: () =>
+      invoke<{ ok: boolean; items: Array<{ id: string; name: string; queryJson: string; position: number; createdAt: number; updatedAt: number }>; error?: string }>('savedSearches:list'),
+    savedSearchesCreate: (args: { name: string; queryJson: string }) =>
+      invoke<{ ok: boolean; item?: { id: string; name: string; queryJson: string; position: number; createdAt: number; updatedAt: number }; error?: string }>('savedSearches:create', args),
+    savedSearchesUpdate: (args: { id: string; name?: string; queryJson?: string }) =>
+      invoke<{ ok: boolean; error?: string }>('savedSearches:update', args),
+    savedSearchesDelete: (id: string) =>
+      invoke<{ ok: boolean; error?: string }>('savedSearches:delete', id),
+    savedSearchesReorder: (orderedIds: string[]) =>
+      invoke<{ ok: boolean; error?: string }>('savedSearches:reorder', orderedIds),
+    savedSearchesImportLegacy: (entries: Array<{ id: string; name: string; queryJson: string; pinnedAt: number }>) =>
+      invoke<{ ok: boolean; imported: number; error?: string }>('savedSearches:importLegacy', entries),
+    // #146 — Sprite-sheet hover scrub
+    mediaSpriteSheetPath: (args: { mediaId: string; preset?: 'scrub' | 'hover' }) =>
+      invoke<{ ok: boolean; path: string | null; cols?: number; rows?: number; error?: string }>('media:spriteSheetPath', args),
+    mediaEnsureSpriteSheet: (args: { mediaId: string; preset?: 'scrub' | 'hover' }) =>
+      invoke<{ ok: boolean; path?: string; alreadyExisted?: boolean; cols?: number; rows?: number; error?: string }>('media:ensureSpriteSheet', args),
+    // #101 — Saved Subscriptions with delta sync
+    subscriptionsList: () =>
+      invoke<{ ok: boolean; items: Array<{ id: string; name: string; source: string; query: string; intervalMinutes: number; lastRunAt: number | null; lastError: string | null; enabled: boolean; createdAt: number }>; error?: string }>('subscriptions:list'),
+    subscriptionsCreate: (args: { name: string; source: string; query: string; intervalMinutes?: number }) =>
+      invoke<{ ok: boolean; item?: any; error?: string }>('subscriptions:create', args),
+    subscriptionsUpdate: (id: string, patch: { name?: string; query?: string; intervalMinutes?: number; enabled?: boolean }) =>
+      invoke<{ ok: boolean; error?: string }>('subscriptions:update', id, patch),
+    subscriptionsDelete: (id: string) =>
+      invoke<{ ok: boolean; error?: string }>('subscriptions:delete', id),
+    subscriptionsRunNow: (id: string) =>
+      invoke<{ ok: boolean; added?: number; error?: string | null }>('subscriptions:runNow', id),
+    subscriptionsInbox: (opts?: { subscriptionId?: string; pendingOnly?: boolean; limit?: number }) =>
+      invoke<{ ok: boolean; items: Array<{ id: string; subscriptionId: string; postId: string; thumbUrl: string | null; fullUrl: string | null; sourcePageUrl: string | null; discoveredAt: number; dismissedAt: number | null; savedAt: number | null }>; error?: string }>('subscriptions:inbox', opts),
+    subscriptionsDismiss: (inboxId: string) =>
+      invoke<{ ok: boolean; error?: string }>('subscriptions:dismiss', inboxId),
+    subscriptionsMarkSaved: (inboxId: string) =>
+      invoke<{ ok: boolean; error?: string }>('subscriptions:markSaved', inboxId),
+    // #104 — Pool / set aggregation
+    booruPool: (args: { source: string; poolId: string | number }) =>
+      invoke<{ ok: boolean; posts: any[]; poolName?: string | null; error?: string }>('booru:pool', args),
+    // #106 — Stash-style local performers database
+    performersDbList: (opts?: { query?: string; limit?: number }) =>
+      invoke<{ ok: boolean; items: any[]; error?: string }>('performersDb:list', opts),
+    performersDbGet: (id: string) =>
+      invoke<{ ok: boolean; item: any; error?: string }>('performersDb:get', id),
+    performersDbCreate: (args: any) =>
+      invoke<{ ok: boolean; item?: any; error?: string }>('performersDb:create', args),
+    performersDbUpdate: (id: string, patch: any) =>
+      invoke<{ ok: boolean; error?: string }>('performersDb:update', id, patch),
+    performersDbDelete: (id: string) =>
+      invoke<{ ok: boolean; error?: string }>('performersDb:delete', id),
+    // #195 — Multi-user profiles (userProfiles:* avoids the existing
+    // settings-profiles namespace).
+    userProfilesList: () =>
+      invoke<{ ok: boolean; profiles: Array<{ id: string; name: string; color: string | null; avatarPath: string | null; createdAt: number; updatedAt: number }>; activeId: string; error?: string }>('userProfiles:list'),
+    userProfilesCreate: (args: { name: string; color?: string; avatarPath?: string }) =>
+      invoke<{ ok: boolean; profile?: any; error?: string }>('userProfiles:create', args),
+    userProfilesUpdate: (id: string, patch: { name?: string; color?: string | null; avatarPath?: string | null }) =>
+      invoke<{ ok: boolean; error?: string }>('userProfiles:update', id, patch),
+    userProfilesDelete: (id: string) =>
+      invoke<{ ok: boolean; error?: string }>('userProfiles:delete', id),
+    userProfilesSetActive: (id: string) =>
+      invoke<{ ok: boolean; error?: string }>('userProfiles:setActive', id),
+    // #131 / #136 / #162 / #180 — Python ML sidecar launcher
+    mlSidecarStatus: (id: 'videoLlama3' | 'animateDiff' | 'rife' | 'musicGen') =>
+      invoke<{ ok: boolean; installed?: boolean; running?: boolean; port?: number; startScript?: string | null; description?: string; error?: string }>('mlSidecar:status', id),
+    mlSidecarStart: (id: 'videoLlama3' | 'animateDiff' | 'rife' | 'musicGen') =>
+      invoke<{ ok: boolean; error?: string }>('mlSidecar:start', id),
+    mlSidecarPost: <T = unknown>(args: { id: 'videoLlama3' | 'animateDiff' | 'rife' | 'musicGen'; path: string; body: unknown; timeoutMs?: number }) =>
+      invoke<{ ok: boolean; data?: T; error?: string }>('mlSidecar:post', args),
+    // #175 — Real-time RVC voice conversion
+    rvcStatus: () =>
+      invoke<{ ok: boolean; installed: boolean; running: boolean; binPath: string; error?: string }>('rvc:status'),
+    rvcStart: () =>
+      invoke<{ ok: boolean; error?: string }>('rvc:start'),
+    rvcListModels: () =>
+      invoke<{ ok: boolean; models: string[]; error?: string }>('rvc:listModels'),
+    rvcConvert: (args: { srcPath: string; modelName: string; transpose?: number }) =>
+      invoke<{ ok: boolean; dstPath?: string; ms?: number; error?: string }>('rvc:convert', args),
+    // #173 — Demucs stem separation
+    demucsStatus: (args?: { binPath?: string }) =>
+      invoke<{ ok: boolean; installed: boolean; version: string | null; binPath: string; defaultModel: string; outputDir: string; error?: string }>('demucs:status', args),
+    demucsSeparate: (args: { srcPath: string; model?: string; twoStem?: boolean; binPath?: string }) =>
+      invoke<{ ok: boolean; outputDir: string; stemPaths: Record<string, string>; error?: string }>('demucs:separate', args),
+    // #191 — age-encrypted backups
+    ageStatus: () =>
+      invoke<{ ok: boolean; installed: boolean; version: string | null; binPath: string; error?: string }>('age:status'),
+    ageEncryptFile: (args: { srcPath: string; dstPath: string; recipients: string[] }) =>
+      invoke<{ ok: boolean; error?: string }>('age:encryptFile', args),
+    ageDecryptFile: (args: { srcPath: string; dstPath: string; identityPaths: string[] }) =>
+      invoke<{ ok: boolean; error?: string }>('age:decryptFile', args),
+    // #193 — Per-file envelope encryption
+    cryptoEnvelopeEncrypt: (args: { srcPath: string; dstPath: string; passphrase: string }) =>
+      invoke<{ ok: boolean; error?: string }>('crypto:envelope-encrypt', args),
+    cryptoEnvelopeDecrypt: (args: { srcPath: string; dstPath: string; passphrase: string }) =>
+      invoke<{ ok: boolean; error?: string }>('crypto:envelope-decrypt', args),
+    cryptoEnvelopePlaintextSize: (args: { srcPath: string; passphrase: string }) =>
+      invoke<{ ok: boolean; size: number; error?: string }>('crypto:envelope-plaintextSize', args),
+    cryptoEnvelopeIsEnvelope: (srcPath: string) =>
+      invoke<{ ok: boolean; isEnvelope: boolean; error?: string }>('crypto:envelope-isEnvelope', srcPath),
+    // #192 — SQLCipher migration helper (feasibility + dry-run)
+    sqlcipherFeasibility: () =>
+      invoke<{ ok: boolean; packageAvailable?: boolean; packageInstalled?: boolean; catalogPath?: string; catalogSizeBytes?: number; migrationSteps?: string[]; error?: string }>('sqlcipher:feasibility'),
+    sqlcipherDryRun: (passphrase: string) =>
+      invoke<{ ok: boolean; encryptedCopyPath?: string; copySizeBytes?: number; durationMs?: number; error?: string }>('sqlcipher:dryRun', passphrase),
+    // Generic file / folder pickers
+    dialogOpenFile: (opts?: { title?: string; filters?: Array<{ name: string; extensions: string[] }> }) =>
+      invoke<string | null>('dialog:openFile', opts),
+    dialogOpenFolder: (opts?: { title?: string }) =>
+      invoke<string | null>('dialog:openFolder', opts),
+    dialogSaveFile: (opts?: { title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }) =>
+      invoke<string | null>('dialog:saveFile', opts),
+    // #222/223/224 — StevenBlack hosts blocklist (porn-only extension).
+    hostsBlocklistStatus: () =>
+      invoke<{ ok: boolean; cached: boolean; meta: { url: string; fetchedAt: string; domainCount: number; bytes: number } | null; cachePath: string; panicModeActive: boolean; error?: string }>('hostsBlocklist:status'),
+    hostsBlocklistRefresh: () =>
+      invoke<{ ok: boolean; meta?: { url: string; fetchedAt: string; domainCount: number; bytes: number }; error?: string }>('hostsBlocklist:refresh'),
+    hostsBlocklistDiscover: (args?: { limit?: number }) =>
+      invoke<{ ok: boolean; candidates?: Array<{ domain: string; category: 'tube' | 'cam' | 'cdn' | 'gallery' | 'other' }>; error?: string }>('hostsBlocklist:discover', args ?? {}),
+    hostsBlocklistPanicOn: () =>
+      invoke<{ ok: boolean; error?: string }>('hostsBlocklist:panicOn'),
+    hostsBlocklistPanicOff: () =>
+      invoke<{ ok: boolean; error?: string }>('hostsBlocklist:panicOff'),
+    hostsBlocklistMatchUrl: (url: string) =>
+      invoke<{ ok: boolean; match: { matched: string; platform: string } | null; error?: string }>('hostsBlocklist:matchUrl', url),
+    // #379 — stealth window-title swap
+    stealthStatus: () =>
+      invoke<{ ok: boolean; active: boolean; profile: string | null; profiles: string[]; error?: string }>('stealth:status'),
+    stealthEnable: (profile: string) =>
+      invoke<{ ok: boolean; error?: string }>('stealth:enable', profile),
+    stealthDisable: () =>
+      invoke<{ ok: boolean; error?: string }>('stealth:disable'),
+    // #244 — moment-capture: renderer encodes WebP, main writes to userData/moments/
+    moments: {
+      save: (args: { filename: string; data: number[] }) =>
+        invoke<{ ok: boolean; path?: string; error?: string }>('moments:save', args),
+    },
+    // #294 — Apple Photos "Feature less" entity suppression
+    featureLess: {
+      set: (args: { mediaId: string; value: boolean }) =>
+        invoke<{ ok: boolean; error?: string }>('media:setFeatureLess', args),
+      get: (mediaId: string) =>
+        invoke<{ ok: boolean; value?: boolean; error?: string }>('media:getFeatureLess', mediaId),
+      list: () =>
+        invoke<{ ok: boolean; mediaIds?: string[]; error?: string }>('media:listFeatureLess'),
+    },
+    // #348 — edging scoreboard
+    edging: {
+      start: () => invoke<{ ok: boolean; session?: any; error?: string }>('edging:start'),
+      end: (args: { outcome?: 'climax' | 'denied' | 'ruined'; climaxed?: boolean; notes?: string | null }) =>
+        invoke<{ ok: boolean; session?: any; error?: string }>('edging:end', args),
+      stats: () => invoke<{
+        ok: boolean
+        stats?: { totalSessions: number; totalDeniedSessions: number; totalClimaxSessions: number; currentDenialStreak: number; longestDenialStreak: number; totalXp: number; longestSessionSec: number; averageSessionSec: number }
+        error?: string
+      }>('edging:stats'),
+      recent: (limit?: number) => invoke<{ ok: boolean; sessions?: any[]; error?: string }>('edging:recent', limit),
+    },
+    // #358 G-134 — tease & denial task wheel
+    taskWheel: {
+      pool: () => invoke<{
+        ok: boolean
+        pool?: Array<{ id: string; text: string; category: 'edge' | 'pause' | 'reverse' | 'position' | 'sensation' | 'denial'; weight: number; durationSec?: number; intensity?: 1 | 2 | 3 | 4 | 5 }>
+        error?: string
+      }>('taskWheel:pool'),
+      pick: (args?: { maxIntensity?: 1 | 2 | 3 | 4 | 5; excludeIds?: string[] }) => invoke<{
+        ok: boolean
+        task?: { id: string; text: string; category: string; weight: number; durationSec?: number; intensity?: number } | null
+        error?: string
+      }>('taskWheel:pick', args),
+      setPool: (pool: any[]) => invoke<{ ok: boolean; error?: string }>('taskWheel:setPool', pool),
+      setDisabledCategories: (cats: string[]) => invoke<{ ok: boolean; error?: string }>('taskWheel:setDisabledCategories', cats),
+      resetDefaults: () => invoke<{ ok: boolean; error?: string }>('taskWheel:resetDefaults'),
+    },
+    // #376 H-152 — orgasm budget & relapse ledger
+    budget: {
+      status: () => invoke<{
+        ok: boolean
+        status?: {
+          budget: number
+          monthStart: number
+          climaxesThisMonth: number
+          ruinedThisMonth: number
+          remaining: number
+          inRelapse: boolean
+          relapseCount: number
+          budgetHealthPct: number
+        }
+        error?: string
+      }>('budget:status'),
+      history: (monthsBack?: number) => invoke<{
+        ok: boolean
+        history?: Array<{ monthStart: number; monthLabel: string; climaxes: number; ruined: number; relapses: number }>
+        error?: string
+      }>('budget:history', monthsBack),
+      setLimit: (perMonth: number) => invoke<{ ok: boolean; error?: string }>('budget:setLimit', perMonth),
+    },
+    // #363 — per-media denial cooldown
+    denial: {
+      set: (args: { mediaId: string; durationMin: number }) => invoke<{ ok: boolean; until?: number; error?: string }>('denial:set', args),
+      clear: (mediaId: string) => invoke<{ ok: boolean; error?: string }>('denial:clear', mediaId),
+      status: (mediaId: string) => invoke<{ ok: boolean; status?: { active: boolean; until: number | null; remainingMs: number }; error?: string }>('denial:status', mediaId),
+    },
+    // #347 — post-nut clarity lockout
+    lockout: {
+      status: () => invoke<{ ok: boolean; state?: { enabled: boolean; durationMin: number; lockedUntilTs: number | null; remainingMs: number; active: boolean }; error?: string }>('lockout:status'),
+      trigger: (args?: { durationMin?: number }) => invoke<{ ok: boolean; state?: any; error?: string }>('lockout:trigger', args ?? {}),
+      cancel: () => invoke<{ ok: boolean; state?: any; error?: string }>('lockout:cancel'),
+      setEnabled: (enabled: boolean) => invoke<{ ok: boolean; state?: any; error?: string }>('lockout:setEnabled', enabled),
+      setDuration: (durationMin: number) => invoke<{ ok: boolean; state?: any; error?: string }>('lockout:setDuration', durationMin),
+    },
+    // #G-129 — JOI script player (XTTS-driven domme line sequencer)
+    joi: {
+      parse: (text: string) =>
+        invoke<{ ok: boolean; cues?: Array<{ kind: 'speak' | 'pause'; text?: string; voice?: string; tempo?: number; sec?: number }>; error?: string }>('joi:parse', text),
+      render: (args: { text?: string; cues?: any[]; voice?: string }) =>
+        invoke<{
+          ok: boolean
+          totalDurationMs?: number
+          voiceUsed?: string
+          entries?: Array<{
+            startMs: number
+            endMs: number
+            cue: { kind: 'speak' | 'pause'; text?: string; voice?: string; tempo?: number; sec?: number }
+            audioBase64?: string
+            audioMime?: string
+            durationMs?: number
+          }>
+          error?: string
+        }>('joi:render', args),
+    },
+    // Generic ML sidecar — Florence-2 / DINOv3-L / MetaCLIP-H / SigLIP2-age / Wav2Vec2-emotion (and growing)
+    vaultMl: {
+      health: () => invoke<{ ok: boolean; health: { status: string; device: string; dtype: string; models_dir: string; models_dir_exists: boolean; loaded: string[]; available_loaders: string[] } | null; error?: string }>('vaultMl:health'),
+      start: () => invoke<{ ok: boolean; error?: string }>('vaultMl:start'),
+      stop: () => invoke<{ ok: boolean; error?: string }>('vaultMl:stop'),
+      loadModel: (modelId: string) => invoke<{ ok: boolean; error?: string }>('vaultMl:loadModel', modelId),
+      unloadModel: (modelId: string) => invoke<{ ok: boolean; error?: string }>('vaultMl:unloadModel', modelId),
+      // Florence-2: caption / OD / OCR / grounding
+      florence: (args: { imagePath?: string; imageBase64?: string; task?: string; text_input?: string; maxNewTokens?: number }) =>
+        invoke<{ ok: boolean; task?: string; raw?: string; parsed?: any; error?: string }>('vaultMl:florence', args),
+      embedImage: (args: { imagePath?: string; imageBase64?: string; modelId?: 'dinov3-vit-l' | 'metaclip-h14' }) =>
+        invoke<{ ok: boolean; model_id?: string; embedding?: number[]; dim?: number; error?: string }>('vaultMl:embedImage', args),
+      classifyImage: (args: { imagePath?: string; imageBase64?: string; modelId?: 'siglip2-age'; topK?: number }) =>
+        invoke<{ ok: boolean; model_id?: string; predictions?: Array<{ label: string; score: number }>; error?: string }>('vaultMl:classifyImage', args),
+      classifyAudioEmotion: (args: { audioPath?: string; audioBase64?: string }) =>
+        invoke<{ ok: boolean; model_id?: string; scores?: number[]; labels?: string[]; error?: string }>('vaultMl:classifyAudioEmotion', args),
+      sam2Segment: (args: { imagePath?: string; imageBase64?: string; points?: Array<[number, number]>; pointLabels?: number[]; box?: [number, number, number, number]; multimaskOutput?: boolean }) =>
+        invoke<{ ok: boolean; masks?: Array<{ score: number; shape: number[]; mask_base64: string }>; error?: string }>('vaultMl:sam2Segment', args),
+      demucsSeparate: (args: { audioPath?: string; audioBase64?: string; dstDir: string }) =>
+        invoke<{ ok: boolean; stems?: Record<string, string>; sample_rate?: number; error?: string }>('vaultMl:demucsSeparate', args),
+      msclapEmbed: (args: { kind: 'audio' | 'text'; audioPath?: string; text?: string[] }) =>
+        invoke<{ ok: boolean; embeddings?: number[][]; shape?: number[]; error?: string }>('vaultMl:msclapEmbed', args),
+      codeformerRestore: (args: { imagePath?: string; imageBase64?: string; dstPath: string; fidelity?: number }) =>
+        invoke<{ ok: boolean; dst_path?: string; faces_restored?: number; error?: string }>('vaultMl:codeformerRestore', args),
+      melRoformerSeparate: (args: { audioPath?: string; audioBase64?: string; dstPath: string }) =>
+        invoke<{ ok: boolean; dst_path?: string; sample_rate?: number; error?: string }>('vaultMl:melRoformerSeparate', args),
+      depthAnythingV2: (args: { imagePath?: string; imageBase64?: string }) =>
+        invoke<{ ok: boolean; width?: number; height?: number; min_depth?: number; max_depth?: number; depth_png_base64?: string; error?: string }>('vaultMl:depthAnythingV2', args),
+      blipCaption: (args: { imagePath?: string; imageBase64?: string; conditionalPrompt?: string; maxNewTokens?: number }) =>
+        invoke<{ ok: boolean; caption?: string; error?: string }>('vaultMl:blipCaption', args),
+      // #H-148 MusicGen — generate kink-mood audio beds from text prompts
+      musicgenGenerate: (args: { prompts: string[]; durationSec?: number; dstDir: string }) =>
+        invoke<{ ok: boolean; files?: string[]; sample_rate?: number; error?: string }>('vaultMl:musicgenGenerate', args),
+    },
+    // JoyTag — pure ONNX adult tagger (no sidecar needed)
+    joytag: {
+      status: () => invoke<{ ok: boolean; available?: boolean; loaded?: boolean; modelPath?: string; tagsPath?: string; tagCount?: number; error?: string }>('joytag:status'),
+      tagImage: (args: { imagePath: string; threshold?: number; topK?: number }) =>
+        invoke<{ ok: boolean; tags?: Array<{ tag: string; score: number }>; error?: string }>('joytag:tagImage', args),
+    },
+    // #B-32 — Real-ESRGAN x4 upscaler
+    upscaler: {
+      status: () => invoke<{ ok: boolean; available?: boolean; loaded?: boolean; modelPath?: string; error?: string }>('upscaler:status'),
+      upscaleImage: (args: { srcPath: string; dstPath?: string; tileSize?: number; format?: 'png' | 'jpg' | 'webp'; quality?: number }) =>
+        invoke<{ ok: boolean; dstPath?: string; error?: string }>('upscaler:upscaleImage', args),
+    },
+    // #324 — auto FFmpeg quality auditor
+    quality: {
+      audit: (args: { videoPath: string; deep?: boolean; sizeBytes?: number | null }) =>
+        invoke<{
+          ok: boolean
+          report?: {
+            ok: boolean
+            durationSec: number
+            width: number | null
+            height: number | null
+            videoCodec: string | null
+            audioCodec: string | null
+            videoBitrateKbps: number | null
+            audioBitrateKbps: number | null
+            audioSampleRate: number | null
+            audioChannels: number | null
+            container: string | null
+            findings: Array<{ code: string; severity: 'info' | 'warn' | 'error'; message: string }>
+          }
+          error?: string
+        }>('quality:audit', args),
+    },
+    // #308 E-84 — Beets-style smart-collection query language
+    smartQuery: {
+      compile: (query: string) =>
+        invoke<{ ok: boolean; sql?: string; params?: any[]; joinedClauses?: string[]; error?: string }>('smartQuery:compile', query),
+      run: (args: { query: string; limit?: number; offset?: number; sort?: 'newest' | 'oldest' | 'rating' | 'views' | 'random' | 'longest' | 'shortest' }) =>
+        invoke<{ ok: boolean; items?: any[]; total?: number; compiled?: { sql: string; paramCount: number }; error?: string }>('smartQuery:run', args),
+    },
+    // #317 E-93 — Hydrus/Danbooru tag implication import
+    tagImplications: {
+      importCsv: (csvText: string) =>
+        invoke<{ ok: boolean; inserted?: number; skipped?: number; errors?: string[]; error?: string }>('tagImplications:importCsv', csvText),
+      importCsvFile: (filePath: string) =>
+        invoke<{ ok: boolean; inserted?: number; skipped?: number; errors?: string[]; error?: string }>('tagImplications:importCsvFile', filePath),
+    },
+    // #321 E-97 — Folder Action preset library
+    folderActions: {
+      list: () => invoke<{
+        ok: boolean
+        presets?: Array<{ id: string; name: string; folderPath: string; actions: Array<{ kind: string; args?: any }>; enabled: boolean; createdAt: number }>
+        error?: string
+      }>('folderActions:list'),
+      save: (args: { id?: string; name: string; folderPath: string; actions: Array<{ kind: string; args?: any }>; enabled?: boolean }) =>
+        invoke<{ ok: boolean; id?: string; error?: string }>('folderActions:save', args),
+      delete: (id: string) => invoke<{ ok: boolean; error?: string }>('folderActions:delete', id),
+      setEnabled: (args: { id: string; enabled: boolean }) =>
+        invoke<{ ok: boolean; error?: string }>('folderActions:setEnabled', args),
+    },
+    // #349 G-125 — tease auto-cut compiler (NudeNet-driven peek-a-boo)
+    teaseCut: {
+      events: (args: { mediaId: string; threshold?: number }) =>
+        invoke<{ ok: boolean; events?: Array<{ startSec: number; score: number }>; error?: string }>('teaseCut:events', args),
+      compile: (args: { mediaPath: string; events: any[]; dstPath: string; threshold?: number; leadInSec?: number; cutawaySec?: number; maxClips?: number; videoCodec?: string; width?: number; height?: number; fps?: number }) =>
+        invoke<{ ok: boolean; clipsUsed?: number; durationSec?: number; events?: any[]; error?: string }>('teaseCut:compile', args),
+    },
+    // #351 G-127 — Funscript editor (multi-axis OSR2/SR6)
+    funscript: {
+      load: (args: { mediaPath: string; mediaId: string }) =>
+        invoke<{ ok: boolean; script?: any; error?: string }>('funscript:load', args),
+      save: (args: { mediaPath: string; mediaId: string; script: any }) =>
+        invoke<{ ok: boolean; savedTo?: string; error?: string }>('funscript:save', args),
+      fromBeatmap: (args: { beats: any[]; axis?: string; baseDepth?: number }) =>
+        invoke<{ ok: boolean; script?: any; error?: string }>('funscript:fromBeatmap', args),
+      scale: (args: { script: any; factor: number; center?: number }) =>
+        invoke<{ ok: boolean; script?: any; error?: string }>('funscript:scale', args),
+      shift: (args: { script: any; offsetMs: number }) =>
+        invoke<{ ok: boolean; script?: any; error?: string }>('funscript:shift', args),
+    },
+    // #274 C-50 — ntfy.sh push gateway
+    ntfy: {
+      config: () => invoke<{
+        ok: boolean
+        config?: { server: string; topic: string; enabled: boolean; allowedEvents: string[]; priority?: number; authToken?: string }
+        error?: string
+      }>('ntfy:config'),
+      save: (patch: { server?: string; topic?: string; enabled?: boolean; allowedEvents?: string[]; priority?: number; authToken?: string }) =>
+        invoke<{ ok: boolean; config?: any; error?: string }>('ntfy:save', patch),
+      push: (args: { event: string; title: string; message: string; tags?: string[]; clickUrl?: string; attachUrl?: string; priority?: number }) =>
+        invoke<{ ok: boolean; status?: number; error?: string }>('ntfy:push', args),
+      notifyEvent: (args: { event: string; payload?: any }) =>
+        invoke<{ ok: boolean; error?: string }>('ntfy:notifyEvent', args),
+    },
+    // #234 A-10 — HLS transcode-on-demand for remote streaming
+    hls: {
+      start: (args: { mediaPath: string; mediaId: string; quality?: '480p' | '720p' | '1080p' }) =>
+        invoke<{ ok: boolean; ready?: boolean; playlistPath?: string; outDir?: string; startedAt?: number; error?: string | null }>('hls:start', args),
+      touch: (args: { mediaId: string; quality: '480p' | '720p' | '1080p' }) =>
+        invoke<{ ok: boolean; error?: string }>('hls:touch', args),
+      stop: (args: { mediaId: string; quality: '480p' | '720p' | '1080p' }) =>
+        invoke<{ ok: boolean; error?: string }>('hls:stop', args),
+      list: () => invoke<{ ok: boolean; sessions?: Array<{ mediaId: string; quality: string; ready: boolean; ageMs: number; outDir: string }>; error?: string }>('hls:list'),
+    },
+    // #230 A-06 — CLIP visual-similarity "more like this"
+    clipSimilarity: {
+      findByMedia: (args: { mediaId: string; limit?: number; minSimilarity?: number; onlyActiveTriage?: boolean }) =>
+        invoke<{
+          ok: boolean
+          items?: Array<{ mediaId: string; filename: string; thumbPath: string | null; durationSec: number | null; similarity: number }>
+          error?: string
+        }>('clipSimilarity:findByMedia', args),
+      findByMultiple: (args: { mediaIds: string[]; limit?: number; minSimilarity?: number }) =>
+        invoke<{
+          ok: boolean
+          items?: Array<{ mediaId: string; filename: string; thumbPath: string | null; durationSec: number | null; similarity: number }>
+          error?: string
+        }>('clipSimilarity:findByMultiple', args),
+    },
+    // #365 H-141 — sissy-training caption overlay pool
+    captionPool: {
+      list: () => invoke<{
+        ok: boolean
+        pools?: Record<string, string[]>
+        intervalSec?: number
+        fontFamily?: string
+        activeCategories?: string[]
+        error?: string
+      }>('captionPool:list'),
+      save: (args: { pools?: Record<string, string[]>; intervalSec?: number; fontFamily?: string; activeCategories?: string[] }) =>
+        invoke<{ ok: boolean; error?: string }>('captionPool:save', args),
+    },
+    // #281 C-57 — WebAuthn / passkey vault unlock
+    webauthn: {
+      registerStart: (deviceLabel: string) => invoke<{ ok: boolean; options?: any; deviceLabel?: string; error?: string }>('webauthn:registerStart', deviceLabel),
+      registerFinish: (args: { response: any; deviceLabel: string }) =>
+        invoke<{ ok: boolean; credentialId?: string; error?: string }>('webauthn:registerFinish', args),
+      authStart: () => invoke<{ ok: boolean; options?: any; error?: string }>('webauthn:authStart'),
+      authFinish: (args: { response: any }) =>
+        invoke<{ ok: boolean; credentialId?: string; error?: string }>('webauthn:authFinish', args),
+      listCredentials: () => invoke<{ ok: boolean; credentials?: Array<{ id: string; deviceLabel: string; registeredAt: number; counter: number }>; error?: string }>('webauthn:listCredentials'),
+      removeCredential: (id: string) => invoke<{ ok: boolean; error?: string }>('webauthn:removeCredential', id),
+    },
+    // #284 C-60 — Shamir Secret Sharing for vault key recovery
+    shamir: {
+      split: (args: { secret: string; shares: number; threshold: number }) =>
+        invoke<{
+          ok: boolean
+          threshold?: number; totalShares?: number
+          shares?: Array<{ index: number; base64: string; base32: string }>
+          error?: string
+        }>('shamir:split', args),
+      combine: (args: { shareStrings: string[]; encoding?: 'base64' | 'base32' }) =>
+        invoke<{ ok: boolean; secret?: string; error?: string }>('shamir:combine', args),
+    },
+    // #367 H-143 — audio-erotica importer (LRC / bracketed / VTT)
+    audioErotica: {
+      importFile: (filePath: string) => invoke<{
+        ok: boolean; format?: 'lrc' | 'vtt' | 'bracketed' | 'unknown'
+        title?: string; performer?: string; durationSec?: number
+        cues: Array<{ timeSec: number; text: string }>
+        error?: string
+      }>('audioErotica:importFile', filePath),
+      importText: (text: string) => invoke<{
+        ok: boolean; format?: 'lrc' | 'vtt' | 'bracketed' | 'unknown'
+        title?: string; performer?: string; durationSec?: number
+        cues: Array<{ timeSec: number; text: string }>
+        error?: string
+      }>('audioErotica:importText', text),
+      toJoiScript: (args: { imp: any; voice?: string }) =>
+        invoke<{ ok: boolean; script?: string; error?: string }>('audioErotica:toJoiScript', args),
+    },
+    // #384 H-160 — coomer/kemono creator archive importer
+    coomerArchive: {
+      run: (args: { service: 'onlyfans' | 'fansly' | 'candfans' | 'patreon' | 'fanbox' | 'gumroad' | 'subscribestar'; userId: string; maxPosts?: number; mediaExtensions?: string[] }) =>
+        invoke<{
+          ok: boolean
+          result?: { postsFetched: number; attachmentsQueued: number; pageOffset: number; done: boolean; error?: string }
+          error?: string
+        }>('coomerArchive:run', args),
+    },
+    // #316 E-92 — sprite-sheet chapter editor backend
+    spriteSheet: {
+      generate: (args: { srcPath: string; durationSec: number; cells?: number; cols?: number; thumbWidth?: number; thumbHeight?: number; dstPath?: string }) =>
+        invoke<{
+          ok: boolean
+          spritePath?: string; cols?: number; rows?: number; thumbWidth?: number; thumbHeight?: number
+          cells?: Array<{ idx: number; timeSec: number; col: number; row: number }>
+          error?: string
+        }>('spriteSheet:generate', args),
+      picksToChapters: (args: { picks: Array<{ cellIdx: number; title: string; timeSec: number }>; durationSec: number }) =>
+        invoke<{ ok: boolean; chapters?: Array<{ startSec: number; endSec: number; title: string }>; error?: string }>('spriteSheet:picksToChapters', args),
+    },
+    // #307 E-83 — yt-dlp postprocessor profile editor
+    ytdlpProfiles: {
+      list: () => invoke<{ ok: boolean; profiles?: Array<{ id: string; name: string; argsArray: string[]; isBuiltin?: boolean }>; error?: string }>('ytdlpProfiles:list'),
+      save: (args: { id?: string; name: string; argsArray: string[]; isDefault?: boolean }) =>
+        invoke<{ ok: boolean; id?: string; error?: string }>('ytdlpProfiles:save', args),
+      delete: (id: string) => invoke<{ ok: boolean; error?: string }>('ytdlpProfiles:delete', id),
+      setDefault: (id: string) => invoke<{ ok: boolean; error?: string }>('ytdlpProfiles:setDefault', id),
+    },
+    // #285 D-61 — Hydrus duplicate-pair triage queue
+    dupTriage: {
+      nextPair: () => invoke<{
+        ok: boolean
+        pair?: { a: any; b: any } | null
+        totalPending?: number
+        error?: string
+      }>('dupTriage:nextPair'),
+      resolve: (args: { aId: string; bId: string; action: 'keep_a' | 'keep_b' | 'keep_both' | 'delete_both' }) =>
+        invoke<{ ok: boolean; toDelete?: string | null; error?: string }>('dupTriage:resolve', args),
+    },
+    // #378 H-154 — hentai/anime/furry sub-library
+    subLibrary: {
+      hentai: (args?: { facet?: 'anime' | 'hentai' | 'furry' | 'cartoon' | 'all'; limit?: number; offset?: number }) =>
+        invoke<{
+          ok: boolean
+          items?: Array<{ id: string; filename: string; path: string; thumbPath: string | null; type: string; durationSec: number | null; addedAt: number }>
+          total?: number; facet?: string; error?: string
+        }>('subLibrary:hentai', args),
+    },
+    // #369 H-145 — body-part heatmap indexer
+    heatmap: {
+      build: (args: { mediaId: string; durationSec: number; bucketSec?: number }) =>
+        invoke<{
+          ok: boolean
+          heatmap?: {
+            durationSec: number; bucketSec: number
+            buckets: Array<{ timeSec: number; classes: Record<string, number>; dominantClass: string | null; dominantScore: number }>
+            classTotals: Record<string, number>
+          }
+          error?: string
+        }>('heatmap:build', args),
+      classJumps: (args: { mediaId: string; targetClass: string; threshold?: number }) =>
+        invoke<{ ok: boolean; timestamps?: number[]; error?: string }>('heatmap:classJumps', args),
+    },
+    // #383 + #370 — LLM narrative engine (text-adventure + CYOA)
+    narrative: {
+      turn: (ctx: {
+        mode: 'text-adventure' | 'cyoa'
+        seed: string
+        history: Array<{ turn: any; chosenChoice: string }>
+        videoFilename?: string
+        videoTags?: string[]
+        persona?: 'goonbud' | 'mistress' | 'stepsister' | 'boss' | 'cheerleader'
+      }) => invoke<{
+        ok: boolean
+        turn?: { narrative: string; choices: Array<{ id: string; label: string }>; ended: boolean; endingType?: string }
+        error?: string
+      }>('narrative:turn', ctx),
+    },
+    // #304 D-80 — Notion-style import templates
+    importTemplates: {
+      list: () => invoke<{ ok: boolean; templates?: any[]; error?: string }>('importTemplates:list'),
+      save: (args: { id?: string; name: string; filenamePattern: string; tags?: string[]; category?: string; rating?: number; studio?: string; triageStatus?: string; priority?: number; enabled?: boolean }) =>
+        invoke<{ ok: boolean; id?: string; error?: string }>('importTemplates:save', args),
+      delete: (id: string) => invoke<{ ok: boolean; error?: string }>('importTemplates:delete', id),
+    },
+    // #319 E-95 — action recorder / macro system
+    macro: {
+      list: () => invoke<{ ok: boolean; macros?: any[]; error?: string }>('macro:list'),
+      save: (args: { id?: string; name: string; steps: Array<{ kind: 'ipc' | 'wait'; channel?: string; args?: any; ms?: number }>; hotkey?: string }) =>
+        invoke<{ ok: boolean; id?: string; error?: string }>('macro:save', args),
+      delete: (id: string) => invoke<{ ok: boolean; error?: string }>('macro:delete', id),
+      run: (id: string) => invoke<{ ok: boolean; stepsRan?: number; error?: string }>('macro:run', id),
+    },
+    // #310 user-script sandbox + #311 scraper recipes
+    userScript: {
+      run: (args: { source: string; timeoutMs?: number; maxLogLines?: number; args?: any }) =>
+        invoke<{ ok: boolean; result?: any; logs: Array<{ level: 'log' | 'warn' | 'error'; message: string }>; durationMs: number; error?: string }>('userScript:run', args),
+    },
+    scraperRecipes: {
+      list: () => invoke<{ ok: boolean; recipes?: Array<{ id: string; name: string; source: string; enabled: boolean }>; error?: string }>('scraperRecipes:list'),
+      save: (args: { id?: string; name: string; source: string; enabled?: boolean }) =>
+        invoke<{ ok: boolean; id?: string; error?: string }>('scraperRecipes:save', args),
+      delete: (id: string) => invoke<{ ok: boolean; error?: string }>('scraperRecipes:delete', id),
+      run: (args: { id: string; args?: any }) =>
+        invoke<{ ok: boolean; result?: any; logs: any[]; durationMs: number; error?: string }>('scraperRecipes:run', args),
+    },
+    // #312 E-88 — RSS importer
+    rss: {
+      list: () => invoke<{ ok: boolean; feeds?: Array<{ id: string; url: string; label: string; intervalMin: number; urlFilter?: string; lastPolledAt?: number; lastError?: string | null; enabled: boolean }>; error?: string }>('rss:list'),
+      add: (args: { url: string; label?: string; intervalMin?: number; urlFilter?: string }) =>
+        invoke<{ ok: boolean; feed?: any; error?: string }>('rss:add', args),
+      remove: (id: string) => invoke<{ ok: boolean; error?: string }>('rss:remove', id),
+      setEnabled: (args: { id: string; enabled: boolean }) => invoke<{ ok: boolean; error?: string }>('rss:setEnabled', args),
+      pollNow: () => invoke<{ ok: boolean; results?: Array<{ feedId: string; feedLabel: string; newItems: number; skippedSeen: number; skippedFiltered: number; errors: string[] }>; error?: string }>('rss:pollNow'),
+    },
+    // #318 E-94 — cron-syntax job scheduler
+    cron: {
+      validate: (expression: string) => invoke<{ ok: boolean; nextRunAt?: number; error?: string }>('cron:validate', expression),
+      list: () => invoke<{ ok: boolean; jobs?: any[]; error?: string }>('cron:list'),
+      add: (args: { name: string; expression: string; action: any; enabled?: boolean }) =>
+        invoke<{ ok: boolean; job?: any; error?: string }>('cron:add', args),
+      update: (args: { id: string; patch: any }) => invoke<{ ok: boolean; job?: any; error?: string }>('cron:update', args),
+      remove: (id: string) => invoke<{ ok: boolean; error?: string }>('cron:remove', id),
+    },
+    // #292 D-68 — Strava-style yearly goal ring
+    yearlyGoal: {
+      get: () => invoke<{
+        ok: boolean
+        goal?: { metric: 'hours_watched' | 'items_rated' | 'climaxes' | 'denials'; target: number }
+        progress?: number
+        dayOfYear?: number
+        pct?: number
+        onPaceProgress?: number
+        aheadOfPace?: boolean
+        error?: string
+      }>('yearlyGoal:get'),
+      set: (args: { metric: 'hours_watched' | 'items_rated' | 'climaxes' | 'denials'; target: number }) =>
+        invoke<{ ok: boolean; error?: string }>('yearlyGoal:set', args),
+    },
+    // #301 D-77 — Currently Watching shelves
+    currentlyWatching: {
+      list: (args?: { daysBack?: number; limit?: number }) =>
+        invoke<{
+          ok: boolean
+          items?: Array<{ mediaId: string; filename: string; thumbPath: string | null; durationSec: number | null; progressSec: number; progressPct: number; rating: number; lastViewedAt: number }>
+          error?: string
+        }>('currentlyWatching:list', args),
+    },
+    // #295 D-71 — Watch diary calendar
+    watchDiary: {
+      days: (args?: { daysBack?: number }) =>
+        invoke<{ ok: boolean; days?: Array<{ day: string; itemsTouched: number; minutes: number }>; error?: string }>('watchDiary:days', args),
+    },
+    // #288 D-64 — Daylist auto-retitling (4h rotating evocative name)
+    daylist: {
+      title: () => invoke<{ ok: boolean; title?: string; generatedAt?: number; expiresAt?: number; hourBucket?: number; error?: string }>('daylist:title'),
+      regenerate: () => invoke<{ ok: boolean; title?: string; generatedAt?: number; expiresAt?: number; hourBucket?: number; error?: string }>('daylist:regenerate'),
+    },
+    // #303 D-79 — Spotify-style Recap cards
+    recap: {
+      monthly: (args?: { year?: number; month0?: number }) =>
+        invoke<{ ok: boolean; recap?: any; error?: string }>('recap:monthly', args),
+      halfYear: (args?: { year?: number; half?: 1 | 2 }) =>
+        invoke<{ ok: boolean; recap?: any; error?: string }>('recap:halfYear', args),
+      yearly: (args?: { year?: number }) =>
+        invoke<{ ok: boolean; recap?: any; error?: string }>('recap:yearly', args),
+    },
+    // #289 D-65 — Calibre Virtual Libraries (named filter sets)
+    virtualLibs: {
+      list: () => invoke<{
+        ok: boolean
+        libraries?: Array<{ id: string; name: string; query: any; color: string | null; icon: string | null; createdAt: number }>
+        error?: string
+      }>('virtualLibs:list'),
+      save: (args: { id?: string; name: string; query: any; color?: string; icon?: string }) =>
+        invoke<{ ok: boolean; id?: string; error?: string }>('virtualLibs:save', args),
+      delete: (id: string) => invoke<{ ok: boolean; error?: string }>('virtualLibs:delete', id),
+      reorder: (orderedIds: string[]) => invoke<{ ok: boolean; error?: string }>('virtualLibs:reorder', orderedIds),
+    },
+    // #293 D-69 — Anki FSRS-lite rediscovery queue
+    rediscovery: {
+      queue: (args?: { limit?: number; minDaysSinceView?: number }) =>
+        invoke<{
+          ok: boolean
+          items?: Array<{ mediaId: string; filename: string; thumbPath: string | null; durationSec: number | null; views: number; rating: number; lastViewedAt: number; daysSinceLastView: number; score: number }>
+          error?: string
+        }>('rediscovery:queue', args),
+    },
+    // #368 H-144 — BDSM contract & negotiation form
+    contract: {
+      get: () => invoke<{ ok: boolean; contract?: any; error?: string }>('contract:get'),
+      save: (contract: any) => invoke<{ ok: boolean; error?: string }>('contract:save', contract),
+      sign: () => invoke<{ ok: boolean; contract?: any; error?: string }>('contract:sign'),
+      reset: () => invoke<{ ok: boolean; contract?: any; error?: string }>('contract:reset'),
+    },
+    // #361 G-137 — kink-discovery recommender (latent kink map)
+    kinkDiscovery: {
+      run: (args?: { k?: number; ratingMin?: number; recsPerCluster?: number }) => invoke<{
+        ok: boolean
+        clusters?: Array<{ id: number; memberCount: number; exemplarMediaId: string; exemplarFilename: string; exemplarThumbPath: string | null }>
+        recommendations?: Array<{ mediaId: string; filename: string; thumbPath: string | null; durationSec: number | null; clusterId: number; similarity: number }>
+        error?: string
+      }>('kinkDiscovery:run', args),
+    },
+    // #298 D-74 — Linear-style triage inbox
+    triage: {
+      list: (args?: { status?: 'pending' | 'active' | 'archived' | 'rejected'; limit?: number; offset?: number }) =>
+        invoke<{
+          ok: boolean
+          items?: Array<{ id: string; filename: string; path: string; thumbPath: string | null; type: string; durationSec: number | null; addedAt: number; triageStatus: string }>
+          total?: number
+          error?: string
+        }>('triage:list', args ?? {}),
+      setStatus: (args: { mediaIds: string[]; status: 'pending' | 'active' | 'archived' | 'rejected' }) =>
+        invoke<{ ok: boolean; updated?: number; error?: string }>('triage:setStatus', args),
+      setInboxEnabled: (enabled: boolean) =>
+        invoke<{ ok: boolean; error?: string }>('triage:setInboxEnabled', enabled),
+      getInboxEnabled: () =>
+        invoke<{ ok: boolean; enabled?: boolean; error?: string }>('triage:getInboxEnabled'),
+    },
+    // #299 D-75 — Stash Studios entity (parent of performers + media)
+    studios: {
+      list: () => invoke<{
+        ok: boolean
+        studios?: Array<{
+          id: string; name: string; aliases: string[]; logo_path: string | null;
+          parent_company: string | null; website: string | null; url_patterns: string[];
+          created_at: number; updated_at: number; performer_count: number; media_count: number
+        }>
+        error?: string
+      }>('studios:list'),
+      create: (args: { name: string; aliases?: string[]; logo_path?: string; parent_company?: string; website?: string; url_patterns?: string[] }) =>
+        invoke<{ ok: boolean; id?: string; error?: string }>('studios:create', args),
+      update: (args: { id: string; name?: string; aliases?: string[]; logo_path?: string; parent_company?: string; website?: string; url_patterns?: string[] }) =>
+        invoke<{ ok: boolean; error?: string }>('studios:update', args),
+      delete: (id: string) => invoke<{ ok: boolean; error?: string }>('studios:delete', id),
+      assignPerformer: (args: { performerId: string; studioId: string | null }) =>
+        invoke<{ ok: boolean; error?: string }>('studios:assignPerformer', args),
+      assignMedia: (args: { mediaId: string; studioId: string | null }) =>
+        invoke<{ ok: boolean; error?: string }>('studios:assignMedia', args),
+      mediaForStudio: (studioId: string) =>
+        invoke<{ ok: boolean; media?: Array<{ id: string; filename: string; path: string; thumbPath: string | null; durationSec: number | null }>; error?: string }>('studios:mediaForStudio', studioId),
+    },
+    // #306 E-82 — inbound webhook receiver (HMAC-signed)
+    webhook: {
+      status: () => invoke<{ ok: boolean; running?: boolean; port?: number; bindHost?: string; routeCount?: number; error?: string }>('webhook:status'),
+      start: (args?: { port?: number; bindHost?: string }) =>
+        invoke<{ ok: boolean; port?: number; routes?: Array<{ id: string; path: string; secret: string; description?: string; createdAt: number }>; error?: string }>('webhook:start', args ?? {}),
+      stop: () => invoke<{ ok: boolean; error?: string }>('webhook:stop'),
+      listRoutes: () =>
+        invoke<{ ok: boolean; routes?: Array<{ id: string; path: string; secret: string; description?: string; createdAt: number }>; error?: string }>('webhook:listRoutes'),
+      addRoute: (args: { path: string; secret?: string; description?: string }) =>
+        invoke<{ ok: boolean; route?: { id: string; path: string; secret: string; description?: string; createdAt: number }; error?: string }>('webhook:addRoute', args),
+      removeRoute: (id: string) =>
+        invoke<{ ok: boolean; error?: string }>('webhook:removeRoute', id),
+    },
+    // #380 H-156 — phrase-triggered supercut compiler
+    supercut: {
+      persistSegments: (args: { mediaId: string; segments: Array<{ startSec: number; endSec: number; text: string }> }) =>
+        invoke<{ ok: boolean; count?: number; error?: string }>('supercut:persistSegments', args),
+      search: (args: { phrase: string; limit?: number; mediaIdFilter?: string[] }) =>
+        invoke<{
+          ok: boolean
+          hits?: Array<{ mediaId: string; segmentIdx: number; startSec: number; endSec: number; text: string; mediaPath: string; mediaFilename: string }>
+          error?: string
+        }>('supercut:search', args),
+      compile: (args: { hits: any[]; dstPath: string; padBeforeSec?: number; padAfterSec?: number; videoCodec?: string; width?: number; height?: number; fps?: number; maxClips?: number }) =>
+        invoke<{ ok: boolean; clipsUsed?: number; durationSec?: number; error?: string }>('supercut:compile', args),
+    },
+    // #229 — local Whisper word-level VTT
+    whisperVtt: (args: { videoPath: string; maxAudioSec?: number; maxLenTokens?: number }) =>
+      invoke<{
+        ok: boolean
+        text?: string
+        vtt?: string
+        segments?: Array<{ startSec: number; endSec: number; text: string }>
+        durationMs?: number
+        installDir?: string
+        error?: string
+      }>('whisper:transcribeVtt', args),
+    // #233 — chapter round-trip
+    chapters: {
+      read: (srcPath: string) =>
+        invoke<{ ok: boolean; chapters?: Array<{ startSec: number; endSec: number; title: string }>; error?: string }>('chapters:read', srcPath),
+      writeFFMeta: (args: { srcPath: string; dstPath: string; chapters: Array<{ startSec: number; endSec: number; title: string }> }) =>
+        invoke<{ ok: boolean; error?: string }>('chapters:writeFFMeta', args),
+      exportVtt: (args: { chapters: Array<{ startSec: number; endSec: number; title: string }>; dstPath: string }) =>
+        invoke<{ ok: boolean; dstPath?: string; error?: string }>('chapters:exportVtt', args),
+      parseVtt: (args: { vttText: string; durationSec: number }) =>
+        invoke<{ ok: boolean; chapters?: Array<{ startSec: number; endSec: number; title: string }>; error?: string }>('chapters:parseVtt', args),
+    },
+    // #225 / #235 / #238 — ffmpeg post-processing
+    postProc: {
+      toneMapHDR: (args: { srcPath: string; dstPath?: string; tonemap?: 'hable' | 'mobius' | 'reinhard'; peak?: number; videoCodec?: string; crf?: number }) =>
+        invoke<{ ok: boolean; dstPath?: string; error?: string }>('postProc:toneMapHDR', args),
+      masterAudio: (args: { srcPath: string; dstPath?: string; targetLufs?: number; truePeakDb?: number; lra?: number }) =>
+        invoke<{ ok: boolean; dstPath?: string; measured?: any; error?: string }>('postProc:masterAudio', args),
+      denoise: (args: { srcPath: string; dstPath?: string; strength?: 'light' | 'medium' | 'heavy'; grain?: number; videoCodec?: string; crf?: number }) =>
+        invoke<{ ok: boolean; dstPath?: string; error?: string }>('postProc:denoise', args),
+      // #231 vidstab two-pass deshake
+      deshake: (args: { srcPath: string; dstPath?: string; shakiness?: number; accuracy?: number; smoothing?: number; crop?: 'black' | 'keep'; videoCodec?: string; crf?: number }) =>
+        invoke<{ ok: boolean; dstPath?: string; error?: string }>('postProc:deshake', args),
+    },
+    // #237 — silence + black-frame auto-trim
+    autoTrim: {
+      analyze: (videoPath: string) => invoke<{
+        ok: boolean
+        report?: {
+          durationSec: number
+          silences: Array<{ startSec: number; endSec: number; durationSec: number }>
+          blacks: Array<{ startSec: number; endSec: number; durationSec: number }>
+          recommendation: { startSec: number; endSec: number; savedSec: number } | null
+        }
+        error?: string
+      }>('autoTrim:analyze', videoPath),
+      apply: (args: { srcPath: string; dstPath: string; startSec: number; endSec: number }) =>
+        invoke<{ ok: boolean; error?: string }>('autoTrim:apply', args),
+    },
+    // #182 — SMB share helper (native OS SMB wrapper)
+    smbStatus: () =>
+      invoke<{ ok: boolean; platform?: NodeJS.Platform; supported?: boolean; shares?: Array<{ name: string; path: string; description: string; ownedByVault: boolean }>; reason?: string | null; error?: string }>('smb:status'),
+    smbCreate: (args: { name: string; path: string; description?: string; readOnly?: boolean }) =>
+      invoke<{ ok: boolean; error?: string }>('smb:create', args),
+    smbRemove: (name: string) =>
+      invoke<{ ok: boolean; error?: string }>('smb:remove', name),
+    // #184 — AirPlay 2 receiver discovery (Phase 1, discovery only)
+    airplayDiscover: (timeoutMs?: number) =>
+      invoke<{ ok: boolean; receivers: Array<{ name: string; host: string; port: number; features: string | null; model: string | null; requiresAuth: boolean }>; error?: string }>('airplay:discover', timeoutMs),
+    // #202 — Phillips Hue cinema-mode dimming
+    hueDiscover: () =>
+      invoke<{ ok: boolean; bridges: Array<{ id: string; ip: string }>; error?: string }>('hue:discover'),
+    huePair: (bridgeIp: string) =>
+      invoke<{ ok: boolean; username?: string; error?: string }>('hue:pair', bridgeIp),
+    hueLights: (args: { bridgeIp: string; username: string }) =>
+      invoke<{ ok: boolean; lights: Array<{ id: string; name: string; on: boolean; brightness: number; reachable: boolean }>; error?: string }>('hue:lights', args),
+    hueCinemaDim: (args: { bridgeIp: string; username: string; lightIds: string[]; targetBri?: number }) =>
+      invoke<{ ok: boolean; dimmed?: number; failed?: number; error?: string }>('hue:cinemaDim', args),
+    hueCinemaRestore: (args: { bridgeIp: string; username: string; lightIds: string[] }) =>
+      invoke<{ ok: boolean; restored?: number; failed?: number; error?: string }>('hue:cinemaRestore', args),
+    // #135 — Aesthetic-aware thumbnail picker
+    mediaPickAestheticThumb: (args: { mediaId: string; sampleCount?: number }) =>
+      invoke<{ ok: boolean; bestTimestampSec?: number; bestScore?: number; candidates?: Array<{ timestampSec: number; score: number }>; error?: string }>('media:pickAestheticThumb', args),
+    mediaRegenerateAestheticThumb: (args: { mediaId: string }) =>
+      invoke<{ ok: boolean; thumbPath?: string; pick?: any; error?: string }>('media:regenerateAestheticThumb', args),
+    // #169 — Auto-reframe to 9:16 / 1:1 / 4:5
+    mediaAutoReframePath: (args: { mediaId: string; aspectRatio: '9:16' | '1:1' | '4:5' }) =>
+      invoke<{ ok: boolean; path: string | null; error?: string }>('media:autoReframePath', args),
+    mediaGenerateAutoReframe: (args: { mediaId: string; aspectRatio: '9:16' | '1:1' | '4:5'; force?: boolean }) =>
+      invoke<{ ok: boolean; path?: string; error?: string }>('media:generateAutoReframe', args),
+    // #137 — Co-watch recommender (single-user collab filter)
+    recoMoreLikeThis: (args: { mediaId: string; limit?: number }) =>
+      invoke<{ ok: boolean; items: Array<{ mediaId: string; filename: string; thumbPath: string | null; similarity: number; coCount: number }>; error?: string }>('reco:moreLikeThis', args),
+    recoTodaysPicks: (limit?: number) =>
+      invoke<{ ok: boolean; items: Array<{ mediaId: string; filename: string; thumbPath: string | null; similarity: number; coCount: number }>; error?: string }>('reco:todaysPicks', limit),
+    // #138 — Tag-affinity content recommender (two-tower style)
+    recoTagAffinity: (args: { limit?: number; excludeMediaIds?: string[] }) =>
+      invoke<{ ok: boolean; items: Array<{ mediaId: string; filename: string; thumbPath: string | null; score: number }>; error?: string }>('reco:tagAffinity', args),
+    recoInvalidate: () =>
+      invoke<{ ok: boolean; error?: string }>('reco:invalidate'),
+    // #179 — Auto-trailer (30s highlight reel)
+    mediaAutoTrailerPath: (mediaId: string) =>
+      invoke<{ ok: boolean; path: string | null; error?: string }>('media:autoTrailerPath', mediaId),
+    mediaGenerateAutoTrailer: (args: { mediaId: string; force?: boolean; useAudioPeaks?: boolean }) =>
+      invoke<{ ok: boolean; path?: string; alreadyExisted?: boolean; error?: string }>('media:generateAutoTrailer', args),
     // #154 — Collections (first-class entities, cover art, ordering)
     collectionsList: () =>
       invoke<{ ok: boolean; collections: any[]; error?: string }>('collections:list'),
@@ -1778,6 +2590,46 @@ const api = {
     xyreneListVoices: () => invoke<string[]>('xyrene:listVoices'),
     xyrenePreviewVoice: (args: { voice: string; text?: string }) =>
       invoke<{ base64: string; mime: string }>('xyrene:previewVoice', args),
+    // Voice intake pipeline — user drops .wav/.mp3/.m4a into a watch
+    // folder (or picks a file via processOne), service runs the ffmpeg
+    // cleanup chain, copies to xyrene-portable voice_samples, pre-warms
+    // XTTS embedding via /cache_voice, and writes display metadata.
+    xyreneIntakeStatus: async () => {
+      const r = await invoke<any>('xyrene:intakeStatus')
+      // IPC returns { ok, ...status }; unwrap to just the status fields.
+      const { ok: _ok, error: _err, ...status } = r ?? {}
+      return status as {
+        running: boolean
+        folder: string | null
+        cleanupMode: 'conservative' | 'standard' | 'aggressive'
+        queueDepth: number
+        processedCount: number
+        failedCount: number
+        lastError: string | null
+        voiceSamplesDir: string
+      }
+    },
+    xyreneIntakeProcess: (args: { srcPath: string; cleanup?: 'conservative' | 'standard' | 'aggressive'; displayName?: string; description?: string; language?: string; outputSlug?: string }) =>
+      invoke<{ ok: boolean; voiceFilename?: string; outputPath?: string; durationSec?: number; cached?: boolean; error?: string }>(
+        'xyrene:intakeProcess', args
+      ),
+    xyreneIntakeStart: (args?: { folder?: string; cleanup?: 'conservative' | 'standard' | 'aggressive' }) =>
+      invoke<{ ok: boolean; folder?: string; error?: string }>('xyrene:intakeStart', args ?? {}),
+    xyreneIntakeStop: () => invoke<{ ok: boolean }>('xyrene:intakeStop'),
+    xyreneVoiceMetadata: async () => {
+      const r = await invoke<{ ok: boolean; metadata: Record<string, any> }>('xyrene:voiceMetadata')
+      return (r?.metadata ?? {}) as Record<string, {
+        displayName?: string
+        description?: string
+        durationSec?: number | null
+        cleanupMode?: 'conservative' | 'standard' | 'aggressive' | 'original'
+        addedAt?: string
+        source?: 'builtin' | 'intake' | 'manual'
+        language?: string
+      }>
+    },
+    xyreneVoiceMetadataSet: (args: { filename: string; displayName?: string; description?: string; language?: string }) =>
+      invoke<{ ok: boolean }>('xyrene:voiceMetadataSet', args),
     // Soundpack browser for the Xyrene Settings panel. Defaults: dedupe
     // sequential variants ("plap_01" / "plap_02" / "plap_03" → one entry
     // with `variants: 3`), filter out junk packs (Music) and junk
@@ -2482,6 +3334,17 @@ const api = {
 
     selectMusic: () => invoke<string | null>('pmv:selectMusic'),
     selectVideos: () => invoke<string[]>('pmv:selectVideos'),
+    // #178 — auto-PMV from one folder + one song
+    selectFolder: () => invoke<string | null>('pmv:selectFolder'),
+    autoGenerateFromFolder: (options: {
+      folderPath: string
+      bpm: number
+      targetDurationSec?: number
+      beatsPerClip?: number
+      maxClipSources?: number
+      generateCaptions?: boolean
+      videoActiveWindow?: number
+    }) => invoke<any>('pmv:autoGenerateFromFolder', options),
     getVideoInfo: (path: string) => invoke<{ duration: number; width: number; height: number }>('pmv:getVideoInfo', path),
     getVideoThumb: (path: string) => invoke<string | null>('pmv:getVideoThumb', path),
     getAudioInfo: (path: string) => invoke<{ duration: number }>('pmv:getAudioInfo', path),
@@ -2556,6 +3419,263 @@ const api = {
       failed: number
       total: number
     }>('stash:export-sidecars'),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RIFE AI frame interpolation (#227 / #255)
+  // ═══════════════════════════════════════════════════════════════════════════
+  rife: {
+    interpolate: (srcPath: string, options: any) => invoke<{ ok: boolean; dstPath?: string; error?: string }>('rife:interpolate', srcPath, options),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Video diffusion bridge (#377)
+  // ═══════════════════════════════════════════════════════════════════════════
+  videoDiff: {
+    setEndpoint: (url: string) => invoke<{ ok: boolean }>('videoDiff:setEndpoint', url),
+    probe: () => invoke<{ reachable: boolean; models?: string[]; error?: string }>('videoDiff:probe'),
+    generate: (req: any, importDir: string) => invoke<{ ok: boolean; mediaId?: string; error?: string }>('videoDiff:generate', req, importDir),
+    onProgress: (cb: (p: { progress: number }) => void) => {
+      const h = (_e: any, p: any) => cb(p)
+      ipcRenderer.on('videoDiff:progress', h)
+      return () => ipcRenderer.removeListener('videoDiff:progress', h)
+    },
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Arduino DIY-toy serial bridge (#375)
+  // ═══════════════════════════════════════════════════════════════════════════
+  arduinoToy: {
+    listPorts: () => invoke<Array<{ path: string; manufacturer?: string; productId?: string }>>('arduinoToy:listPorts'),
+    open: (path: string, baudRate?: number) => invoke<{ ok: boolean; error?: string }>('arduinoToy:open', path, baudRate),
+    setIntensity: (level: number) => invoke<{ ok: boolean; error?: string }>('arduinoToy:setIntensity', level),
+    playPattern: (pattern: Array<[number, number]>) => invoke<{ ok: boolean; error?: string }>('arduinoToy:playPattern', pattern),
+    stop: () => invoke<{ ok: boolean }>('arduinoToy:stop'),
+    close: () => invoke<{ ok: boolean }>('arduinoToy:close'),
+    status: () => invoke<{ connected: boolean; path: string; ready: boolean; lastError: string | null }>('arduinoToy:status'),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Veilid private-routing bridge (#268)
+  // ═══════════════════════════════════════════════════════════════════════════
+  veilid: {
+    setEndpoint: (url: string) => invoke<{ ok: boolean }>('veilid:setEndpoint', url),
+    status: () => invoke<{ reachable: boolean; publicInternetReady: boolean; localNetworkReady: boolean; nodeId?: string; error?: string }>('veilid:status'),
+    newPrivateRoute: () => invoke<{ ok: boolean; routeId?: string; error?: string }>('veilid:newPrivateRoute'),
+    send: (routeId: string, payloadB64: string) => invoke<{ ok: boolean; error?: string }>('veilid:send', routeId, payloadB64),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Bluesky labeler (#273)
+  // ═══════════════════════════════════════════════════════════════════════════
+  bskyLabeler: {
+    start: (port?: number) => invoke<{ ok: boolean; port?: number; error?: string }>('bskyLabeler:start', port),
+    stop: () => invoke<{ ok: boolean }>('bskyLabeler:stop'),
+    list: (uri?: string) => invoke<Array<{ uri: string; val: string; src: string; cts: number }>>('bskyLabeler:list', uri),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Nostr NIP-46 remote signer (#282)
+  // ═══════════════════════════════════════════════════════════════════════════
+  nostr: {
+    loadConfig: () => invoke<{ pubkeyHex: string; defaultRelay: string; trustedClients: string[] } | null>('nostr:loadConfig'),
+    generateKeypair: (defaultRelay?: string) => invoke<{ pubkeyHex: string; defaultRelay: string }>('nostr:generateKeypair', defaultRelay),
+    bunkerUri: () => invoke<{ uri: string; secret: string } | null>('nostr:bunkerUri'),
+    trust: (clientPubkeyHex: string) => invoke<{ ok: boolean }>('nostr:trust', clientPubkeyHex),
+    revoke: (clientPubkeyHex: string) => invoke<{ ok: boolean }>('nostr:revoke', clientPubkeyHex),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Tor onion service (#283)
+  // ═══════════════════════════════════════════════════════════════════════════
+  tor: {
+    start: (torBinaryPath: string, httpPort: number) => invoke<{ ok: boolean; error?: string }>('tor:start', torBinaryPath, httpPort),
+    stop: () => invoke<{ ok: boolean }>('tor:stop'),
+    status: () => invoke<{ running: boolean; onion: string | null; pid: number | null; lastError: string | null }>('tor:status'),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WebTransport HTTP/3 server (#276)
+  // ═══════════════════════════════════════════════════════════════════════════
+  wt: {
+    start: (port: number, bearerToken: string) => invoke<{ ok: boolean; port?: number; fingerprintHex?: string; error?: string }>('wt:start', port, bearerToken),
+    stop: () => invoke<{ ok: boolean }>('wt:stop'),
+    status: () => invoke<{ running: boolean; port: number; fingerprintHex: string }>('wt:status'),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Iroh blob ticket sharing (#265)
+  // ═══════════════════════════════════════════════════════════════════════════
+  iroh: {
+    share: (absPath: string) => invoke<{ ticket: string; qrDataUrl: string }>('iroh:share', absPath),
+    download: (ticket: string, dstPath: string) => invoke<{ ok: boolean; bytes?: number; error?: string }>('iroh:download', ticket, dstPath),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Hyperswarm trusted-device mesh (#266)
+  // ═══════════════════════════════════════════════════════════════════════════
+  mesh: {
+    loadState: () => invoke<{ topic: string; deviceName: string; trustedFingerprints: string[] }>('mesh:loadState'),
+    saveState: (state: any) => invoke<{ ok: boolean }>('mesh:saveState', state),
+    start: (state: any) => invoke<{ ok: boolean; error?: string }>('mesh:start', state),
+    stop: () => invoke<{ ok: boolean }>('mesh:stop'),
+    peers: () => invoke<Array<{ fingerprint: string; deviceName: string }>>('mesh:peers'),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Helia (IPFS) pinning (#267)
+  // ═══════════════════════════════════════════════════════════════════════════
+  helia: {
+    pin: (absPath: string) => invoke<{ ok: boolean; cid?: string; gatewayUrl?: string; error?: string }>('helia:pin', absPath),
+    unpin: (cid: string) => invoke<{ ok: boolean; error?: string }>('helia:unpin', cid),
+    list: () => invoke<string[]>('helia:list'),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Syncthing REST control plane (#269)
+  // ═══════════════════════════════════════════════════════════════════════════
+  syncthing: {
+    loadConfig: () => invoke<{ baseUrl: string; hasKey: boolean } | null>('syncthing:loadConfig'),
+    saveConfig: (baseUrl: string, apiKey?: string) => invoke<{ ok: boolean }>('syncthing:saveConfig', baseUrl, apiKey),
+    call: (op: string, ...args: any[]) => invoke<{ ok: boolean; status: number; data?: any; error?: string }>('syncthing:call', op, ...args),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // UnifiedPush distributor (#275)
+  // ═══════════════════════════════════════════════════════════════════════════
+  up: {
+    register: (endpoint: { appId: string; endpoint: string; deviceName?: string }) => invoke<{ ok: boolean }>('up:register', endpoint),
+    unregister: (appId: string) => invoke<{ ok: boolean }>('up:unregister', appId),
+    list: () => invoke<Array<{ appId: string; endpoint: string; deviceName?: string; registeredAt: number }>>('up:list'),
+    notify: (appId: string, payload: string) => invoke<{ ok: boolean; error?: string }>('up:notify', appId, payload),
+    broadcast: (payload: string) => invoke<{ delivered: number; failed: number }>('up:broadcast', payload),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WebRTC signaling bridge (#277)
+  // ═══════════════════════════════════════════════════════════════════════════
+  webrtc: {
+    newSession: () => invoke<string>('webrtc:newSession'),
+    sendSignal: (frame: any) => invoke<{ ok: boolean }>('webrtc:sendSignal', frame),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // IMAP inbox watcher (#313)
+  // ═══════════════════════════════════════════════════════════════════════════
+  imap: {
+    loadConfig: () => invoke<any>('imap:loadConfig'),
+    saveConfig: (config: any) => invoke<{ ok: boolean }>('imap:saveConfig', config),
+    start: () => invoke<{ ok: boolean; error?: string }>('imap:start'),
+    stop: () => invoke<{ ok: boolean }>('imap:stop'),
+    status: () => invoke<{ running: boolean }>('imap:status'),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Obsidian-style backlinks (#297)
+  // ═══════════════════════════════════════════════════════════════════════════
+  backlinks: {
+    find: (mediaId: string, limit?: number) => invoke<{
+      mediaId: string
+      refs: Array<{
+        mediaId: string
+        filename: string | null
+        thumbPath: string | null
+        source: string
+        detail: string
+        score: number
+      }>
+    }>('backlinks:find', mediaId, limit),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Color palette index (#286)
+  // ═══════════════════════════════════════════════════════════════════════════
+  palette: {
+    indexOne: (mediaId: string) => invoke<{ ok: boolean }>('palette:indexOne', mediaId),
+    indexAll: () => invoke<{ indexed: number; skipped: number; failed: number }>('palette:indexAll'),
+    filter: (rgb: [number, number, number], tolerance?: number, limit?: number) =>
+      invoke<string[]>('palette:filter', rgb, tolerance, limit),
+    get: (mediaId: string) => invoke<Array<{ name: string; rgb: [number, number, number]; population: number }> | null>('palette:get', mediaId),
+    onProgress: (cb: (p: { done: number; total: number }) => void) => {
+      const h = (_e: any, p: any) => cb(p)
+      ipcRenderer.on('palette:progress', h)
+      return () => ipcRenderer.removeListener('palette:progress', h)
+    },
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Export pipeline + rclone push (#322)
+  // ═══════════════════════════════════════════════════════════════════════════
+  exportPipeline: {
+    list: () => invoke<any[]>('exportPipeline:list'),
+    save: (recipe: any) => invoke<{ ok: boolean }>('exportPipeline:save', recipe),
+    delete: (name: string) => invoke<{ ok: boolean }>('exportPipeline:delete', name),
+    run: (recipe: any) => invoke<{ ok: boolean; results: any[] }>('exportPipeline:run', recipe),
+    onEvent: (cb: (ev: any) => void) => {
+      const handler = (_e: any, payload: any) => cb(payload)
+      ipcRenderer.on('exportPipeline:event', handler)
+      return () => ipcRenderer.removeListener('exportPipeline:event', handler)
+    },
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Sidecar-aware metadata watcher (#323)
+  // ═══════════════════════════════════════════════════════════════════════════
+  sidecarWatcher: {
+    start: (roots: string[]) => invoke<{ ok: boolean; alreadyRunning?: boolean }>('sidecarWatcher:start', roots),
+    stop: () => invoke<{ ok: boolean; wasRunning: boolean }>('sidecarWatcher:stop'),
+    status: () => invoke<{ running: boolean; roots: string[] }>('sidecarWatcher:status'),
+    addRoot: (root: string) => invoke<{ ok: boolean }>('sidecarWatcher:addRoot', root),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EXIF / XMP via exiftool-vendored (#243 / #309)
+  // ═══════════════════════════════════════════════════════════════════════════
+  exif: {
+    read: (filePath: string) => invoke<{ ok: boolean; tags?: Record<string, any>; error?: string }>('exif:read', filePath),
+    write: (filePath: string, patch: Record<string, any>, options?: { sidecar?: boolean }) =>
+      invoke<{ ok: boolean; sidecarPath?: string; error?: string }>('exif:write', filePath, patch, options),
+    importSidecar: (filePath: string) => invoke<{ ok: boolean; tags?: Record<string, any>; error?: string }>('exif:import-sidecar', filePath),
+    exportSidecar: (filePath: string) => invoke<{ ok: boolean; sidecarPath?: string; error?: string }>('exif:export-sidecar', filePath),
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // #331 — MessagePort bus open. Returns a wrapped MessagePort-like
+  // interface with post() + onMessage() + close(). Main process responds
+  // to a `mpb:<channel>` postMessage with the actual MessagePort transfer.
+  //
+  // We can't expose MessagePort directly through contextBridge (structured
+  // clone rejects it), so we wrap the port internally and re-expose POJO
+  // methods. Each call returns a fresh port — close it when done.
+  // ═══════════════════════════════════════════════════════════════════════════
+  messagePort: {
+    open: (channel: 'scrub-thumbs' | 'haptic' | 'audio-meter') => {
+      return new Promise<{
+        post: (msg: any) => void
+        onMessage: (cb: (msg: any) => void) => () => void
+        close: () => void
+      }>((resolve, reject) => {
+        const channelName = `mpb:${channel}`
+        const portHandler = (event: Electron.IpcRendererEvent) => {
+          ipcRenderer.removeListener(channelName, portHandler)
+          const port = event.ports[0]
+          if (!port) return reject(new Error('no port transferred'))
+          const listeners = new Set<(msg: any) => void>()
+          port.onmessage = (e: MessageEvent) => listeners.forEach((l) => { try { l(e.data) } catch { /* ignore */ } })
+          port.start()
+          resolve({
+            post: (msg: any) => { try { port.postMessage(msg) } catch { /* ignore */ } },
+            onMessage: (cb) => { listeners.add(cb); return () => listeners.delete(cb) },
+            close: () => { try { port.close() } catch { /* ignore */ }; listeners.clear() },
+          })
+        }
+        ipcRenderer.on(channelName, portHandler as any)
+        ipcRenderer.invoke('messagePort:open', channel).catch((err) => {
+          ipcRenderer.removeListener(channelName, portHandler)
+          reject(err)
+        })
+      })
+    },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

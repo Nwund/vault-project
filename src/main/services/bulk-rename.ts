@@ -39,7 +39,10 @@
 // _2 / _3 / etc. when the target already exists.
 
 import fs from 'node:fs'
+import { promises as fsp } from 'node:fs'
 import path from 'node:path'
+import { app } from 'electron'
+import { nanoid } from 'nanoid'
 import type { DB } from '../db'
 import { parseFilename } from './ai-intelligence/filename-tokenizer'
 
@@ -64,6 +67,8 @@ export interface RenameApplyResult {
   skippedEmpty: number
   failed: number
   errors: string[]
+  /** #315 — undo log identifier for `undoBulkRename(undoId)`. Absent if no renames succeeded. */
+  undoId?: string
 }
 
 const SAFE_CHARS = /[<>:"|?*\x00-\x1f]/g  // Windows-forbidden + control
@@ -337,6 +342,8 @@ export function applyBulkRename(
     result.errors.push('db.update statement not available')
     return result
   }
+  // #315 — collect successful (from → to) pairs for the undo log.
+  const undoEntries: Array<{ mediaId: string; fromPath: string; toPath: string }> = []
 
   for (const r of preview) {
     if (r.empty) { result.skippedEmpty++; continue }
@@ -356,10 +363,78 @@ export function applyBulkRename(
       fs.renameSync(r.fromPath, target)
       updateStmt.run(target, path.basename(target), r.mediaId)
       result.applied++
+      undoEntries.push({ mediaId: r.mediaId, fromPath: r.fromPath, toPath: target })
     } catch (err: any) {
       result.failed++
       if (result.errors.length < 10) result.errors.push(`${r.mediaId}: ${err?.message ?? String(err)}`)
     }
   }
+  // #315 — persist undo log so the apply is reversible. Written
+  // synchronously so a crash mid-batch can't drop renames from the log.
+  if (undoEntries.length > 0) {
+    try {
+      const undoId = `rename-${Date.now()}-${nanoid(6)}`
+      const logDir = path.join(app.getPath('userData'), 'rename-undo-log')
+      fs.mkdirSync(logDir, { recursive: true })
+      fs.writeFileSync(
+        path.join(logDir, `${undoId}.json`),
+        JSON.stringify({ id: undoId, createdAt: new Date().toISOString(), template, entries: undoEntries }, null, 2),
+        'utf8',
+      )
+      result.undoId = undoId
+    } catch (err: any) {
+      // Non-fatal: rename succeeded but undo log failed.
+      if (result.errors.length < 10) result.errors.push(`undo-log-write: ${err?.message ?? String(err)}`)
+    }
+  }
   return result
+}
+
+// #315 — Reverse a previously-applied bulk rename. Reads the undo log
+// and renames each file back to its original path. Skips entries whose
+// current toPath no longer exists (already undone or manually moved).
+export async function undoBulkRename(db: DB, undoId: string): Promise<{ restored: number; failed: number; errors: string[] }> {
+  const logPath = path.join(app.getPath('userData'), 'rename-undo-log', `${undoId}.json`)
+  const log = JSON.parse(await fsp.readFile(logPath, 'utf8')) as {
+    entries: Array<{ mediaId: string; fromPath: string; toPath: string }>
+  }
+  const updateStmt = (db as any).raw?.prepare?.(`UPDATE media SET path = ?, filename = ? WHERE id = ?`)
+  let restored = 0
+  let failed = 0
+  const errors: string[] = []
+  for (const e of log.entries) {
+    try {
+      if (!fs.existsSync(e.toPath)) {
+        if (errors.length < 10) errors.push(`${e.mediaId}: source missing (${e.toPath})`)
+        failed++
+        continue
+      }
+      fs.renameSync(e.toPath, e.fromPath)
+      updateStmt?.run(e.fromPath, path.basename(e.fromPath), e.mediaId)
+      restored++
+    } catch (err: any) {
+      failed++
+      if (errors.length < 10) errors.push(`${e.mediaId}: ${err?.message ?? String(err)}`)
+    }
+  }
+  // Drop the log on full success so listUndoLogs stays uncluttered.
+  if (failed === 0) {
+    try { await fsp.unlink(logPath) } catch { /* ignore */ }
+  }
+  return { restored, failed, errors }
+}
+
+export async function listUndoLogs(): Promise<Array<{ id: string; createdAt: string; entryCount: number; template: string }>> {
+  const logDir = path.join(app.getPath('userData'), 'rename-undo-log')
+  if (!fs.existsSync(logDir)) return []
+  const files = (await fsp.readdir(logDir)).filter((n) => n.endsWith('.json'))
+  const out: Array<{ id: string; createdAt: string; entryCount: number; template: string }> = []
+  for (const f of files) {
+    try {
+      const log = JSON.parse(await fsp.readFile(path.join(logDir, f), 'utf8'))
+      out.push({ id: log.id, createdAt: log.createdAt, entryCount: log.entries?.length ?? 0, template: log.template ?? '' })
+    } catch { /* skip corrupt */ }
+  }
+  out.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  return out
 }

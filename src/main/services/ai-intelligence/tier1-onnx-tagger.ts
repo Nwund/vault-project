@@ -1051,6 +1051,27 @@ export class Tier1OnnxTagger {
   }
 
   /**
+   * #135 — Public CLIP image-embedding entry point. Returns the
+   * raw 512-D (ViT-B/32) or 768-D (ViT-L/14) embedding so callers
+   * like the aesthetic ranker can score arbitrary frames without
+   * routing through full classification.
+   *
+   * Returns null if the CLIP vision session isn't loaded yet.
+   */
+  async embedImage(imagePath: string): Promise<Float32Array | null> {
+    if (!this.clipVisionSession) return null
+    try {
+      const imageInput = await this.preprocessForClip(imagePath)
+      const feeds: Record<string, any> = { pixel_values: imageInput }
+      const output = await this.clipVisionSession.run(feeds)
+      return new Float32Array((Object.values(output)[0] as any).data)
+    } catch (err) {
+      console.warn('[Tier1] embedImage failed:', err)
+      return null
+    }
+  }
+
+  /**
    * Preprocess image for CLIP (224x224, RGB, normalized with CLIP mean/std)
    */
   private async preprocessForClip(imagePath: string): Promise<any> {

@@ -64,7 +64,30 @@ let modelPath: string | null = null
 // Inferred from the loaded session's input shape — typically 320 or 640.
 let modelInputSize: number = 320
 
+// #259 — NudeNet v3 640m upgrade. Default is the v2 320 model
+// (nudenet-detector.onnx); enabling settings.ai.useNudeNetV3 routes
+// the loader to the v3 640m file (nudenet-v3-640m.onnx). The 640m
+// model is significantly more accurate on small / occluded subjects
+// at the cost of ~3-4× inference time. The shape-inferred
+// modelInputSize logic below already adapts to either input size.
 function getModelPath(): string {
+  try {
+    // Lazy-require to avoid forcing the settings module to load just
+    // to compute the model path on every call.
+    const { getAISettings } = require('../../settings') as { getAISettings: () => any }
+    const ai = getAISettings()
+    if (ai?.useNudeNetV3) {
+      // Try the 640m variant first (higher accuracy), fall back to
+      // 320n (faster, ~3-4× lower latency). Both are valid v3 ONNX
+      // files; the input size differs and the wrapper auto-detects.
+      const modelsDir = path.join(app.getPath('userData'), 'models')
+      for (const name of ['nudenet-v3-640m.onnx', 'nudenet-v3-320n.onnx']) {
+        const p = path.join(modelsDir, name)
+        if (fs.existsSync(p)) return p
+      }
+      console.warn('[NudeNet] useNudeNetV3 enabled but no v3 model file present; falling back to v2')
+    }
+  } catch { /* settings not loaded yet, use default */ }
   return path.join(app.getPath('userData'), 'models', 'nudenet-detector.onnx')
 }
 

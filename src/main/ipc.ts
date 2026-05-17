@@ -1250,7 +1250,11 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
-  ipcMain.handle('relationships:create', async (_ev, args: {
+  // Note: `relationships:create` / `relationships:delete` are the
+  // service-layer handlers registered later in this file (positional args
+  // + RelationshipType). The graph UI consumes its own simple-kind
+  // variants below to avoid IPC name collisions.
+  ipcMain.handle('relationships:createSimple', async (_ev, args: {
     sourceId: string
     targetId: string
     kind: 'parent' | 'child' | 'alternate' | 'companion'
@@ -1272,7 +1276,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
-  ipcMain.handle('relationships:delete', async (_ev, id: string) => {
+  ipcMain.handle('relationships:deleteSimple', async (_ev, id: string) => {
     try {
       db.raw.prepare(`DELETE FROM media_relationships WHERE id = ?`).run(id)
       broadcast('vault:changed')
@@ -2805,6 +2809,383 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return exportAllXmpSidecars(db)
   })
 
+  // #331 — Open a MessagePort-bus channel for low-latency comms.
+  ipcMain.handle('mpb:open', async (ev, channel: string) => {
+    const { openChannel } = await import('./services/message-port-bus')
+    openChannel(ev.sender, channel as any)
+    return { ok: true }
+  })
+
+  // #227 / #255 — RIFE AI frame interpolation export.
+  ipcMain.handle('rife:interpolate', async (_ev, srcPath: string, options: any) => {
+    const { interpolate } = await import('./services/rife-interpolator')
+    const s = getSettings()
+    const ffmpegPath = (s as any).ffmpegPath ?? 'ffmpeg'
+    return interpolate(srcPath, { ...options, ffmpegPath })
+  })
+
+  // #377 — Local video diffusion bridge (WAN / Hunyuan / CogVideoX).
+  ipcMain.handle('videoDiff:setEndpoint', async (_ev, url: string) => {
+    const { setEndpoint } = await import('./services/video-diffusion-bridge')
+    setEndpoint(url); return { ok: true }
+  })
+  ipcMain.handle('videoDiff:probe', async () => {
+    const { probe } = await import('./services/video-diffusion-bridge')
+    return probe()
+  })
+  ipcMain.handle('videoDiff:generate', async (ev, req: any, importDir: string) => {
+    const { generateAndImport } = await import('./services/video-diffusion-bridge')
+    return generateAndImport(req, importDir, db, (p) => ev.sender.send('videoDiff:progress', { progress: p }))
+  })
+
+  // #375 — Arduino serial DIY-toy bridge.
+  ipcMain.handle('arduinoToy:listPorts', async () => {
+    const { listPorts } = await import('./services/arduino-toy-bridge')
+    return listPorts()
+  })
+  ipcMain.handle('arduinoToy:open', async (_ev, path: string, baudRate?: number) => {
+    const { openBridge } = await import('./services/arduino-toy-bridge')
+    return openBridge(path, baudRate)
+  })
+  ipcMain.handle('arduinoToy:setIntensity', async (_ev, level: number) => {
+    const { setIntensity } = await import('./services/arduino-toy-bridge')
+    return setIntensity(level)
+  })
+  ipcMain.handle('arduinoToy:playPattern', async (_ev, pattern: Array<[number, number]>) => {
+    const { playPattern } = await import('./services/arduino-toy-bridge')
+    return playPattern(pattern)
+  })
+  ipcMain.handle('arduinoToy:stop', async () => {
+    const { stop } = await import('./services/arduino-toy-bridge')
+    return stop()
+  })
+  ipcMain.handle('arduinoToy:close', async () => {
+    const { closeBridge } = await import('./services/arduino-toy-bridge')
+    await closeBridge(); return { ok: true }
+  })
+  ipcMain.handle('arduinoToy:status', async () => {
+    const { status } = await import('./services/arduino-toy-bridge')
+    return status()
+  })
+
+  // #268 — Veilid private-routing bridge.
+  ipcMain.handle('veilid:setEndpoint', async (_ev, url: string) => {
+    const { setEndpoint } = await import('./services/veilid-bridge')
+    setEndpoint(url); return { ok: true }
+  })
+  ipcMain.handle('veilid:status', async () => {
+    const { status } = await import('./services/veilid-bridge')
+    return status()
+  })
+  ipcMain.handle('veilid:newPrivateRoute', async () => {
+    const { newPrivateRoute } = await import('./services/veilid-bridge')
+    return newPrivateRoute()
+  })
+  ipcMain.handle('veilid:send', async (_ev, routeId: string, payloadB64: string) => {
+    const { send } = await import('./services/veilid-bridge')
+    return send(routeId, payloadB64)
+  })
+
+  // #273 — Bluesky labeler service.
+  ipcMain.handle('bskyLabeler:start', async (_ev, port?: number) => {
+    const { start } = await import('./services/bluesky-labeler')
+    return start(db, port)
+  })
+  ipcMain.handle('bskyLabeler:stop', async () => {
+    const { stop } = await import('./services/bluesky-labeler')
+    stop(); return { ok: true }
+  })
+  ipcMain.handle('bskyLabeler:list', async (_ev, uri?: string) => {
+    const { listLabels } = await import('./services/bluesky-labeler')
+    return listLabels(db, uri)
+  })
+
+  // #282 — Nostr NIP-46 remote signer.
+  ipcMain.handle('nostr:loadConfig', async () => {
+    const { loadConfig } = await import('./services/nostr-remote-signer')
+    const c = loadConfig()
+    return c ? { pubkeyHex: c.pubkeyHex, defaultRelay: c.defaultRelay, trustedClients: c.trustedClients } : null
+  })
+  ipcMain.handle('nostr:generateKeypair', async (_ev, defaultRelay?: string) => {
+    const { generateKeypair } = await import('./services/nostr-remote-signer')
+    const c = await generateKeypair(defaultRelay)
+    return { pubkeyHex: c.pubkeyHex, defaultRelay: c.defaultRelay }
+  })
+  ipcMain.handle('nostr:bunkerUri', async () => {
+    const { buildBunkerUri } = await import('./services/nostr-remote-signer')
+    return buildBunkerUri()
+  })
+  ipcMain.handle('nostr:trust', async (_ev, clientPubkeyHex: string) => {
+    const { trustClient } = await import('./services/nostr-remote-signer')
+    trustClient(clientPubkeyHex); return { ok: true }
+  })
+  ipcMain.handle('nostr:revoke', async (_ev, clientPubkeyHex: string) => {
+    const { revokeClient } = await import('./services/nostr-remote-signer')
+    revokeClient(clientPubkeyHex); return { ok: true }
+  })
+
+  // #283 — Tor onion service.
+  ipcMain.handle('tor:start', async (_ev, torBinaryPath: string, httpPort: number) => {
+    const { start } = await import('./services/tor-onion')
+    return start(torBinaryPath, httpPort)
+  })
+  ipcMain.handle('tor:stop', async () => {
+    const { stop } = await import('./services/tor-onion')
+    stop(); return { ok: true }
+  })
+  ipcMain.handle('tor:status', async () => {
+    const { status } = await import('./services/tor-onion')
+    return status()
+  })
+
+  // #276 — WebTransport HTTP/3 server.
+  ipcMain.handle('wt:start', async (_ev, port: number, bearerToken: string) => {
+    const { startServer } = await import('./services/webtransport-server')
+    return startServer(db, port, bearerToken)
+  })
+  ipcMain.handle('wt:stop', async () => {
+    const { stopServer } = await import('./services/webtransport-server')
+    await stopServer(); return { ok: true }
+  })
+  ipcMain.handle('wt:status', async () => {
+    const { status } = await import('./services/webtransport-server')
+    return status()
+  })
+
+  // #265 — Iroh blob ticket sharing.
+  ipcMain.handle('iroh:share', async (_ev, absPath: string) => {
+    const { shareFile } = await import('./services/iroh-share')
+    return shareFile(absPath)
+  })
+  ipcMain.handle('iroh:download', async (_ev, ticket: string, dstPath: string) => {
+    const { downloadByTicket } = await import('./services/iroh-share')
+    return downloadByTicket(ticket, dstPath)
+  })
+
+  // #266 — Hyperswarm DHT trusted-device mesh.
+  ipcMain.handle('mesh:loadState', async () => {
+    const { loadState, generateTopic } = await import('./services/hyperswarm-mesh')
+    const existing = loadState()
+    return existing ?? { topic: generateTopic(), deviceName: '', trustedFingerprints: [] }
+  })
+  ipcMain.handle('mesh:saveState', async (_ev, state: any) => {
+    const { saveState } = await import('./services/hyperswarm-mesh')
+    saveState(state); return { ok: true }
+  })
+  ipcMain.handle('mesh:start', async (_ev, state: any) => {
+    const { startMesh } = await import('./services/hyperswarm-mesh')
+    return startMesh(state)
+  })
+  ipcMain.handle('mesh:stop', async () => {
+    const { stopMesh } = await import('./services/hyperswarm-mesh')
+    await stopMesh(); return { ok: true }
+  })
+  ipcMain.handle('mesh:peers', async () => {
+    const { listPeers } = await import('./services/hyperswarm-mesh')
+    return listPeers()
+  })
+
+  // #267 — Helia (IPFS) pinning.
+  ipcMain.handle('helia:pin', async (_ev, absPath: string) => {
+    const { pinFile } = await import('./services/helia-pin')
+    return pinFile(absPath)
+  })
+  ipcMain.handle('helia:unpin', async (_ev, cid: string) => {
+    const { unpinCid } = await import('./services/helia-pin')
+    return unpinCid(cid)
+  })
+  ipcMain.handle('helia:list', async () => {
+    const { listPins } = await import('./services/helia-pin')
+    return listPins()
+  })
+
+  // #269 — Syncthing REST control plane.
+  ipcMain.handle('syncthing:loadConfig', async () => {
+    const { loadConfig } = await import('./services/syncthing-client')
+    const c = loadConfig()
+    if (!c) return null
+    return { baseUrl: c.baseUrl, hasKey: !!c.apiKeyEnc }
+  })
+  ipcMain.handle('syncthing:saveConfig', async (_ev, baseUrl: string, apiKey?: string) => {
+    const { saveConfig } = await import('./services/syncthing-client')
+    saveConfig(baseUrl, apiKey); return { ok: true }
+  })
+  ipcMain.handle('syncthing:call', async (_ev, op: string, ...args: any[]) => {
+    const { syncthing } = await import('./services/syncthing-client')
+    const fn = (syncthing as any)[op]
+    if (typeof fn !== 'function') return { ok: false, status: 0, error: `unknown op ${op}` }
+    return fn(...args)
+  })
+
+  // #275 — UnifiedPush distributor.
+  ipcMain.handle('up:register', async (_ev, endpoint: any) => {
+    const { register } = await import('./services/unifiedpush-distributor')
+    register(endpoint); return { ok: true }
+  })
+  ipcMain.handle('up:unregister', async (_ev, appId: string) => {
+    const { unregister } = await import('./services/unifiedpush-distributor')
+    unregister(appId); return { ok: true }
+  })
+  ipcMain.handle('up:list', async () => {
+    const { loadEndpoints } = await import('./services/unifiedpush-distributor')
+    return loadEndpoints()
+  })
+  ipcMain.handle('up:notify', async (_ev, appId: string, payload: string) => {
+    const { notify } = await import('./services/unifiedpush-distributor')
+    return notify(appId, payload)
+  })
+  ipcMain.handle('up:broadcast', async (_ev, payload: string) => {
+    const { broadcast } = await import('./services/unifiedpush-distributor')
+    return broadcast(payload)
+  })
+
+  // #277 — WebRTC signaling bridge (transport is in renderer).
+  ipcMain.handle('webrtc:newSession', async () => {
+    const { newSessionId } = await import('./services/webrtc-bridge')
+    return newSessionId()
+  })
+  ipcMain.handle('webrtc:sendSignal', async (_ev, frame: any) => {
+    const { sendSignalViaMesh } = await import('./services/webrtc-bridge')
+    sendSignalViaMesh(frame); return { ok: true }
+  })
+
+  // #313 — IMAP inbox watcher ("email this link").
+  ipcMain.handle('imap:loadConfig', async () => {
+    const { loadConfig } = await import('./services/imap-watcher')
+    const c = loadConfig()
+    if (!c) return null
+    const { passwordEnc, ...safe } = c
+    return { ...safe, hasPassword: !!passwordEnc }
+  })
+  ipcMain.handle('imap:saveConfig', async (_ev, config: any) => {
+    const { saveConfig } = await import('./services/imap-watcher')
+    saveConfig(config); return { ok: true }
+  })
+  ipcMain.handle('imap:start', async () => {
+    const { startWatcher } = await import('./services/imap-watcher')
+    return startWatcher(db, async (url, _source) => {
+      try {
+        await getUrlDownloaderService().addDownload(url, {}, 'desktop')
+      } catch (err) { console.error('[imap] enqueue failed', err) }
+    })
+  })
+  ipcMain.handle('imap:stop', async () => {
+    const { stopWatcher } = await import('./services/imap-watcher')
+    await stopWatcher(); return { ok: true }
+  })
+  ipcMain.handle('imap:status', async () => {
+    const { statusWatcher } = await import('./services/imap-watcher')
+    return statusWatcher()
+  })
+
+  // #297 — Obsidian-style backlinks.
+  ipcMain.handle('backlinks:find', async (_ev, mediaId: string, limit?: number) => {
+    const { findBacklinks } = await import('./services/backlinks')
+    return findBacklinks(db, mediaId, limit)
+  })
+
+  // #286 — Color palette index (Eagle-style filter).
+  ipcMain.handle('palette:indexOne', async (_ev, mediaId: string) => {
+    const { indexPalette } = await import('./services/color-palette')
+    return { ok: await indexPalette(db, mediaId) }
+  })
+  ipcMain.handle('palette:indexAll', async (ev) => {
+    const { indexAllPalettes } = await import('./services/color-palette')
+    return indexAllPalettes(db, (done, total) => ev.sender.send('palette:progress', { done, total }))
+  })
+  ipcMain.handle('palette:filter', async (_ev, rgb: [number, number, number], tolerance?: number, limit?: number) => {
+    const { filterByColor } = await import('./services/color-palette')
+    return filterByColor(db, rgb, tolerance, limit)
+  })
+  ipcMain.handle('palette:get', async (_ev, mediaId: string) => {
+    const { getPalette } = await import('./services/color-palette')
+    return getPalette(db, mediaId)
+  })
+
+  // #322 — Export pipeline + rclone push.
+  ipcMain.handle('exportPipeline:list', async () => {
+    const { listRecipes } = await import('./services/export-pipeline')
+    return listRecipes()
+  })
+  ipcMain.handle('exportPipeline:save', async (_ev, recipe: any) => {
+    const { saveRecipe } = await import('./services/export-pipeline')
+    saveRecipe(recipe); return { ok: true }
+  })
+  ipcMain.handle('exportPipeline:delete', async (_ev, name: string) => {
+    const { deleteRecipe } = await import('./services/export-pipeline')
+    deleteRecipe(name); return { ok: true }
+  })
+  ipcMain.handle('exportPipeline:run', async (ev, recipe: any) => {
+    const { runPipeline } = await import('./services/export-pipeline')
+    const s = getSettings()
+    const ffmpegPath = (s as any).ffmpegPath ?? 'ffmpeg'
+    const run = runPipeline(db, recipe, ffmpegPath)
+    run.events.on('start', (p) => ev.sender.send('exportPipeline:event', { kind: 'start', ...p }))
+    run.events.on('item-start', (p) => ev.sender.send('exportPipeline:event', { kind: 'item-start', ...p }))
+    run.events.on('item-done', (p) => ev.sender.send('exportPipeline:event', { kind: 'item-done', ...p }))
+    run.events.on('staging-done', (p) => ev.sender.send('exportPipeline:event', { kind: 'staging-done', ...p }))
+    run.events.on('push-start', (p) => ev.sender.send('exportPipeline:event', { kind: 'push-start', ...p }))
+    run.events.on('push-done', (p) => ev.sender.send('exportPipeline:event', { kind: 'push-done', ...p }))
+    run.events.on('push-skipped', (p) => ev.sender.send('exportPipeline:event', { kind: 'push-skipped', ...p }))
+    run.events.on('complete', (p) => ev.sender.send('exportPipeline:event', { kind: 'complete', ...p }))
+    const results = await run.promise
+    return { ok: true, results }
+  })
+
+  // #323 — Sidecar-aware metadata watcher (.xmp / .nfo / .stash.json).
+  ipcMain.handle('sidecarWatcher:start', async (_ev, roots: string[]) => {
+    const { startSidecarWatcher } = await import('./services/sidecar-watcher')
+    if ((globalThis as any).__vaultSidecarWatcher) return { ok: true, alreadyRunning: true }
+    ;(globalThis as any).__vaultSidecarWatcher = startSidecarWatcher(db, roots)
+    return { ok: true }
+  })
+  ipcMain.handle('sidecarWatcher:stop', async () => {
+    const h = (globalThis as any).__vaultSidecarWatcher
+    if (!h) return { ok: true, wasRunning: false }
+    await h.stop()
+    delete (globalThis as any).__vaultSidecarWatcher
+    return { ok: true, wasRunning: true }
+  })
+  ipcMain.handle('sidecarWatcher:status', () => {
+    const h = (globalThis as any).__vaultSidecarWatcher
+    return { running: !!h, roots: h ? h.listRoots() : [] }
+  })
+  ipcMain.handle('sidecarWatcher:addRoot', (_ev, root: string) => {
+    const h = (globalThis as any).__vaultSidecarWatcher
+    if (h) h.addRoot(root); return { ok: !!h }
+  })
+
+  // #331 — MessagePort bus open. Renderer calls this with a channel name;
+  // we set up a MessageChannelMain pair and ship port2 to the renderer
+  // via webContents.postMessage. The renderer's preload picks up the
+  // port via ipcRenderer.on('mpb:<channel>', e => e.ports[0]).
+  ipcMain.handle('messagePort:open', async (ev, channel: 'scrub-thumbs' | 'haptic' | 'audio-meter') => {
+    const { openChannel } = await import('./services/message-port-bus')
+    openChannel(ev.sender, channel)
+    return { ok: true, channel }
+  })
+
+  // #243 / #309 — Full EXIF/XMP/IPTC read+write via exiftool-vendored.
+  // Complements the schema-aware xmp-export above (which writes only
+  // dc:subject + lr:hierarchicalSubject + digiKam:TagsList).
+  ipcMain.handle('exif:read', async (_ev, filePath: string) => {
+    const { readMetadata } = await import('./services/exif-sidecar')
+    try { return { ok: true, tags: await readMetadata(filePath) } }
+    catch (err: any) { return { ok: false, error: String(err?.message ?? err) } }
+  })
+  ipcMain.handle('exif:write', async (_ev, filePath: string, patch: Record<string, any>, options?: { sidecar?: boolean }) => {
+    const { writeMetadata } = await import('./services/exif-sidecar')
+    return writeMetadata(filePath, patch, options)
+  })
+  ipcMain.handle('exif:import-sidecar', async (_ev, filePath: string) => {
+    const { importFromSidecar } = await import('./services/exif-sidecar')
+    return importFromSidecar(filePath)
+  })
+  ipcMain.handle('exif:export-sidecar', async (_ev, filePath: string) => {
+    const { exportToSidecar } = await import('./services/exif-sidecar')
+    return exportToSidecar(filePath)
+  })
+
   // Export every Vault media item as a .stash.json sidecar next to the
   // file. Re-runs are idempotent (overwrites existing sidecars).
   ipcMain.handle('stash:export-sidecars', async () => {
@@ -3329,6 +3710,40 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       tier2 && tier2.isEnabled() ? tier2 : null,
       frameExtractor
     )
+  })
+
+  // #178 — Auto-PMV from one folder + one song. Skips the tag-ranker
+  // entirely so the user can drop a folder of clips + a track and get
+  // a beat-locked edit back. BPM is detected client-side via
+  // bpm-detector and passed in.
+  ipcMain.handle('pmv:autoGenerateFromFolder', async (_ev, options: {
+    folderPath: string
+    bpm: number
+    targetDurationSec?: number
+    beatsPerClip?: number
+    maxClipSources?: number
+    generateCaptions?: boolean
+    videoActiveWindow?: number
+  }) => {
+    const { getAutoPmvService } = await import('./services/pmv/auto-pmv-service')
+    const { getTier2VisionInstance, getFrameExtractorInstance } = await import('./services/ai-intelligence')
+    const tier2 = getTier2VisionInstance()
+    const frameExtractor = getFrameExtractorInstance()
+    const svc = getAutoPmvService(db)
+    return svc.generateFromFolder(
+      options,
+      tier2 && tier2.isEnabled() ? tier2 : null,
+      frameExtractor,
+    )
+  })
+
+  // Sibling to pmv:selectMusic — folder picker for the #178 flow.
+  ipcMain.handle('pmv:selectFolder', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Select folder of clips for PMV',
+      properties: ['openDirectory'],
+    })
+    return result.filePaths[0] || null
   })
 
   // Select music file for PMV project
@@ -6011,6 +6426,18 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       return history.getRecentHistory(limit)
     } catch (e: any) {
       console.error('[Watch] Get history error:', e)
+      return []
+    }
+  })
+
+  // Rich variant used by RecentlyViewedStrip + WatchHistoryTimeline.
+  // Returns media-joined rows so the renderer doesn't have to fan out.
+  ipcMain.handle('watchHistory:list', async (_ev, opts?: { limit?: number; since?: number }) => {
+    try {
+      const history = getWatchHistoryService(db)
+      return history.listWithMedia(opts ?? {})
+    } catch (e: any) {
+      console.error('[Watch] listWithMedia error:', e)
       return []
     }
   })
@@ -8773,6 +9200,23 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     const result = applyBulkRename(db, opts.mediaIds, opts.template)
     return { ok: true, ...result }
   })
+  // #315 — undo + list undo logs
+  ipcMain.handle('media:bulk-rename-undo', async (_ev, undoId: string) => {
+    try {
+      const { undoBulkRename } = await import('./services/bulk-rename')
+      return { ok: true, ...(await undoBulkRename(db, undoId)) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('media:bulk-rename-undo-list', async () => {
+    try {
+      const { listUndoLogs } = await import('./services/bulk-rename')
+      return { ok: true, logs: await listUndoLogs() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
 
   // ─── DeoVR / HereSphere catalog server (#119) ──────────────────
   // Optional read-only HTTP endpoint that exposes the library to VR
@@ -9678,6 +10122,37 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     // Show native notification
     const notifications = getNotificationsService()
     notifications.downloadComplete(item.title || 'Video', item.source)
+    // #274 ntfy fan-out
+    void (async () => {
+      try {
+        const { notifyEvent } = await import('./services/ntfy-gateway')
+        await notifyEvent('download_complete', { filename: item.title || item.url })
+      } catch { /* ignore */ }
+    })()
+    // #224 Auto-NSFW tagging — if the source URL host is on the
+    // StevenBlack porn-only list, tag the media as `nsfw` + platform
+    // name once the scanner ingests it (poll up to 30s).
+    void (async () => {
+      try {
+        if (!item?.url || !item?.outputPath) return
+        const { matchUrl } = await import('./services/ai-intelligence/hosts-blocklist')
+        const match = matchUrl(item.url)
+        if (!match) return
+        const deadline = Date.now() + 30_000
+        let mediaRow: any = null
+        while (Date.now() < deadline) {
+          mediaRow = db.raw.prepare('SELECT id FROM media WHERE path = ? LIMIT 1').get(item.outputPath)
+          if (mediaRow?.id) break
+          await new Promise((r) => setTimeout(r, 1500))
+        }
+        if (!mediaRow?.id) return
+        db.addTagToMedia(mediaRow.id, 'nsfw')
+        if (match.platform) db.addTagToMedia(mediaRow.id, `platform:${match.platform}`)
+        console.log(`[hosts-blocklist] auto-tagged ${mediaRow.id} as nsfw + platform:${match.platform} (matched ${match.matched})`)
+      } catch (err) {
+        console.warn('[hosts-blocklist] auto-tag failed (non-fatal):', err)
+      }
+    })()
   })
   urlDownloader.on('download:error', (item: any) => {
     broadcast('urlDownloader:error', item)
@@ -10322,6 +10797,3160 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       return { installed: true, networks, addresses }
     } catch (err: any) {
       return { installed: false, networks: [], addresses: [], error: err?.message }
+    }
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //   #208 — Browse-thumbnail phash background indexer + lookup.
+  //   Renderer enqueues URLs after each search render, then asks the
+  //   service whether any cached phash collides (within distance) with
+  //   a local media row so the card can show a "you already have this"
+  //   badge.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  ipcMain.handle('browse:phash-enqueue', async (_ev, urls: string[]) => {
+    try {
+      const { getBrowsePhashIndexer } = await import('./services/browse-phash-indexer')
+      return getBrowsePhashIndexer(db).enqueue(Array.isArray(urls) ? urls : [])
+    } catch (err: any) {
+      return { queued: 0, alreadyCached: 0, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('browse:phash-lookup', async (_ev, urls: string[]) => {
+    try {
+      const { getBrowsePhashIndexer } = await import('./services/browse-phash-indexer')
+      return getBrowsePhashIndexer(db).lookup(Array.isArray(urls) ? urls : [])
+    } catch (err: any) {
+      return {}
+    }
+  })
+
+  ipcMain.handle('browse:phash-find-similar', async (_ev, phashes: string[], maxDist?: number) => {
+    try {
+      const { getBrowsePhashIndexer } = await import('./services/browse-phash-indexer')
+      return getBrowsePhashIndexer(db).findSimilarLocal(Array.isArray(phashes) ? phashes : [], maxDist ?? 8)
+    } catch (err: any) {
+      return {}
+    }
+  })
+
+  ipcMain.handle('browse:phash-stats', async () => {
+    try {
+      const { getBrowsePhashIndexer } = await import('./services/browse-phash-indexer')
+      return getBrowsePhashIndexer(db).getStats()
+    } catch {
+      return { cachedUrls: 0, queueDepth: 0, inFlight: 0 }
+    }
+  })
+
+  ipcMain.handle('browse:phash-set-enabled', async (_ev, enabled: boolean) => {
+    try {
+      const { getBrowsePhashIndexer } = await import('./services/browse-phash-indexer')
+      getBrowsePhashIndexer(db).setEnabled(!!enabled)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //   #206 — DB-backed saved searches (pinned filter chips). Replaces the
+  //   localStorage list so chips ride along with mobile-sync replication.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  ipcMain.handle('savedSearches:list', async () => {
+    try {
+      const { getSavedSearchesService } = await import('./services/saved-searches-service')
+      return { ok: true, items: getSavedSearchesService(db).list() }
+    } catch (err: any) {
+      return { ok: false, items: [], error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('savedSearches:create', async (_ev, args: { name: string; queryJson: string }) => {
+    try {
+      const { getSavedSearchesService } = await import('./services/saved-searches-service')
+      const row = getSavedSearchesService(db).create(args.name, args.queryJson)
+      broadcast('vault:changed')
+      return { ok: true, item: row }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('savedSearches:update', async (_ev, args: { id: string; name?: string; queryJson?: string }) => {
+    try {
+      const { getSavedSearchesService } = await import('./services/saved-searches-service')
+      getSavedSearchesService(db).update(args.id, { name: args.name, queryJson: args.queryJson })
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('savedSearches:delete', async (_ev, id: string) => {
+    try {
+      const { getSavedSearchesService } = await import('./services/saved-searches-service')
+      getSavedSearchesService(db).delete(id)
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('savedSearches:reorder', async (_ev, orderedIds: string[]) => {
+    try {
+      const { getSavedSearchesService } = await import('./services/saved-searches-service')
+      getSavedSearchesService(db).reorder(Array.isArray(orderedIds) ? orderedIds : [])
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('savedSearches:importLegacy', async (_ev, entries: Array<{ id: string; name: string; queryJson: string; pinnedAt: number }>) => {
+    try {
+      const { getSavedSearchesService } = await import('./services/saved-searches-service')
+      const imported = getSavedSearchesService(db).importLegacy(Array.isArray(entries) ? entries : [])
+      if (imported > 0) broadcast('vault:changed')
+      return { ok: true, imported }
+    } catch (err: any) {
+      return { ok: false, imported: 0, error: err?.message ?? String(err) }
+    }
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //   #146 — Sprite-sheet hover scrub. Re-uses the contact-sheet
+  //   generator with a dense 6×6 preset to produce a single PNG the
+  //   renderer can slice via CSS background-position while the user
+  //   moves the cursor across a card.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  ipcMain.handle('media:spriteSheetPath', async (_ev, args: { mediaId: string; preset?: 'scrub' | 'hover' }) => {
+    try {
+      const { contactSheetPathFor } = await import('./services/ai-intelligence/contact-sheet')
+      const preset = args.preset ?? 'scrub'
+      const p = contactSheetPathFor(args.mediaId, preset)
+      return { ok: true, path: p, cols: preset === 'scrub' ? 6 : 4, rows: preset === 'scrub' ? 6 : 1 }
+    } catch (err: any) {
+      return { ok: false, path: null, error: err?.message ?? String(err) }
+    }
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //   #101 — Saved Subscriptions with delta sync. Each subscription is a
+  //   (source, query) tuple that re-fetches on a schedule and routes
+  //   any previously-unseen posts to subscription_inbox.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  ipcMain.handle('subscriptions:list', async () => {
+    try {
+      const { getSubscriptionsService } = await import('./services/subscriptions-service')
+      return { ok: true, items: getSubscriptionsService(db).list() }
+    } catch (err: any) {
+      return { ok: false, items: [], error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('subscriptions:create', async (_ev, args: { name: string; source: string; query: string; intervalMinutes?: number }) => {
+    try {
+      const { getSubscriptionsService } = await import('./services/subscriptions-service')
+      const row = getSubscriptionsService(db).create(args)
+      broadcast('vault:changed')
+      return { ok: true, item: row }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('subscriptions:update', async (_ev, id: string, patch: { name?: string; query?: string; intervalMinutes?: number; enabled?: boolean }) => {
+    try {
+      const { getSubscriptionsService } = await import('./services/subscriptions-service')
+      getSubscriptionsService(db).update(id, patch)
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('subscriptions:delete', async (_ev, id: string) => {
+    try {
+      const { getSubscriptionsService } = await import('./services/subscriptions-service')
+      getSubscriptionsService(db).delete(id)
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('subscriptions:runNow', async (_ev, id: string) => {
+    try {
+      const { getSubscriptionsService } = await import('./services/subscriptions-service')
+      const res = await getSubscriptionsService(db).runOne(id)
+      broadcast('vault:changed')
+      return { ok: true, ...res }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('subscriptions:inbox', async (_ev, opts?: { subscriptionId?: string; pendingOnly?: boolean; limit?: number }) => {
+    try {
+      const { getSubscriptionsService } = await import('./services/subscriptions-service')
+      return { ok: true, items: getSubscriptionsService(db).inbox(opts) }
+    } catch (err: any) {
+      return { ok: false, items: [], error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('subscriptions:dismiss', async (_ev, inboxId: string) => {
+    try {
+      const { getSubscriptionsService } = await import('./services/subscriptions-service')
+      getSubscriptionsService(db).dismissInbox(inboxId)
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('subscriptions:markSaved', async (_ev, inboxId: string) => {
+    try {
+      const { getSubscriptionsService } = await import('./services/subscriptions-service')
+      getSubscriptionsService(db).markSaved(inboxId)
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #179 — Auto-trailer generator. Produces a 30s highlight reel by
+  // sampling 6 evenly-spaced 5s windows and crossfading them. Output
+  // mp4 lands in userData/trailers/<mediaId>-trailer.mp4.
+  ipcMain.handle('media:autoTrailerPath', async (_ev, mediaId: string) => {
+    try {
+      const { trailerPathFor } = await import('./services/auto-trailer-service')
+      return { ok: true, path: trailerPathFor(mediaId) }
+    } catch (err: any) {
+      return { ok: false, path: null, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('media:generateAutoTrailer', async (_ev, args: { mediaId: string; force?: boolean; useAudioPeaks?: boolean }) => {
+    try {
+      const { generateAutoTrailer, trailerPathFor } = await import('./services/auto-trailer-service')
+      const ff = await import('./ffpaths')
+      const ffmpegPath = ff.ffmpegBin ?? 'ffmpeg'
+      if (!args.force) {
+        const existing = trailerPathFor(args.mediaId)
+        if (existing) return { ok: true, path: existing, alreadyExisted: true }
+      }
+      const media = db.getMedia(args.mediaId)
+      if (!media) return { ok: false, error: 'Media not found' }
+      if (media.type !== 'video') return { ok: false, error: 'Auto-trailer only applies to videos' }
+      if (!media.durationSec || media.durationSec < 15) {
+        return { ok: false, error: 'Source too short for a trailer (<15s)' }
+      }
+      const out = await generateAutoTrailer(media.path, ffmpegPath, args.mediaId, media.durationSec, {
+        reuseExisting: !args.force,
+        useAudioPeaks: args.useAudioPeaks,
+      })
+      if (!out) return { ok: false, error: 'FFmpeg failed to produce trailer' }
+      return { ok: true, path: out, alreadyExisted: false }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #106 — Stash-style local performers database. Holds canonical
+  // performer bio + cross-source ids; renderer pulls scene counts
+  // (derived from `performer:NAME` tag joins) for the detail page.
+  ipcMain.handle('performersDb:list', async (_ev, opts?: { query?: string; limit?: number }) => {
+    try {
+      const { getPerformersDbService } = await import('./services/performers-db-service')
+      return { ok: true, items: getPerformersDbService(db).list(opts) }
+    } catch (err: any) {
+      return { ok: false, items: [], error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('performersDb:get', async (_ev, id: string) => {
+    try {
+      const { getPerformersDbService } = await import('./services/performers-db-service')
+      return { ok: true, item: getPerformersDbService(db).get(id) }
+    } catch (err: any) {
+      return { ok: false, item: null, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('performersDb:create', async (_ev, args: any) => {
+    try {
+      const { getPerformersDbService } = await import('./services/performers-db-service')
+      const item = getPerformersDbService(db).create(args)
+      broadcast('vault:changed')
+      return { ok: true, item }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('performersDb:update', async (_ev, id: string, patch: any) => {
+    try {
+      const { getPerformersDbService } = await import('./services/performers-db-service')
+      getPerformersDbService(db).update(id, patch)
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('performersDb:delete', async (_ev, id: string) => {
+    try {
+      const { getPerformersDbService } = await import('./services/performers-db-service')
+      getPerformersDbService(db).delete(id)
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #195 — Multi-user profiles. Renderer surfaces a profile switcher;
+  // new watch_sessions get tagged with whatever profile was active at
+  // the time. Namespaced as userProfiles:* to avoid colliding with the
+  // pre-existing settings-profiles namespace (above).
+  ipcMain.handle('userProfiles:list', async () => {
+    try {
+      const { getProfilesService } = await import('./services/profiles-service')
+      const svc = getProfilesService(db)
+      await svc.initActive()
+      return { ok: true, profiles: svc.list(), activeId: svc.getActive() }
+    } catch (err: any) {
+      return { ok: false, profiles: [], activeId: 'default', error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('userProfiles:create', async (_ev, args: { name: string; color?: string; avatarPath?: string }) => {
+    try {
+      const { getProfilesService } = await import('./services/profiles-service')
+      const row = getProfilesService(db).create(args)
+      broadcast('vault:changed')
+      return { ok: true, profile: row }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('userProfiles:update', async (_ev, id: string, patch: { name?: string; color?: string | null; avatarPath?: string | null }) => {
+    try {
+      const { getProfilesService } = await import('./services/profiles-service')
+      getProfilesService(db).update(id, patch)
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('userProfiles:delete', async (_ev, id: string) => {
+    try {
+      const { getProfilesService } = await import('./services/profiles-service')
+      getProfilesService(db).delete(id)
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('userProfiles:setActive', async (_ev, id: string) => {
+    try {
+      const { getProfilesService } = await import('./services/profiles-service')
+      await getProfilesService(db).setActive(id)
+      broadcast('vault:changed')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #131 / #136 / #162 / #180 — generic Python ML sidecar launcher.
+  // Each sidecar = (id, port). User installs the model + a Flask wrapper
+  // exposing /health + per-sidecar endpoints; Vault spawns the script
+  // on demand and forwards requests.
+  ipcMain.handle('mlSidecar:status', async (_ev, id: 'videoLlama3' | 'animateDiff' | 'rife' | 'musicGen') => {
+    try {
+      const { getSidecarStatus } = await import('./services/ml-sidecar-launcher')
+      return { ok: true, ...(await getSidecarStatus(id)) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('mlSidecar:start', async (_ev, id: 'videoLlama3' | 'animateDiff' | 'rife' | 'musicGen') => {
+    try {
+      const { ensureSidecar } = await import('./services/ml-sidecar-launcher')
+      return { ok: await ensureSidecar(id) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('mlSidecar:post', async (_ev, args: { id: 'videoLlama3' | 'animateDiff' | 'rife' | 'musicGen'; path: string; body: unknown; timeoutMs?: number }) => {
+    try {
+      const { postJson } = await import('./services/ml-sidecar-launcher')
+      return await postJson(args.id, args.path, args.body, args.timeoutMs)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #385 — Xyrene voice intake pipeline. Drop a wav/mp3/m4a/ogg/flac
+  // into the watched folder; service silence-trims, denoises,
+  // loudness-normalizes, copies to xtts voice_samples/, registers
+  // metadata, and pre-warms the embedding via /cache_voice.
+  ipcMain.handle('xyrene:intakeStatus', async () => {
+    try {
+      const { getIntakeStatus } = await import('./services/xyrene/voice-intake')
+      return { ok: true, ...getIntakeStatus() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('xyrene:intakeProcess', async (_ev, args: { srcPath: string; cleanup?: 'conservative' | 'standard' | 'aggressive'; displayName?: string; description?: string; language?: string; outputSlug?: string }) => {
+    try {
+      const { processVoiceFile } = await import('./services/xyrene/voice-intake')
+      return await processVoiceFile(args.srcPath, args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('xyrene:intakeStart', async (ev, args?: { folder?: string; cleanup?: 'conservative' | 'standard' | 'aggressive' }) => {
+    try {
+      const { startIntakeWatcher } = await import('./services/xyrene/voice-intake')
+      const { getSettings, updateSettings } = await import('./settings')
+      const s = getSettings() as any
+      const folder = args?.folder?.trim() || s.xyreneVoiceIntakeFolder || `${process.env.USERPROFILE || ''}\\Documents\\Vault\\xyrene_voice_intake`
+      const cleanup = args?.cleanup ?? s.xyreneVoiceCleanupMode ?? 'standard'
+      if (folder !== s.xyreneVoiceIntakeFolder || cleanup !== s.xyreneVoiceCleanupMode) {
+        updateSettings({ xyreneVoiceIntakeFolder: folder, xyreneVoiceCleanupMode: cleanup } as any)
+      }
+      return await startIntakeWatcher(folder, {
+        onProcessed(srcPath, result) {
+          try {
+            ev.sender.send('xyrene:intakeProcessed', { srcPath, result })
+          } catch { /* renderer gone */ }
+        },
+      }, { cleanup })
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('xyrene:intakeStop', async () => {
+    try {
+      const { stopIntakeWatcher } = await import('./services/xyrene/voice-intake')
+      await stopIntakeWatcher()
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('xyrene:voiceMetadata', async () => {
+    try {
+      const { getSettings } = await import('./settings')
+      return { ok: true, metadata: (getSettings() as any).xyreneVoiceMetadata ?? {} }
+    } catch (err: any) {
+      return { ok: false, metadata: {}, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('xyrene:voiceMetadataSet', async (_ev, args: { filename: string; displayName?: string; description?: string; language?: string }) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const s = getSettings() as any
+      const meta = { ...(s.xyreneVoiceMetadata ?? {}) }
+      const cur = meta[args.filename] ?? { displayName: args.filename.replace(/\.wav$/i, ''), description: '', language: 'en' }
+      meta[args.filename] = {
+        displayName: args.displayName ?? cur.displayName,
+        description: args.description ?? cur.description,
+        language: args.language ?? cur.language,
+      }
+      updateSettings({ xyreneVoiceMetadata: meta } as any)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #222/223/224 — StevenBlack hosts blocklist (source-discovery, panic
+  // mode, auto-NSFW tagging). All three share the same cached porn-only
+  // hosts file under userData/blocklists/stevenblack/.
+  ipcMain.handle('hostsBlocklist:status', async () => {
+    try {
+      const { getStatus } = await import('./services/ai-intelligence/hosts-blocklist')
+      return { ok: true, ...(await getStatus()) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('hostsBlocklist:refresh', async () => {
+    try {
+      const { refreshBlocklist } = await import('./services/ai-intelligence/hosts-blocklist')
+      const meta = await refreshBlocklist()
+      return { ok: true, meta }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('hostsBlocklist:discover', async (_ev, args?: { limit?: number }) => {
+    try {
+      const { discoverNewSources } = await import('./services/ai-intelligence/hosts-blocklist')
+      const candidates = await discoverNewSources({ limit: args?.limit })
+      return { ok: true, candidates }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('hostsBlocklist:panicOn', async () => {
+    try {
+      const { activatePanicMode } = await import('./services/ai-intelligence/hosts-blocklist')
+      return await activatePanicMode()
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('hostsBlocklist:panicOff', async () => {
+    try {
+      const { deactivatePanicMode } = await import('./services/ai-intelligence/hosts-blocklist')
+      return await deactivatePanicMode()
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('hostsBlocklist:matchUrl', async (_ev, url: string) => {
+    try {
+      const { matchUrl } = await import('./services/ai-intelligence/hosts-blocklist')
+      return { ok: true, match: matchUrl(url) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #379 — Stealth mode: swap the window title (and optionally the
+  // taskbar app-user-model-id) so a casual over-the-shoulder glance
+  // reads "Microsoft Excel" or "Outlook" instead of "Vault". Cosmetic
+  // only — does not actually disguise the executable. Pairs with the
+  // StevenBlack panic mode for layered "boss coming" defense.
+  const STEALTH_PROFILES: Record<string, { title: string; aumid?: string }> = {
+    excel: { title: 'Book1 - Excel', aumid: 'Microsoft.Office.Excel' },
+    sheets: { title: 'Untitled spreadsheet - Google Sheets - Google Chrome', aumid: 'Google Chrome' },
+    teams: { title: 'Microsoft Teams', aumid: 'Microsoft.Teams' },
+    outlook: { title: 'Inbox - Outlook', aumid: 'Microsoft.Office.Outlook' },
+    word: { title: 'Document1 - Word', aumid: 'Microsoft.Office.Winword' },
+    code: { title: 'Visual Studio Code', aumid: 'Microsoft.VisualStudio.Code' },
+    notepad: { title: 'Untitled - Notepad' },
+    chrome: { title: 'New Tab - Google Chrome', aumid: 'Google Chrome' },
+  }
+  ipcMain.handle('stealth:status', async () => {
+    try {
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      return { ok: true, active: !!s.stealthProfile, profile: s.stealthProfile ?? null, profiles: Object.keys(STEALTH_PROFILES) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('stealth:enable', async (_ev, profile: string) => {
+    try {
+      const p = STEALTH_PROFILES[profile]
+      if (!p) return { ok: false, error: `Unknown profile: ${profile}` }
+      const { BrowserWindow } = await import('electron')
+      for (const w of BrowserWindow.getAllWindows()) {
+        try { w.setTitle(p.title) } catch { /* ignore */ }
+      }
+      if (process.platform === 'win32' && p.aumid) {
+        try { (require('electron').app).setAppUserModelId(p.aumid) } catch { /* ignore */ }
+      }
+      const { updateSettings } = await import('./settings')
+      updateSettings({ stealthProfile: profile } as any)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  // #348 — edging scoreboard. Sessions tracked in edging_sessions
+  // table; XP rewards denial heavily. Start/end + stats + history.
+  ipcMain.handle('edging:start', async () => {
+    try {
+      const { startEdgingSession } = await import('./services/edging-tracker')
+      return { ok: true, session: startEdgingSession(db.raw as any) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('edging:end', async (_ev, args: { outcome?: 'climax' | 'denied' | 'ruined'; climaxed?: boolean; notes?: string | null }) => {
+    try {
+      const { endEdgingSession } = await import('./services/edging-tracker')
+      return { ok: true, session: endEdgingSession(db.raw as any, args) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('edging:stats', async () => {
+    try {
+      const { getEdgingStats } = await import('./services/edging-tracker')
+      return { ok: true, stats: getEdgingStats(db.raw as any) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('edging:recent', async (_ev, limit?: number) => {
+    try {
+      const { getRecentSessions } = await import('./services/edging-tracker')
+      return { ok: true, sessions: getRecentSessions(db.raw as any, limit ?? 50) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #358 G-134 — tease & denial task wheel. Picks a weighted-random
+  // task from the pool (default 24 tasks across edge / pause /
+  // reverse / position / sensation / denial categories).
+  ipcMain.handle('taskWheel:pool', async () => {
+    try {
+      const { getActivePool } = await import('./services/task-wheel')
+      return { ok: true, pool: getActivePool() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('taskWheel:pick', async (_ev, args?: { maxIntensity?: 1 | 2 | 3 | 4 | 5; excludeIds?: string[] }) => {
+    try {
+      const { pickTask } = await import('./services/task-wheel')
+      const task = pickTask(args ?? {})
+      return { ok: true, task }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('taskWheel:setPool', async (_ev, pool: any[]) => {
+    try {
+      const { setPool } = await import('./services/task-wheel')
+      setPool(pool)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('taskWheel:setDisabledCategories', async (_ev, cats: any[]) => {
+    try {
+      const { setDisabledCategories } = await import('./services/task-wheel')
+      setDisabledCategories(cats)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('taskWheel:resetDefaults', async () => {
+    try {
+      const { getDefaultPool, setPool } = await import('./services/task-wheel')
+      setPool(getDefaultPool())
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #376 H-152 — orgasm budget + relapse ledger
+  ipcMain.handle('budget:status', async () => {
+    try {
+      const { getOrgasmBudget } = await import('./services/edging-tracker')
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      const configured = typeof s.orgasmBudgetPerMonth === 'number' ? s.orgasmBudgetPerMonth : undefined
+      return { ok: true, status: getOrgasmBudget(db.raw as any, configured) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('budget:history', async (_ev, monthsBack?: number) => {
+    try {
+      const { getBudgetHistory } = await import('./services/edging-tracker')
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      const budget = typeof s.orgasmBudgetPerMonth === 'number' ? s.orgasmBudgetPerMonth : 8
+      return { ok: true, history: getBudgetHistory(db.raw as any, budget, monthsBack ?? 6) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('budget:setLimit', async (_ev, perMonth: number) => {
+    try {
+      const { updateSettings } = await import('./settings')
+      updateSettings({ orgasmBudgetPerMonth: Math.max(1, Math.min(60, Math.round(perMonth))) } as any)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #363 — per-media denial cooldown.
+  ipcMain.handle('denial:set', async (_ev, args: { mediaId: string; durationMin: number }) => {
+    try {
+      const { setDenialCooldown } = await import('./services/edging-tracker')
+      return { ok: true, ...setDenialCooldown(db.raw as any, args.mediaId, args.durationMin) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('denial:clear', async (_ev, mediaId: string) => {
+    try {
+      const { clearDenialCooldown } = await import('./services/edging-tracker')
+      clearDenialCooldown(db.raw as any, mediaId)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('denial:status', async (_ev, mediaId: string) => {
+    try {
+      const { getDenialStatus } = await import('./services/edging-tracker')
+      return { ok: true, status: getDenialStatus(db.raw as any, mediaId) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #294 — Apple Photos "Feature less" suppression. Sets/clears the
+  // boolean on media_stats; the recommender consults this when
+  // building daily-mix / suggestions to weight these items down.
+  ipcMain.handle('media:setFeatureLess', async (_ev, args: { mediaId: string; value: boolean }) => {
+    try {
+      const now = Date.now()
+      db.raw.prepare(`
+        INSERT INTO media_stats (mediaId, views, lastViewedAt, rating, oCount, updatedAt, featureLess)
+        VALUES (?, 0, NULL, 0, 0, ?, ?)
+        ON CONFLICT(mediaId) DO UPDATE SET featureLess = excluded.featureLess, updatedAt = excluded.updatedAt
+      `).run(args.mediaId, now, args.value ? 1 : 0)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('media:getFeatureLess', async (_ev, mediaId: string) => {
+    try {
+      const row = db.raw.prepare(`SELECT featureLess FROM media_stats WHERE mediaId = ?`).get(mediaId) as { featureLess: number } | undefined
+      return { ok: true, value: row?.featureLess === 1 }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('media:listFeatureLess', async () => {
+    try {
+      const rows = db.raw.prepare(`SELECT mediaId FROM media_stats WHERE featureLess = 1`).all() as Array<{ mediaId: string }>
+      return { ok: true, mediaIds: rows.map((r) => r.mediaId) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #347 — post-nut clarity blocker (refractory lockout).
+  ipcMain.handle('lockout:status', async () => {
+    try {
+      const { getLockoutState } = await import('./services/post-nut-lockout')
+      return { ok: true, state: getLockoutState() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('lockout:trigger', async (_ev, args?: { durationMin?: number }) => {
+    try {
+      const { triggerLockout } = await import('./services/post-nut-lockout')
+      return { ok: true, state: triggerLockout(args ?? {}) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('lockout:cancel', async () => {
+    try {
+      const { cancelLockout } = await import('./services/post-nut-lockout')
+      return { ok: true, state: cancelLockout() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('lockout:setEnabled', async (_ev, enabled: boolean) => {
+    try {
+      const { setEnabled } = await import('./services/post-nut-lockout')
+      return { ok: true, state: setEnabled(enabled) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('lockout:setDuration', async (_ev, durationMin: number) => {
+    try {
+      const { setDuration } = await import('./services/post-nut-lockout')
+      return { ok: true, state: setDuration(durationMin) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #G-129 — JOI script player. Render a JOI script (timed text +
+  // pause directives) into an audio schedule the renderer can play
+  // back. Each speak cue is synthesized via XTTS in the user's chosen
+  // voice. The renderer is responsible for actual playback so the
+  // audio runs through the existing volume / EQ stack.
+  ipcMain.handle('joi:parse', async (_ev, text: string) => {
+    try {
+      const { parseJoiScript } = await import('./services/xyrene/joi-script-player')
+      return { ok: true, cues: parseJoiScript(text) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('joi:render', async (_ev, args: { text?: string; cues?: any[]; voice?: string }) => {
+    try {
+      const { parseJoiScript, renderJoiScript } = await import('./services/xyrene/joi-script-player')
+      const cues = args.cues ?? (args.text ? parseJoiScript(args.text) : [])
+      if (cues.length === 0) return { ok: false, error: 'Empty script' }
+      return await renderJoiScript(cues, { defaultVoice: args.voice })
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // Generic ML sidecar (vault-ml-sidecar) — covers Florence-2,
+  // DINOv3-L, MetaCLIP-H, SigLIP2-age, Wav2Vec2-emotion (more on demand).
+  ipcMain.handle('vaultMl:health', async () => {
+    try {
+      const { getVaultMlClient } = await import('./services/ai-intelligence/vault-ml-client')
+      const h = await getVaultMlClient().health(false)
+      return { ok: true, health: h }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('vaultMl:start', async () => {
+    try {
+      const { ensureVaultMlSidecar } = await import('./services/ai-intelligence/vault-ml-launcher')
+      const ok = await ensureVaultMlSidecar()
+      return { ok }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('vaultMl:stop', async () => {
+    try {
+      const { stopVaultMlSidecar } = await import('./services/ai-intelligence/vault-ml-launcher')
+      await stopVaultMlSidecar()
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('vaultMl:loadModel', async (_ev, modelId: string) => {
+    try {
+      const { getVaultMlClient } = await import('./services/ai-intelligence/vault-ml-client')
+      const ok = await getVaultMlClient().load(modelId)
+      return { ok }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('vaultMl:unloadModel', async (_ev, modelId: string) => {
+    try {
+      const { getVaultMlClient } = await import('./services/ai-intelligence/vault-ml-client')
+      const ok = await getVaultMlClient().unload(modelId)
+      return { ok }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // Florence-2 #B-34 — primary VL interface (caption, OD, OCR, grounding)
+  ipcMain.handle('vaultMl:florence', async (_ev, args: { imagePath?: string; imageBase64?: string; task?: string; text_input?: string; maxNewTokens?: number }) => {
+    try {
+      const { getVaultMlClient } = await import('./services/ai-intelligence/vault-ml-client')
+      const r = await getVaultMlClient().florence(args)
+      return r  // already has ok:true and the relevant fields
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('vaultMl:embedImage', async (_ev, args: { imagePath?: string; imageBase64?: string; modelId?: 'dinov3-vit-l' | 'metaclip-h14' }) => {
+    try {
+      const { getVaultMlClient } = await import('./services/ai-intelligence/vault-ml-client')
+      const r = await getVaultMlClient().embedImage(args)
+      return r
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('vaultMl:classifyImage', async (_ev, args: { imagePath?: string; imageBase64?: string; modelId?: 'siglip2-age'; topK?: number }) => {
+    try {
+      const { getVaultMlClient } = await import('./services/ai-intelligence/vault-ml-client')
+      const r = await getVaultMlClient().classifyImage(args)
+      return r
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('vaultMl:classifyAudioEmotion', async (_ev, args: { audioPath?: string; audioBase64?: string }) => {
+    try {
+      const { getVaultMlClient } = await import('./services/ai-intelligence/vault-ml-client')
+      const r = await getVaultMlClient().classifyAudioEmotion(args)
+      return r
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #B-22 SAM2 promptable segmentation
+  ipcMain.handle('vaultMl:sam2Segment', async (_ev, args: any) => {
+    try {
+      const { getVaultMlClient } = await import('./services/ai-intelligence/vault-ml-client')
+      return await getVaultMlClient().sam2Segment(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #B-29 Demucs source separation
+  ipcMain.handle('vaultMl:demucsSeparate', async (_ev, args: any) => {
+    try {
+      const { getVaultMlClient } = await import('./services/ai-intelligence/vault-ml-client')
+      return await getVaultMlClient().demucsSeparate(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #B-37 MS-CLAP cross-modal audio↔text embed
+  ipcMain.handle('vaultMl:msclapEmbed', async (_ev, args: any) => {
+    try {
+      const { getVaultMlClient } = await import('./services/ai-intelligence/vault-ml-client')
+      return await getVaultMlClient().msclapEmbed(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #B-33 CodeFormer face restoration
+  ipcMain.handle('vaultMl:codeformerRestore', async (_ev, args: any) => {
+    try {
+      const { getVaultMlClient } = await import('./services/ai-intelligence/vault-ml-client')
+      return await getVaultMlClient().codeformerRestore(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #308 E-84 — Beets-style smart-collection query language. Parses
+  // "rating:>=4 tag:milf NOT tag:asian" → SQL WHERE + bind params.
+  // Used by smart playlists / virtual libraries / advanced search.
+  ipcMain.handle('smartQuery:compile', async (_ev, query: string) => {
+    try {
+      const { compileQuery } = await import('./services/smart-query')
+      return { ok: true, ...compileQuery(query) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('smartQuery:run', async (_ev, args: { query: string; limit?: number; offset?: number; sort?: string }) => {
+    try {
+      const { compileQuery } = await import('./services/smart-query')
+      const compiled = compileQuery(args.query)
+      const limit = Math.max(1, Math.min(args.limit ?? 60, 500))
+      const offset = Math.max(0, args.offset ?? 0)
+      const sortMap: Record<string, string> = {
+        newest: 'm.addedAt DESC',
+        oldest: 'm.addedAt ASC',
+        rating: 's.rating DESC, m.addedAt DESC',
+        views: 's.views DESC, m.addedAt DESC',
+        random: 'RANDOM()',
+        longest: 'm.durationSec DESC',
+        shortest: 'm.durationSec ASC',
+      }
+      const sort = sortMap[args.sort ?? 'newest'] ?? sortMap.newest
+      // Always LEFT JOIN media_stats so rating-based sort works.
+      const joins = new Set([...compiled.joinedClauses, 'LEFT JOIN media_stats s ON s.mediaId = m.id'])
+      const sql = `
+        SELECT m.id, m.filename, m.path, m.thumbPath, m.type, m.durationSec, m.width, m.height, m.addedAt,
+               COALESCE(s.rating, 0) AS rating, COALESCE(s.views, 0) AS views
+        FROM media m
+        ${[...joins].join(' ')}
+        WHERE COALESCE(m.triage_status, 'active') = 'active'
+          AND (${compiled.sql})
+        ORDER BY ${sort}
+        LIMIT ? OFFSET ?
+      `
+      const items = db.raw.prepare(sql).all(...compiled.params, limit, offset)
+      const countSql = `SELECT COUNT(*) AS n FROM media m ${[...joins].join(' ')} WHERE COALESCE(m.triage_status, 'active') = 'active' AND (${compiled.sql})`
+      const total = (db.raw.prepare(countSql).get(...compiled.params) as { n: number }).n
+      return { ok: true, items, total, compiled: { sql: compiled.sql, paramCount: compiled.params.length } }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #317 E-93 — Hydrus PTR / Danbooru CSV tag-implication import.
+  // Caller passes the CSV text (renderer reads file via dialog +
+  // FileReader); we parse + merge into the existing implications
+  // JSON store.
+  ipcMain.handle('tagImplications:importCsv', async (_ev, csvText: string) => {
+    try {
+      const { importImplicationsCsv } = await import('./services/tag-implications')
+      return { ok: true, ...importImplicationsCsv(csvText) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('tagImplications:importCsvFile', async (_ev, filePath: string) => {
+    try {
+      const fs = await import('node:fs/promises')
+      const text = await fs.readFile(filePath, 'utf8')
+      const { importImplicationsCsv } = await import('./services/tag-implications')
+      return { ok: true, ...importImplicationsCsv(text) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #321 E-97 — Folder Action preset library. Per-folder rule bundles
+  // that fire when a file lands (e.g. "auto-tag as 'amateur', enqueue
+  // CodeFormer restoration, send to /import-url webhook").
+  ipcMain.handle('folderActions:list', async () => {
+    try {
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      const presets = Array.isArray(s.folderActionPresets) ? s.folderActionPresets : []
+      return { ok: true, presets }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('folderActions:save', async (_ev, args: { id?: string; name: string; folderPath: string; actions: Array<{ kind: string; args?: any }>; enabled?: boolean }) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const { nanoid } = await import('nanoid')
+      const s = getSettings() as any
+      const presets = Array.isArray(s.folderActionPresets) ? [...s.folderActionPresets] : []
+      const id = args.id ?? nanoid()
+      const entry = {
+        id, name: args.name, folderPath: args.folderPath,
+        actions: args.actions, enabled: args.enabled !== false,
+        createdAt: Date.now(),
+      }
+      const idx = presets.findIndex((p: any) => p.id === id)
+      if (idx >= 0) presets[idx] = { ...presets[idx], ...entry }
+      else presets.push(entry)
+      updateSettings({ folderActionPresets: presets } as any)
+      return { ok: true, id }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('folderActions:delete', async (_ev, id: string) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const s = getSettings() as any
+      const presets = Array.isArray(s.folderActionPresets) ? s.folderActionPresets.filter((p: any) => p.id !== id) : []
+      updateSettings({ folderActionPresets: presets } as any)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('folderActions:setEnabled', async (_ev, args: { id: string; enabled: boolean }) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const s = getSettings() as any
+      const presets = Array.isArray(s.folderActionPresets)
+        ? s.folderActionPresets.map((p: any) => p.id === args.id ? { ...p, enabled: args.enabled } : p)
+        : []
+      updateSettings({ folderActionPresets: presets } as any)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #349 G-125 — tease auto-cut compiler. NudeNet-driven peek-a-boo
+  // supercut that cuts away right before each exposure.
+  ipcMain.handle('teaseCut:events', async (_ev, args: { mediaId: string; threshold?: number }) => {
+    try {
+      const { getCachedExposureEvents } = await import('./services/tease-cut-compiler')
+      return { ok: true, events: getCachedExposureEvents(db.raw as any, args.mediaId, args.threshold ?? 0.6) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('teaseCut:compile', async (_ev, args: { mediaPath: string; events: any[]; dstPath: string; threshold?: number; leadInSec?: number; cutawaySec?: number; maxClips?: number; videoCodec?: string; width?: number; height?: number; fps?: number }) => {
+    try {
+      const { compileTeaseSupercut } = await import('./services/tease-cut-compiler')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      return await compileTeaseSupercut(ffmpegBin, args.mediaPath, args.events, args.dstPath, args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // Default caption pools for #365 — kept inline so the IPC handler
+  // can fall back to them when settings.captionPools is empty.
+  const defaultCaptionPools = (): Record<string, string[]> => ({
+    sissy: [
+      'Good girl.', 'Stroke for daddy.', 'You\'re such a slut.', 'On your knees.',
+      'Show me how you take it.', 'Be a good little princess.', 'Smile for me.',
+    ],
+    denial: [
+      'Don\'t you dare come.', 'Edge again.', 'Hold it.', 'Not yet.',
+      'You don\'t deserve it.', 'Stop right there.', 'Get back to the edge.',
+    ],
+    praise: [
+      'Good boy.', 'That\'s perfect.', 'Just like that.', 'I\'m proud of you.',
+      'You\'re doing so well.', 'Such a good pet.',
+    ],
+    humiliation: [
+      'Look how desperate you are.', 'Pathetic.', 'You can\'t even hold back.',
+      'Useless.', 'Beg for it.', 'You\'ll never last.',
+    ],
+    feminization: [
+      'You belong in panties.', 'Such a pretty girl.', 'Get on your knees, sissy.',
+      'Show me how feminine you are.', 'Cross your ankles.',
+    ],
+  })
+
+  // #351 G-127 — Funscript editor (multi-axis OSR2/SR6)
+  ipcMain.handle('funscript:load', async (_ev, args: { mediaPath: string; mediaId: string }) => {
+    try {
+      const { load } = await import('./services/funscript-editor')
+      return { ok: true, script: await load(args.mediaPath, args.mediaId) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('funscript:save', async (_ev, args: { mediaPath: string; mediaId: string; script: any }) => {
+    try {
+      const { save } = await import('./services/funscript-editor')
+      return { ok: true, savedTo: await save(args.mediaPath, args.mediaId, args.script) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('funscript:fromBeatmap', async (_ev, args: { beats: any[]; axis?: string; baseDepth?: number }) => {
+    try {
+      const { fromBeatmap } = await import('./services/funscript-editor')
+      return { ok: true, script: fromBeatmap(args.beats, { axis: args.axis as any, baseDepth: args.baseDepth }) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('funscript:scale', async (_ev, args: { script: any; factor: number; center?: number }) => {
+    try {
+      const { scaleDepth } = await import('./services/funscript-editor')
+      return { ok: true, script: scaleDepth(args.script, args.factor, args.center ?? 50) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('funscript:shift', async (_ev, args: { script: any; offsetMs: number }) => {
+    try {
+      const { timeShift } = await import('./services/funscript-editor')
+      return { ok: true, script: timeShift(args.script, args.offsetMs) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #274 C-50 — ntfy.sh self-hosted push gateway
+  ipcMain.handle('ntfy:config', async () => {
+    try {
+      const { getConfig } = await import('./services/ntfy-gateway')
+      return { ok: true, config: getConfig() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('ntfy:save', async (_ev, patch: any) => {
+    try {
+      const { saveConfig } = await import('./services/ntfy-gateway')
+      return { ok: true, config: saveConfig(patch) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('ntfy:push', async (_ev, args: any) => {
+    try {
+      const { push } = await import('./services/ntfy-gateway')
+      return await push(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('ntfy:notifyEvent', async (_ev, args: { event: string; payload?: any }) => {
+    try {
+      const { notifyEvent } = await import('./services/ntfy-gateway')
+      await notifyEvent(args.event as any, args.payload ?? {})
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #234 A-10 — HLS transcode-on-demand for remote streaming
+  ipcMain.handle('hls:start', async (_ev, args: { mediaPath: string; mediaId: string; quality?: '480p' | '720p' | '1080p' }) => {
+    try {
+      const { startHlsSession } = await import('./services/hls-on-demand')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      return { ok: true, ...(await startHlsSession(ffmpegBin, args.mediaPath, args.mediaId, args.quality ?? '720p')) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('hls:touch', async (_ev, args: { mediaId: string; quality: '480p' | '720p' | '1080p' }) => {
+    try {
+      const { touchSession } = await import('./services/hls-on-demand')
+      return { ok: touchSession(args.mediaId, args.quality) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('hls:stop', async (_ev, args: { mediaId: string; quality: '480p' | '720p' | '1080p' }) => {
+    try {
+      const { stopSession } = await import('./services/hls-on-demand')
+      stopSession(args.mediaId, args.quality)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('hls:list', async () => {
+    try {
+      const { listSessions } = await import('./services/hls-on-demand')
+      return { ok: true, sessions: listSessions() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #230 A-06 — CLIP visual-similarity "more like this"
+  ipcMain.handle('clipSimilarity:findByMedia', async (_ev, args: { mediaId: string; limit?: number; minSimilarity?: number; onlyActiveTriage?: boolean }) => {
+    try {
+      const { findSimilarToMedia } = await import('./services/clip-similarity')
+      return { ok: true, items: findSimilarToMedia(db.raw as any, args.mediaId, args) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('clipSimilarity:findByMultiple', async (_ev, args: { mediaIds: string[]; limit?: number; minSimilarity?: number }) => {
+    try {
+      const { findSimilarToMultiple } = await import('./services/clip-similarity')
+      return { ok: true, items: findSimilarToMultiple(db.raw as any, args.mediaIds, args) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #300 D-76 — Mylio-style face-cluster drag-merge. Existing
+  // mergeClusters() does the heavy lifting; just expose via IPC so
+  // the renderer's drag handler can call it.
+  ipcMain.handle('faceClusters:merge', async (_ev, args: { fromId: string; intoId: string }) => {
+    try {
+      const { mergeClusters } = await import('./services/ai-intelligence/face-cluster-service')
+      mergeClusters(db, args.fromId, args.intoId)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #365 H-141 — sissy-training caption overlay pool. Renderer
+  // randomly picks a caption from the active pool at the configured
+  // interval and overlays it on the player. Per-category pools so
+  // users can mix-and-match ("sissy", "feminization", "denial",
+  // "praise", "humiliation" — or fully custom).
+  ipcMain.handle('captionPool:list', async () => {
+    try {
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      const pools = s.captionPools ?? defaultCaptionPools()
+      return { ok: true, pools, intervalSec: s.captionIntervalSec ?? 15, fontFamily: s.captionFontFamily ?? 'Georgia', activeCategories: s.captionActiveCategories ?? ['sissy', 'denial', 'praise'] }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('captionPool:save', async (_ev, args: { pools?: Record<string, string[]>; intervalSec?: number; fontFamily?: string; activeCategories?: string[] }) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const s = getSettings() as any
+      const patch: any = {}
+      if (args.pools) patch.captionPools = args.pools
+      if (typeof args.intervalSec === 'number') patch.captionIntervalSec = Math.max(2, Math.min(120, args.intervalSec))
+      if (typeof args.fontFamily === 'string') patch.captionFontFamily = args.fontFamily
+      if (Array.isArray(args.activeCategories)) patch.captionActiveCategories = args.activeCategories
+      updateSettings(patch)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #281 C-57 — WebAuthn / passkey vault unlock
+  ipcMain.handle('webauthn:registerStart', async (_ev, deviceLabel: string) => {
+    try {
+      const { registerStart } = await import('./services/webauthn-vault-unlock')
+      return { ok: true, ...(await registerStart(deviceLabel)) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('webauthn:registerFinish', async (_ev, args: { response: any; deviceLabel: string }) => {
+    try {
+      const { registerFinish } = await import('./services/webauthn-vault-unlock')
+      return await registerFinish(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('webauthn:authStart', async () => {
+    try {
+      const { authStart } = await import('./services/webauthn-vault-unlock')
+      return { ok: true, ...(await authStart()) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('webauthn:authFinish', async (_ev, args: { response: any }) => {
+    try {
+      const { authFinish } = await import('./services/webauthn-vault-unlock')
+      return await authFinish(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('webauthn:listCredentials', async () => {
+    try {
+      const { listCredentials } = await import('./services/webauthn-vault-unlock')
+      return { ok: true, credentials: listCredentials() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('webauthn:removeCredential', async (_ev, id: string) => {
+    try {
+      const { removeCredential } = await import('./services/webauthn-vault-unlock')
+      return { ok: removeCredential(id) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #284 C-60 — Shamir Secret Sharing for vault key recovery
+  ipcMain.handle('shamir:split', async (_ev, args: { secret: string; shares: number; threshold: number }) => {
+    try {
+      const { splitSecret, shareToBase32 } = await import('./services/shamir-key-split')
+      const r = splitSecret(args.secret, { shares: args.shares, threshold: args.threshold })
+      return {
+        ok: true,
+        threshold: r.threshold,
+        totalShares: r.totalShares,
+        shares: r.shares.map((s, i) => ({
+          index: i + 1,
+          base64: s,
+          base32: shareToBase32(s),
+        })),
+      }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('shamir:combine', async (_ev, args: { shareStrings: string[]; encoding?: 'base64' | 'base32' }) => {
+    try {
+      const { combineShares, shareFromBase32 } = await import('./services/shamir-key-split')
+      const inputs = args.encoding === 'base32'
+        ? args.shareStrings.map(shareFromBase32)
+        : args.shareStrings
+      const secret = combineShares(inputs)
+      return { ok: true, secret }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #367 H-143 — audio-erotica importer (Quinn/Dipsea LRC + VTT)
+  ipcMain.handle('audioErotica:importFile', async (_ev, filePath: string) => {
+    try {
+      const { importFromFile } = await import('./services/audio-erotica-importer')
+      return await importFromFile(filePath)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), cues: [] }
+    }
+  })
+  ipcMain.handle('audioErotica:importText', async (_ev, text: string) => {
+    try {
+      const { importFromText } = await import('./services/audio-erotica-importer')
+      return importFromText(text)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), cues: [] }
+    }
+  })
+  ipcMain.handle('audioErotica:toJoiScript', async (_ev, args: { imp: any; voice?: string }) => {
+    try {
+      const { importToJoiScript } = await import('./services/audio-erotica-importer')
+      return { ok: true, script: importToJoiScript(args.imp, { voice: args.voice }) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #384 H-160 — OnlyFans/Fansly/Patreon creator archive importer
+  // via the coomer.su/kemono.su JSON API. Walks paginated posts +
+  // queues all media attachments into the URL downloader.
+  ipcMain.handle('coomerArchive:run', async (ev, args: { service: string; userId: string; maxPosts?: number; mediaExtensions?: string[] }) => {
+    try {
+      const { archiveCreator } = await import('./services/coomer-archive')
+      const result = await archiveCreator({
+        service: args.service as any,
+        userId: args.userId,
+        maxPosts: args.maxPosts,
+        mediaExtensions: args.mediaExtensions,
+        onProgress: (p) => {
+          try { ev.sender.send('coomerArchive:progress', p) } catch { /* renderer gone */ }
+        },
+      })
+      return { ok: true, result }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #316 E-92 — sprite-sheet chapter editor backend
+  ipcMain.handle('spriteSheet:generate', async (_ev, args: { srcPath: string; durationSec: number; cells?: number; cols?: number; thumbWidth?: number; thumbHeight?: number; dstPath?: string }) => {
+    try {
+      const { generateSpriteSheet } = await import('./services/sprite-sheet-chapters')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      return await generateSpriteSheet(ffmpegBin, args.srcPath, args.durationSec, args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('spriteSheet:picksToChapters', async (_ev, args: { picks: Array<{ cellIdx: number; title: string; timeSec: number }>; durationSec: number }) => {
+    try {
+      const { buildChaptersFromPicks } = await import('./services/sprite-sheet-chapters')
+      return { ok: true, chapters: buildChaptersFromPicks(args.picks, args.durationSec) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #307 E-83 — yt-dlp postprocessor profile editor. Named presets
+  // for yt-dlp option strings ("--format bestvideo[height<=1080]+
+  // bestaudio --merge-output-format mp4 --embed-subs --embed-chapters").
+  // Each download can pick a profile; default = current behavior.
+  ipcMain.handle('ytdlpProfiles:list', async () => {
+    try {
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      const profiles = Array.isArray(s.ytdlpProfiles) && s.ytdlpProfiles.length > 0
+        ? s.ytdlpProfiles
+        : [
+          { id: 'default', name: 'Default (best 1080p + audio)', argsArray: ['-f', 'bestvideo[height<=1080]+bestaudio/best', '--merge-output-format', 'mp4'], isBuiltin: true },
+          { id: '4k', name: '4K (best video + audio)', argsArray: ['-f', 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4'], isBuiltin: true },
+          { id: 'audio', name: 'Audio only (best MP3)', argsArray: ['-x', '--audio-format', 'mp3', '--audio-quality', '0'], isBuiltin: true },
+          { id: 'embed-meta', name: 'Embed subs + chapters + thumbnail', argsArray: ['-f', 'bestvideo[height<=1080]+bestaudio/best', '--merge-output-format', 'mp4', '--embed-subs', '--embed-chapters', '--embed-thumbnail', '--write-info-json'], isBuiltin: true },
+        ]
+      return { ok: true, profiles }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('ytdlpProfiles:save', async (_ev, args: { id?: string; name: string; argsArray: string[]; isDefault?: boolean }) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const { nanoid } = await import('nanoid')
+      const s = getSettings() as any
+      const profiles = Array.isArray(s.ytdlpProfiles) ? [...s.ytdlpProfiles] : []
+      const id = args.id ?? nanoid()
+      const entry = { id, name: args.name, argsArray: args.argsArray, isBuiltin: false }
+      const idx = profiles.findIndex((p: any) => p.id === id)
+      if (idx >= 0) profiles[idx] = entry
+      else profiles.push(entry)
+      const patch: any = { ytdlpProfiles: profiles }
+      if (args.isDefault) patch.ytdlpDefaultProfileId = id
+      updateSettings(patch)
+      return { ok: true, id }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('ytdlpProfiles:delete', async (_ev, id: string) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const s = getSettings() as any
+      const profiles = Array.isArray(s.ytdlpProfiles) ? s.ytdlpProfiles.filter((p: any) => p.id !== id && !p.isBuiltin) : []
+      updateSettings({ ytdlpProfiles: profiles } as any)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('ytdlpProfiles:setDefault', async (_ev, id: string) => {
+    try {
+      const { updateSettings } = await import('./settings')
+      updateSettings({ ytdlpDefaultProfileId: id } as any)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #285 D-61 — Hydrus duplicate-pair triage queue. Walks the
+  // existing duplicate-pair detection results pair-by-pair: returns
+  // the next un-resolved pair so the user can pick keep/discard.
+  // Resolution stored in settings.duplicatePairResolutions (JSON
+  // dict keyed by canonical pair id).
+  ipcMain.handle('dupTriage:nextPair', async () => {
+    try {
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      const resolved: Record<string, string> = s.duplicatePairResolutions ?? {}
+      // Existing duplicate detection writes to visualDuplicates table in
+      // some installs, hash-collision pairs in others. We try the most
+      // common ones and stop at first hit.
+      const tryQueries = [
+        `SELECT id_a AS a, id_b AS b FROM media_duplicates WHERE resolved = 0 ORDER BY similarity DESC LIMIT 50`,
+        `SELECT mediaId_a AS a, mediaId_b AS b FROM visual_duplicates WHERE 1=1 ORDER BY distance ASC LIMIT 50`,
+      ]
+      let pairs: Array<{ a: string; b: string }> = []
+      for (const q of tryQueries) {
+        try { pairs = db.raw.prepare(q).all() as any[]; break } catch { /* ignore */ }
+      }
+      // Filter out resolved pairs.
+      const unresolved = pairs.filter((p) => {
+        const key = [p.a, p.b].sort().join(':')
+        return !(key in resolved)
+      })
+      if (unresolved.length === 0) return { ok: true, pair: null, totalPending: 0 }
+      const next = unresolved[0]
+      const aRow = db.raw.prepare(`SELECT id, filename, path, thumbPath, durationSec, size, width, height, addedAt FROM media WHERE id = ?`).get(next.a)
+      const bRow = db.raw.prepare(`SELECT id, filename, path, thumbPath, durationSec, size, width, height, addedAt FROM media WHERE id = ?`).get(next.b)
+      return { ok: true, pair: { a: aRow, b: bRow }, totalPending: unresolved.length }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('dupTriage:resolve', async (_ev, args: { aId: string; bId: string; action: 'keep_a' | 'keep_b' | 'keep_both' | 'delete_both' }) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const s = getSettings() as any
+      const resolved = { ...(s.duplicatePairResolutions ?? {}) }
+      const key = [args.aId, args.bId].sort().join(':')
+      resolved[key] = args.action
+      updateSettings({ duplicatePairResolutions: resolved } as any)
+      // If the user picked keep_a or keep_b, mark the OTHER for deletion.
+      // We don't actually delete here — caller can invoke media:delete
+      // separately — but we return the decision so the renderer can do
+      // the right next step.
+      const toDelete = args.action === 'keep_a' ? args.bId
+                    : args.action === 'keep_b' ? args.aId
+                    : args.action === 'delete_both' ? [args.aId, args.bId].join(',')
+                    : null
+      return { ok: true, toDelete }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #378 H-154 — hentai / anime / furry sub-library facet.
+  // Returns media filtered to a species/style facet via tag prefix
+  // matching (e.g. species:furry, style:anime, style:hentai). The
+  // sidebar can show this as a permanent virtual library.
+  ipcMain.handle('subLibrary:hentai', async (_ev, args?: { facet?: 'anime' | 'hentai' | 'furry' | 'cartoon' | 'all'; limit?: number; offset?: number }) => {
+    try {
+      const facet = args?.facet ?? 'all'
+      const limit = Math.max(1, Math.min(args?.limit ?? 60, 500))
+      const offset = Math.max(0, args?.offset ?? 0)
+      // Tag patterns per facet.
+      const patterns: Record<string, string[]> = {
+        anime: ['anime', 'style:anime', '1girl', 'manga'],
+        hentai: ['hentai', 'style:hentai', 'doujin'],
+        furry: ['furry', 'species:furry', 'anthro', 'kemono', 'fursuit'],
+        cartoon: ['cartoon', 'style:cartoon', 'rule34'],
+        all: ['anime', 'hentai', 'furry', 'cartoon', 'doujin', 'anthro'],
+      }
+      const tags = patterns[facet] ?? patterns.all
+      const placeholders = tags.map(() => '?').join(',')
+      const rows = db.raw.prepare(`
+        SELECT DISTINCT m.id, m.filename, m.path, m.thumbPath, m.type, m.durationSec, m.addedAt
+        FROM media m
+        JOIN media_tags mt ON mt.mediaId = m.id
+        JOIN tags t ON t.id = mt.tagId
+        WHERE lower(t.name) IN (${placeholders})
+          AND COALESCE(m.triage_status, 'active') = 'active'
+        ORDER BY m.addedAt DESC
+        LIMIT ? OFFSET ?
+      `).all(...tags.map((t) => t.toLowerCase()), limit, offset)
+      const total = db.raw.prepare(`
+        SELECT COUNT(DISTINCT m.id) AS n
+        FROM media m JOIN media_tags mt ON mt.mediaId = m.id JOIN tags t ON t.id = mt.tagId
+        WHERE lower(t.name) IN (${placeholders})
+      `).get(...tags.map((t) => t.toLowerCase())) as { n: number }
+      return { ok: true, items: rows, total: total.n, facet }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #369 H-145 — body-part heatmap indexer
+  ipcMain.handle('heatmap:build', async (_ev, args: { mediaId: string; durationSec: number; bucketSec?: number }) => {
+    try {
+      const { buildHeatmap } = await import('./services/body-part-heatmap')
+      return { ok: true, heatmap: buildHeatmap(db.raw as any, args.mediaId, args.durationSec, args.bucketSec ?? 2) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('heatmap:classJumps', async (_ev, args: { mediaId: string; targetClass: string; threshold?: number }) => {
+    try {
+      const { findClassTimestamps } = await import('./services/body-part-heatmap')
+      return { ok: true, timestamps: findClassTimestamps(db.raw as any, args.mediaId, args.targetClass, args.threshold ?? 0.5) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #383 + #370 — LLM-driven narrative engine (text-adventure + CYOA)
+  ipcMain.handle('narrative:turn', async (_ev, ctx: any) => {
+    try {
+      const { generateTurn } = await import('./services/llm-narrative')
+      return { ok: true, turn: await generateTurn(ctx) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #304 D-80 — Notion-style import templates. Each template has a
+  // filename-regex match, a tag set to apply, an optional rating /
+  // category / studio / triage-status override. On import, scanner
+  // walks the active templates in priority order; first match wins.
+  ipcMain.handle('importTemplates:list', async () => {
+    try {
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      return { ok: true, templates: Array.isArray(s.importTemplates) ? s.importTemplates : [] }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('importTemplates:save', async (_ev, args: { id?: string; name: string; filenamePattern: string; tags?: string[]; category?: string; rating?: number; studio?: string; triageStatus?: string; priority?: number; enabled?: boolean }) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const { nanoid } = await import('nanoid')
+      const s = getSettings() as any
+      const templates = Array.isArray(s.importTemplates) ? [...s.importTemplates] : []
+      const id = args.id ?? nanoid()
+      const entry = {
+        id, name: args.name, filenamePattern: args.filenamePattern,
+        tags: args.tags ?? [], category: args.category ?? null,
+        rating: typeof args.rating === 'number' ? args.rating : null,
+        studio: args.studio ?? null, triageStatus: args.triageStatus ?? null,
+        priority: args.priority ?? 0, enabled: args.enabled !== false,
+      }
+      const idx = templates.findIndex((t: any) => t.id === id)
+      if (idx >= 0) templates[idx] = entry
+      else templates.push(entry)
+      // Sort by descending priority so first-match-wins works.
+      templates.sort((a: any, b: any) => (b.priority ?? 0) - (a.priority ?? 0))
+      updateSettings({ importTemplates: templates } as any)
+      return { ok: true, id }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('importTemplates:delete', async (_ev, id: string) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const s = getSettings() as any
+      const templates = Array.isArray(s.importTemplates) ? s.importTemplates.filter((t: any) => t.id !== id) : []
+      updateSettings({ importTemplates: templates } as any)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #319 E-95 — action recorder / macro system. Renderer calls
+  // macro:startRecord to begin capturing user actions (button
+  // clicks, IPC invocations from renderer-side handlers); the
+  // record loop ends with macro:stopRecord and the captured
+  // sequence is persisted as a named macro that the user can
+  // replay with macro:run.
+  ipcMain.handle('macro:list', async () => {
+    try {
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      return { ok: true, macros: Array.isArray(s.macros) ? s.macros : [] }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('macro:save', async (_ev, args: { id?: string; name: string; steps: Array<{ kind: 'ipc' | 'wait'; channel?: string; args?: any; ms?: number }>; hotkey?: string }) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const { nanoid } = await import('nanoid')
+      const s = getSettings() as any
+      const macros = Array.isArray(s.macros) ? [...s.macros] : []
+      const id = args.id ?? nanoid()
+      const entry = { id, name: args.name, steps: args.steps, hotkey: args.hotkey ?? null, createdAt: Date.now() }
+      const idx = macros.findIndex((m: any) => m.id === id)
+      if (idx >= 0) macros[idx] = entry
+      else macros.push(entry)
+      updateSettings({ macros } as any)
+      return { ok: true, id }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('macro:delete', async (_ev, id: string) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const s = getSettings() as any
+      const macros = Array.isArray(s.macros) ? s.macros.filter((m: any) => m.id !== id) : []
+      updateSettings({ macros } as any)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  // Replay a macro server-side. Each 'ipc' step is dispatched via the
+  // renderer's webContents.send so the recorded IPCs (most of which
+  // were renderer-originated) go to the right place.
+  ipcMain.handle('macro:run', async (ev, id: string) => {
+    try {
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      const macros = Array.isArray(s.macros) ? s.macros : []
+      const macro = macros.find((m: any) => m.id === id)
+      if (!macro) return { ok: false, error: `Macro ${id} not found` }
+      for (const step of macro.steps as any[]) {
+        if (step.kind === 'wait') {
+          await new Promise((r) => setTimeout(r, Math.max(0, Math.min(60_000, step.ms ?? 100))))
+          continue
+        }
+        if (step.kind === 'ipc' && step.channel) {
+          try { ev.sender.send('macro:dispatch', { channel: step.channel, args: step.args }) } catch { /* ignore */ }
+        }
+      }
+      return { ok: true, stepsRan: macro.steps.length }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #310 E-86 + #311 E-87 — user-script sandbox + scraper recipes
+  ipcMain.handle('userScript:run', async (_ev, args: { source: string; timeoutMs?: number; maxLogLines?: number; args?: any }) => {
+    try {
+      const { runScript } = await import('./services/user-script-sandbox')
+      return await runScript(args.source, args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), logs: [], durationMs: 0 }
+    }
+  })
+  ipcMain.handle('scraperRecipes:list', async () => {
+    try {
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      return { ok: true, recipes: Array.isArray(s.scraperRecipes) ? s.scraperRecipes : [] }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('scraperRecipes:save', async (_ev, args: { id?: string; name: string; source: string; enabled?: boolean }) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const { nanoid } = await import('nanoid')
+      const s = getSettings() as any
+      const recipes = Array.isArray(s.scraperRecipes) ? [...s.scraperRecipes] : []
+      const id = args.id ?? nanoid()
+      const entry = { id, name: args.name, source: args.source, enabled: args.enabled !== false }
+      const idx = recipes.findIndex((r: any) => r.id === id)
+      if (idx >= 0) recipes[idx] = entry
+      else recipes.push(entry)
+      updateSettings({ scraperRecipes: recipes } as any)
+      return { ok: true, id }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('scraperRecipes:delete', async (_ev, id: string) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const s = getSettings() as any
+      const recipes = Array.isArray(s.scraperRecipes) ? s.scraperRecipes.filter((r: any) => r.id !== id) : []
+      updateSettings({ scraperRecipes: recipes } as any)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('scraperRecipes:run', async (_ev, args: { id: string; args?: any }) => {
+    try {
+      const { getSettings } = await import('./settings')
+      const { runRecipe } = await import('./services/user-script-sandbox')
+      const s = getSettings() as any
+      const recipes = Array.isArray(s.scraperRecipes) ? s.scraperRecipes : []
+      const recipe = recipes.find((r: any) => r.id === args.id)
+      if (!recipe) return { ok: false, error: `Recipe ${args.id} not found`, logs: [], durationMs: 0 }
+      return await runRecipe(recipe, args.args ?? {})
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), logs: [], durationMs: 0 }
+    }
+  })
+
+  // #312 E-88 — RSS/Atom subscription importer
+  ipcMain.handle('rss:list', async () => {
+    try {
+      const { listFeeds } = await import('./services/rss-importer')
+      return { ok: true, feeds: listFeeds() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('rss:add', async (_ev, args: { url: string; label?: string; intervalMin?: number; urlFilter?: string }) => {
+    try {
+      const { addFeed } = await import('./services/rss-importer')
+      return { ok: true, feed: addFeed(args) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('rss:remove', async (_ev, id: string) => {
+    try {
+      const { removeFeed } = await import('./services/rss-importer')
+      removeFeed(id)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('rss:setEnabled', async (_ev, args: { id: string; enabled: boolean }) => {
+    try {
+      const { setFeedEnabled } = await import('./services/rss-importer')
+      setFeedEnabled(args.id, args.enabled)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('rss:pollNow', async () => {
+    try {
+      const { pollAllNow } = await import('./services/rss-importer')
+      return { ok: true, results: await pollAllNow() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #318 E-94 — cron-syntax job scheduler
+  ipcMain.handle('cron:validate', async (_ev, expression: string) => {
+    try {
+      const { validateExpression } = await import('./services/cron-scheduler')
+      return validateExpression(expression)  // already returns { ok, nextRunAt?, error? }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('cron:list', async () => {
+    try {
+      const { listJobs } = await import('./services/cron-scheduler')
+      return { ok: true, jobs: listJobs() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('cron:add', async (_ev, args: { name: string; expression: string; action: any; enabled?: boolean }) => {
+    try {
+      const { addJob } = await import('./services/cron-scheduler')
+      return { ok: true, job: addJob(args) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('cron:update', async (_ev, args: { id: string; patch: any }) => {
+    try {
+      const { updateJob } = await import('./services/cron-scheduler')
+      return { ok: true, job: updateJob(args.id, args.patch) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('cron:remove', async (_ev, id: string) => {
+    try {
+      const { removeJob } = await import('./services/cron-scheduler')
+      removeJob(id)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #292 D-68 — Strava-style yearly goal ring. User sets a goal
+  // ("watch 200 hours" / "rate 500 items" / "deny 80 sessions"); we
+  // compute progress for the calendar year.
+  ipcMain.handle('yearlyGoal:get', async () => {
+    try {
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      const goal = s.yearlyGoal ?? { metric: 'hours_watched', target: 200 }
+      const yearStart = new Date(new Date().getFullYear(), 0, 1).getTime()
+      let progress = 0
+      if (goal.metric === 'hours_watched') {
+        const rows = db.raw.prepare(`
+          SELECT SUM(s.views * m.durationSec) AS sec
+          FROM media_stats s JOIN media m ON m.id = s.mediaId
+          WHERE s.lastViewedAt >= ?
+        `).get(yearStart) as { sec: number | null }
+        progress = Math.round(((rows.sec ?? 0) / 3600) * 10) / 10
+      } else if (goal.metric === 'items_rated') {
+        const rows = db.raw.prepare(`SELECT COUNT(*) AS n FROM media_stats WHERE rating > 0 AND lastViewedAt >= ?`).get(yearStart) as { n: number }
+        progress = rows.n
+      } else if (goal.metric === 'climaxes') {
+        const rows = db.raw.prepare(`SELECT COUNT(*) AS n FROM edging_sessions WHERE climaxed = 1 AND endedAt >= ?`).get(yearStart) as { n: number }
+        progress = rows.n
+      } else if (goal.metric === 'denials') {
+        const rows = db.raw.prepare(`SELECT COUNT(*) AS n FROM edging_sessions WHERE climaxed = 0 AND endedAt >= ?`).get(yearStart) as { n: number }
+        progress = rows.n
+      }
+      const dayOfYear = Math.floor((Date.now() - yearStart) / 86_400_000) + 1
+      const onPace = goal.target > 0 ? (goal.target * (dayOfYear / 365)) : 0
+      return {
+        ok: true, goal, progress, dayOfYear,
+        pct: goal.target > 0 ? Math.min(1, progress / goal.target) : 0,
+        onPaceProgress: onPace,
+        aheadOfPace: progress > onPace,
+      }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('yearlyGoal:set', async (_ev, args: { metric: 'hours_watched' | 'items_rated' | 'climaxes' | 'denials'; target: number }) => {
+    try {
+      const { updateSettings } = await import('./settings')
+      updateSettings({ yearlyGoal: { metric: args.metric, target: Math.max(1, args.target) } } as any)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #301 D-77 — Goodreads-style "Currently Watching" shelves.
+  // Returns media with watch progress > 5% but not yet finished,
+  // touched in the last 30 days.
+  ipcMain.handle('currentlyWatching:list', async (_ev, args?: { daysBack?: number; limit?: number }) => {
+    try {
+      const daysBack = args?.daysBack ?? 30
+      const limit = Math.max(1, Math.min(args?.limit ?? 50, 200))
+      const cutoff = Date.now() - daysBack * 86_400_000
+      const rows = db.raw.prepare(`
+        SELECT m.id AS mediaId, m.filename, m.thumbPath, m.durationSec,
+               s.views, s.rating, s.lastViewedAt, wh.progressSec
+        FROM media m
+        JOIN media_stats s ON s.mediaId = m.id
+        LEFT JOIN watch_history wh ON wh.mediaId = m.id
+        WHERE s.lastViewedAt >= ?
+          AND m.durationSec > 60
+          AND wh.progressSec IS NOT NULL
+          AND wh.progressSec > 30
+          AND wh.progressSec < (m.durationSec * 0.92)
+        ORDER BY s.lastViewedAt DESC
+        LIMIT ?
+      `).all(cutoff, limit) as any[]
+      const items = rows.map((r) => ({
+        mediaId: r.mediaId,
+        filename: r.filename,
+        thumbPath: r.thumbPath,
+        durationSec: r.durationSec,
+        progressSec: r.progressSec,
+        progressPct: r.progressSec / r.durationSec,
+        rating: r.rating,
+        lastViewedAt: r.lastViewedAt,
+      }))
+      return { ok: true, items }
+    } catch (err: any) {
+      // watch_history table may not exist — degrade gracefully.
+      return { ok: false, error: err?.message ?? String(err), items: [] }
+    }
+  })
+
+  // #295 D-71 — Letterboxd-style watch diary calendar. Returns a
+  // 365-day grid of viewing activity: per-day count + total minutes.
+  ipcMain.handle('watchDiary:days', async (_ev, args?: { daysBack?: number }) => {
+    try {
+      const daysBack = Math.max(7, Math.min(args?.daysBack ?? 365, 365 * 3))
+      const cutoff = Date.now() - daysBack * 86_400_000
+      const rows = db.raw.prepare(`
+        SELECT s.lastViewedAt AS ts, s.views, m.durationSec
+        FROM media_stats s JOIN media m ON m.id = s.mediaId
+        WHERE s.lastViewedAt >= ?
+      `).all(cutoff) as Array<{ ts: number; views: number; durationSec: number | null }>
+      // Bucket by day key (YYYY-MM-DD local).
+      const days = new Map<string, { itemsTouched: number; minutes: number }>()
+      for (const r of rows) {
+        const d = new Date(r.ts)
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        const cur = days.get(key) ?? { itemsTouched: 0, minutes: 0 }
+        cur.itemsTouched += 1
+        cur.minutes += ((r.views || 0) * (r.durationSec || 0)) / 60
+        days.set(key, cur)
+      }
+      const out = Array.from(days.entries()).map(([day, v]) => ({
+        day, itemsTouched: v.itemsTouched, minutes: Math.round(v.minutes),
+      })).sort((a, b) => a.day.localeCompare(b.day))
+      return { ok: true, days: out }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #288 D-64 — Daylist auto-retitling. 4h-rotating title that the
+  // UI displays above the daily-mix card.
+  ipcMain.handle('daylist:title', async () => {
+    try {
+      const { getOrRefreshDaylistTitle } = await import('./services/daylist-titler')
+      return { ok: true, ...getOrRefreshDaylistTitle() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('daylist:regenerate', async () => {
+    try {
+      const { forceRegenerateDaylistTitle } = await import('./services/daylist-titler')
+      return { ok: true, ...forceRegenerateDaylistTitle() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #303 D-79 — Spotify-style Recap cards. Monthly / mid-year /
+  // yearly aggregator over watch history + tags + performers + studios.
+  ipcMain.handle('recap:monthly', async (_ev, args?: { year?: number; month0?: number }) => {
+    try {
+      const { getMonthlyRecap } = await import('./services/recap-stats')
+      return { ok: true, recap: getMonthlyRecap(db.raw as any, args?.year, args?.month0) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('recap:halfYear', async (_ev, args?: { year?: number; half?: 1 | 2 }) => {
+    try {
+      const { getHalfYearRecap } = await import('./services/recap-stats')
+      return { ok: true, recap: getHalfYearRecap(db.raw as any, args?.year, args?.half) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('recap:yearly', async (_ev, args?: { year?: number }) => {
+    try {
+      const { getYearlyRecap } = await import('./services/recap-stats')
+      return { ok: true, recap: getYearlyRecap(db.raw as any, args?.year) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #289 D-65 — Calibre-style Virtual Libraries. Named filter sets
+  // saved to settings; sidebar exposes them as one-click lenses
+  // ("My favorites under 5 min", "Performer:X + tag:y", etc).
+  ipcMain.handle('virtualLibs:list', async () => {
+    try {
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      const libs = Array.isArray(s.virtualLibraries) ? s.virtualLibraries : []
+      return { ok: true, libraries: libs }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('virtualLibs:save', async (_ev, args: { id?: string; name: string; query: any; color?: string; icon?: string }) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const { nanoid } = await import('nanoid')
+      const s = getSettings() as any
+      const libs = Array.isArray(s.virtualLibraries) ? [...s.virtualLibraries] : []
+      const id = args.id ?? nanoid()
+      const entry = { id, name: args.name, query: args.query, color: args.color ?? null, icon: args.icon ?? null, createdAt: Date.now() }
+      const idx = libs.findIndex((l: any) => l.id === id)
+      if (idx >= 0) libs[idx] = { ...libs[idx], ...entry }
+      else libs.push(entry)
+      updateSettings({ virtualLibraries: libs } as any)
+      return { ok: true, id }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('virtualLibs:delete', async (_ev, id: string) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const s = getSettings() as any
+      const libs = Array.isArray(s.virtualLibraries) ? s.virtualLibraries.filter((l: any) => l.id !== id) : []
+      updateSettings({ virtualLibraries: libs } as any)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('virtualLibs:reorder', async (_ev, orderedIds: string[]) => {
+    try {
+      const { getSettings, updateSettings } = await import('./settings')
+      const s = getSettings() as any
+      const libs = Array.isArray(s.virtualLibraries) ? s.virtualLibraries : []
+      const map = new Map(libs.map((l: any) => [l.id, l]))
+      const reordered = orderedIds.map((id) => map.get(id)).filter(Boolean)
+      // Append any libs not in orderedIds (just-created, etc).
+      for (const l of libs) if (!orderedIds.includes(l.id)) reordered.push(l)
+      updateSettings({ virtualLibraries: reordered } as any)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #293 D-69 — Anki FSRS-lite rediscovery queue. Surfaces watched
+  // items currently in the spaced-repetition sweet spot.
+  ipcMain.handle('rediscovery:queue', async (_ev, args?: { limit?: number; minDaysSinceView?: number }) => {
+    try {
+      const { getRediscoveryQueue } = await import('./services/rediscovery-queue')
+      return { ok: true, items: getRediscoveryQueue(db.raw as any, args ?? {}) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #368 H-144 — BDSM contract & negotiation form. CRUD + sign +
+  // a render-ready context block consumed by the Mistress persona.
+  ipcMain.handle('contract:get', async () => {
+    try {
+      const { loadContract } = await import('./services/bdsm-contract')
+      return { ok: true, contract: loadContract() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('contract:save', async (_ev, contract: any) => {
+    try {
+      const { saveContract } = await import('./services/bdsm-contract')
+      saveContract(contract)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('contract:sign', async () => {
+    try {
+      const { signContract } = await import('./services/bdsm-contract')
+      return { ok: true, contract: signContract() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('contract:reset', async () => {
+    try {
+      const { getDefaultContract, saveContract } = await import('./services/bdsm-contract')
+      const fresh = getDefaultContract()
+      saveContract(fresh)
+      return { ok: true, contract: fresh }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #361 G-137 — kink-discovery recommender via latent kink map.
+  // Clusters high-rated media's CLIP embeddings; recommends unrated
+  // media nearest to each cluster centroid.
+  ipcMain.handle('kinkDiscovery:run', async (_ev, args?: { k?: number; ratingMin?: number; recsPerCluster?: number }) => {
+    try {
+      const { discoverKinks } = await import('./services/kink-discovery')
+      return { ok: true, ...discoverKinks(db.raw as any, args ?? {}) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #298 D-74 — Linear-style triage inbox. List pending items, mark
+  // approved/rejected/archived, and toggle whether new scans default
+  // to pending. When enabled, scanner sets new media to 'pending';
+  // when disabled (default), new media is 'active' immediately.
+  ipcMain.handle('triage:list', async (_ev, args?: { status?: 'pending' | 'active' | 'archived' | 'rejected'; limit?: number; offset?: number }) => {
+    try {
+      const status = args?.status ?? 'pending'
+      const limit = Math.max(1, Math.min(args?.limit ?? 100, 500))
+      const offset = Math.max(0, args?.offset ?? 0)
+      const rows = db.raw.prepare(`
+        SELECT id, filename, path, thumbPath, type, durationSec, addedAt, triage_status AS triageStatus
+        FROM media
+        WHERE triage_status = ?
+        ORDER BY addedAt DESC
+        LIMIT ? OFFSET ?
+      `).all(status, limit, offset)
+      const total = db.raw.prepare(`SELECT COUNT(*) AS n FROM media WHERE triage_status = ?`).get(status) as { n: number }
+      return { ok: true, items: rows, total: total.n }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('triage:setStatus', async (_ev, args: { mediaIds: string[]; status: 'pending' | 'active' | 'archived' | 'rejected' }) => {
+    try {
+      const stmt = db.raw.prepare(`UPDATE media SET triage_status = ? WHERE id = ?`)
+      const tx = db.raw.transaction((ids: string[], s: string) => { for (const id of ids) stmt.run(s, id) })
+      tx(args.mediaIds, args.status)
+      return { ok: true, updated: args.mediaIds.length }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('triage:setInboxEnabled', async (_ev, enabled: boolean) => {
+    try {
+      const { updateSettings } = await import('./settings')
+      updateSettings({ triageInboxEnabled: !!enabled } as any)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('triage:getInboxEnabled', async () => {
+    try {
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      return { ok: true, enabled: !!s.triageInboxEnabled }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #299 D-75 — Stash Studios entity. CRUD + assign performers/media.
+  // Each studio is a parent grouping (Brazzers / Vixen / etc) with
+  // logo/website/alias metadata. Performers and media have nullable
+  // studio_id FKs so a studio change cascades cleanly.
+  ipcMain.handle('studios:list', async () => {
+    try {
+      const rows = db.raw.prepare(`
+        SELECT s.*,
+               (SELECT COUNT(*) FROM performers_db p WHERE p.studio_id = s.id) AS performer_count,
+               (SELECT COUNT(*) FROM media m WHERE m.studio_id = s.id) AS media_count
+        FROM studios s
+        ORDER BY s.name COLLATE NOCASE
+      `).all() as any[]
+      return { ok: true, studios: rows.map((r) => ({ ...r, aliases: r.aliases ? JSON.parse(r.aliases) : [], url_patterns: r.url_patterns ? JSON.parse(r.url_patterns) : [] })) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('studios:create', async (_ev, args: { name: string; aliases?: string[]; logo_path?: string; parent_company?: string; website?: string; url_patterns?: string[] }) => {
+    try {
+      const { nanoid } = await import('nanoid')
+      const id = nanoid()
+      const now = Date.now()
+      db.raw.prepare(`
+        INSERT INTO studios (id, name, aliases, logo_path, parent_company, website, url_patterns, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id, args.name,
+        args.aliases ? JSON.stringify(args.aliases) : null,
+        args.logo_path ?? null,
+        args.parent_company ?? null,
+        args.website ?? null,
+        args.url_patterns ? JSON.stringify(args.url_patterns) : null,
+        now, now,
+      )
+      return { ok: true, id }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('studios:update', async (_ev, args: { id: string; name?: string; aliases?: string[]; logo_path?: string; parent_company?: string; website?: string; url_patterns?: string[] }) => {
+    try {
+      const sets: string[] = []
+      const params: any[] = []
+      const map: Record<string, any> = {
+        name: args.name,
+        aliases: args.aliases !== undefined ? JSON.stringify(args.aliases) : undefined,
+        logo_path: args.logo_path,
+        parent_company: args.parent_company,
+        website: args.website,
+        url_patterns: args.url_patterns !== undefined ? JSON.stringify(args.url_patterns) : undefined,
+      }
+      for (const [k, v] of Object.entries(map)) {
+        if (v !== undefined) { sets.push(`${k} = ?`); params.push(v) }
+      }
+      if (sets.length === 0) return { ok: true }
+      sets.push(`updated_at = ?`)
+      params.push(Date.now(), args.id)
+      db.raw.prepare(`UPDATE studios SET ${sets.join(', ')} WHERE id = ?`).run(...params)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('studios:delete', async (_ev, id: string) => {
+    try {
+      db.raw.prepare(`DELETE FROM studios WHERE id = ?`).run(id)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('studios:assignPerformer', async (_ev, args: { performerId: string; studioId: string | null }) => {
+    try {
+      db.raw.prepare(`UPDATE performers_db SET studio_id = ?, updated_at = ? WHERE id = ?`)
+        .run(args.studioId, Date.now(), args.performerId)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('studios:assignMedia', async (_ev, args: { mediaId: string; studioId: string | null }) => {
+    try {
+      db.raw.prepare(`UPDATE media SET studio_id = ? WHERE id = ?`).run(args.studioId, args.mediaId)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('studios:mediaForStudio', async (_ev, studioId: string) => {
+    try {
+      const rows = db.raw.prepare(`SELECT id, filename, path, thumbPath, durationSec FROM media WHERE studio_id = ? ORDER BY addedAt DESC LIMIT 500`).all(studioId)
+      return { ok: true, media: rows }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #306 E-82 — inbound webhook receiver. Loopback HTTP server with
+  // HMAC-SHA256-signed routes. Useful for n8n / Make / Zapier
+  // automations that need to fire Vault actions externally.
+  ipcMain.handle('webhook:status', async () => {
+    try {
+      const { getStatus } = await import('./services/webhook-receiver')
+      return { ok: true, ...getStatus() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('webhook:start', async (_ev, args?: { port?: number; bindHost?: string }) => {
+    try {
+      const { startWebhookServer, listRoutes } = await import('./services/webhook-receiver')
+      const { getSettings } = await import('./settings')
+      const s = getSettings() as any
+      const initial = Array.isArray(s.webhookRoutes) ? s.webhookRoutes : []
+      const r = await startWebhookServer({ port: args?.port, bindHost: args?.bindHost, initialRoutes: initial })
+      return { ...r, routes: listRoutes() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('webhook:stop', async () => {
+    try {
+      const { stopWebhookServer } = await import('./services/webhook-receiver')
+      await stopWebhookServer()
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('webhook:listRoutes', async () => {
+    try {
+      const { listRoutes } = await import('./services/webhook-receiver')
+      return { ok: true, routes: listRoutes() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('webhook:addRoute', async (_ev, args: { path: string; secret?: string; description?: string }) => {
+    try {
+      const { addRoute } = await import('./services/webhook-receiver')
+      const { updateSettings, getSettings } = await import('./settings')
+      const route = addRoute(args.path, args)
+      const s = getSettings() as any
+      const routes = Array.isArray(s.webhookRoutes) ? s.webhookRoutes : []
+      updateSettings({ webhookRoutes: [...routes, route] } as any)
+      return { ok: true, route }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('webhook:removeRoute', async (_ev, id: string) => {
+    try {
+      const { removeRoute } = await import('./services/webhook-receiver')
+      const { updateSettings, getSettings } = await import('./settings')
+      const removed = removeRoute(id)
+      const s = getSettings() as any
+      const routes = Array.isArray(s.webhookRoutes) ? s.webhookRoutes : []
+      updateSettings({ webhookRoutes: routes.filter((r: any) => r.id !== id) } as any)
+      return { ok: removed }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #B-23 Depth Anything V2 monocular depth
+  ipcMain.handle('vaultMl:depthAnythingV2', async (_ev, args: any) => {
+    try {
+      const { getVaultMlClient } = await import('./services/ai-intelligence/vault-ml-client')
+      return await getVaultMlClient().depthAnythingV2(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  // #H-148 MusicGen kink-mood audio bed generation
+  ipcMain.handle('vaultMl:musicgenGenerate', async (_ev, args: any) => {
+    try {
+      const { getVaultMlClient } = await import('./services/ai-intelligence/vault-ml-client')
+      return await getVaultMlClient().musicgenGenerate(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  // BLIP captioning (tagger pipeline)
+  ipcMain.handle('vaultMl:blipCaption', async (_ev, args: any) => {
+    try {
+      const { getVaultMlClient } = await import('./services/ai-intelligence/vault-ml-client')
+      return await getVaultMlClient().blipCaption(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #B-30 Mel-Roformer vocal isolation
+  ipcMain.handle('vaultMl:melRoformerSeparate', async (_ev, args: any) => {
+    try {
+      const { getVaultMlClient } = await import('./services/ai-intelligence/vault-ml-client')
+      return await getVaultMlClient().melRoformerSeparate(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // JoyTag — pure ONNX adult-tagger (no sidecar needed)
+  ipcMain.handle('joytag:status', async () => {
+    try {
+      const { getStatus } = await import('./services/ai-intelligence/joytag-tagger')
+      return { ok: true, ...getStatus() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('joytag:tagImage', async (_ev, args: { imagePath: string; threshold?: number; topK?: number }) => {
+    try {
+      const { tagImage } = await import('./services/ai-intelligence/joytag-tagger')
+      const tags = await tagImage(args.imagePath, args)
+      return { ok: true, tags }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #B-32 — Real-ESRGAN x4 upscaler. Loads ONNX from
+  // userData/models/real_esrgan_x4plus.onnx + .data sibling.
+  ipcMain.handle('upscaler:status', async () => {
+    try {
+      const { getStatus } = await import('./services/ai-intelligence/realesrgan-upscaler')
+      return { ok: true, ...getStatus() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('upscaler:upscaleImage', async (_ev, args: { srcPath: string; dstPath?: string; tileSize?: number; format?: 'png' | 'jpg' | 'webp'; quality?: number }) => {
+    try {
+      const { upscaleImage } = await import('./services/ai-intelligence/realesrgan-upscaler')
+      return await upscaleImage(args.srcPath, args.dstPath, args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #324 — auto FFmpeg quality auditor. Fast probe + heuristic
+  // findings by default; deep:true adds a full decode pass.
+  ipcMain.handle('quality:audit', async (_ev, args: { videoPath: string; deep?: boolean; sizeBytes?: number | null }) => {
+    try {
+      const { auditVideo } = await import('./services/quality-auditor')
+      const { ffprobeBin, ffmpegBin } = await import('./ffpaths')
+      if (!ffprobeBin || !ffmpegBin) return { ok: false, error: 'ffmpeg/ffprobe not found' }
+      const report = await auditVideo(ffprobeBin, ffmpegBin, args.videoPath, { deep: args.deep, sizeBytes: args.sizeBytes })
+      return { ok: true, report }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #290 D-66 — Stash-style scene markers — already shipped via the
+  // existing bookmarks system (`bookmarks:*` IPCs + B-key in the
+  // player). The v37 migration's `scene_markers` table is unused;
+  // leaving it as a no-op for back-compat in case third-party tooling
+  // expects the column. New work goes through bookmarks instead.
+
+  // #380 H-156 — phrase-triggered supercut compiler. Three IPCs:
+  // search-phrase (FTS5 lookup), persist-segments (cache VTT output),
+  // and compile (ffmpeg concat + encode of the matched clips).
+  ipcMain.handle('supercut:persistSegments', async (_ev, args: { mediaId: string; segments: Array<{ startSec: number; endSec: number; text: string }> }) => {
+    try {
+      const { persistSegments } = await import('./services/phrase-supercut')
+      persistSegments(db.raw as any, args.mediaId, args.segments)
+      return { ok: true, count: args.segments.length }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('supercut:search', async (_ev, args: { phrase: string; limit?: number; mediaIdFilter?: string[] }) => {
+    try {
+      const { searchPhrase } = await import('./services/phrase-supercut')
+      const hits = searchPhrase(db.raw as any, args.phrase, { limit: args.limit, mediaIdFilter: args.mediaIdFilter })
+      return { ok: true, hits }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('supercut:compile', async (_ev, args: { hits: any[]; dstPath: string; padBeforeSec?: number; padAfterSec?: number; videoCodec?: string; width?: number; height?: number; fps?: number; maxClips?: number }) => {
+    try {
+      const { compileSupercut } = await import('./services/phrase-supercut')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      return await compileSupercut(ffmpegBin, args.hits, args.dstPath, args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #229 — local Whisper word-level VTT transcript. Uses the existing
+  // whisper.cpp binary; emits WebVTT cues with HH:MM:SS.mmm timestamps
+  // that the renderer can hand to `<track>` or feed into the
+  // phrase-triggered supercut compiler (#H-156).
+  ipcMain.handle('whisper:transcribeVtt', async (_ev, args: { videoPath: string; maxAudioSec?: number; maxLenTokens?: number }) => {
+    try {
+      const { transcribeAudioToVtt } = await import('./services/ai-intelligence/whisper-transcriber')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      const r = await transcribeAudioToVtt(args.videoPath, ffmpegBin, {
+        maxAudioSec: args.maxAudioSec,
+        maxLenTokens: args.maxLenTokens,
+      })
+      if (!r) return { ok: false, error: 'transcription failed (whisper not installed?)' }
+      return { ok: true, ...r }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #233 — chapter round-trip. Read existing chapters from the
+  // container, export as WebVTT sidecar, accept user-edited chapter
+  // list back via FFmetadata re-mux.
+  ipcMain.handle('chapters:read', async (_ev, srcPath: string) => {
+    try {
+      const { readChapters } = await import('./services/chapter-roundtrip')
+      const { ffprobeBin } = await import('./ffpaths')
+      if (!ffprobeBin) return { ok: false, error: 'ffprobe not found' }
+      const chapters = await readChapters(ffprobeBin, srcPath)
+      return { ok: true, chapters }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('chapters:writeFFMeta', async (_ev, args: { srcPath: string; dstPath: string; chapters: Array<{ startSec: number; endSec: number; title: string }> }) => {
+    try {
+      const { writeChaptersFFMeta } = await import('./services/chapter-roundtrip')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      return await writeChaptersFFMeta(ffmpegBin, args.srcPath, args.dstPath, args.chapters)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('chapters:exportVtt', async (_ev, args: { chapters: Array<{ startSec: number; endSec: number; title: string }>; dstPath: string }) => {
+    try {
+      const { exportChaptersAsVtt } = await import('./services/chapter-roundtrip')
+      const fs = await import('node:fs/promises')
+      const vtt = exportChaptersAsVtt(args.chapters)
+      await fs.writeFile(args.dstPath, vtt, 'utf8')
+      return { ok: true, dstPath: args.dstPath }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('chapters:parseVtt', async (_ev, args: { vttText: string; durationSec: number }) => {
+    try {
+      const { parseChaptersFromVtt } = await import('./services/chapter-roundtrip')
+      return { ok: true, chapters: parseChaptersFromVtt(args.vttText, args.durationSec) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #225 / #235 / #238 — ffmpeg post-processing helpers (HDR tone-map,
+  // audio mastering, hqdn3d denoise+grain restore). All non-destructive
+  // by default: write a sibling file with a suffix unless dstPath is set.
+  ipcMain.handle('postProc:toneMapHDR', async (_ev, args: { srcPath: string; dstPath?: string; tonemap?: 'hable' | 'mobius' | 'reinhard'; peak?: number; videoCodec?: string; crf?: number }) => {
+    try {
+      const { toneMapHDR } = await import('./services/video-post-processing')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      return await toneMapHDR(ffmpegBin, args.srcPath, args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('postProc:masterAudio', async (_ev, args: { srcPath: string; dstPath?: string; targetLufs?: number; truePeakDb?: number; lra?: number }) => {
+    try {
+      const { masterAudio } = await import('./services/video-post-processing')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      return await masterAudio(ffmpegBin, args.srcPath, args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('postProc:denoise', async (_ev, args: { srcPath: string; dstPath?: string; strength?: 'light' | 'medium' | 'heavy'; grain?: number; videoCodec?: string; crf?: number }) => {
+    try {
+      const { denoiseAndGrain } = await import('./services/video-post-processing')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      return await denoiseAndGrain(ffmpegBin, args.srcPath, args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  // #231 — ffmpeg vidstab two-pass deshake
+  ipcMain.handle('postProc:deshake', async (_ev, args: { srcPath: string; dstPath?: string; shakiness?: number; accuracy?: number; smoothing?: number; crop?: 'black' | 'keep'; videoCodec?: string; crf?: number }) => {
+    try {
+      const { deshake } = await import('./services/video-post-processing')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      return await deshake(ffmpegBin, args.srcPath, args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #237 — silence + black-frame auto-trim. Analyze gives a dry-run
+  // report (silences/blacks/recommendation), apply does the actual
+  // ffmpeg stream-copy with the chosen [start, end].
+  ipcMain.handle('autoTrim:analyze', async (_ev, videoPath: string) => {
+    try {
+      const { analyzeAutoTrim } = await import('./services/ai-intelligence/auto-trim')
+      const { ffmpegBin } = await import('./ffpaths')
+      const ffmpeg = ffmpegBin
+      if (!ffmpeg) return { ok: false, error: 'ffmpeg not found' }
+      const report = await analyzeAutoTrim(ffmpeg, videoPath)
+      return { ok: true, report }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('autoTrim:apply', async (_ev, args: { srcPath: string; dstPath: string; startSec: number; endSec: number }) => {
+    try {
+      const { applyTrim } = await import('./services/ai-intelligence/auto-trim')
+      const { ffmpegBin } = await import('./ffpaths')
+      const ffmpeg = ffmpegBin
+      if (!ffmpeg) return { ok: false, error: 'ffmpeg not found' }
+      return await applyTrim(ffmpeg, args.srcPath, args.dstPath, args.startSec, args.endSec)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #244 — moment-capture sink. Renderer hands us a WebP buffer; we
+  // write to userData/moments/<filename>. Idempotent (overwrite on
+  // duplicate timestamp — the renderer prevents collisions with ms).
+  ipcMain.handle('moments:save', async (_ev, args: { filename: string; data: number[] }) => {
+    try {
+      const fs = await import('node:fs/promises')
+      const path = await import('node:path')
+      const { app } = await import('electron')
+      const dir = path.join(app.getPath('userData'), 'moments')
+      await fs.mkdir(dir, { recursive: true })
+      const safe = args.filename.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const dest = path.join(dir, safe)
+      await fs.writeFile(dest, Buffer.from(args.data))
+      return { ok: true, path: dest }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('stealth:disable', async () => {
+    try {
+      const { BrowserWindow } = await import('electron')
+      for (const w of BrowserWindow.getAllWindows()) {
+        try { w.setTitle('Vault') } catch { /* ignore */ }
+      }
+      if (process.platform === 'win32') {
+        try { (require('electron').app).setAppUserModelId('com.vault.desktop') } catch { /* ignore */ }
+      }
+      const { updateSettings } = await import('./settings')
+      updateSettings({ stealthProfile: null } as any)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #175 — Real-time RVC voice conversion. Same sidecar pattern as
+  // F5-TTS / WhisperX — user installs RVC + a thin Flask wrapper
+  // and points settings.ai.rvcStartScript at the launch script.
+  ipcMain.handle('rvc:status', async () => {
+    try {
+      const { rvcStatus } = await import('./services/rvc-launcher')
+      return { ok: true, ...rvcStatus() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('rvc:start', async () => {
+    try {
+      const { ensureRvcSidecar } = await import('./services/rvc-launcher')
+      const started = await ensureRvcSidecar()
+      return { ok: started }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('rvc:listModels', async () => {
+    try {
+      const { listModels } = await import('./services/rvc-launcher')
+      return { ok: true, models: await listModels() }
+    } catch (err: any) {
+      return { ok: false, models: [], error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('rvc:convert', async (_ev, args: { srcPath: string; modelName: string; transpose?: number }) => {
+    try {
+      const { convert } = await import('./services/rvc-launcher')
+      return await convert(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #173 — Demucs stem separation. Shells out to the `demucs` CLI
+  // (pip install demucs) and writes vocal/drums/bass/other stems
+  // into userData/stems/<model>/<basename>/. Two-stem mode collapses
+  // to vocals + accompaniment.
+  ipcMain.handle('demucs:status', async (_ev, args?: { binPath?: string }) => {
+    try {
+      const { demucsStatus } = await import('./services/demucs-launcher')
+      return { ok: true, ...demucsStatus(args) }
+    } catch (err: any) {
+      return { ok: false, installed: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('demucs:separate', async (ev, args: { srcPath: string; model?: string; twoStem?: boolean; binPath?: string }) => {
+    try {
+      const { separateStems } = await import('./services/demucs-launcher')
+      const result = await separateStems(args.srcPath, {
+        binPath: args.binPath,
+        model: args.model,
+        twoStem: args.twoStem,
+        onProgress: (pct, line) => {
+          try { ev.sender.send('demucs:progress', { srcPath: args.srcPath, pct, line }) } catch { /* sender gone */ }
+        },
+      })
+      return result
+    } catch (err: any) {
+      return { ok: false, outputDir: '', stemPaths: {}, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #191 — age-encrypted backups. Shells out to the `age` CLI which
+  // the user installs via their package manager; supports hardware-key
+  // recipients (YubiKey) via age-plugin-yubikey identity strings.
+  ipcMain.handle('age:status', async () => {
+    try {
+      const { ageStatus } = await import('./services/age-backup-service')
+      return { ok: true, ...ageStatus() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('age:encryptFile', async (_ev, args: { srcPath: string; dstPath: string; recipients: string[] }) => {
+    try {
+      const { ageEncryptFile } = await import('./services/age-backup-service')
+      return await ageEncryptFile(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('age:decryptFile', async (_ev, args: { srcPath: string; dstPath: string; identityPaths: string[] }) => {
+    try {
+      const { ageDecryptFile } = await import('./services/age-backup-service')
+      return await ageDecryptFile(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #193 — Per-file envelope encryption (streaming AES-GCM).
+  // The renderer triggers encrypt/decrypt explicitly; auto-integration
+  // with the scanner / vaultProtocol is a follow-up step. Passphrase
+  // is required per call so it never sits in memory between ops.
+  ipcMain.handle('crypto:envelope-encrypt', async (_ev, args: { srcPath: string; dstPath: string; passphrase: string }) => {
+    try {
+      const { encryptFile } = await import('./services/envelope-encryption')
+      await encryptFile(args.srcPath, args.dstPath, args.passphrase)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('crypto:envelope-decrypt', async (_ev, args: { srcPath: string; dstPath: string; passphrase: string }) => {
+    try {
+      const { decryptFile } = await import('./services/envelope-encryption')
+      await decryptFile(args.srcPath, args.dstPath, args.passphrase)
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('crypto:envelope-plaintextSize', async (_ev, args: { srcPath: string; passphrase: string }) => {
+    try {
+      const { plaintextSize } = await import('./services/envelope-encryption')
+      return { ok: true, size: plaintextSize(args.srcPath, args.passphrase) }
+    } catch (err: any) {
+      return { ok: false, size: 0, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('crypto:envelope-isEnvelope', async (_ev, srcPath: string) => {
+    try {
+      const { isEnvelope } = await import('./services/envelope-encryption')
+      return { ok: true, isEnvelope: isEnvelope(srcPath) }
+    } catch (err: any) {
+      return { ok: false, isEnvelope: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #192 — SQLCipher migration helper. Feasibility check + dry-run
+  // migrator that produces an encrypted COPY of vault.sqlite3 without
+  // touching the original. Real cut-over is documented but kept
+  // manual so a misclick can't lock the user out of their catalog.
+  ipcMain.handle('sqlcipher:feasibility', async () => {
+    try {
+      const { checkSqlcipherFeasibility } = await import('./services/sqlcipher-migrator')
+      return { ok: true, ...checkSqlcipherFeasibility() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('sqlcipher:dryRun', async (_ev, passphrase: string) => {
+    try {
+      const { dryRunMigration } = await import('./services/sqlcipher-migrator')
+      return await dryRunMigration(passphrase)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // Generic file / folder pickers for renderer components that need
+  // them (age backup card, etc). Returns null when the user cancels.
+  ipcMain.handle('dialog:openFile', async (_ev, opts?: { title?: string; filters?: Array<{ name: string; extensions: string[] }> }) => {
+    const r = await dialog.showOpenDialog({
+      title: opts?.title ?? 'Select file',
+      properties: ['openFile'],
+      filters: opts?.filters,
+    })
+    return r.filePaths[0] || null
+  })
+
+  ipcMain.handle('dialog:openFolder', async (_ev, opts?: { title?: string }) => {
+    const r = await dialog.showOpenDialog({
+      title: opts?.title ?? 'Select folder',
+      properties: ['openDirectory'],
+    })
+    return r.filePaths[0] || null
+  })
+
+  ipcMain.handle('dialog:saveFile', async (_ev, opts?: { title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }) => {
+    const r = await dialog.showSaveDialog({
+      title: opts?.title ?? 'Save as',
+      defaultPath: opts?.defaultPath,
+      filters: opts?.filters,
+    })
+    return r.filePath || null
+  })
+
+  // #182 — SMB share helper (routes through native OS SMB; no
+  // bundled Node SMB server). Windows = `net share` wrapper that
+  // surfaces existing shares + lets the user create/remove ones
+  // (requires admin). macOS / Linux = status-only with instructions.
+  ipcMain.handle('smb:status', async () => {
+    try {
+      const { getSmbStatus } = await import('./services/smb-share-helper')
+      return { ok: true, ...getSmbStatus() }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('smb:create', async (_ev, args: { name: string; path: string; description?: string; readOnly?: boolean }) => {
+    try {
+      const { createWindowsShare } = await import('./services/smb-share-helper')
+      return createWindowsShare(args)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('smb:remove', async (_ev, name: string) => {
+    try {
+      const { removeWindowsShare } = await import('./services/smb-share-helper')
+      return removeWindowsShare(name)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #184 — AirPlay 2 receiver discovery (Phase 1). mDNS scan for
+  // Apple TVs / HomePods / AirPlay TVs on the LAN. Returns the
+  // receiver list so the renderer cast menu can show them next to
+  // Chromecast / DLNA targets. Actual streaming (Phase 2) needs a
+  // protocol implementation or third-party binary.
+  ipcMain.handle('airplay:discover', async (_ev, timeoutMs?: number) => {
+    try {
+      const { discoverReceivers } = await import('./services/airplay-discovery')
+      return { ok: true, receivers: await discoverReceivers(timeoutMs ?? 3500) }
+    } catch (err: any) {
+      return { ok: false, receivers: [], error: err?.message ?? String(err) }
+    }
+  })
+
+  // #202 — Phillips Hue Bridge LAN integration for cinema-mode dimming.
+  // Renderer triggers dim/restore around fullscreen toggles; the bulbs
+  // selected here become "cinema lights" the user has wired up.
+  ipcMain.handle('hue:discover', async () => {
+    try {
+      const { discoverBridges } = await import('./services/hue-client')
+      return { ok: true, bridges: await discoverBridges() }
+    } catch (err: any) {
+      return { ok: false, bridges: [], error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('hue:pair', async (_ev, bridgeIp: string) => {
+    try {
+      const { pairBridge } = await import('./services/hue-client')
+      return await pairBridge(bridgeIp)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('hue:lights', async (_ev, args: { bridgeIp: string; username: string }) => {
+    try {
+      const { listLights } = await import('./services/hue-client')
+      return { ok: true, lights: await listLights(args.bridgeIp, args.username) }
+    } catch (err: any) {
+      return { ok: false, lights: [], error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('hue:cinemaDim', async (_ev, args: { bridgeIp: string; username: string; lightIds: string[]; targetBri?: number }) => {
+    try {
+      const { cinemaDim } = await import('./services/hue-client')
+      return { ok: true, ...(await cinemaDim(args.bridgeIp, args.username, args.lightIds, args.targetBri)) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('hue:cinemaRestore', async (_ev, args: { bridgeIp: string; username: string; lightIds: string[] }) => {
+    try {
+      const { cinemaRestore } = await import('./services/hue-client')
+      return { ok: true, ...(await cinemaRestore(args.bridgeIp, args.username, args.lightIds)) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #135 — Aesthetic-aware thumbnail picker. Samples 8 frames,
+  // embeds each via CLIP, scores via the LAION aesthetic predictor,
+  // and re-encodes the highest-scoring frame as the canonical thumb.
+  ipcMain.handle('media:pickAestheticThumb', async (_ev, args: { mediaId: string; sampleCount?: number }) => {
+    try {
+      const { pickAestheticThumb } = await import('./services/aesthetic-thumb-picker')
+      const ff = await import('./ffpaths')
+      const ffmpegPath = ff.ffmpegBin ?? 'ffmpeg'
+      const media = db.getMedia(args.mediaId)
+      if (!media) return { ok: false, error: 'Media not found' }
+      if (media.type !== 'video') return { ok: false, error: 'Aesthetic thumb only applies to videos' }
+      if (!media.durationSec || media.durationSec < 1) return { ok: false, error: 'Source duration unknown' }
+      const result = await pickAestheticThumb(media.path, ffmpegPath, media.durationSec, {
+        sampleCount: args.sampleCount,
+      })
+      if (!result) return { ok: false, error: 'Aesthetic predictor or CLIP not available — see Extra Detectors card' }
+      return { ...result, ok: result.ok }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('media:regenerateAestheticThumb', async (_ev, args: { mediaId: string }) => {
+    try {
+      const { regenerateAestheticThumb } = await import('./services/aesthetic-thumb-picker')
+      const ff = await import('./ffpaths')
+      const ffmpegPath = ff.ffmpegBin ?? 'ffmpeg'
+      const media = db.getMedia(args.mediaId)
+      if (!media) return { ok: false, error: 'Media not found' }
+      if (media.type !== 'video') return { ok: false, error: 'Aesthetic thumb only applies to videos' }
+      if (!media.durationSec || media.durationSec < 1) return { ok: false, error: 'Source duration unknown' }
+      const result = await regenerateAestheticThumb(
+        media.path, ffmpegPath, args.mediaId,
+        media.mtimeMs ?? 0, media.durationSec,
+      )
+      if (result.ok && result.thumbPath) {
+        // Persist new thumb on the media row + broadcast so cards refresh.
+        db.raw.prepare(`UPDATE media SET thumbPath = ? WHERE id = ?`).run(result.thumbPath, args.mediaId)
+        broadcast('vault:changed')
+      }
+      return result
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #169 — Auto-reframe to a target aspect ratio (vertical / square /
+  // 4:5) using face-detection to pick the crop center.
+  ipcMain.handle('media:autoReframePath', async (_ev, args: { mediaId: string; aspectRatio: '9:16' | '1:1' | '4:5' }) => {
+    try {
+      const { reframedPathFor } = await import('./services/auto-reframe-service')
+      return { ok: true, path: reframedPathFor(args.mediaId, args.aspectRatio) }
+    } catch (err: any) {
+      return { ok: false, path: null, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('media:generateAutoReframe', async (_ev, args: { mediaId: string; aspectRatio: '9:16' | '1:1' | '4:5'; force?: boolean }) => {
+    try {
+      const { autoReframe } = await import('./services/auto-reframe-service')
+      const ff = await import('./ffpaths')
+      const ffmpegPath = ff.ffmpegBin ?? 'ffmpeg'
+      const ffprobePath = ff.ffprobeBin ?? null
+      const media = db.getMedia(args.mediaId)
+      if (!media) return { ok: false, error: 'Media not found' }
+      if (media.type !== 'video') return { ok: false, error: 'Auto-reframe only applies to videos' }
+      const out = await autoReframe(media.path, ffmpegPath, ffprobePath, args.mediaId, {
+        aspectRatio: args.aspectRatio,
+        reuseExisting: !args.force,
+      })
+      if (!out) return { ok: false, error: 'FFmpeg failed to produce reframed output' }
+      return { ok: true, path: out }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #137 — Co-watch similarity recommender. Single-user collab filter
+  // approximation: items that the user reliably starts watching in the
+  // same window as a seed item.
+  ipcMain.handle('reco:moreLikeThis', async (_ev, args: { mediaId: string; limit?: number }) => {
+    try {
+      const { getCoWatchRecommender } = await import('./services/cowatch-recommender')
+      return { ok: true, items: getCoWatchRecommender(db).recommendFor(args.mediaId, args.limit ?? 12) }
+    } catch (err: any) {
+      return { ok: false, items: [], error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('reco:todaysPicks', async (_ev, limit?: number) => {
+    try {
+      const { getCoWatchRecommender } = await import('./services/cowatch-recommender')
+      return { ok: true, items: getCoWatchRecommender(db).todaysPicks(limit ?? 12) }
+    } catch (err: any) {
+      return { ok: false, items: [], error: err?.message ?? String(err) }
+    }
+  })
+
+  // #138 — Tag-affinity / two-tower content recommender. Complements
+  // #137: this one scores by tag overlap with the user's view-history
+  // affinity vector instead of co-watch correlation.
+  ipcMain.handle('reco:tagAffinity', async (_ev, args: { limit?: number; excludeMediaIds?: string[] }) => {
+    try {
+      const { getTagAffinityRecommender } = await import('./services/tag-affinity-recommender')
+      return { ok: true, items: getTagAffinityRecommender(db).recommend(args.limit ?? 20, args.excludeMediaIds ?? []) }
+    } catch (err: any) {
+      return { ok: false, items: [], error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('reco:invalidate', async () => {
+    try {
+      const { getTagAffinityRecommender } = await import('./services/tag-affinity-recommender')
+      getTagAffinityRecommender(db).invalidate()
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // #104 — Pool / set aggregation. Resolves an e621 or Danbooru pool
+  // id to its full ordered post list so the lightbox can offer a
+  // "Save entire pool (N items)" action.
+  ipcMain.handle('booru:pool', async (_ev, args: { source: string; poolId: string | number }) => {
+    try {
+      const booru = await import('./services/ai-intelligence/booru-client')
+      const res = await booru.fetchPool(args.source as any, args.poolId)
+      return { ok: true, posts: res.posts, poolName: (res as any).poolName ?? null }
+    } catch (err: any) {
+      return { ok: false, posts: [], error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('media:ensureSpriteSheet', async (_ev, args: { mediaId: string; preset?: 'scrub' | 'hover' }) => {
+    try {
+      const { contactSheetPathFor, generateContactSheet } = await import('./services/ai-intelligence/contact-sheet')
+      const preset = args.preset ?? 'scrub'
+      const existing = contactSheetPathFor(args.mediaId, preset)
+      if (existing) {
+        return { ok: true, path: existing, alreadyExisted: true, cols: preset === 'scrub' ? 6 : 4, rows: preset === 'scrub' ? 6 : 1 }
+      }
+      const media = db.getMedia(args.mediaId)
+      if (!media) return { ok: false, error: 'Media not found' }
+      if (media.type !== 'video') return { ok: false, error: 'Sprite scrub only applies to videos' }
+      const ff = await import('./ffpaths')
+      const ffmpegPath = ff.ffmpegBin ?? 'ffmpeg'
+      const out = await generateContactSheet(media.path, ffmpegPath, args.mediaId, {
+        preset,
+        durationSec: media.durationSec ?? null,
+        dedupFrames: false, // we WANT evenly-spaced frames for scrubbing
+      })
+      if (!out) return { ok: false, error: 'Failed to generate sprite sheet' }
+      return { ok: true, path: out, alreadyExisted: false, cols: preset === 'scrub' ? 6 : 4, rows: preset === 'scrub' ? 6 : 1 }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
     }
   })
 }
