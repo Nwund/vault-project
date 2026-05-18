@@ -56,6 +56,9 @@ export function BookmarksPanel({ mediaId, currentTime, duration, onSeek, isCompa
 
   useEffect(() => {
     loadBookmarks()
+    // Refresh when any other surface adds/edits/deletes bookmarks.
+    const off = window.api.events.onVaultChanged(() => { loadBookmarks() })
+    return () => { off?.() }
   }, [loadBookmarks])
 
   const handleQuickAdd = async () => {

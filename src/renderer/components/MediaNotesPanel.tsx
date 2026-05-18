@@ -51,6 +51,9 @@ export function MediaNotesPanel({ mediaId, className = '' }: MediaNotesPanelProp
 
   useEffect(() => {
     loadNotes()
+    // Refresh when any other surface mutates notes.
+    const off = window.api.events.onVaultChanged(() => { loadNotes() })
+    return () => { off?.() }
   }, [loadNotes])
 
   const handleAdd = async () => {

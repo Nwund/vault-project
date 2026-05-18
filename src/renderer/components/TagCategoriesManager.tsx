@@ -102,6 +102,10 @@ export function TagCategoriesManager({ onTagSelect, className = '' }: TagCategor
 
   useEffect(() => {
     loadData()
+    // Refresh when any other surface mutates categories. Pairs with the
+    // broadcast('vault:changed') added to tagCategories:create/update/etc.
+    const off = window.api.events.onVaultChanged(() => { loadData() })
+    return () => { off?.() }
   }, [loadData])
 
   const loadCategoryTags = useCallback(async (categoryId: string) => {
