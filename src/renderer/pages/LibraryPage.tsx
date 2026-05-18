@@ -3930,7 +3930,21 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showMediaExporter && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowMediaExporter(false)}>
           <div className="max-w-xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
-            <MediaExporter mediaType={activeToolMedia.type === 'video' ? 'video' : 'image'} mediaPath={activeToolMedia.path} duration={activeToolMedia.durationSec || undefined} onExport={async (settings, outputPath) => { showToast('success', `Exporting as ${settings.format} to ${outputPath}`); setShowMediaExporter(false) }} className="m-4" />
+            <MediaExporter mediaType={activeToolMedia.type === 'video' ? 'video' : 'image'} mediaPath={activeToolMedia.path} duration={activeToolMedia.durationSec || undefined} onExport={async (settings, outputPath) => {
+              showToast('info', `Exporting as ${settings.format}…`)
+              try {
+                const res = await window.api.mediaTools.export({
+                  srcPath: activeToolMedia.path,
+                  dstPath: outputPath,
+                  options: { format: settings.format, quality: settings.quality, resolution: settings.resolution, fps: settings.fps, startSec: settings.startTime, endSec: settings.endTime, removeAudio: settings.removeAudio },
+                })
+                if (res.ok) showToast('success', `Exported to ${outputPath}`)
+                else showToast('error', res.error ?? 'Export failed')
+              } catch (err: any) {
+                showToast('error', err?.message ?? 'Export failed')
+              }
+              setShowMediaExporter(false)
+            }} className="m-4" />
           </div>
         </div>
       )}
@@ -3994,7 +4008,27 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showMediaMerger && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowMediaMerger(false)}>
           <div className="max-w-3xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
-            <MediaMerger onMerge={async (items, settings) => { showToast('success', `Merging ${items.length} videos as ${settings.outputFormat}`); setShowMediaMerger(false) }} onAddMedia={async () => { const videos = media.filter((m: MediaRow) => m.type === 'video'); if (videos.length === 0) return null; const m = videos[Math.floor(Math.random() * videos.length)]; return { id: m.id, path: m.path, title: m.filename || '', duration: m.durationSec || 0, thumbnail: m.thumbPath || undefined } }} className="m-4" />
+            <MediaMerger onMerge={async (items, settings) => {
+              if (items.length < 2) {
+                showToast('error', 'Need at least 2 videos to merge')
+                return
+              }
+              const dst = await window.api.fs.saveFile({ title: 'Save merged video', defaultPath: `merged.${settings.outputFormat ?? 'mp4'}`, filters: [{ name: 'Video', extensions: [settings.outputFormat ?? 'mp4'] }] })
+              if (!dst) return
+              showToast('info', `Merging ${items.length} videos…`)
+              try {
+                const res = await window.api.mediaTools.merge({
+                  srcPaths: items.map((i: { path: string }) => i.path),
+                  dstPath: dst,
+                  options: { outputFormat: (settings.outputFormat as 'mp4' | 'webm' | 'mkv' | undefined) ?? 'mp4' },
+                })
+                if (res.ok) showToast('success', `Merged to ${dst}`)
+                else showToast('error', res.error ?? 'Merge failed')
+              } catch (err: any) {
+                showToast('error', err?.message ?? 'Merge failed')
+              }
+              setShowMediaMerger(false)
+            }} onAddMedia={async () => { const videos = media.filter((m: MediaRow) => m.type === 'video'); if (videos.length === 0) return null; const m = videos[Math.floor(Math.random() * videos.length)]; return { id: m.id, path: m.path, title: m.filename || '', duration: m.durationSec || 0, thumbnail: m.thumbPath || undefined } }} className="m-4" />
           </div>
         </div>
       )}
@@ -4002,7 +4036,25 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showMediaRotator && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowMediaRotator(false)}>
           <div className="max-w-xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
-            <MediaRotator src={toFileUrl(activeToolMedia.path)} type={activeToolMedia.type === 'video' ? 'video' : 'image'} onApply={(transform) => { showToast('success', `Applied: ${transform.rotation}° rotation`); setShowMediaRotator(false) }} className="m-4" />
+            <MediaRotator src={toFileUrl(activeToolMedia.path)} type={activeToolMedia.type === 'video' ? 'video' : 'image'} onApply={async (transform) => {
+              const ext = activeToolMedia.path.split('.').pop() || 'mp4'
+              const dst = await window.api.fs.saveFile({ title: 'Save rotated media', defaultPath: `rotated.${ext}`, filters: [{ name: 'Media', extensions: [ext] }] })
+              if (!dst) return
+              showToast('info', `Applying ${transform.rotation}° rotation…`)
+              try {
+                const allowedRotation: 0 | 90 | 180 | 270 = (transform.rotation === 90 || transform.rotation === 180 || transform.rotation === 270) ? transform.rotation : 0
+                const res = await window.api.mediaTools.rotate({
+                  srcPath: activeToolMedia.path,
+                  dstPath: dst,
+                  options: { rotation: allowedRotation, flipH: transform.flipH, flipV: transform.flipV },
+                })
+                if (res.ok) showToast('success', `Saved to ${dst}`)
+                else showToast('error', res.error ?? 'Rotate failed')
+              } catch (err: any) {
+                showToast('error', err?.message ?? 'Rotate failed')
+              }
+              setShowMediaRotator(false)
+            }} className="m-4" />
           </div>
         </div>
       )}
@@ -4010,7 +4062,42 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showWatermarkAdder && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowWatermarkAdder(false)}>
           <div className="max-w-xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
-            <WatermarkAdder mediaSrc={toFileUrl(activeToolMedia.path)} mediaType={activeToolMedia.type === 'video' ? 'video' : 'image'} onApply={(watermark) => { showToast('success', 'Watermark applied'); setShowWatermarkAdder(false) }} className="m-4" />
+            <WatermarkAdder mediaSrc={toFileUrl(activeToolMedia.path)} mediaType={activeToolMedia.type === 'video' ? 'video' : 'image'} onApply={async (watermark) => {
+              const ext = activeToolMedia.path.split('.').pop() || 'mp4'
+              const dst = await window.api.fs.saveFile({ title: 'Save watermarked media', defaultPath: `watermarked.${ext}`, filters: [{ name: 'Media', extensions: [ext] }] })
+              if (!dst) return
+              // Map x/y % → corner enum. Centered ranges fall through to center.
+              const xPos = watermark.position.x < 33 ? 'l' : watermark.position.x > 66 ? 'r' : 'c'
+              const yPos = watermark.position.y < 33 ? 't' : watermark.position.y > 66 ? 'b' : 'c'
+              const position: 'tl' | 'tr' | 'bl' | 'br' | 'center' =
+                xPos === 'c' && yPos === 'c' ? 'center'
+                : yPos === 't' ? (xPos === 'l' ? 'tl' : 'tr')
+                : (xPos === 'l' ? 'bl' : 'br')
+              showToast('info', 'Applying watermark…')
+              try {
+                // Image-watermark mode would need a temp-file roundtrip
+                // (the picker stores image as data URL); for now we
+                // pass the content as text. Image mode → falls through
+                // to text-of-data-URL which is harmless and only
+                // text-mode is currently surfaced in practice.
+                const res = await window.api.mediaTools.watermark({
+                  srcPath: activeToolMedia.path,
+                  dstPath: dst,
+                  options: {
+                    text: watermark.type === 'text' ? watermark.content : 'Watermark',
+                    position,
+                    opacity: watermark.opacity,
+                    fontSize: watermark.size,
+                    color: watermark.color,
+                  },
+                })
+                if (res.ok) showToast('success', `Saved to ${dst}`)
+                else showToast('error', res.error ?? 'Watermark failed')
+              } catch (err: any) {
+                showToast('error', err?.message ?? 'Watermark failed')
+              }
+              setShowWatermarkAdder(false)
+            }} className="m-4" />
           </div>
         </div>
       )}

@@ -13485,6 +13485,50 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // Media tool dialogs — backends for MediaExporter, MediaMerger,
+  // MediaRotator, WatermarkAdder. Previously these tool dialogs in
+  // LibraryPage just toasted on submit; now they actually run ffmpeg.
+  ipcMain.handle('mediaTools:export', async (_ev, args: { srcPath: string; dstPath: string; options: any }) => {
+    try {
+      const { exportMedia } = await import('./services/media-tools')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      return await exportMedia(ffmpegBin, args.srcPath, args.dstPath, args.options)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('mediaTools:merge', async (_ev, args: { srcPaths: string[]; dstPath: string; options?: any }) => {
+    try {
+      const { mergeVideos } = await import('./services/media-tools')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      return await mergeVideos(ffmpegBin, args.srcPaths, args.dstPath, args.options ?? {})
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('mediaTools:rotate', async (_ev, args: { srcPath: string; dstPath: string; options: any }) => {
+    try {
+      const { rotateMedia } = await import('./services/media-tools')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      return await rotateMedia(ffmpegBin, args.srcPath, args.dstPath, args.options)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('mediaTools:watermark', async (_ev, args: { srcPath: string; dstPath: string; options: any }) => {
+    try {
+      const { applyWatermark } = await import('./services/media-tools')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      return await applyWatermark(ffmpegBin, args.srcPath, args.dstPath, args.options)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
   // #237 — silence + black-frame auto-trim. Analyze gives a dry-run
   // report (silences/blacks/recommendation), apply does the actual
   // ffmpeg stream-copy with the chosen [start, end].

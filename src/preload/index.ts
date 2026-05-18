@@ -1336,6 +1336,17 @@ const api = {
       deshake: (args: { srcPath: string; dstPath?: string; shakiness?: number; accuracy?: number; smoothing?: number; crop?: 'black' | 'keep'; videoCodec?: string; crf?: number }) =>
         invoke<{ ok: boolean; dstPath?: string; error?: string }>('postProc:deshake', args),
     },
+    // Media tool dialog backends (MediaExporter/Merger/Rotator/WatermarkAdder)
+    mediaTools: {
+      export: (args: { srcPath: string; dstPath: string; options: { format: string; quality: 'low' | 'medium' | 'high' | 'original'; resolution?: string; fps?: number; startSec?: number; endSec?: number; removeAudio?: boolean } }) =>
+        invoke<{ ok: boolean; dstPath?: string; error?: string }>('mediaTools:export', args),
+      merge: (args: { srcPaths: string[]; dstPath: string; options?: { outputFormat?: 'mp4' | 'webm' | 'mkv'; reencode?: boolean } }) =>
+        invoke<{ ok: boolean; dstPath?: string; error?: string }>('mediaTools:merge', args),
+      rotate: (args: { srcPath: string; dstPath: string; options: { rotation: 0 | 90 | 180 | 270; flipH?: boolean; flipV?: boolean } }) =>
+        invoke<{ ok: boolean; dstPath?: string; error?: string }>('mediaTools:rotate', args),
+      watermark: (args: { srcPath: string; dstPath: string; options: { text?: string; imagePath?: string; position?: 'tl' | 'tr' | 'bl' | 'br' | 'center'; opacity?: number; fontSize?: number; color?: string; imageScale?: number } }) =>
+        invoke<{ ok: boolean; dstPath?: string; error?: string }>('mediaTools:watermark', args),
+    },
     // #237 — silence + black-frame auto-trim
     autoTrim: {
       analyze: (videoPath: string) => invoke<{
