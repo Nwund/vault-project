@@ -33,8 +33,8 @@ import {
   Eye,
   Fingerprint,
 } from 'lucide-react'
-import { useEscapeClose } from '../hooks/useEscapeClose'
-import { SPRINGS, FADE_SLIDE, SCALE_IN } from './network/motion-tokens'
+import { SPRINGS, FADE_SLIDE } from './network/motion-tokens'
+import { ModalShell } from './ModalShell'
 
 type Status = 'running' | 'idle' | 'error' | 'unknown'
 
@@ -307,7 +307,6 @@ const STATUS_COLORS: Record<Status, { pill: string; dot: string }> = {
 }
 
 export function ServiceHealthDashboard({ open, onClose }: { open: boolean; onClose: () => void }) {
-  useEscapeClose(open, onClose)
   const [results, setResults] = useState<Record<string, { status: Status; detail?: string }>>({})
   const [busy, setBusy] = useState(false)
   const [lastProbed, setLastProbed] = useState<number | null>(null)
@@ -335,18 +334,8 @@ export function ServiceHealthDashboard({ open, onClose }: { open: boolean; onClo
   const totalCount = SERVICES.length
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          {...FADE_SLIDE}
-          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={onClose}
-        >
-          <motion.div
-            {...SCALE_IN}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-3xl max-h-[90vh] bg-zinc-950/95 border border-[var(--border)] rounded-3xl shadow-2xl shadow-black/60 flex flex-col overflow-hidden"
-          >
+    <ModalShell open={open} onClose={onClose} maxWidth="3xl">
+          <div className="flex flex-col h-full">
             <div className="px-5 py-4 border-b border-white/5 bg-gradient-to-r from-emerald-500/10 via-cyan-500/10 to-transparent flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="size-9 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-600 grid place-items-center shadow-lg shadow-black/40">
@@ -429,9 +418,7 @@ export function ServiceHealthDashboard({ open, onClose }: { open: boolean; onClo
                 {runningCount} active
               </span>
             </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+          </div>
+    </ModalShell>
   )
 }

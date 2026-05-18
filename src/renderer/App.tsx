@@ -2420,6 +2420,7 @@ export default function App() {
                       window.dispatchEvent(new CustomEvent('vault-open-duplicates'))
                     }, 100)
                   }}
+                  onMouseEnter={() => { void import('./components/DuplicatesModal') }}
                   className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
                 >
                   <FileSearch size={14} />

@@ -64,11 +64,12 @@ const HIGHLIGHTS: Highlight[] = [
     title: 'Player — 7 overlay layers',
     body: 'LUT grade (.cube + strength) · Subtitles (libass-wasm) · Vectorscope + RGB parade · Cock-Hero beat pulses · Body-part heatmap timeline · Quick Look flash · Capture moment (frame → WebP).',
     tone: 'from-pink-500 to-rose-600',
+    action: { label: 'Try it — open Library, hold Q on any tile', navigateTab: 'library' },
   },
   {
     Icon: Activity,
     title: 'Performance + glue',
-    body: 'Scrub thumbs now go through a MessagePort fast-path (ffmpeg + disk cache). View Transitions API on every page swap. React 19 + React Compiler (annotation mode) on 21 v2.7 components. Right-click menu: Share via Iroh, Pin to IPFS, Auto-tease, Deny for…, Feature less.',
+    body: 'Scrub thumbs now go through a MessagePort fast-path (ffmpeg + disk cache). View Transitions API on every page swap. React 19 + React Compiler (annotation mode) on 21 v2.7 components. Right-click menu: Share via Iroh, Pin to IPFS, Auto-tease, Deny for…, Feature less. Press ? anywhere for the full hotkey list.',
     tone: 'from-amber-500 to-orange-600',
   },
 ]

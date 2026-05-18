@@ -76,9 +76,20 @@ export function DupTriageModal({ open, onClose }: { open: boolean; onClose: () =
         setError(res.error ?? 'Resolve failed')
         return
       }
+      // Cohesion glue: after picking a survivor, kick the survivor into
+      // the AI re-tag queue. It's now the canonical version of that
+      // content; its tags may have been generated against the loser's
+      // frames. Best-effort — failure here doesn't undo the triage.
+      const survivorId =
+        action === 'keep_a' ? pair.a.id
+        : action === 'keep_b' ? pair.b.id
+        : null
+      if (survivorId) {
+        try { await window.api.ai.reanalyzeBatch([survivorId]) } catch { /* ignore */ }
+      }
       showToast?.('success',
-        action === 'keep_a' ? `Kept ${pair.a.filename}`
-        : action === 'keep_b' ? `Kept ${pair.b.filename}`
+        action === 'keep_a' ? `Kept ${pair.a.filename} · queued for re-tag`
+        : action === 'keep_b' ? `Kept ${pair.b.filename} · queued for re-tag`
         : action === 'keep_both' ? 'Marked as different'
         : 'Both deleted',
       )

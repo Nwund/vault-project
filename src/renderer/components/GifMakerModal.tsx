@@ -8,7 +8,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { X, Play, Pause, RefreshCw, Sparkles, Shuffle, Zap, Search } from 'lucide-react'
-import { useEscapeClose } from '../hooks/useEscapeClose'
+import { ModalShell } from './ModalShell'
 
 // Local types — kept loose so the modal can be reused outside the brainwash flow.
 type MediaRow = {
@@ -213,7 +213,6 @@ const GifMakerModal: React.FC<GifMakerModalProps> = ({
   const [search, setSearch] = useState('')
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
-  useEscapeClose(open, onClose)
 
   // Reset state on open / when initialVideo changes
   useEffect(() => {
@@ -322,14 +321,9 @@ const GifMakerModal: React.FC<GifMakerModalProps> = ({
     }
   }
 
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="relative w-[min(92vw,980px)] max-h-[92vh] overflow-y-auto rounded-3xl bg-[var(--panel)] border border-[var(--border)] shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <ModalShell open={open} onClose={onClose} maxWidth="5xl" zIndex={100} cardClassName="overflow-y-auto bg-[var(--panel)]">
+      <div className="relative">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] sticky top-0 bg-[var(--panel)] z-10">
           <div className="flex items-center gap-2">
@@ -496,7 +490,7 @@ const GifMakerModal: React.FC<GifMakerModalProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </ModalShell>
   )
 }
 
