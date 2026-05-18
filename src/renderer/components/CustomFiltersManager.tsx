@@ -294,7 +294,7 @@ export function CustomFiltersManager({ onFilterExecute, className = '' }: Custom
   }
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
@@ -319,14 +319,14 @@ export function CustomFiltersManager({ onFilterExecute, className = '' }: Custom
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
               placeholder="Filter name"
-              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded text-sm outline-none focus:border-[var(--primary)]"
+              className="w-full px-3 py-2 bg-zinc-900 border border-[var(--border)] rounded text-sm outline-none focus:border-[var(--primary)]"
             />
 
             <input
               value={formDescription}
               onChange={(e) => setFormDescription(e.target.value)}
               placeholder="Description (optional)"
-              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded text-sm outline-none focus:border-[var(--primary)]"
+              className="w-full px-3 py-2 bg-zinc-900 border border-[var(--border)] rounded text-sm outline-none focus:border-[var(--primary)]"
             />
 
             {/* Conditions */}
@@ -336,7 +336,7 @@ export function CustomFiltersManager({ onFilterExecute, className = '' }: Custom
                 <select
                   value={formCombineMode}
                   onChange={(e) => setFormCombineMode(e.target.value as 'and' | 'or')}
-                  className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs"
+                  className="bg-zinc-800 border border-[var(--border)] rounded px-2 py-1 text-xs"
                 >
                   <option value="and">Match ALL</option>
                   <option value="or">Match ANY</option>
@@ -348,7 +348,7 @@ export function CustomFiltersManager({ onFilterExecute, className = '' }: Custom
                   <select
                     value={condition.field}
                     onChange={(e) => updateCondition(index, { field: e.target.value as FilterField, operator: 'equals', value: '' })}
-                    className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs"
+                    className="bg-zinc-800 border border-[var(--border)] rounded px-2 py-1.5 text-xs"
                   >
                     {FIELD_OPTIONS.map(opt => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -358,7 +358,7 @@ export function CustomFiltersManager({ onFilterExecute, className = '' }: Custom
                   <select
                     value={condition.operator}
                     onChange={(e) => updateCondition(index, { operator: e.target.value as FilterOperator })}
-                    className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs"
+                    className="bg-zinc-800 border border-[var(--border)] rounded px-2 py-1.5 text-xs"
                   >
                     {(OPERATOR_OPTIONS[condition.field] || []).map(opt => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -369,7 +369,7 @@ export function CustomFiltersManager({ onFilterExecute, className = '' }: Custom
                     <select
                       value={condition.value || ''}
                       onChange={(e) => updateCondition(index, { value: e.target.value })}
-                      className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs"
+                      className="flex-1 bg-zinc-800 border border-[var(--border)] rounded px-2 py-1.5 text-xs"
                     >
                       <option value="video">Video</option>
                       <option value="image">Image</option>
@@ -379,7 +379,7 @@ export function CustomFiltersManager({ onFilterExecute, className = '' }: Custom
                     <select
                       value={condition.value ? 'true' : 'false'}
                       onChange={(e) => updateCondition(index, { value: e.target.value === 'true' })}
-                      className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs"
+                      className="flex-1 bg-zinc-800 border border-[var(--border)] rounded px-2 py-1.5 text-xs"
                     >
                       <option value="true">Yes</option>
                       <option value="false">No</option>
@@ -390,7 +390,7 @@ export function CustomFiltersManager({ onFilterExecute, className = '' }: Custom
                       value={condition.value || ''}
                       onChange={(e) => updateCondition(index, { value: e.target.value })}
                       placeholder="Value"
-                      className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs outline-none"
+                      className="flex-1 bg-zinc-800 border border-[var(--border)] rounded px-2 py-1.5 text-xs outline-none"
                     />
                   ) : null}
 

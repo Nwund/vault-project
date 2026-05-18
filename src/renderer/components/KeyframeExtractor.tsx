@@ -64,7 +64,7 @@ export function KeyframeExtractor({ videoRef, duration, onExtract, className = '
   }, [])
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <canvas ref={canvasRef} className="hidden" />
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2"><Grid3X3 size={16} className="text-[var(--primary)]" /><span className="font-semibold text-sm">Keyframe Extractor</span></div>

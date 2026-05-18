@@ -194,7 +194,7 @@ export function SimilarContent({
   }
 
   return (
-    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
@@ -354,7 +354,7 @@ export function SimilarContent({
                   </button>
 
                   {expandedGroups.has(group.groupId) && (
-                    <div className="px-3 pb-3 space-y-2 border-t border-zinc-700">
+                    <div className="px-3 pb-3 space-y-2 border-t border-[var(--border)]">
                       {group.items.map((item, idx) => (
                         <SimilarItem
                           key={item.mediaId}

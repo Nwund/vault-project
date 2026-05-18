@@ -44,7 +44,7 @@ export function VideoFilters({ onFilterChange, currentFilter = 'none', customPre
   )
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2"><Wand2 size={16} className="text-[var(--primary)]" /><span className="font-semibold text-sm">Filters</span></div>
         <div className="flex gap-1"><button onClick={() => setShowCustom(!showCustom)} className={`p-1.5 rounded ${showCustom ? 'bg-[var(--primary)]' : 'hover:bg-zinc-800'}`}><Plus size={14} /></button><button onClick={reset} className="p-1.5 rounded hover:bg-zinc-800"><RotateCcw size={14} /></button></div>

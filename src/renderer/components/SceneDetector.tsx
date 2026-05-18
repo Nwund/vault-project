@@ -97,7 +97,7 @@ export function SceneDetector({ videoRef, videoSrc, mediaId, duration, onScenesD
   const handleSeek = onSeek || onSceneSelect
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <canvas ref={canvasRef} className="hidden" />
       {videoSrc && !videoRef && <video ref={localVideoRef} src={videoSrc} className="hidden" preload="metadata" />}
 

@@ -181,13 +181,13 @@ export function SubscriptionsPanel({ availableSources, onSaveToLibrary, classNam
             value={draftName}
             onChange={(e) => setDraftName(e.target.value)}
             placeholder="Name (e.g. 'My favorite artist')"
-            className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm"
+            className="w-full bg-zinc-900 border border-[var(--border)] rounded px-2 py-1 text-sm"
           />
           <div className="flex gap-2">
             <select
               value={draftSource}
               onChange={(e) => setDraftSource(e.target.value)}
-              className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm"
+              className="flex-1 bg-zinc-900 border border-[var(--border)] rounded px-2 py-1 text-sm"
             >
               {availableSources.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
@@ -195,7 +195,7 @@ export function SubscriptionsPanel({ availableSources, onSaveToLibrary, classNam
               value={draftQuery}
               onChange={(e) => setDraftQuery(e.target.value)}
               placeholder="tags (e.g. artist_name rating:e)"
-              className="flex-[2] bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm"
+              className="flex-[2] bg-zinc-900 border border-[var(--border)] rounded px-2 py-1 text-sm"
             />
           </div>
           <div className="flex items-center gap-2 text-xs text-zinc-400">
@@ -206,7 +206,7 @@ export function SubscriptionsPanel({ availableSources, onSaveToLibrary, classNam
               min={15}
               value={draftInterval}
               onChange={(e) => setDraftInterval(Math.max(15, Number(e.target.value) || 360))}
-              className="w-20 bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-xs"
+              className="w-20 bg-zinc-900 border border-[var(--border)] rounded px-1 py-0.5 text-xs"
             />
             <span>minutes (min 15)</span>
           </div>

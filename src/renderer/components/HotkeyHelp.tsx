@@ -165,7 +165,7 @@ export function HotkeyHelp({
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className={`bg-zinc-900 rounded-2xl border border-zinc-700 shadow-2xl w-[700px] max-w-[90vw] max-h-[80vh] overflow-hidden ${className}`}>
+      <div className={`bg-zinc-900 rounded-2xl border border-[var(--border)] shadow-2xl w-[700px] max-w-[90vw] max-h-[80vh] overflow-hidden ${className}`}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
           <div className="flex items-center gap-3">
@@ -191,7 +191,7 @@ export function HotkeyHelp({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search shortcuts..."
-              className="w-full pl-10 pr-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm outline-none focus:border-[var(--primary)]"
+              className="w-full pl-10 pr-4 py-2 bg-zinc-800 border border-[var(--border)] rounded-lg text-sm outline-none focus:border-[var(--primary)]"
               autoFocus
             />
           </div>
@@ -277,7 +277,7 @@ export function HotkeyHelp({
         {/* Footer */}
         <div className="px-6 py-3 border-t border-zinc-800 text-center">
           <span className="text-xs text-zinc-500">
-            Press <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-[10px]">?</kbd> anytime to show this help
+            Press <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-[var(--border)] rounded text-[10px]">?</kbd> anytime to show this help
           </span>
         </div>
       </div>
@@ -325,7 +325,7 @@ export function ShortcutHint({
       {keys.map((key, i) => (
         <React.Fragment key={key}>
           {i > 0 && <span className="text-zinc-600">+</span>}
-          <kbd className="px-1 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-[10px] font-mono">
+          <kbd className="px-1 py-0.5 bg-zinc-800 border border-[var(--border)] rounded text-[10px] font-mono">
             {key}
           </kbd>
         </React.Fragment>

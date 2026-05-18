@@ -157,7 +157,7 @@ export function QuickActionsPanel({
       {/* Toggle button */}
       <button
         onClick={() => setIsExpanded(prev => !prev)}
-        className={`absolute ${position === 'left' ? '-right-10' : '-left-10'} top-1/2 -translate-y-1/2 w-8 h-12 bg-zinc-900/90 backdrop-blur-sm border border-zinc-700 rounded-lg flex flex-col items-center justify-center gap-0.5 hover:bg-zinc-800 transition shadow-lg`}
+        className={`absolute ${position === 'left' ? '-right-10' : '-left-10'} top-1/2 -translate-y-1/2 w-8 h-12 bg-zinc-900/90 backdrop-blur-sm border border-[var(--border)] rounded-lg flex flex-col items-center justify-center gap-0.5 hover:bg-zinc-800 transition shadow-lg`}
         title={isExpanded ? 'Hide quick actions' : 'Show quick actions'}
       >
         <Zap size={14} className="text-[var(--primary)]" />
@@ -166,7 +166,7 @@ export function QuickActionsPanel({
 
       {/* Main panel */}
       <div
-        className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden transition-all duration-300 ${
+        className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden transition-all duration-300 ${
           isExpanded ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'
         }`}
         style={{ width: isExpanded ? 200 : 0 }}

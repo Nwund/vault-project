@@ -216,7 +216,7 @@ export function SearchHistory({
   const displayedHistory = showAll ? history : history.slice(0, 10)
 
   return (
-    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
         <div className="flex items-center gap-3">
@@ -321,7 +321,7 @@ export function SearchSuggestions({
   if (suggestions.length === 0 || !query) return null
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 shadow-xl overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] shadow-xl overflow-hidden ${className}`}>
       {suggestions.map((suggestion, i) => (
         <button
           key={i}

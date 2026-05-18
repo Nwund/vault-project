@@ -144,7 +144,7 @@ export function MediaPreview({
   return (
     <div
       ref={containerRef}
-      className="fixed z-[9998] w-80 bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+      className="fixed z-[9998] w-80 bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
       style={{ left: adjustedPosition.x, top: adjustedPosition.y }}
       onMouseLeave={onClose}
     >

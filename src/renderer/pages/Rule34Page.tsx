@@ -18,6 +18,7 @@ import { useBrowsePhashBadges } from '../hooks/useBrowsePhashBadges'
 import Hls from 'hls.js'
 import { AnimatePresence, motion } from 'motion/react'
 import { SPRINGS } from '../components/network/motion-tokens'
+import { useLocalStorage } from '../hooks/useLocalStorage'
 import {
   Search, Download, Loader2, Globe, X, ChevronLeft, ChevronRight, ExternalLink, Play,
   Maximize2, Minimize2,
@@ -467,10 +468,7 @@ export default function Rule34Page() {
   // Minimum-score filter. 0 = any.
   const [minScore, setMinScore] = useState<0 | 50 | 200 | 1000>(0)
   // Grid density / layout — affects column count + tile padding.
-  const [layoutSize, setLayoutSize] = useState<'compact' | 'comfortable' | 'large'>(() => {
-    try { return (localStorage.getItem('vault.browse.layoutSize') as any) || 'comfortable' }
-    catch { return 'comfortable' }
-  })
+  const [layoutSize, setLayoutSize] = useLocalStorage<'compact' | 'comfortable' | 'large'>('vault.browse.layoutSize', 'comfortable')
   // Multi-select mode for bulk operations. When on, clicking tiles
   // toggles selection instead of opening the lightbox. Ctrl-click in
   // normal mode also toggles a tile into selection. Persisted set.
@@ -856,9 +854,7 @@ export default function Rule34Page() {
       try { localStorage.setItem('vault.browse.saveTargetDir', saveTargetDir) } catch { /* noop */ }
     }
   }, [saveTargetDir])
-  useEffect(() => {
-    try { localStorage.setItem('vault.browse.layoutSize', layoutSize) } catch { /* noop */ }
-  }, [layoutSize])
+  // layoutSize is persisted automatically by useLocalStorage
   useEffect(() => {
     try { localStorage.setItem('vault.browse.applyBlacklist', applyBlacklist ? '1' : '0') } catch { /* noop */ }
   }, [applyBlacklist])

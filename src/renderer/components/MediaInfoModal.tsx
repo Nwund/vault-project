@@ -10,7 +10,7 @@ import type { MediaRow, MediaStatsRow, TagRow } from '../types'
 import { formatBytes, formatDuration } from '../utils/formatters'
 import { MediaNotesPanel } from './MediaNotesPanel'
 import { BacklinksPanel } from './BacklinksPanel'
-import { useEscapeClose } from '../hooks/useEscapeClose'
+import { ModalShell } from './ModalShell'
 
 export function MediaInfoModal({ media, onClose }: { media: MediaRow; onClose: () => void }) {
   const [stats, setStats] = useState<MediaStatsRow | null>(null)
@@ -20,7 +20,6 @@ export function MediaInfoModal({ media, onClose }: { media: MediaRow; onClose: (
   const [denialStatus, setDenialStatus] = useState<{ active: boolean; until: number | null; remainingMs: number } | null>(null)
   const [featureLess, setFeatureLess] = useState<boolean | null>(null)
 
-  useEscapeClose(true, onClose)
 
   useEffect(() => {
     Promise.all([
@@ -89,17 +88,8 @@ export function MediaInfoModal({ media, onClose }: { media: MediaRow; onClose: (
   const filename = media.path.split(/[/\\]/).pop() || media.path
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="media-info-title"
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="bg-[var(--panel)] border border-[var(--border)] rounded-3xl w-full max-w-lg mx-4 shadow-2xl overflow-hidden"
-        onClick={e => e.stopPropagation()}
-      >
+    <ModalShell open={true} onClose={onClose} maxWidth="lg" cardClassName="bg-[var(--panel)]">
+      <div aria-labelledby="media-info-title">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
           <div className="flex items-center gap-3">
             <Info size={18} className="text-[var(--primary)]" aria-hidden="true" />
@@ -289,7 +279,7 @@ export function MediaInfoModal({ media, onClose }: { media: MediaRow; onClose: (
           </div>
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }
 

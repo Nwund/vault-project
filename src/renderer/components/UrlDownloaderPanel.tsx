@@ -316,7 +316,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
 
       {/* Settings Panel */}
       {showSettings && (
-        <div className="mx-4 mt-2 p-3 bg-zinc-800/50 border border-zinc-700 rounded-lg space-y-3">
+        <div className="mx-4 mt-2 p-3 bg-zinc-800/50 border border-[var(--border)] rounded-lg space-y-3">
           {/* Quality Selector */}
           <div className="flex items-center justify-between">
             <label className="text-xs text-gray-400">Quality</label>
@@ -375,14 +375,14 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
               onKeyDown={(e) => e.key === 'Enter' && handleAddDownload()}
               placeholder="Paste video URL..."
               className={`w-full pl-10 pr-3 py-2.5 bg-zinc-800 border rounded-lg text-white placeholder-gray-500 focus:outline-none ${
-                urlError ? 'border-red-500/50 focus:border-red-500' : 'border-zinc-700 focus:border-blue-500'
+                urlError ? 'border-red-500/50 focus:border-red-500' : 'border-[var(--border)] focus:border-blue-500'
               }`}
               disabled={!isAvailable}
             />
           </div>
           <button
             onClick={handlePaste}
-            className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-gray-400 hover:text-white transition-colors"
+            className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-[var(--border)] rounded-lg text-gray-400 hover:text-white transition-colors"
             title="Paste from clipboard"
           >
             <Clipboard className="w-4 h-4" />

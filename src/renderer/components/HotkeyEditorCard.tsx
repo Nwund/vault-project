@@ -127,7 +127,7 @@ export function HotkeyEditorCard(): React.JSX.Element {
       </div>
 
       <div className="text-xs text-[var(--muted)] mb-4">
-        Click any shortcut and press the new key combination. Press <kbd className="px-1 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-[10px]">Esc</kbd> to cancel.
+        Click any shortcut and press the new key combination. Press <kbd className="px-1 py-0.5 bg-zinc-800 border border-[var(--border)] rounded text-[10px]">Esc</kbd> to cancel.
       </div>
 
       <div className="space-y-5">
@@ -151,7 +151,7 @@ export function HotkeyEditorCard(): React.JSX.Element {
                           ? 'bg-[var(--primary)]/20 border-[var(--primary)]'
                           : justSaved
                             ? 'bg-emerald-500/10 border-emerald-500/40'
-                            : 'bg-zinc-900/50 border-zinc-800 hover:border-zinc-700'
+                            : 'bg-zinc-900/50 border-zinc-800 hover:border-[var(--border)]'
                       }`}
                     >
                       <div className="min-w-0 flex-1">
@@ -166,7 +166,7 @@ export function HotkeyEditorCard(): React.JSX.Element {
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => setRecordingId(isRecording ? null : a.id)}
-                          className="px-2 py-1 rounded-md bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 transition text-xs font-mono min-w-[5.5rem] text-center"
+                          className="px-2 py-1 rounded-md bg-zinc-800 border border-[var(--border)] hover:bg-zinc-700 transition text-xs font-mono min-w-[5.5rem] text-center"
                         >
                           {isRecording ? 'Press any key…' : prettyChord(chord)}
                         </button>

@@ -134,7 +134,7 @@ export function SessionSummary({
 
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm ${className}`}>
-      <div className="bg-zinc-900 rounded-3xl border border-zinc-700 shadow-2xl max-w-lg w-full mx-4 overflow-hidden animate-in zoom-in-95">
+      <div className="bg-zinc-900 rounded-3xl border border-[var(--border)] shadow-2xl max-w-lg w-full mx-4 overflow-hidden animate-in zoom-in-95">
         {/* Header with gradient */}
         <div className="relative bg-gradient-to-br from-[var(--primary)] to-pink-600 p-6 text-center">
           <button
@@ -417,7 +417,7 @@ export function AchievementBadge({
       className={`relative p-4 rounded-xl border transition ${
         earned
           ? `bg-gradient-to-br from-${color}/20 to-${color}/10 border-${color}/50`
-          : 'bg-zinc-800/50 border-zinc-700 opacity-50'
+          : 'bg-zinc-800/50 border-[var(--border)] opacity-50'
       } ${className}`}
     >
       <div className="flex items-center gap-3">

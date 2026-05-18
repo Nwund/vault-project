@@ -152,14 +152,14 @@ export function MetadataEditor({ media, mediaId, onSave, onClose, className = ''
 
   if (loading) {
     return (
-      <div className={`bg-zinc-900 rounded-xl border border-zinc-700 p-8 flex items-center justify-center ${className}`}>
+      <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] p-8 flex items-center justify-center ${className}`}>
         <Loader2 size={24} className="animate-spin text-zinc-500" />
       </div>
     )
   }
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
           <FileText size={16} className="text-[var(--primary)]" />
@@ -198,7 +198,7 @@ export function MetadataEditor({ media, mediaId, onSave, onClose, className = ''
                 value={data.title}
                 onChange={e => update({ title: e.target.value })}
                 placeholder="Display title (does NOT rename the file)"
-                className="w-full mt-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm"
+                className="w-full mt-1 px-3 py-2 bg-zinc-800 border border-[var(--border)] rounded text-sm"
               />
             </div>
             <div>
@@ -208,7 +208,7 @@ export function MetadataEditor({ media, mediaId, onSave, onClose, className = ''
                 onChange={e => update({ description: e.target.value })}
                 placeholder="What's this video about — anything you want to remember about it"
                 rows={4}
-                className="w-full mt-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm resize-y"
+                className="w-full mt-1 px-3 py-2 bg-zinc-800 border border-[var(--border)] rounded text-sm resize-y"
               />
             </div>
             <div>
@@ -263,7 +263,7 @@ export function MetadataEditor({ media, mediaId, onSave, onClose, className = ''
                   onChange={e => setNewTag(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addTag()}
                   placeholder="Add tag"
-                  className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm"
+                  className="flex-1 px-3 py-2 bg-zinc-800 border border-[var(--border)] rounded text-sm"
                 />
                 <button onClick={addTag} className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded"><Plus size={14} /></button>
               </div>
@@ -284,7 +284,7 @@ export function MetadataEditor({ media, mediaId, onSave, onClose, className = ''
                   onChange={e => setNewPerformer(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addPerformer()}
                   placeholder="Add performer"
-                  className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm"
+                  className="flex-1 px-3 py-2 bg-zinc-800 border border-[var(--border)] rounded text-sm"
                 />
                 <button onClick={addPerformer} className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded"><Plus size={14} /></button>
               </div>

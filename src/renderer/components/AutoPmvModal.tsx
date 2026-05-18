@@ -9,7 +9,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Sparkles, X, Loader2, Tag, Zap, Music, Clock, Wand2 } from 'lucide-react'
-import { useEscapeClose } from '../hooks/useEscapeClose'
+import { ModalShell } from './ModalShell'
 
 export interface AutoPmvResult {
   bpm: number
@@ -69,8 +69,6 @@ const AutoPmvModal: React.FC<AutoPmvModalProps> = ({ open, onClose, onGenerated 
   const [warnings, setWarnings] = useState<string[]>([])
   const [allTags, setAllTags] = useState<Array<{ id: number; name: string; videoCount?: number }>>([])
 
-  useEscapeClose(open, onClose)
-
   // Load tag list once on open so we can show suggestions.
   useEffect(() => {
     if (!open) return
@@ -121,14 +119,9 @@ const AutoPmvModal: React.FC<AutoPmvModalProps> = ({ open, onClose, onGenerated 
     }
   }
 
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="w-[min(92vw,720px)] max-h-[92vh] overflow-y-auto rounded-3xl bg-[var(--panel)] border border-[var(--border)] shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <ModalShell open={open} onClose={onClose} maxWidth="3xl" maxHeight="max-h-[92vh]" cardClassName="overflow-y-auto">
+      <div>
         {/* Header */}
         <div className="sticky top-0 bg-[var(--panel)] z-10 px-6 py-4 border-b border-[var(--border)] flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -323,7 +316,7 @@ const AutoPmvModal: React.FC<AutoPmvModalProps> = ({ open, onClose, onGenerated 
           </div>
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }
 

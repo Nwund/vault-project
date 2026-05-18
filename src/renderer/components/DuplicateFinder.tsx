@@ -171,7 +171,7 @@ export function DuplicateFinder({
   }, [])
 
   return (
-    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
         <div className="flex items-center gap-3">
@@ -216,7 +216,7 @@ export function DuplicateFinder({
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as any)}
-            className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-sm"
+            className="bg-zinc-800 border border-[var(--border)] rounded-lg px-2 py-1 text-sm"
           >
             <option value="all">All ({stats.totalGroups})</option>
             <option value="exact">Exact ({stats.exactMatches})</option>
@@ -228,7 +228,7 @@ export function DuplicateFinder({
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
-            className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-sm"
+            className="bg-zinc-800 border border-[var(--border)] rounded-lg px-2 py-1 text-sm"
           >
             <option value="size">Size savings</option>
             <option value="count">Duplicate count</option>

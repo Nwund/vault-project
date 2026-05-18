@@ -358,7 +358,7 @@ export function ComparisonView({ initialMedia = [], allMedia, onClose, onSelectM
             return (
               <div
                 key={idx}
-                className="bg-zinc-900 rounded-lg flex flex-col items-center justify-center gap-3 border border-dashed border-zinc-700 hover:border-zinc-500 transition cursor-pointer"
+                className="bg-zinc-900 rounded-lg flex flex-col items-center justify-center gap-3 border border-dashed border-[var(--border)] hover:border-zinc-500 transition cursor-pointer"
                 onClick={() => setShowMediaPicker(idx)}
               >
                 <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center">
@@ -508,7 +508,7 @@ export function ComparisonView({ initialMedia = [], allMedia, onClose, onSelectM
           onClick={() => setShowMediaPicker(null)}
         >
           <div
-            className="w-full max-w-2xl max-h-[80vh] bg-zinc-900 rounded-2xl border border-zinc-700 overflow-hidden flex flex-col"
+            className="w-full max-w-2xl max-h-[80vh] bg-zinc-900 rounded-2xl border border-[var(--border)] overflow-hidden flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}

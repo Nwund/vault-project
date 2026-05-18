@@ -273,7 +273,7 @@ export function CollectionManager({
   }
 
   return (
-    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
@@ -297,7 +297,7 @@ export function CollectionManager({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search collections..."
-            className="w-full pl-9 pr-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm outline-none focus:border-[var(--primary)]"
+            className="w-full pl-9 pr-3 py-2 bg-zinc-800 border border-[var(--border)] rounded-lg text-sm outline-none focus:border-[var(--primary)]"
           />
         </div>
       </div>
@@ -319,14 +319,14 @@ export function CollectionManager({
       {/* Create modal */}
       {showCreate && (
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 rounded-xl border border-zinc-700 w-full max-w-xs p-4">
+          <div className="bg-zinc-900 rounded-xl border border-[var(--border)] w-full max-w-xs p-4">
             <h3 className="font-semibold mb-3">New Collection</h3>
             <input
               type="text"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="Collection name"
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm outline-none focus:border-[var(--primary)] mb-3"
+              className="w-full px-3 py-2 bg-zinc-800 border border-[var(--border)] rounded-lg text-sm outline-none focus:border-[var(--primary)] mb-3"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
             />
@@ -352,7 +352,7 @@ export function CollectionManager({
       {/* Context menu */}
       {contextMenu && (
         <div
-          className="fixed z-50 min-w-[160px] bg-zinc-900/95 backdrop-blur-xl rounded-xl border border-zinc-700 shadow-xl py-1 overflow-hidden"
+          className="fixed z-50 min-w-[160px] bg-zinc-900/95 backdrop-blur-xl rounded-xl border border-[var(--border)] shadow-xl py-1 overflow-hidden"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
@@ -446,7 +446,7 @@ export function CollectionSelector({
       {isOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute top-full mt-2 left-0 z-50 min-w-[200px] bg-zinc-900 rounded-xl border border-zinc-700 shadow-xl py-1 max-h-64 overflow-y-auto">
+          <div className="absolute top-full mt-2 left-0 z-50 min-w-[200px] bg-zinc-900 rounded-xl border border-[var(--border)] shadow-xl py-1 max-h-64 overflow-y-auto">
             {collections.map(collection => (
               <button
                 key={collection.id}

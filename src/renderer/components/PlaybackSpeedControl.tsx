@@ -51,7 +51,7 @@ export function PlaybackSpeedControl({
       {isOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute bottom-full mb-2 left-0 z-50 bg-zinc-900 rounded-xl border border-zinc-700 shadow-xl overflow-hidden w-48">
+          <div className="absolute bottom-full mb-2 left-0 z-50 bg-zinc-900 rounded-xl border border-[var(--border)] shadow-xl overflow-hidden w-48">
             {/* Custom speed adjustment */}
             <div className="p-3 border-b border-zinc-800">
               <div className="flex items-center justify-between mb-2">

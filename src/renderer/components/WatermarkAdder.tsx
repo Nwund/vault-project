@@ -45,7 +45,7 @@ export function WatermarkAdder({ mediaSrc, mediaType, onApply, className = '' }:
   }, [])
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2"><Stamp size={16} className="text-[var(--primary)]" /><span className="font-semibold text-sm">Watermark</span></div>

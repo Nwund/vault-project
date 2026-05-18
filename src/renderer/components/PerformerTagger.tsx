@@ -108,7 +108,7 @@ export function PerformerTagger({
   }, [newPerformerName, onCreate, onAdd])
 
   return (
-    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
@@ -208,7 +208,7 @@ export function PerformerTagger({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search performers..."
-            className="w-full pl-9 pr-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm outline-none focus:border-[var(--primary)]"
+            className="w-full pl-9 pr-3 py-2 bg-zinc-800 border border-[var(--border)] rounded-lg text-sm outline-none focus:border-[var(--primary)]"
           />
         </div>
 
@@ -268,14 +268,14 @@ export function PerformerTagger({
       {/* Create performer modal */}
       {showCreate && (
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 rounded-xl border border-zinc-700 w-full max-w-sm p-4">
+          <div className="bg-zinc-900 rounded-xl border border-[var(--border)] w-full max-w-sm p-4">
             <h3 className="font-semibold mb-3">New Performer</h3>
             <input
               type="text"
               value={newPerformerName}
               onChange={(e) => setNewPerformerName(e.target.value)}
               placeholder="Name"
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm outline-none focus:border-[var(--primary)] mb-3"
+              className="w-full px-3 py-2 bg-zinc-800 border border-[var(--border)] rounded-lg text-sm outline-none focus:border-[var(--primary)] mb-3"
               autoFocus
             />
             <div className="flex gap-2">
@@ -342,7 +342,7 @@ function PerformerEditor({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-      <div className="bg-zinc-900 rounded-xl border border-zinc-700 w-full max-w-md p-4">
+      <div className="bg-zinc-900 rounded-xl border border-[var(--border)] w-full max-w-md p-4">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-12 h-12 rounded-full bg-zinc-700 overflow-hidden">
             {performer.avatar ? (
@@ -364,7 +364,7 @@ function PerformerEditor({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm outline-none focus:border-[var(--primary)]"
+              className="w-full px-3 py-2 bg-zinc-800 border border-[var(--border)] rounded-lg text-sm outline-none focus:border-[var(--primary)]"
             />
           </div>
           <div>
@@ -374,7 +374,7 @@ function PerformerEditor({
               value={aliases}
               onChange={(e) => setAliases(e.target.value)}
               placeholder="Alt name 1, Alt name 2"
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm outline-none focus:border-[var(--primary)]"
+              className="w-full px-3 py-2 bg-zinc-800 border border-[var(--border)] rounded-lg text-sm outline-none focus:border-[var(--primary)]"
             />
           </div>
           <div>
@@ -383,7 +383,7 @@ function PerformerEditor({
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm outline-none focus:border-[var(--primary)] resize-none"
+              className="w-full px-3 py-2 bg-zinc-800 border border-[var(--border)] rounded-lg text-sm outline-none focus:border-[var(--primary)] resize-none"
             />
           </div>
         </div>

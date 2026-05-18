@@ -11,7 +11,7 @@
 import React, { memo, useMemo } from 'react'
 import { Film, Image as ImageIcon, FileVideo, Star, Heart, Clock } from 'lucide-react'
 import { toFileUrlCached } from '../hooks/usePerformance'
-import { formatDuration } from '../utils/formatters'
+import { formatDuration, formatBytes } from '../utils/formatters'
 
 interface MediaRowLike {
   id: string
@@ -39,10 +39,7 @@ interface Props {
 
 function bytesToHuman(b: number | null | undefined): string {
   if (!b || b <= 0) return '—'
-  if (b < 1024) return `${b} B`
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`
-  if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(1)} MB`
-  return `${(b / (1024 * 1024 * 1024)).toFixed(2)} GB`
+  return formatBytes(b)
 }
 
 function dateShort(ts: number | null | undefined): string {

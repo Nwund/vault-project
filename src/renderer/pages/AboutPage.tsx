@@ -41,7 +41,7 @@ export function AboutPage() {
               <h1 className="text-4xl font-bold bg-gradient-to-r from-white to-zinc-300 bg-clip-text text-transparent">Vault</h1>
               <p className="text-zinc-400 mt-2 text-lg">Personal Media Experience</p>
               <div className="mt-5 flex items-center justify-center gap-3">
-                <span className="px-4 py-1.5 rounded-full text-sm font-medium bg-zinc-800/80 text-zinc-300 border border-zinc-700">
+                <span className="px-4 py-1.5 rounded-full text-sm font-medium bg-zinc-800/80 text-zinc-300 border border-[var(--border)]">
                   v{appVersion}
                 </span>
                 <span
@@ -49,7 +49,7 @@ export function AboutPage() {
                     'px-4 py-1.5 rounded-full text-sm font-medium flex items-center gap-1.5',
                     tier === 'owner' ? 'bg-gradient-to-r from-yellow-500/30 to-amber-500/30 text-yellow-400 border border-yellow-500/30' :
                     tier === 'premium' ? 'bg-gradient-to-r from-[var(--primary)]/30 to-pink-500/30 text-[var(--primary)] border border-[var(--primary)]/30' :
-                    'bg-zinc-800/80 text-zinc-400 border border-zinc-700'
+                    'bg-zinc-800/80 text-zinc-400 border border-[var(--border)]'
                   )}
                 >
                   {tier === 'owner' ? (
@@ -128,7 +128,7 @@ export function AboutPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               {['Electron', 'React', 'TypeScript', 'Vite', 'Tailwind CSS', 'SQLite', 'FFmpeg', 'Lucide Icons'].map((tech) => (
-                <span key={tech} className="px-3 py-1.5 rounded-lg bg-zinc-800 text-xs text-zinc-300 border border-zinc-700">
+                <span key={tech} className="px-3 py-1.5 rounded-lg bg-zinc-800 text-xs text-zinc-300 border border-[var(--border)]">
                   {tech}
                 </span>
               ))}

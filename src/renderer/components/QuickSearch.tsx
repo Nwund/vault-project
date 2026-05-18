@@ -167,7 +167,7 @@ export function QuickSearch({
     <div ref={containerRef} className={`relative ${className}`}>
       {/* Search input */}
       <div className={`flex items-center gap-2 px-3 py-2 bg-zinc-800 rounded-xl border transition ${
-        isFocused ? 'border-[var(--primary)]' : 'border-zinc-700'
+        isFocused ? 'border-[var(--primary)]' : 'border-[var(--border)]'
       }`}>
         <Search size={16} className="text-zinc-500 flex-shrink-0" />
         <input
@@ -198,7 +198,7 @@ export function QuickSearch({
 
       {/* Dropdown */}
       {showDropdown && (
-        <div className="absolute top-full mt-2 left-0 right-0 bg-zinc-900/95 backdrop-blur-xl rounded-xl border border-zinc-700 shadow-2xl overflow-hidden z-50">
+        <div className="absolute top-full mt-2 left-0 right-0 bg-zinc-900/95 backdrop-blur-xl rounded-xl border border-[var(--border)] shadow-2xl overflow-hidden z-50">
           {/* Results */}
           {results.length > 0 ? (
             <div className="max-h-80 overflow-y-auto">

@@ -297,7 +297,7 @@ export function AmbientMode({
 
       {/* Settings panel */}
       {showSettings && (
-        <div className="fixed bottom-16 left-4 z-[9995] w-72 bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden">
+        <div className="fixed bottom-16 left-4 z-[9995] w-72 bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
             <div className="flex items-center gap-2">
               <Sparkles size={16} className="text-[var(--primary)]" />
@@ -457,7 +457,7 @@ export function AmbientMode({
                 {dominantColors.slice(0, 5).map((color, i) => (
                   <div
                     key={i}
-                    className="w-10 h-10 rounded-lg border border-zinc-700"
+                    className="w-10 h-10 rounded-lg border border-[var(--border)]"
                     style={{ backgroundColor: color }}
                     title={color}
                   />

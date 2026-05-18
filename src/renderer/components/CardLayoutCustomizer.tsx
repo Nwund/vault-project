@@ -68,7 +68,7 @@ export function CardLayoutCustomizer(): React.JSX.Element {
               <label
                 key={f.id}
                 className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs cursor-pointer border transition ${
-                  on ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40' : 'bg-zinc-900/40 border-zinc-800 hover:border-zinc-700'
+                  on ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40' : 'bg-zinc-900/40 border-zinc-800 hover:border-[var(--border)]'
                 }`}
               >
                 <input
@@ -106,7 +106,7 @@ export function CardLayoutCustomizer(): React.JSX.Element {
                 onDragStart={onDragStart(id)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={onDrop(id)}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-grab bg-zinc-900/40 border border-zinc-800 hover:border-zinc-700 ${
+                className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-grab bg-zinc-900/40 border border-zinc-800 hover:border-[var(--border)] ${
                   dragId === id ? 'opacity-50' : ''
                 }`}
               >

@@ -66,7 +66,7 @@ export function QuickFavorites({
       {/* Toggle button */}
       <button
         onClick={() => setIsExpanded(prev => !prev)}
-        className={`absolute ${position === 'right' ? '-left-10' : '-right-10'} top-1/2 -translate-y-1/2 w-8 h-16 bg-zinc-900/90 backdrop-blur-sm border border-zinc-700 rounded-lg flex flex-col items-center justify-center gap-1 hover:bg-zinc-800 transition shadow-lg`}
+        className={`absolute ${position === 'right' ? '-left-10' : '-right-10'} top-1/2 -translate-y-1/2 w-8 h-16 bg-zinc-900/90 backdrop-blur-sm border border-[var(--border)] rounded-lg flex flex-col items-center justify-center gap-1 hover:bg-zinc-800 transition shadow-lg`}
         title={isExpanded ? 'Hide favorites' : 'Show favorites'}
       >
         <Heart size={14} className="text-pink-400 fill-pink-400" />
@@ -80,7 +80,7 @@ export function QuickFavorites({
 
       {/* Favorites panel */}
       <div
-        className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden transition-all duration-300 ${
+        className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden transition-all duration-300 ${
           isExpanded ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'
         }`}
         style={{ width: isExpanded ? 220 : 0 }}

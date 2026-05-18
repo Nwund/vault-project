@@ -73,7 +73,7 @@ export function ThumbnailSelector({ videoRef, duration, currentThumbnail, onSele
   }, [thumbnails, selectThumb])
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <canvas ref={canvasRef} className="hidden" />
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">

@@ -131,7 +131,7 @@ export function ThumbnailStrip({
   }, [duration, onSeek])
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <canvas ref={canvasRef} className="hidden" />
       <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
         <div className="flex items-center gap-2">
@@ -186,7 +186,7 @@ export function ThumbnailStrip({
         {/* Hover preview */}
         {hoverTime !== null && (
           <div className="absolute bottom-full mb-2 transform -translate-x-1/2 pointer-events-none" style={{ left: `${(hoverTime / duration) * 100}%` }}>
-            {hoverThumb && <img src={hoverThumb} className="w-32 h-18 rounded border border-zinc-700 shadow-xl" />}
+            {hoverThumb && <img src={hoverThumb} className="w-32 h-18 rounded border border-[var(--border)] shadow-xl" />}
             <div className="text-center mt-1 px-2 py-0.5 bg-zinc-800 rounded text-xs tabular-nums">{formatDuration(hoverTime)}</div>
           </div>
         )}

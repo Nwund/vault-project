@@ -162,7 +162,7 @@ export function WatchProgress({ items: propItems, onResume, onRemove, className 
   }, [toFileUrl])
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
           <Clock size={16} className="text-[var(--primary)]" />
@@ -253,7 +253,7 @@ export function WatchProgress({ items: propItems, onResume, onRemove, className 
                     <MoreHorizontal size={14} />
                   </button>
                   {showMenu === item.id && (
-                    <div className="absolute right-0 top-full mt-1 bg-zinc-800 rounded-lg border border-zinc-700 shadow-xl py-1 z-10">
+                    <div className="absolute right-0 top-full mt-1 bg-zinc-800 rounded-lg border border-[var(--border)] shadow-xl py-1 z-10">
                       <button
                         onClick={() => handleResume(item.id, 0)}
                         className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-700 text-xs"

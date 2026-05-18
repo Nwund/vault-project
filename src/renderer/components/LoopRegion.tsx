@@ -49,7 +49,7 @@ export function LoopRegion({ videoRef, duration, currentTime, savedLoops = [], o
   const save = useCallback(() => { onSaveLoop?.({ id: `loop-${Date.now()}`, start, end, name: `Loop ${savedLoops.length + 1}` }) }, [start, end, savedLoops, onSaveLoop])
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2"><Repeat size={16} className={active ? 'text-[var(--primary)]' : 'text-zinc-500'} /><span className="font-semibold text-sm">Loop Region</span></div>
         <div className="flex items-center gap-1">

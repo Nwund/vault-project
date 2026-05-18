@@ -808,7 +808,7 @@ function EmptyVideoState({ onAddVideos }: { onAddVideos: () => void }) {
   return (
     <div
       onClick={onAddVideos}
-      className="flex-1 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-zinc-700 rounded-xl cursor-pointer hover:border-purple-500/50 hover:bg-zinc-800/30 transition"
+      className="flex-1 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-[var(--border)] rounded-xl cursor-pointer hover:border-purple-500/50 hover:bg-zinc-800/30 transition"
     >
       <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center mb-3">
         <Upload size={20} className="text-zinc-500" />
@@ -2706,7 +2706,7 @@ export function PmvEditorPage() {
                     type="number"
                     value={project.bpm}
                     onChange={(e) => handleBpmChange(parseInt(e.target.value, 10) || 120)}
-                    className="w-16 px-2 py-1 text-center bg-zinc-800 rounded border border-zinc-700 focus:border-purple-500 focus:outline-none text-sm"
+                    className="w-16 px-2 py-1 text-center bg-zinc-800 rounded border border-[var(--border)] focus:border-purple-500 focus:outline-none text-sm"
                   />
                   {!project.bpmManualOverride && project.music && (
                     <span className="text-xs text-purple-400">
@@ -2781,7 +2781,7 @@ export function PmvEditorPage() {
                   {/* Add Music Track */}
                   <div
                     onClick={handleSelectMusic}
-                    className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-zinc-700 rounded-lg cursor-pointer hover:border-purple-500/50 hover:bg-zinc-800/30 transition"
+                    className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-[var(--border)] rounded-lg cursor-pointer hover:border-purple-500/50 hover:bg-zinc-800/30 transition"
                   >
                     {isLoadingMusic ? (
                       <Loader2 size={24} className="animate-spin text-purple-500" />
@@ -2844,7 +2844,7 @@ export function PmvEditorPage() {
                   </button>
 
                   {showTemplateMenu && (
-                    <div className="absolute right-0 top-full mt-1 w-64 bg-zinc-800 rounded-lg shadow-xl border border-zinc-700 z-50 overflow-hidden">
+                    <div className="absolute right-0 top-full mt-1 w-64 bg-zinc-800 rounded-lg shadow-xl border border-[var(--border)] z-50 overflow-hidden">
                       {/* Built-in templates */}
                       <div className="py-1">
                         <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-zinc-500 font-medium">
@@ -2870,7 +2870,7 @@ export function PmvEditorPage() {
 
                       {/* Custom templates */}
                       {customTemplates.length > 0 && (
-                        <div className="py-1 border-t border-zinc-700">
+                        <div className="py-1 border-t border-[var(--border)]">
                           <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-zinc-500 font-medium">
                             Custom Templates
                           </div>
@@ -2911,7 +2911,7 @@ export function PmvEditorPage() {
                       )}
 
                       {/* Actions */}
-                      <div className="py-1 border-t border-zinc-700">
+                      <div className="py-1 border-t border-[var(--border)]">
                         <button
                           onClick={handleCreateTemplate}
                           className="w-full px-3 py-2 text-left hover:bg-zinc-700 transition flex items-center gap-2 text-purple-400"
@@ -3115,7 +3115,7 @@ export function PmvEditorPage() {
 
       {/* Phase 4: Effects Panel */}
       {showEffectsPanel && (
-        <div className="fixed right-4 top-24 w-80 bg-zinc-900 rounded-2xl border border-zinc-700 shadow-2xl z-40 overflow-hidden">
+        <div className="fixed right-4 top-24 w-80 bg-zinc-900 rounded-2xl border border-[var(--border)] shadow-2xl z-40 overflow-hidden">
           {/* Panel Header */}
           <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -3362,7 +3362,7 @@ export function PmvEditorPage() {
                     {project.effectsSettings.textOverlays.map((overlay, idx) => (
                       <div
                         key={overlay.id}
-                        className="p-2 rounded-lg bg-zinc-800/50 border border-zinc-700 space-y-2"
+                        className="p-2 rounded-lg bg-zinc-800/50 border border-[var(--border)] space-y-2"
                       >
                         <div className="flex items-center justify-between">
                           <input
@@ -3373,7 +3373,7 @@ export function PmvEditorPage() {
                               updated[idx] = { ...overlay, text: e.target.value }
                               handleUpdateEffects({ textOverlays: updated })
                             }}
-                            className="flex-1 px-2 py-1 text-xs bg-black/30 rounded border border-zinc-700 focus:outline-none"
+                            className="flex-1 px-2 py-1 text-xs bg-black/30 rounded border border-[var(--border)] focus:outline-none"
                             placeholder="Text..."
                           />
                           <button
@@ -3394,7 +3394,7 @@ export function PmvEditorPage() {
                               updated[idx] = { ...overlay, style: e.target.value as TextOverlayStyle }
                               handleUpdateEffects({ textOverlays: updated })
                             }}
-                            className="text-[10px] px-1 py-0.5 bg-black/30 border border-zinc-700 rounded"
+                            className="text-[10px] px-1 py-0.5 bg-black/30 border border-[var(--border)] rounded"
                           >
                             {(Object.keys(TEXT_OVERLAY_STYLES) as TextOverlayStyle[]).map(s => (
                               <option key={s} value={s}>{TEXT_OVERLAY_STYLES[s].name}</option>
@@ -3407,7 +3407,7 @@ export function PmvEditorPage() {
                               updated[idx] = { ...overlay, position: e.target.value as TextOverlayPosition }
                               handleUpdateEffects({ textOverlays: updated })
                             }}
-                            className="text-[10px] px-1 py-0.5 bg-black/30 border border-zinc-700 rounded"
+                            className="text-[10px] px-1 py-0.5 bg-black/30 border border-[var(--border)] rounded"
                           >
                             <option value="center">Center</option>
                             <option value="top">Top</option>
@@ -3433,7 +3433,7 @@ export function PmvEditorPage() {
                               updated[idx] = { ...overlay, showOnBeat: Number(e.target.value) }
                               handleUpdateEffects({ textOverlays: updated })
                             }}
-                            className="flex-1 text-[10px] px-1 py-0.5 bg-black/30 border border-zinc-700 rounded"
+                            className="flex-1 text-[10px] px-1 py-0.5 bg-black/30 border border-[var(--border)] rounded"
                           >
                             <option value={1}>Every beat</option>
                             <option value={2}>Every 2 beats</option>
@@ -3476,7 +3476,7 @@ export function PmvEditorPage() {
 
       {/* Phase 5: Audio Panel */}
       {showAudioPanel && (
-        <div className="fixed right-4 top-24 w-80 bg-zinc-900 rounded-2xl border border-zinc-700 shadow-2xl z-40 overflow-hidden">
+        <div className="fixed right-4 top-24 w-80 bg-zinc-900 rounded-2xl border border-[var(--border)] shadow-2xl z-40 overflow-hidden">
           {/* Panel Header */}
           <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -3671,7 +3671,7 @@ export function PmvEditorPage() {
       {/* Audio Burner Modal */}
       {showAudioBurnerModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 rounded-2xl border border-zinc-700 w-full max-w-xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+          <div className="bg-zinc-900 rounded-2xl border border-[var(--border)] w-full max-w-xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
@@ -3707,7 +3707,7 @@ export function PmvEditorPage() {
                     value={audioBurnerUrl}
                     onChange={(e) => setAudioBurnerUrl(e.target.value)}
                     placeholder="Paste video URL (YouTube, etc.)"
-                    className="flex-1 px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 focus:border-orange-500 focus:outline-none text-sm"
+                    className="flex-1 px-4 py-2.5 rounded-lg bg-zinc-800 border border-[var(--border)] focus:border-orange-500 focus:outline-none text-sm"
                     disabled={audioBurnerDownloading}
                   />
                   <button
@@ -3778,7 +3778,7 @@ export function PmvEditorPage() {
                 </div>
                 <button
                   onClick={handleAudioBurnerFromFile}
-                  className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-zinc-700 hover:border-orange-500/50 hover:bg-zinc-800/30 transition flex items-center justify-center gap-2 text-sm"
+                  className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-[var(--border)] hover:border-orange-500/50 hover:bg-zinc-800/30 transition flex items-center justify-center gap-2 text-sm"
                 >
                   <FolderPlus size={16} className="text-zinc-400" />
                   <span>Select video file from disk</span>
@@ -3792,7 +3792,7 @@ export function PmvEditorPage() {
       {/* Phase 6: Export Modal */}
       {showExportModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 rounded-2xl border border-zinc-700 w-full max-w-lg mx-4 overflow-hidden">
+          <div className="bg-zinc-900 rounded-2xl border border-[var(--border)] w-full max-w-lg mx-4 overflow-hidden">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -3826,7 +3826,7 @@ export function PmvEditorPage() {
                       value={exportSettings.filename}
                       onChange={(e) => setExportSettings(s => ({ ...s, filename: e.target.value }))}
                       placeholder="My PMV"
-                      className="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 focus:border-green-500 focus:outline-none text-sm"
+                      className="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-[var(--border)] focus:border-green-500 focus:outline-none text-sm"
                     />
                   </div>
 
@@ -3941,7 +3941,7 @@ export function PmvEditorPage() {
                         <AlertTriangle size={36} className="text-red-500" />
                       </div>
                     ) : (
-                      <div className="w-20 h-20 rounded-full border-4 border-zinc-700 border-t-green-500 animate-spin mb-4" />
+                      <div className="w-20 h-20 rounded-full border-4 border-[var(--border)] border-t-green-500 animate-spin mb-4" />
                     )}
 
                     <div className="text-center mb-4">
@@ -4019,7 +4019,7 @@ export function PmvEditorPage() {
       {/* Template Editor Modal */}
       {showTemplateEditor && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 rounded-2xl border border-zinc-700 w-full max-w-md mx-4 overflow-hidden">
+          <div className="bg-zinc-900 rounded-2xl border border-[var(--border)] w-full max-w-md mx-4 overflow-hidden">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -4048,7 +4048,7 @@ export function PmvEditorPage() {
                   value={templateForm.name}
                   onChange={(e) => setTemplateForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="My Custom Template"
-                  className="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 focus:border-purple-500 focus:outline-none text-sm"
+                  className="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-[var(--border)] focus:border-purple-500 focus:outline-none text-sm"
                 />
               </div>
 
@@ -4060,7 +4060,7 @@ export function PmvEditorPage() {
                   value={templateForm.description}
                   onChange={(e) => setTemplateForm(f => ({ ...f, description: e.target.value }))}
                   placeholder="A brief description of this template"
-                  className="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 focus:border-purple-500 focus:outline-none text-sm"
+                  className="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-[var(--border)] focus:border-purple-500 focus:outline-none text-sm"
                 />
               </div>
 

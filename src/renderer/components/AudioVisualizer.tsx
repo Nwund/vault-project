@@ -113,7 +113,7 @@ export function AudioVisualizer({ videoRef, mode: initialMode = 'bars', color = 
   ]
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800">
         <div className="flex items-center gap-2"><Volume2 size={14} className="text-[var(--primary)]" /><span className="text-sm font-medium">Visualizer</span></div>
         <div className="flex items-center gap-1">{modes.map(m => <button key={m.id} onClick={() => setMode(m.id)} className={`p-1.5 rounded ${mode === m.id ? 'bg-[var(--primary)]' : 'hover:bg-zinc-800'}`}><m.icon size={12} /></button>)}</div>

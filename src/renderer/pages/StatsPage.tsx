@@ -13,6 +13,7 @@ import { useAnime } from '../hooks/useAnime'
 import type { GoonStats, SessionAnalytics } from '../types'
 import { TopBar, AnimatedCounter, DurationDisplay } from '../components/ui'
 import { cn } from '../utils/cn'
+import { formatBytes } from '../utils/formatters'
 
 type Achievement = {
   id: string
@@ -112,13 +113,7 @@ export function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof us
     const h = Math.floor(minutes / 60)
     return h >= 24 ? `${(h / 24).toFixed(1)}d` : `${h}h ${minutes % 60}m`
   }
-  const fmtSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-    if (bytes < 1024 * 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
-    return `${(bytes / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB`
-  }
+  const fmtSize = (bytes: number) => formatBytes(bytes)
   const fmtDuration = (seconds: number) => {
     const h = Math.floor(seconds / 3600)
     const m = Math.floor((seconds % 3600) / 60)

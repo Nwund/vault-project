@@ -133,9 +133,9 @@ export function MediaNotesPanel({ mediaId, className = '' }: MediaNotesPanelProp
   }
 
   return (
-    <div className={`bg-zinc-900 rounded-lg border border-zinc-700 ${className}`}>
+    <div className={`bg-zinc-900 rounded-lg border border-[var(--border)] ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-zinc-700">
+      <div className="flex items-center justify-between p-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-2">
           <StickyNote className="w-4 h-4 text-yellow-400" />
           <span className="text-sm font-medium">Notes</span>
@@ -154,7 +154,7 @@ export function MediaNotesPanel({ mediaId, className = '' }: MediaNotesPanelProp
 
       {/* Add Form */}
       {showAddForm && (
-        <div className="p-3 border-b border-zinc-700 space-y-2">
+        <div className="p-3 border-b border-[var(--border)] space-y-2">
           <textarea
             value={newContent}
             onChange={(e) => setNewContent(e.target.value)}

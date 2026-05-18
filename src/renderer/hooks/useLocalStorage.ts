@@ -16,7 +16,7 @@
 //     swallowed and return the default (Safari private mode, quota
 //     exceeded, etc. shouldn't crash the UI).
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback } from 'react'
 
 function readKey<T>(key: string, defaultValue: T): T {
   try {
@@ -43,11 +43,6 @@ function writeKey<T>(key: string, value: T): void {
 
 export function useLocalStorage<T>(key: string, defaultValue: T): [T, (v: T | ((prev: T) => T)) => void] {
   const [value, setValue] = useState<T>(() => readKey<T>(key, defaultValue))
-
-  // Keep the latest value in a ref so the functional setter can read
-  // without forcing the consumer to wire deps for callback identity.
-  const valueRef = useRef(value)
-  useEffect(() => { valueRef.current = value }, [value])
 
   const set = useCallback((v: T | ((prev: T) => T)) => {
     setValue((prev) => {

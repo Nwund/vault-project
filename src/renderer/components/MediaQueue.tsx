@@ -291,7 +291,7 @@ export function MediaQueue({
   const RepeatIcon = repeatMode === 'one' ? Repeat1 : Repeat
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
           <ListOrdered size={16} className="text-[var(--primary)]" />

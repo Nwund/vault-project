@@ -95,7 +95,7 @@ export function BookmarkManager({ mediaId, duration, currentTime = 0, onSeek, cl
   }, [])
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
           <Bookmark size={16} className="text-[var(--primary)]" />
@@ -123,8 +123,8 @@ export function BookmarkManager({ mediaId, duration, currentTime = 0, onSeek, cl
       {/* Add form */}
       {showAdd && (
         <div className="p-3 border-b border-zinc-800 bg-zinc-800/50 space-y-2">
-          <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Bookmark title" className="w-full px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded text-sm" autoFocus />
-          <textarea value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="Note (optional)" className="w-full px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded text-sm resize-none" rows={2} />
+          <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Bookmark title" className="w-full px-2 py-1.5 bg-zinc-900 border border-[var(--border)] rounded text-sm" autoFocus />
+          <textarea value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="Note (optional)" className="w-full px-2 py-1.5 bg-zinc-900 border border-[var(--border)] rounded text-sm resize-none" rows={2} />
           <div className="flex items-center gap-2">
             <span className="text-xs text-zinc-500">Color:</span>
             {COLORS.map(c => (

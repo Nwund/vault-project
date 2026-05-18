@@ -56,7 +56,7 @@ export function MediaExporter({ mediaType, mediaPath, duration, onExport, classN
   }, [settings.format, mediaType])
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2"><Download size={16} className="text-[var(--primary)]" /><span className="font-semibold text-sm">Export Media</span></div>
         {mediaType === 'video' ? <FileVideo size={16} className="text-zinc-500" /> : <FileImage size={16} className="text-zinc-500" />}

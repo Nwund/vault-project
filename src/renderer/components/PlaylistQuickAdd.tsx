@@ -96,7 +96,7 @@ export function PlaylistQuickAdd({
   }, [newPlaylistName, mediaIds, onCreatePlaylist])
 
   return (
-    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden w-72 ${className}`}>
+    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden w-72 ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
@@ -120,7 +120,7 @@ export function PlaylistQuickAdd({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search playlists..."
-            className="w-full pl-9 pr-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm outline-none focus:border-[var(--primary)]"
+            className="w-full pl-9 pr-3 py-2 bg-zinc-800 border border-[var(--border)] rounded-lg text-sm outline-none focus:border-[var(--primary)]"
             autoFocus
           />
         </div>
@@ -130,7 +130,7 @@ export function PlaylistQuickAdd({
       <div className="max-h-64 overflow-y-auto">
         {loading ? (
           <div className="py-8 text-center text-zinc-500">
-            <div className="w-6 h-6 border-2 border-zinc-700 border-t-[var(--primary)] rounded-full animate-spin mx-auto" />
+            <div className="w-6 h-6 border-2 border-[var(--border)] border-t-[var(--primary)] rounded-full animate-spin mx-auto" />
           </div>
         ) : filteredPlaylists.length === 0 ? (
           <div className="py-8 text-center text-zinc-500">
@@ -182,7 +182,7 @@ export function PlaylistQuickAdd({
               value={newPlaylistName}
               onChange={(e) => setNewPlaylistName(e.target.value)}
               placeholder="Playlist name"
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm outline-none focus:border-[var(--primary)]"
+              className="w-full px-3 py-2 bg-zinc-800 border border-[var(--border)] rounded-lg text-sm outline-none focus:border-[var(--primary)]"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
             />

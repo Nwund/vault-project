@@ -308,7 +308,7 @@ export function SmartPlaylistBuilder({
   }, [name, rules.length, currentRules, onSave])
 
   return (
-    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
         <div className="flex items-center gap-3">
@@ -364,7 +364,7 @@ export function SmartPlaylistBuilder({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="My Smart Playlist"
-            className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl outline-none focus:border-[var(--primary)] transition"
+            className="w-full px-4 py-2.5 bg-zinc-800 border border-[var(--border)] rounded-xl outline-none focus:border-[var(--primary)] transition"
           />
         </div>
 
@@ -439,7 +439,7 @@ export function SmartPlaylistBuilder({
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-              className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg outline-none focus:border-[var(--primary)]"
+              className="flex-1 px-3 py-2 bg-zinc-800 border border-[var(--border)] rounded-lg outline-none focus:border-[var(--primary)]"
             >
               {SORT_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>

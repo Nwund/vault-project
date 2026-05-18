@@ -161,9 +161,9 @@ export function WatchLaterPanel({ isOpen, onClose, onPlayMedia, selectedMediaIds
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-zinc-900 rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col border border-zinc-700">
+      <div className="bg-zinc-900 rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col border border-[var(--border)]">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+        <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
           <div className="flex items-center gap-3">
             <Clock className="w-5 h-5 text-blue-400" />
             <h2 className="text-lg font-semibold text-white">Watch Later</h2>

@@ -131,7 +131,7 @@ export function HomeAssistantCard(): React.JSX.Element {
             value={brokerUrl}
             onChange={(e) => setBrokerUrl(e.target.value)}
             placeholder="mqtt://192.168.1.10:1883"
-            className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm font-mono outline-none"
+            className="w-full bg-zinc-900 border border-[var(--border)] rounded px-2 py-1.5 text-sm font-mono outline-none"
           />
         </div>
 
@@ -142,7 +142,7 @@ export function HomeAssistantCard(): React.JSX.Element {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="vault"
-              className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm outline-none"
+              className="w-full bg-zinc-900 border border-[var(--border)] rounded px-2 py-1.5 text-sm outline-none"
             />
           </div>
           <div>
@@ -152,7 +152,7 @@ export function HomeAssistantCard(): React.JSX.Element {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••"
-              className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm outline-none"
+              className="w-full bg-zinc-900 border border-[var(--border)] rounded px-2 py-1.5 text-sm outline-none"
             />
           </div>
         </div>

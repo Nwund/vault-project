@@ -151,7 +151,7 @@ export function BatchActions({
   const allSelected = count === totalCount
 
   return (
-    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-3">
@@ -237,7 +237,7 @@ export function BatchActions({
       {/* Confirmation dialog */}
       {showConfirm && (
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 rounded-xl border border-zinc-700 p-4 max-w-xs">
+          <div className="bg-zinc-900 rounded-xl border border-[var(--border)] p-4 max-w-xs">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
                 <AlertTriangle size={20} className="text-red-400" />
@@ -294,7 +294,7 @@ export function BatchActionBar({
   ]
 
   return (
-    <div className={`flex items-center gap-2 px-4 py-2 bg-zinc-900/95 backdrop-blur-xl rounded-full border border-zinc-700 shadow-xl ${className}`}>
+    <div className={`flex items-center gap-2 px-4 py-2 bg-zinc-900/95 backdrop-blur-xl rounded-full border border-[var(--border)] shadow-xl ${className}`}>
       <span className="text-sm font-medium px-2">
         {selectedIds.length} selected
       </span>

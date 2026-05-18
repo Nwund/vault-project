@@ -642,7 +642,7 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToFa
             </button>
             <button
               onClick={onNavigateToLibrary}
-              className="group flex items-center gap-2.5 px-5 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-semibold transition-all border border-zinc-700 hover:border-zinc-600 hover:scale-[1.02] active:scale-[0.98]"
+              className="group flex items-center gap-2.5 px-5 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-semibold transition-all border border-[var(--border)] hover:border-zinc-600 hover:scale-[1.02] active:scale-[0.98]"
             >
               <Film size={20} className="group-hover:scale-110 transition-transform" />
               <span>Browse Library</span>
@@ -658,7 +658,7 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToFa
             )}
             <button
               onClick={onNavigateToStats}
-              className="flex items-center gap-2 px-4 py-3 bg-zinc-800/50 hover:bg-zinc-700/50 rounded-xl font-medium transition border border-zinc-700/50 hover:border-zinc-600/50 text-zinc-300 hover:text-white"
+              className="flex items-center gap-2 px-4 py-3 bg-zinc-800/50 hover:bg-zinc-700/50 rounded-xl font-medium transition border border-[var(--border)]/50 hover:border-zinc-600/50 text-zinc-300 hover:text-white"
             >
               <Gamepad2 size={18} />
               <span>Challenges</span>
@@ -667,7 +667,7 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToFa
 
           {/* Quick Stats Card - Enhanced */}
           {quickStats && quickStats.totalMedia > 0 && (
-            <div className="p-5 bg-zinc-800/40 backdrop-blur-sm rounded-2xl border border-zinc-700/50 shadow-xl card-shine">
+            <div className="p-5 bg-zinc-800/40 backdrop-blur-sm rounded-2xl border border-[var(--border)]/50 shadow-xl card-shine">
               <div className="flex items-center gap-2 mb-4">
                 <BarChart3 size={18} className="text-[var(--primary)]" />
                 <span className="font-semibold text-white">Your Collection</span>

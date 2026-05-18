@@ -177,7 +177,7 @@ export function WatchHistoryTimeline({
   }, [history, sessionGroups])
 
   return (
-    <div className={`bg-zinc-900/95 rounded-2xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900/95 rounded-2xl border border-[var(--border)] overflow-hidden ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
         <div className="flex items-center gap-3">
@@ -234,7 +234,7 @@ export function WatchHistoryTimeline({
         <select
           value={timeRange}
           onChange={e => setTimeRange(e.target.value as any)}
-          className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm outline-none focus:border-[var(--primary)]"
+          className="px-3 py-1.5 bg-zinc-800 border border-[var(--border)] rounded-lg text-sm outline-none focus:border-[var(--primary)]"
         >
           <option value="7d">Last 7 days</option>
           <option value="30d">Last 30 days</option>

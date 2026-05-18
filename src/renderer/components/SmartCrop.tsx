@@ -78,7 +78,7 @@ export function SmartCrop({ imageSrc, onCrop, onSmartCrop, className = '' }: Sma
   const reset = useCallback(() => setRegion({ x: 0, y: 0, width: 100, height: 100 }), [])
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2"><Crop size={16} className="text-[var(--primary)]" /><span className="font-semibold text-sm">Smart Crop</span></div>
         <div className="flex gap-1">{onSmartCrop && <button onClick={smartCrop} className="flex items-center gap-1 px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-xs"><Wand2 size={12} />Auto</button>}<button onClick={reset} className="p-1.5 rounded hover:bg-zinc-800"><RotateCcw size={14} /></button></div>

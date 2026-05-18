@@ -454,7 +454,7 @@ export function StreaksAchievements({
   }, [achievementsWithProgress])
 
   return (
-    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
         <div className="flex items-center gap-3">
@@ -595,7 +595,7 @@ function AchievementCard({
       className={`relative p-4 rounded-xl border transition ${
         achievement.isUnlocked
           ? `bg-gradient-to-br ${rarityStyle} bg-opacity-20 border-transparent shadow-lg ${rarityGlow}`
-          : 'bg-zinc-800/50 border-zinc-700 opacity-60'
+          : 'bg-zinc-800/50 border-[var(--border)] opacity-60'
       }`}
     >
       {/* Lock overlay */}

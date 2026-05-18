@@ -207,7 +207,7 @@ export function AITagger({ mediaId, mediaSrc, mediaType = 'video', onApplyTags, 
   const sourceColors: Record<SuggestedTag['source'], string> = { vision: 'text-blue-400', audio: 'text-purple-400', text: 'text-green-400', scene: 'text-orange-400' }
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
           <Sparkles size={16} className="text-[var(--primary)]" />

@@ -177,9 +177,9 @@ export function BookmarksPanel({ mediaId, currentTime, duration, onSeek, isCompa
   }
 
   return (
-    <div className="bg-zinc-900/95 backdrop-blur rounded-lg border border-zinc-700 w-64 max-h-80 flex flex-col">
+    <div className="bg-zinc-900/95 backdrop-blur rounded-lg border border-[var(--border)] w-64 max-h-80 flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between p-2 border-b border-zinc-700">
+      <div className="flex items-center justify-between p-2 border-b border-[var(--border)]">
         <div className="flex items-center gap-2">
           <Bookmark className="w-4 h-4 text-blue-400" />
           <span className="text-sm font-medium">Bookmarks</span>
@@ -201,7 +201,7 @@ export function BookmarksPanel({ mediaId, currentTime, duration, onSeek, isCompa
 
       {/* Add Form */}
       {showAddForm ? (
-        <div className="p-2 border-b border-zinc-700 space-y-2">
+        <div className="p-2 border-b border-[var(--border)] space-y-2">
           <input
             type="text"
             value={newTitle}
@@ -244,7 +244,7 @@ export function BookmarksPanel({ mediaId, currentTime, duration, onSeek, isCompa
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-1 p-2 border-b border-zinc-700">
+        <div className="flex items-center gap-1 p-2 border-b border-[var(--border)]">
           <button
             onClick={handleQuickAdd}
             className="flex-1 flex items-center justify-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-xs"
@@ -369,7 +369,7 @@ export function BookmarksPanel({ mediaId, currentTime, duration, onSeek, isCompa
 
       {/* Timeline Preview */}
       {bookmarks.length > 0 && duration > 0 && (
-        <div className="p-2 border-t border-zinc-700">
+        <div className="p-2 border-t border-[var(--border)]">
           <div className="relative h-2 bg-zinc-800 rounded-full overflow-hidden">
             {/* Progress */}
             <div

@@ -78,7 +78,7 @@ export function PlaylistSorter({ items, onSort, onReorder, className = '' }: Pla
   const currentSort = criteria[0]
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2"><ArrowUpDown size={16} className="text-[var(--primary)]" /><span className="font-semibold text-sm">Sort Playlist</span></div>
         <div className="flex gap-1"><button onClick={reset} className="p-1.5 rounded hover:bg-zinc-800"><RotateCcw size={14} /></button><button onClick={handleApply} className="flex items-center gap-1 px-3 py-1.5 rounded bg-[var(--primary)] text-sm"><Check size={14} />Apply</button></div>

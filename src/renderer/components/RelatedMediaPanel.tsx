@@ -177,9 +177,9 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
   }
 
   return (
-    <div className={`bg-zinc-900 rounded-lg border border-zinc-700 ${className}`}>
+    <div className={`bg-zinc-900 rounded-lg border border-[var(--border)] ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-zinc-700">
+      <div className="flex items-center justify-between p-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-2">
           <Link2 className="w-4 h-4 text-cyan-400" />
           <span className="text-sm font-medium">Related</span>
@@ -207,7 +207,7 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
 
       {/* Suggestions */}
       {showSuggestions && suggestions.length > 0 && (
-        <div className="p-2 border-b border-zinc-700 bg-cyan-900/20">
+        <div className="p-2 border-b border-[var(--border)] bg-cyan-900/20">
           <p className="text-xs text-cyan-400 mb-2">Suggested relationships:</p>
           <div className="space-y-1">
             {suggestions.map((suggestion) => (
@@ -331,7 +331,7 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
 
       {/* Find Series Button */}
       {related.some(r => ['sequel', 'prequel', 'series'].includes(r.relationshipType)) && (
-        <div className="p-2 border-t border-zinc-700">
+        <div className="p-2 border-t border-[var(--border)]">
           <button
             onClick={handleFindSeries}
             className="w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded text-xs"
@@ -345,7 +345,7 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
       {/* AI similarity — "More like this" via rich-tag cosine. Hidden when no
           source analysis exists or no candidates cleared the threshold. */}
       {!loadingSimilar && similar.length > 0 && (
-        <div className="border-t border-zinc-700">
+        <div className="border-t border-[var(--border)]">
           <div className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-fuchsia-900/20 to-cyan-900/20">
             <div className="flex items-center gap-2">
               <Sparkles className="w-3.5 h-3.5 text-fuchsia-400" />
@@ -358,7 +358,7 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
               <button
                 key={s.mediaId}
                 onClick={() => onPlayMedia(s.mediaId)}
-                className="group relative aspect-video rounded-md overflow-hidden border border-zinc-700 hover:border-fuchsia-500/60 transition bg-black"
+                className="group relative aspect-video rounded-md overflow-hidden border border-[var(--border)] hover:border-fuchsia-500/60 transition bg-black"
                 title={`${s.filename} — ${(s.similarity * 100).toFixed(0)}% match · ${s.matchCount} shared tags`}
               >
                 {s.thumbPath ? (
@@ -396,9 +396,9 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
       {/* Series Modal */}
       {showSeriesModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 rounded-2xl border border-zinc-700 w-full max-w-2xl max-h-[80vh] overflow-hidden shadow-2xl">
+          <div className="bg-zinc-900 rounded-2xl border border-[var(--border)] w-full max-w-2xl max-h-[80vh] overflow-hidden shadow-2xl">
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+            <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500">
                   <ListVideo size={20} className="text-white" />
@@ -450,7 +450,7 @@ export function RelatedMediaPanel({ mediaId, onPlayMedia, className = '' }: Rela
 
             {/* Modal Footer */}
             {seriesItems.length > 0 && (
-              <div className="p-4 border-t border-zinc-700 flex justify-between items-center">
+              <div className="p-4 border-t border-[var(--border)] flex justify-between items-center">
                 <p className="text-xs text-zinc-500">
                   Click any item to play
                 </p>

@@ -47,7 +47,7 @@ export function KeyboardNavigationHint({
   if (compact) {
     return (
       <div
-        className={`fixed ${positionClasses[position]} z-50 flex items-center gap-2 px-3 py-2 bg-zinc-900/95 backdrop-blur-xl rounded-xl border border-zinc-700 shadow-xl ${className}`}
+        className={`fixed ${positionClasses[position]} z-50 flex items-center gap-2 px-3 py-2 bg-zinc-900/95 backdrop-blur-xl rounded-xl border border-[var(--border)] shadow-xl ${className}`}
       >
         <Keyboard size={16} className="text-[var(--primary)]" />
         <span className="text-xs text-zinc-300">Keyboard navigation active</span>
@@ -63,7 +63,7 @@ export function KeyboardNavigationHint({
 
   return (
     <div
-      className={`fixed ${positionClasses[position]} z-50 bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden ${className}`}
+      className={`fixed ${positionClasses[position]} z-50 bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden ${className}`}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
@@ -137,7 +137,7 @@ function KeyBadge({ keys, small = false }: { keys: string[]; small?: boolean }) 
         <React.Fragment key={key}>
           {i > 0 && <span className="text-zinc-600 text-[10px]">/</span>}
           <span
-            className={`bg-zinc-800 border border-zinc-700 rounded font-mono ${
+            className={`bg-zinc-800 border border-[var(--border)] rounded font-mono ${
               small ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-xs'
             }`}
           >
@@ -162,7 +162,7 @@ export function ShortcutBadge({
       {keys.map((key, i) => (
         <React.Fragment key={key}>
           {i > 0 && <span className="text-zinc-600">+</span>}
-          <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-[10px] font-mono">
+          <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-[var(--border)] rounded text-[10px] font-mono">
             {key}
           </kbd>
         </React.Fragment>
@@ -205,7 +205,7 @@ export function VimCommandIndicator({
 
   return (
     <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 ${className}`}>
-      <div className="bg-zinc-900/95 backdrop-blur-xl px-4 py-2 rounded-lg border border-zinc-700 shadow-xl">
+      <div className="bg-zinc-900/95 backdrop-blur-xl px-4 py-2 rounded-lg border border-[var(--border)] shadow-xl">
         <span className="text-zinc-400 mr-2">:</span>
         <span className="font-mono text-white">{command}</span>
         <span className="animate-blink ml-0.5">|</span>

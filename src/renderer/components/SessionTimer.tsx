@@ -112,7 +112,7 @@ export function SessionTimer({ onClose, minimal = false, className = '' }: Sessi
   if (minimal && !expanded) {
     return (
       <div
-        className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-2 bg-zinc-900/90 backdrop-blur-sm rounded-full border border-zinc-700 shadow-lg cursor-pointer hover:border-zinc-500 transition ${className}`}
+        className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-2 bg-zinc-900/90 backdrop-blur-sm rounded-full border border-[var(--border)] shadow-lg cursor-pointer hover:border-zinc-500 transition ${className}`}
         onClick={() => setExpanded(true)}
       >
         <Timer size={14} className={isPaused ? 'text-zinc-500' : 'text-[var(--primary)]'} />
@@ -127,7 +127,7 @@ export function SessionTimer({ onClose, minimal = false, className = '' }: Sessi
   return (
     <>
       {/* Main timer panel */}
-      <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden ${className}`}>
+      <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden ${className}`}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
           <div className="flex items-center gap-2">
@@ -243,7 +243,7 @@ export function SessionTimer({ onClose, minimal = false, className = '' }: Sessi
       {/* Break prompt overlay */}
       {showBreakPrompt && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center">
-          <div className="bg-zinc-900 rounded-2xl border border-zinc-700 shadow-2xl p-6 max-w-sm mx-4 text-center">
+          <div className="bg-zinc-900 rounded-2xl border border-[var(--border)] shadow-2xl p-6 max-w-sm mx-4 text-center">
             <div className="w-16 h-16 rounded-full bg-blue-500/20 flex items-center justify-center mx-auto mb-4">
               <Coffee size={32} className="text-blue-400" />
             </div>

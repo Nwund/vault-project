@@ -405,7 +405,7 @@ export function CommandPalette({
             {cmd.shortcut.map((key, i) => (
               <kbd
                 key={i}
-                className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-[10px] text-zinc-400"
+                className="px-1.5 py-0.5 bg-zinc-800 border border-[var(--border)] rounded text-[10px] text-zinc-400"
               >
                 {key}
               </kbd>
@@ -425,7 +425,7 @@ export function CommandPalette({
       />
 
       {/* Palette */}
-      <div className="relative w-full max-w-xl command-palette-bg rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-xl command-palette-bg rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden">
         {/* Search input */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800">
           <Search size={20} className="text-zinc-500" />
@@ -439,7 +439,7 @@ export function CommandPalette({
             autoComplete="off"
             spellCheck={false}
           />
-          <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded text-[10px] text-zinc-400">
+          <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-[var(--border)] rounded text-[10px] text-zinc-400">
             ESC
           </kbd>
         </div>

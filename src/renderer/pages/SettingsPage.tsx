@@ -30,6 +30,7 @@ import {
 } from 'lucide-react'
 import type { VaultSettings } from '../types'
 import { formatBytes } from '../utils/formatters'
+import { useLocalStorage } from '../hooks/useLocalStorage'
 import { useToast } from '../contexts'
 import { cn } from '../utils/cn'
 import { Btn, TopBar, ToggleSwitch } from '../components/ui'
@@ -153,9 +154,9 @@ export function SettingsPage(props: {
   const [settingsSearch, setSettingsSearch] = useState('')
   // v2.7 — Dismissable intro banner state. Persists to localStorage so
   // users who close it once don't see it again.
-  const [v27BannerDismissed, setV27BannerDismissed] = useState<boolean>(() => {
-    try { return localStorage.getItem('vault.v27ServicesBannerDismissed') === '1' } catch { return false }
-  })
+  const [v27BannerDismissedStr, setV27BannerDismissedStr] = useLocalStorage<string>('vault.v27ServicesBannerDismissed', '0')
+  const v27BannerDismissed = v27BannerDismissedStr === '1'
+  const setV27BannerDismissed = (next: boolean) => setV27BannerDismissedStr(next ? '1' : '0')
   // Settings Profiles
   const [profiles, setProfiles] = useState<Array<{ id: string; name: string; description?: string; createdAt: number; updatedAt: number }>>([])
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null)
@@ -2954,10 +2955,7 @@ export function SettingsPage(props: {
           {activeTab === 'services' && !v27BannerDismissed && (
             <div className="mt-8 mb-4 rounded-2xl border border-fuchsia-500/20 bg-gradient-to-br from-fuchsia-500/10 via-pink-500/5 to-violet-500/10 p-4 relative">
               <button
-                onClick={() => {
-                  try { localStorage.setItem('vault.v27ServicesBannerDismissed', '1') } catch { /* ignore */ }
-                  setV27BannerDismissed(true)
-                }}
+                onClick={() => setV27BannerDismissed(true)}
                 className="absolute top-2 right-2 p-1 rounded text-fuchsia-200/50 hover:text-fuchsia-200 hover:bg-white/10 transition"
                 aria-label="Dismiss banner"
                 title="Dismiss"

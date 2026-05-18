@@ -181,7 +181,7 @@ export function TagAutocomplete({
     <div ref={containerRef} className={`relative ${className}`}>
       {/* Tag input area */}
       <div
-        className="flex flex-wrap gap-1.5 p-2 bg-zinc-800 border border-zinc-700 rounded-xl focus-within:border-[var(--primary)] transition min-h-[42px] cursor-text"
+        className="flex flex-wrap gap-1.5 p-2 bg-zinc-800 border border-[var(--border)] rounded-xl focus-within:border-[var(--primary)] transition min-h-[42px] cursor-text"
         onClick={() => inputRef.current?.focus()}
       >
         {/* Selected tags */}
@@ -226,7 +226,7 @@ export function TagAutocomplete({
 
       {/* Suggestions dropdown */}
       {showSuggestions && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50 max-h-64 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-900 border border-[var(--border)] rounded-xl shadow-xl overflow-hidden z-50 max-h-64 overflow-y-auto">
           {/* Recent tags */}
           {availableRecentTags.length > 0 && !input && (
             <div className="p-2 border-b border-zinc-800">

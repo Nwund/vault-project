@@ -132,7 +132,7 @@ export function AgeBackupCard(): React.JSX.Element {
                 value={srcPath}
                 onChange={(e) => setSrcPath(e.target.value)}
                 placeholder="C:\path\to\catalog.tar.zst"
-                className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm font-mono outline-none"
+                className="flex-1 bg-zinc-900 border border-[var(--border)] rounded px-2 py-1.5 text-sm font-mono outline-none"
               />
               <button
                 onClick={pickSource}
@@ -151,7 +151,7 @@ export function AgeBackupCard(): React.JSX.Element {
                 value={dstPath}
                 onChange={(e) => setDstPath(e.target.value)}
                 placeholder="C:\path\to\catalog.tar.zst.age"
-                className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm font-mono outline-none"
+                className="flex-1 bg-zinc-900 border border-[var(--border)] rounded px-2 py-1.5 text-sm font-mono outline-none"
               />
               <button
                 onClick={pickDest}
@@ -171,7 +171,7 @@ export function AgeBackupCard(): React.JSX.Element {
               value={recipients}
               onChange={(e) => setRecipients(e.target.value)}
               placeholder={`age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p\nage1yubikey1qg... (from age-plugin-yubikey)\nssh-ed25519 AAAA...`}
-              className="w-full h-24 bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-xs font-mono outline-none resize-y"
+              className="w-full h-24 bg-zinc-900 border border-[var(--border)] rounded px-2 py-1.5 text-xs font-mono outline-none resize-y"
             />
             <div className="text-[10px] text-zinc-500 mt-1">
               age recipients (age1...), SSH pubkeys, or hardware-key strings from age-plugin-yubikey.

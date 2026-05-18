@@ -216,7 +216,7 @@ export function ScreenshotCapture({
 
       {/* Settings panel */}
       {showSettings && (
-        <div className="absolute top-full mt-2 right-0 w-64 bg-zinc-900 rounded-xl border border-zinc-700 shadow-xl overflow-hidden z-50">
+        <div className="absolute top-full mt-2 right-0 w-64 bg-zinc-900 rounded-xl border border-[var(--border)] shadow-xl overflow-hidden z-50">
           <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800">
             <span className="text-sm font-medium">Screenshot Settings</span>
             <button onClick={() => setShowSettings(false)}>
@@ -319,7 +319,7 @@ export function ScreenshotCapture({
       {/* Preview popup */}
       {lastCapture && settings.showPreview && (
         <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-right">
-          <div className="bg-zinc-900 rounded-xl border border-zinc-700 shadow-2xl overflow-hidden w-64">
+          <div className="bg-zinc-900 rounded-xl border border-[var(--border)] shadow-2xl overflow-hidden w-64">
             {/* Preview image */}
             <div className="relative aspect-video bg-zinc-800">
               <img

@@ -60,7 +60,7 @@ export function MediaMerger({ onMerge, onAddMedia, className = '' }: MediaMerger
   const handleDragEnd = () => setDragIndex(null)
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2"><Merge size={16} className="text-[var(--primary)]" /><span className="font-semibold text-sm">Merge Videos</span><span className="text-xs text-zinc-500">({items.length})</span></div>
         <div className="flex gap-1"><button onClick={() => setShowSettings(!showSettings)} className={`p-1.5 rounded ${showSettings ? 'bg-[var(--primary)]' : 'hover:bg-zinc-800'}`}><Settings size={14} /></button><button onClick={addItem} className="flex items-center gap-1 px-2 py-1 rounded bg-[var(--primary)] text-xs"><Plus size={12} />Add</button></div>

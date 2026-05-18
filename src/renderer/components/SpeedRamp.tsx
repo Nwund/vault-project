@@ -147,7 +147,7 @@ export function SpeedRamp({ videoRef, duration, onApply, className = '' }: Speed
   }, [sortedPoints])
 
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900 rounded-xl border border-[var(--border)] overflow-hidden ${className}`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2"><Gauge size={16} className="text-[var(--primary)]" /><span className="font-semibold text-sm">Speed Ramp</span></div>
         <div className="flex gap-1"><button onClick={reset} className="p-1.5 rounded hover:bg-zinc-800"><RotateCcw size={14} /></button><button onClick={() => onApply(points)} className="flex items-center gap-1 px-2 py-1 rounded bg-[var(--primary)] text-xs"><Save size={12} />Apply</button></div>
@@ -158,7 +158,7 @@ export function SpeedRamp({ videoRef, duration, onApply, className = '' }: Speed
       <div ref={graphRef} className="relative h-32 mx-4 my-4 bg-zinc-800 rounded cursor-crosshair" onClick={addPoint}>
         <svg className="absolute inset-0 w-full h-full"><path d={pathD} fill="none" stroke="var(--primary)" strokeWidth="2" /></svg>
         {/* Grid lines */}
-        {[0.5, 1, 1.5, 2, 2.5].map(s => <div key={s} className="absolute left-0 right-0 border-t border-zinc-700/50" style={{ top: `${100 - ((s - 0.1) / 2.9) * 100}%` }}><span className="absolute -left-8 text-[10px] text-zinc-600">{s}x</span></div>)}
+        {[0.5, 1, 1.5, 2, 2.5].map(s => <div key={s} className="absolute left-0 right-0 border-t border-[var(--border)]/50" style={{ top: `${100 - ((s - 0.1) / 2.9) * 100}%` }}><span className="absolute -left-8 text-[10px] text-zinc-600">{s}x</span></div>)}
         {/* Points */}
         {sortedPoints.map((p, i) => <div key={i} className={`absolute w-3 h-3 rounded-full cursor-pointer ${selectedPoint === i ? 'bg-white ring-2 ring-[var(--primary)]' : 'bg-[var(--primary)]'}`} style={{ left: `calc(${p.time * 100}% - 6px)`, top: `calc(${100 - ((p.speed - 0.1) / 2.9) * 100}% - 6px)` }} onClick={e => { e.stopPropagation(); setSelectedPoint(i) }} />)}
         {/* Playhead */}

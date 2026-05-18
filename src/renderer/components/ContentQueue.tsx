@@ -292,7 +292,7 @@ export function ContentQueue({
 
   if (queue.items.length === 0 && !minimal) {
     return (
-      <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden ${className}`}>
+      <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden ${className}`}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
           <div className="flex items-center gap-2">
             <ListOrdered size={18} className="text-[var(--primary)]" />
@@ -342,7 +342,7 @@ export function ContentQueue({
   }
 
   return (
-    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
@@ -468,7 +468,7 @@ export function ContentQueue({
               <select
                 value={queue.autoAdvanceDelay}
                 onChange={(e) => queueSetAutoAdvance(true, parseInt(e.target.value))}
-                className="text-xs bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
+                className="text-xs bg-zinc-800 border border-[var(--border)] rounded px-2 py-1"
               >
                 <option value={5}>5s</option>
                 <option value={10}>10s</option>

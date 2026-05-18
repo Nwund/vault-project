@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react'
 import { Fingerprint, Shield, Check, X, Loader2 } from 'lucide-react'
 import { useToast } from '../contexts'
 import { useWindowsHello } from '../hooks/useWindowsHello'
+import { useLocalStorage } from '../hooks/useLocalStorage'
 
 const SETTING_KEY = 'vault_require_biometric_api_reveal'
 
@@ -19,9 +20,8 @@ export function WindowsHelloCard() {
   const { available, verify, forget } = useWindowsHello()
   const [supported, setSupported] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
-  const [requireForReveal, setRequireForReveal] = useState<boolean>(() => {
-    try { return localStorage.getItem(SETTING_KEY) === 'true' } catch { return false }
-  })
+  const [requireForRevealStr, setRequireForRevealStr] = useLocalStorage<string>(SETTING_KEY, 'false')
+  const requireForReveal = requireForRevealStr === 'true'
 
   useEffect(() => {
     void available().then(setSupported)
@@ -38,8 +38,7 @@ export function WindowsHelloCard() {
   }
 
   const toggleRequire = (next: boolean) => {
-    setRequireForReveal(next)
-    try { localStorage.setItem(SETTING_KEY, String(next)) } catch { /* quota */ }
+    setRequireForRevealStr(next ? 'true' : 'false')
   }
 
   if (supported === null) return null

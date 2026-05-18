@@ -153,7 +153,7 @@ export function BackupRestorePanel({
   }, [])
 
   return (
-    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden ${className}`}>
+    <div className={`bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
         <div className="flex items-center gap-3">
@@ -243,7 +243,7 @@ export function BackupRestorePanel({
                 className={`p-3 rounded-xl border transition ${
                   selectedBackup?.id === backup.id
                     ? 'border-[var(--primary)] bg-[var(--primary)]/10'
-                    : 'border-zinc-800 bg-zinc-800/50 hover:border-zinc-700'
+                    : 'border-zinc-800 bg-zinc-800/50 hover:border-[var(--border)]'
                 }`}
               >
                 <div className="flex items-start justify-between">
@@ -329,7 +329,7 @@ export function BackupRestorePanel({
       {/* Restore confirmation modal */}
       {showRestoreConfirm && selectedBackup && (
         <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center">
-          <div className="bg-zinc-900 rounded-2xl border border-zinc-700 shadow-2xl w-full max-w-md mx-4">
+          <div className="bg-zinc-900 rounded-2xl border border-[var(--border)] shadow-2xl w-full max-w-md mx-4">
             <div className="p-5 border-b border-zinc-800">
               <h3 className="font-semibold">Restore Backup</h3>
               <p className="text-sm text-zinc-400 mt-1">

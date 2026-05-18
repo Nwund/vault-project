@@ -200,7 +200,7 @@ export function QuickRatingPopup({
           <div
             className={`absolute ${
               position === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'
-            } left-1/2 -translate-x-1/2 z-50 bg-zinc-900 rounded-xl p-3 shadow-xl border border-zinc-700 animate-in zoom-in-95`}
+            } left-1/2 -translate-x-1/2 z-50 bg-zinc-900 rounded-xl p-3 shadow-xl border border-[var(--border)] animate-in zoom-in-95`}
           >
             <div className="flex items-center gap-2">
               {[1, 2, 3, 4, 5].map(rating => (

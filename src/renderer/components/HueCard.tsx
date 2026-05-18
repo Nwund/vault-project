@@ -205,7 +205,7 @@ export function HueCard(): React.JSX.Element {
                   <label
                     key={l.id}
                     className={`flex items-center gap-2 p-2 rounded-md text-sm cursor-pointer border transition ${
-                      on ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40' : 'bg-zinc-900/40 border-zinc-800 hover:border-zinc-700'
+                      on ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40' : 'bg-zinc-900/40 border-zinc-800 hover:border-[var(--border)]'
                     } ${!l.reachable ? 'opacity-50' : ''}`}
                   >
                     <input

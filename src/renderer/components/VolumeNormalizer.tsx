@@ -246,7 +246,7 @@ export function VolumeNormalizer({
 
       {/* Settings panel */}
       {showSettings && (
-        <div className="absolute bottom-full mb-2 right-0 w-80 bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-zinc-700 shadow-2xl overflow-hidden z-50">
+        <div className="absolute bottom-full mb-2 right-0 w-80 bg-zinc-900/95 backdrop-blur-xl rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden z-50">
           <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
             <div className="flex items-center gap-2">
               <Sliders size={16} className="text-[var(--primary)]" />

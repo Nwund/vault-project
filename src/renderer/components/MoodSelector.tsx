@@ -195,7 +195,7 @@ export function MoodSelector({
             </button>
 
             {expanded && (
-              <div className="absolute top-full left-0 mt-1 w-48 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl z-50 py-1 max-h-64 overflow-auto">
+              <div className="absolute top-full left-0 mt-1 w-48 bg-zinc-900 border border-[var(--border)] rounded-xl shadow-xl z-50 py-1 max-h-64 overflow-auto">
                 {MOODS.map(mood => (
                   <button
                     key={mood.id}

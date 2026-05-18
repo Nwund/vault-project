@@ -154,7 +154,7 @@ export function ProfileSwitcher({ className }: { className?: string }) {
                           if (e.key === 'Enter') void renameProfile(p.id)
                           if (e.key === 'Escape') { setEditingId(null); setDraftName('') }
                         }}
-                        className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 text-sm outline-none"
+                        className="flex-1 bg-zinc-800 border border-[var(--border)] rounded px-2 py-0.5 text-sm outline-none"
                       />
                     ) : (
                       <button
@@ -218,7 +218,7 @@ export function ProfileSwitcher({ className }: { className?: string }) {
                       if (e.key === 'Escape') { setCreating(false); setDraftName('') }
                     }}
                     placeholder="Profile name…"
-                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 text-sm outline-none"
+                    className="flex-1 bg-zinc-800 border border-[var(--border)] rounded px-2 py-0.5 text-sm outline-none"
                   />
                   <button
                     onClick={createProfile}
