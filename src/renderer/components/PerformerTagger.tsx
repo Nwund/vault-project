@@ -2,6 +2,7 @@
 // Actor/performer tag management with face detection suggestions
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import { ModalShell } from './ModalShell'
 import {
   Users,
   User,
@@ -341,8 +342,8 @@ function PerformerEditor({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-      <div className="bg-zinc-900 rounded-xl border border-[var(--border)] w-full max-w-md p-4">
+    <ModalShell open={true} onClose={onClose} maxWidth="md" zIndex={50} cardClassName="bg-zinc-900">
+      <div className="p-4">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-12 h-12 rounded-full bg-zinc-700 overflow-hidden">
             {performer.avatar ? (
@@ -404,7 +405,7 @@ function PerformerEditor({
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }
 

@@ -2,6 +2,7 @@
 // Keyboard shortcut reference overlay
 
 import React, { useState, useEffect, useCallback } from 'react'
+import { ModalShell } from './ModalShell'
 import {
   Keyboard,
   X,
@@ -151,22 +152,9 @@ export function HotkeyHelp({
     )
   })).filter(cat => cat.shortcuts.length > 0)
 
-  // Close on escape
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose()
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
-
-  if (!isOpen) return null
-
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className={`bg-zinc-900 rounded-2xl border border-[var(--border)] shadow-2xl w-[700px] max-w-[90vw] max-h-[80vh] overflow-hidden ${className}`}>
+    <ModalShell open={isOpen} onClose={onClose} maxWidth="3xl" maxHeight="max-h-[80vh]" zIndex={9999} cardClassName={`bg-zinc-900 rounded-3xl ${className}`}>
+      <div className="flex flex-col h-full">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
           <div className="flex items-center gap-3">
@@ -282,7 +270,7 @@ export function HotkeyHelp({
           </span>
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }
 

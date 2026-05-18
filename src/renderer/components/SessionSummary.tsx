@@ -25,6 +25,7 @@ import {
   BarChart3
 } from 'lucide-react'
 import { formatDuration } from '../utils/formatters'
+import { ModalShell } from './ModalShell'
 
 interface SessionStats {
   sessionId: string
@@ -133,8 +134,8 @@ export function SessionSummary({
   const MoodIcon = sessionInsights.mood.icon
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm ${className}`}>
-      <div className="bg-zinc-900 rounded-3xl border border-[var(--border)] shadow-2xl max-w-lg w-full mx-4 overflow-hidden animate-in zoom-in-95">
+    <ModalShell open={true} onClose={onClose} maxWidth="lg" zIndex={50} cardClassName={`bg-zinc-900 overflow-hidden ${className}`}>
+      <div className="flex flex-col h-full">
         {/* Header with gradient */}
         <div className="relative bg-gradient-to-br from-[var(--primary)] to-pink-600 p-6 text-center">
           <button
@@ -318,7 +319,7 @@ export function SessionSummary({
           )}
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }
 
