@@ -198,7 +198,12 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
         if (r?.ok && Array.isArray(r.mediaIds)) {
           setFeatureLessSet(new Set(r.mediaIds))
         }
-      } catch { /* ignore */ }
+      } catch (err) {
+        // Log but don't toast — this fetch is a background filter and
+        // a missing tag plugin shouldn't surface error UI to the user.
+        // Logged so a real bug shows up in the dev console.
+        console.warn('[featureLess] list fetch failed:', err)
+      }
     }
     refresh()
     // Re-fetch whenever the user toggles via context menu — listen for
