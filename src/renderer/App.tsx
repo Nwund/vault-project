@@ -2348,7 +2348,7 @@ export default function App() {
 
                 {/* AI Quick Tools */}
                 <button
-                  onClick={() => setPage('ai')}
+                  onClick={() => navigateTo('ai')}
                   onMouseEnter={() => { void import('./pages/AiTaggerPage') }}
                   className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
                 >
@@ -2371,7 +2371,7 @@ export default function App() {
                 {/* Tag Manager */}
                 <button
                   onClick={() => {
-                    setPage('settings')
+                    navigateTo('settings')
                     // Could scroll to tags section
                   }}
                   onMouseEnter={() => { void import('./pages/SettingsPage') }}
@@ -2384,7 +2384,7 @@ export default function App() {
                 {/* Find Duplicates */}
                 <button
                   onClick={() => {
-                    setPage('library')
+                    navigateTo('library')
                     // Dispatch custom event to open duplicates modal after page loads
                     setTimeout(() => {
                       window.dispatchEvent(new CustomEvent('vault-open-duplicates'))
@@ -2990,14 +2990,15 @@ export default function App() {
             <div className="max-h-[50vh] overflow-y-auto p-2">
               {(() => {
                 const commands = [
-                  { id: 'home', icon: Home, label: 'Go to Home', shortcut: '0', action: () => { setPage('home'); setShowCommandPalette(false) } },
-                  { id: 'library', icon: Library, label: 'Go to Library', shortcut: '1', action: () => { setPage('library'); setShowCommandPalette(false) } },
-                  { id: 'feed', icon: Play, label: 'Go to Feed', shortcut: '2', action: () => { setPage('feed'); setShowCommandPalette(false) } },
-                  { id: 'goonwall', icon: LayoutGrid, label: 'Go to Goon Wall', shortcut: '3', action: () => { setPage('goonwall'); setShowCommandPalette(false) } },
-                  { id: 'sessions', icon: ListMusic, label: 'Go to Sessions', shortcut: '4', action: () => { setPage('playlists'); setShowCommandPalette(false) } },
-                  { id: 'brainwash', icon: Brain, label: 'Go to Brainwash', shortcut: '5', action: () => { setPage('captions'); setShowCommandPalette(false) } },
-                  { id: 'stats', icon: BarChart3, label: 'Go to Stats', shortcut: '6', action: () => { setPage('stats'); setShowCommandPalette(false) } },
-                  { id: 'settings', icon: Settings, label: 'Go to Settings', shortcut: ',', action: () => { setPage('settings'); setShowCommandPalette(false) } },
+                  { id: 'home', icon: Home, label: 'Go to Home', shortcut: '0', action: () => { navigateTo('home'); setShowCommandPalette(false) } },
+                  { id: 'library', icon: Library, label: 'Go to Library', shortcut: '1', action: () => { navigateTo('library'); setShowCommandPalette(false) } },
+                  { id: 'feed', icon: Play, label: 'Go to Feed', shortcut: '2', action: () => { navigateTo('feed'); setShowCommandPalette(false) } },
+                  { id: 'goonwall', icon: LayoutGrid, label: 'Go to Goon Wall', shortcut: '3', action: () => { navigateTo('goonwall'); setShowCommandPalette(false) } },
+                  { id: 'sessions', icon: Activity, label: 'Go to Sessions', shortcut: '4', action: () => { navigateTo('sessions'); setShowCommandPalette(false) } },
+                  { id: 'playlists', icon: ListMusic, label: 'Go to Playlists', action: () => { navigateTo('playlists'); setShowCommandPalette(false) } },
+                  { id: 'brainwash', icon: Brain, label: 'Go to Brainwash', shortcut: '5', action: () => { navigateTo('captions'); setShowCommandPalette(false) } },
+                  { id: 'stats', icon: BarChart3, label: 'Go to Stats', shortcut: '6', action: () => { navigateTo('stats'); setShowCommandPalette(false) } },
+                  { id: 'settings', icon: Settings, label: 'Go to Settings', shortcut: ',', action: () => { navigateTo('settings'); setShowCommandPalette(false) } },
                   { id: 'divider1', divider: true },
                   { id: 'zen', icon: Eye, label: 'Toggle Zen Mode', shortcut: 'Z', action: () => { setZenMode(prev => !prev); setShowCommandPalette(false) } },
                   { id: 'shortcuts', icon: HelpCircle, label: 'Show Keyboard Shortcuts', shortcut: '?', action: () => { setShowShortcutsHelp(true); setShowCommandPalette(false) } },
@@ -3043,7 +3044,7 @@ export default function App() {
                   { id: 'relatedMedia', icon: Link2, label: 'Open Related Media', action: () => { window.dispatchEvent(new CustomEvent('vault-open-related')); setShowCommandPalette(false) } },
                   { id: 'thumbnailSelector', icon: ImageIcon, label: 'Open Thumbnail Selector', action: () => { window.dispatchEvent(new CustomEvent('vault-open-thumbnail-selector')); setShowCommandPalette(false) } },
                   { id: 'exportManager', icon: Download, label: 'Open Export Manager', action: () => { window.dispatchEvent(new CustomEvent('vault-open-exporter')); setShowCommandPalette(false) } },
-                  { id: 'pmvEditor', icon: Scissors, label: 'Open PMV Editor', action: () => { setPage('pmv'); setShowCommandPalette(false) } },
+                  { id: 'pmvEditor', icon: Scissors, label: 'Open PMV Editor', action: () => { navigateTo('pmv'); setShowCommandPalette(false) } },
                   { id: 'divider4', divider: true },
                   { id: 'addFolder', icon: FolderPlus, label: 'Add Media Folder', action: async () => { await window.api.settings.chooseMediaDir?.(); setShowCommandPalette(false) } },
                   { id: 'clearThumbCache', icon: Trash2, label: 'Clear Thumbnail Cache', action: async () => { await window.api.thumbs?.clearCache?.(); globalShowToast('success', 'Thumbnail cache cleared'); setShowCommandPalette(false) } },
