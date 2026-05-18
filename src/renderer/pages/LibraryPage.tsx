@@ -3952,7 +3952,19 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showAITagger && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowAITagger(false)}>
           <div className="max-w-xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
-            <AITagger mediaId={activeToolMedia.id} mediaSrc={toFileUrl(activeToolMedia.path)} mediaType={activeToolMedia.type === 'video' ? 'video' : activeToolMedia.type === 'gif' ? 'gif' : 'image'} onApplyTags={(tags) => { showToast('success', `Applied ${tags.length} tags`); setShowAITagger(false) }} className="m-4" />
+            <AITagger mediaId={activeToolMedia.id} mediaSrc={toFileUrl(activeToolMedia.path)} mediaType={activeToolMedia.type === 'video' ? 'video' : activeToolMedia.type === 'gif' ? 'gif' : 'image'} onApplyTags={async (tags) => {
+              showToast('info', `Adding ${tags.length} tags…`)
+              let added = 0, failed = 0
+              for (const tag of tags) {
+                try {
+                  await window.api.tags.addToMedia(activeToolMedia.id, tag)
+                  added++
+                } catch { failed++ }
+              }
+              if (failed > 0) showToast('error', `Added ${added}, ${failed} failed`)
+              else showToast('success', `Applied ${added} tag${added === 1 ? '' : 's'}`)
+              setShowAITagger(false)
+            }} className="m-4" />
           </div>
         </div>
       )}
@@ -4000,7 +4012,23 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showAutoPlaylist && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowAutoPlaylist(false)}>
           <div className="max-w-2xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
-            <AutoPlaylist onPlay={(items) => { if (items.length > 0) addFloatingPlayer(items[0].id); showToast('info', `Playing ${items.length} items`); setShowAutoPlaylist(false) }} onSave={(type, name, items) => { showToast('success', `Saved playlist: ${name} (${items.length} items)`); setShowAutoPlaylist(false) }} className="m-4" />
+            <AutoPlaylist onPlay={(items) => { if (items.length > 0) addFloatingPlayer(items[0].id); showToast('info', `Playing ${items.length} items`); setShowAutoPlaylist(false) }} onSave={async (_type, name, items) => {
+              try {
+                const created = await window.api.playlists.create(name)
+                const playlistId = (created as { id?: string })?.id
+                if (!playlistId) {
+                  showToast('error', 'Failed to create playlist')
+                  return
+                }
+                if (items.length > 0) {
+                  await window.api.playlists.addItems(playlistId, items.map((i) => i.id))
+                }
+                showToast('success', `Saved "${name}" (${items.length} items)`)
+              } catch (err: any) {
+                showToast('error', err?.message ?? 'Save failed')
+              }
+              setShowAutoPlaylist(false)
+            }} className="m-4" />
           </div>
         </div>
       )}
