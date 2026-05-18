@@ -3129,6 +3129,12 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     run.events.on('push-skipped', (p) => ev.sender.send('exportPipeline:event', { kind: 'push-skipped', ...p }))
     run.events.on('complete', (p) => ev.sender.send('exportPipeline:event', { kind: 'complete', ...p }))
     const results = await run.promise
+    // Cohesion glue: pipeline may have produced sidecars (NFO, JSON,
+    // stash.json) and tag mutations as part of the recipe. Broadcast
+    // so LibraryPage + FeedPage + GoonWallPage refresh their grids.
+    // SidecarWatcher (#323) also picks up any newly-written sidecars
+    // independently — vault:changed just nudges the UI to redraw.
+    broadcast('vault:changed')
     return { ok: true, results }
   })
 
