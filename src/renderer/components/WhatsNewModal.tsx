@@ -8,7 +8,7 @@
 // hunting through menus.
 
 import { useState, useEffect, useCallback } from 'react'
-import { motion, AnimatePresence } from 'motion/react'
+import { motion } from 'motion/react'
 import {
   Sparkles,
   X,
@@ -23,8 +23,8 @@ import {
   Cpu,
   ArrowRight,
 } from 'lucide-react'
-import { useEscapeClose } from '../hooks/useEscapeClose'
-import { SPRINGS, FADE_SLIDE, SCALE_IN } from './network/motion-tokens'
+import { SPRINGS } from './network/motion-tokens'
+import { ModalShell } from './ModalShell'
 
 const CURRENT_VERSION = '2.7.0'
 const STORAGE_KEY = 'vault.lastSeenVersion'
@@ -115,21 +115,9 @@ export function WhatsNewModal() {
     }
   }, [])
 
-  useEscapeClose(open, onClose)
-
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          {...FADE_SLIDE}
-          className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={onClose}
-        >
-          <motion.div
-            {...SCALE_IN}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-2xl max-h-[90vh] bg-zinc-950/95 border border-[var(--border)] rounded-3xl shadow-2xl shadow-black/60 flex flex-col overflow-hidden"
-          >
+    <ModalShell open={open} onClose={onClose} maxWidth="2xl" zIndex={300}>
+          <div className="flex flex-col h-full">
             {/* Header */}
             <div className="px-6 py-5 border-b border-white/5 bg-gradient-to-br from-fuchsia-500/20 via-pink-500/15 to-orange-500/10">
               <div className="flex items-start justify-between">
@@ -206,9 +194,7 @@ export function WhatsNewModal() {
                 Let's go
               </button>
             </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+          </div>
+    </ModalShell>
   )
 }

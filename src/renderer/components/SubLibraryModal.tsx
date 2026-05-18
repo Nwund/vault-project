@@ -7,12 +7,12 @@
 // facet pill picker.
 
 import { useState, useEffect, useCallback } from 'react'
-import { motion, AnimatePresence } from 'motion/react'
+import { motion } from 'motion/react'
 import { Sparkles, X, Loader2, Film, Image as ImageIcon } from 'lucide-react'
 import type { MediaRow } from '../types'
-import { useEscapeClose } from '../hooks/useEscapeClose'
 import { formatDuration } from '../utils/formatters'
-import { SPRINGS, FADE_SLIDE, SCALE_IN } from './network/motion-tokens'
+import { SPRINGS, FADE_SLIDE } from './network/motion-tokens'
+import { ModalShell } from './ModalShell'
 
 type Facet = 'all' | 'anime' | 'hentai' | 'furry' | 'cartoon'
 
@@ -43,8 +43,6 @@ export function SubLibraryModal({
   onClose: () => void
   onOpenMedia?: (m: MediaRow) => void
 }) {
-  useEscapeClose(open, onClose)
-
   const [facet, setFacet] = useState<Facet>('all')
   const [items, setItems] = useState<FacetItem[]>([])
   const [total, setTotal] = useState(0)
@@ -69,18 +67,8 @@ export function SubLibraryModal({
   useEffect(() => { if (open) fetchFacet() }, [open, fetchFacet])
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          {...FADE_SLIDE}
-          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={onClose}
-        >
-          <motion.div
-            {...SCALE_IN}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-5xl max-h-[90vh] bg-zinc-950/95 border border-[var(--border)] rounded-3xl shadow-2xl shadow-black/60 flex flex-col overflow-hidden"
-          >
+    <ModalShell open={open} onClose={onClose} maxWidth="5xl">
+          <div className="flex flex-col h-full">
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 bg-gradient-to-r from-pink-500/10 via-violet-500/10 to-transparent">
               <div className="flex items-center gap-3">
                 <div className="size-9 rounded-2xl bg-gradient-to-br from-pink-500 to-violet-600 grid place-items-center shadow-lg shadow-black/40">
@@ -186,9 +174,7 @@ export function SubLibraryModal({
                 </>
               )}
             </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+          </div>
+    </ModalShell>
   )
 }

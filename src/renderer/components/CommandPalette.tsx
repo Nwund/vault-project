@@ -212,7 +212,7 @@ export function CommandPalette({
     { id: 'v27-sprite-chapters', title: 'Sprite-sheet Chapters', subtitle: 'v2.7 · Visual chapter editor for a video', icon: List, category: 'tools', keywords: ['sprite', 'sheet', 'chapters', 'editor', 'v27'], action: () => { sessionStorage.setItem('vault.pendingLibraryTool', 'sprite'); onNavigate('/library') } },
     { id: 'v27-export-pipeline', title: 'Export Pipeline', subtitle: 'v2.7 · Smart-query → transcode → sidecar → rclone', icon: Download, category: 'tools', keywords: ['export', 'pipeline', 'rclone', 'transcode', 'v27'], action: () => { sessionStorage.setItem('vault.pendingLibraryTool', 'exportPipeline'); onNavigate('/library') } },
     { id: 'v27-whats-new', title: "What's New in v2.7", subtitle: 'Re-show the v2.7 splash', icon: Sparkles, category: 'settings', keywords: ['whats', 'new', 'v27', 'splash', 'changelog'], action: () => window.dispatchEvent(new CustomEvent('vault:openWhatsNew')) },
-    { id: 'v27-focus-mode', title: 'Toggle Focus Mode', subtitle: 'v2.7 · Distraction-free Library — hides chrome, Esc to exit', icon: Focus, category: 'tools', keywords: ['focus', 'distraction', 'free', 'clean', 'zen', 'v27'], action: () => window.dispatchEvent(new CustomEvent('vault:toggleFocusMode')) },
+    { id: 'v27-focus-mode', title: 'Toggle Focus Mode', subtitle: 'Distraction-free Library — hides chrome, Esc to exit', icon: Focus, category: 'tools', keywords: ['focus', 'distraction', 'free', 'clean', 'zen', 'v27'], shortcut: ['Shift', 'F'], action: () => window.dispatchEvent(new CustomEvent('vault:toggleFocusMode')) },
   ], [onNavigate, onPlayMedia, onAction])
 
   // Create a map for quick command lookup

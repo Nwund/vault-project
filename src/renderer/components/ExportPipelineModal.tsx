@@ -26,8 +26,8 @@ import {
   Film,
 } from 'lucide-react'
 import { useToast } from '../contexts'
-import { useEscapeClose } from '../hooks/useEscapeClose'
-import { SPRINGS, FADE_SLIDE, SCALE_IN } from './network/motion-tokens'
+import { SPRINGS, FADE_SLIDE } from './network/motion-tokens'
+import { ModalShell } from './ModalShell'
 
 interface TranscodePreset {
   kind: 'ffmpeg-args'
@@ -79,8 +79,6 @@ const EMPTY_RECIPE: ExportRecipe = {
 }
 
 export function ExportPipelineModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  useEscapeClose(open, onClose)
-
   const { showToast } = useToast()
   const [recipes, setRecipes] = useState<ExportRecipe[]>([])
   const [draft, setDraft] = useState<ExportRecipe>(EMPTY_RECIPE)
@@ -174,18 +172,8 @@ export function ExportPipelineModal({ open, onClose }: { open: boolean; onClose:
   const skipCount = results.filter((r) => r.status === 'skipped').length
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          {...FADE_SLIDE}
-          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={onClose}
-        >
-          <motion.div
-            {...SCALE_IN}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-4xl max-h-[90vh] bg-zinc-950/95 border border-[var(--border)] rounded-3xl shadow-2xl shadow-black/60 flex flex-col overflow-hidden"
-          >
+    <ModalShell open={open} onClose={onClose} maxWidth="4xl">
+          <div className="flex flex-col h-full">
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 bg-gradient-to-r from-emerald-500/10 via-cyan-500/10 to-transparent">
               <div className="flex items-center gap-3">
@@ -423,9 +411,7 @@ export function ExportPipelineModal({ open, onClose }: { open: boolean; onClose:
                 </button>
               </div>
             </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+          </div>
+    </ModalShell>
   )
 }

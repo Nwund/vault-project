@@ -13,6 +13,7 @@ import {
 } from './styles/themes'
 import { useDebounce, toFileUrlCached, useLazyLoad } from './hooks/usePerformance'
 import { useVideoPreview } from './hooks/useVideoPreview'
+import { useLocalStorage } from './hooks/useLocalStorage'
 import { AboutPage } from './pages/AboutPage'
 import SessionsPage from './pages/SessionsPage'
 // v2.7 — lazy-load every non-essential page so initial bundle shrinks.
@@ -1181,25 +1182,24 @@ export default function App() {
   const { showToast: globalShowToast } = useToast()
 
   // v2.7 — Focus mode toggle handler at the app level so it works from
-  // anywhere (CommandPalette, hotkeys, etc.) even if FocusModeToggle is
-  // not currently mounted (it only lives on LibraryPage). The button
-  // re-reads its initial state from localStorage on mount, so they stay
-  // in sync next time the user opens the Library.
+  // anywhere (CommandPalette, Shift+F hotkey, etc.) even if
+  // FocusModeToggle is not currently mounted (it only lives on
+  // LibraryPage). The button + this handler share state via the
+  // document attribute and the 'vault.focusMode' useLocalStorage key.
+  const [focusModePref, setFocusModePref] = useLocalStorage<string>('vault.focusMode', 'off')
   useEffect(() => {
     const onToggleFocus = () => {
       const next = document.documentElement.getAttribute('data-focus-mode') !== 'on'
       document.documentElement.setAttribute('data-focus-mode', next ? 'on' : 'off')
-      try { localStorage.setItem('vault.focusMode', next ? 'on' : 'off') } catch { /* ignore */ }
+      setFocusModePref(next ? 'on' : 'off')
     }
     window.addEventListener('vault:toggleFocusMode', onToggleFocus)
-    // Also restore the persisted attribute on cold start so the Library
+    // Restore the persisted attribute on cold start so the Library
     // doesn't flash un-focused chrome before FocusModeToggle hydrates.
-    try {
-      const saved = localStorage.getItem('vault.focusMode')
-      if (saved === 'on') document.documentElement.setAttribute('data-focus-mode', 'on')
-    } catch { /* ignore */ }
+    if (focusModePref === 'on') document.documentElement.setAttribute('data-focus-mode', 'on')
     return () => window.removeEventListener('vault:toggleFocusMode', onToggleFocus)
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setFocusModePref])
 
 
   // Global keyboard shortcuts (? for help, Z for zen mode, Ctrl+Z for undo, Ctrl+K for command palette)
@@ -1222,6 +1222,13 @@ export default function App() {
       if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault()
         setShowShortcutsHelp(prev => !prev)
+      }
+      // v2.7 — Shift+F toggles Focus Mode app-wide. Pairs with the
+      // CommandPalette "Toggle Focus Mode" entry and the FocusModeToggle
+      // button on LibraryPage — all three fire the same window event.
+      if ((e.key === 'F') && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('vault:toggleFocusMode'))
       }
       if (e.key === 'Escape') {
         if (showCommandPalette) {

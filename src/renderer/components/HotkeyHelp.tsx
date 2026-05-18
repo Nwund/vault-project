@@ -67,6 +67,7 @@ const HOTKEY_CATEGORIES: HotkeyCategory[] = [
     icon: Heart,
     shortcuts: [
       { keys: ['F'], description: 'Toggle favorite' },
+      { keys: ['Shift+F'], description: 'Toggle Focus Mode (distraction-free)', context: 'v2.7' },
       { keys: ['1-5'], description: 'Rate 1-5 stars', context: 'media viewer' },
       { keys: ['T'], description: 'Open tag editor' },
       { keys: ['Q'], description: 'Quick Look (hold)', context: 'library focused tile · v2.7' },
