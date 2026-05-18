@@ -746,11 +746,14 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   ipcMain.handle('captions:upsert', async (_ev, mediaId: string, topText: string | null, bottomText: string | null, presetId?: string, customStyle?: string | null) => {
-    return db.captionUpsert(mediaId, topText, bottomText, presetId, customStyle)
+    const result = db.captionUpsert(mediaId, topText, bottomText, presetId, customStyle)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('captions:delete', async (_ev, mediaId: string) => {
     db.captionDelete(mediaId)
+    broadcast('vault:changed')
     return true
   })
 
@@ -763,11 +766,14 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   ipcMain.handle('captions:templates:add', async (_ev, topText: string | null, bottomText: string | null, category?: string) => {
-    return db.captionTemplateAdd(topText, bottomText, category)
+    const result = db.captionTemplateAdd(topText, bottomText, category)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('captions:templates:delete', async (_ev, id: string) => {
     db.captionTemplateDelete(id)
+    broadcast('vault:changed')
     return true
   })
 
@@ -1532,6 +1538,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     const result = db.statsSetRating(mediaId, rating)
     recordRatingGiven()  // Track for achievements
     checkAchievements()  // Check 'rated' achievement
+    broadcast('vault:changed')
     return result
   })
 
@@ -1541,6 +1548,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('media:setTitle', async (_ev, mediaId: string, title: string) => {
     try {
       db.raw.prepare(`UPDATE media SET title = ? WHERE id = ?`).run(title ?? null, mediaId)
+      broadcast('vault:changed')
       return { success: true }
     } catch (err: any) {
       return { success: false, error: err?.message ?? String(err) }
@@ -1563,6 +1571,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
           VALUES (?, ?, 'approved', datetime('now'), datetime('now'))
         `).run(mediaId, description ?? null)
       }
+      broadcast('vault:changed')
       return { success: true }
     } catch (err: any) {
       return { success: false, error: err?.message ?? String(err) }
@@ -1593,12 +1602,15 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     if (updated > 0) {
       recordRatingGiven()
       checkAchievements()
+      broadcast('vault:changed')
     }
     return { updated, total: mediaIds.length }
   })
 
   ipcMain.handle('media:incO', async (_ev, mediaId: string) => {
-    return db.statsIncO(mediaId)
+    const result = db.statsIncO(mediaId)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('media:count', async (_ev, opts?: any) => {
@@ -7823,32 +7835,44 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('viewPresets:setActive', async (_ev, id: string | null) => {
     const service = getViewPresetsService(db)
-    return service.setActivePreset(id)
+    const result = service.setActivePreset(id)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('viewPresets:create', async (_ev, preset: any) => {
     const service = getViewPresetsService(db)
-    return service.createPreset(preset)
+    const result = service.createPreset(preset)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('viewPresets:update', async (_ev, id: string, updates: any) => {
     const service = getViewPresetsService(db)
-    return service.updatePreset(id, updates)
+    const result = service.updatePreset(id, updates)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('viewPresets:delete', async (_ev, id: string) => {
     const service = getViewPresetsService(db)
-    return service.deletePreset(id)
+    const result = service.deletePreset(id)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('viewPresets:duplicate', async (_ev, id: string, newName?: string) => {
     const service = getViewPresetsService(db)
-    return service.duplicatePreset(id, newName)
+    const result = service.duplicatePreset(id, newName)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('viewPresets:saveCurrent', async (_ev, name: string, sort: any, filters: ViewFilters, view: ViewConfig) => {
     const service = getViewPresetsService(db)
-    return service.saveCurrentAsPreset(name, sort, filters, view)
+    const result = service.saveCurrentAsPreset(name, sort, filters, view)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('viewPresets:getCount', async (_ev, id: string) => {
@@ -8217,12 +8241,16 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('bookmarks:add', async (_ev, mediaId: string, timestamp: number, title: string, options?: { description?: string; thumbnailPath?: string; color?: string }) => {
     const service = getVideoBookmarksService(db)
-    return service.addBookmark(mediaId, timestamp, title, options)
+    const result = service.addBookmark(mediaId, timestamp, title, options)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('bookmarks:quickAdd', async (_ev, mediaId: string, timestamp: number) => {
     const service = getVideoBookmarksService(db)
-    return service.quickBookmark(mediaId, timestamp)
+    const result = service.quickBookmark(mediaId, timestamp)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('bookmarks:getForMedia', async (_ev, mediaId: string) => {
@@ -8237,17 +8265,23 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('bookmarks:update', async (_ev, bookmarkId: string, updates: Partial<Pick<VideoBookmark, 'title' | 'description' | 'color' | 'timestamp'>>) => {
     const service = getVideoBookmarksService(db)
-    return service.updateBookmark(bookmarkId, updates)
+    const result = service.updateBookmark(bookmarkId, updates)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('bookmarks:delete', async (_ev, bookmarkId: string) => {
     const service = getVideoBookmarksService(db)
-    return service.deleteBookmark(bookmarkId)
+    const result = service.deleteBookmark(bookmarkId)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('bookmarks:deleteAllForMedia', async (_ev, mediaId: string) => {
     const service = getVideoBookmarksService(db)
-    return service.deleteAllForMedia(mediaId)
+    const result = service.deleteAllForMedia(mediaId)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('bookmarks:getBookmarkedVideos', async () => {
@@ -8311,27 +8345,37 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('tagCategories:create', async (_ev, name: string, options?: { description?: string; color?: string; icon?: string; parentId?: string }) => {
     const service = getTagCategoriesService(db)
-    return service.createCategory(name, options)
+    const result = service.createCategory(name, options)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('tagCategories:update', async (_ev, categoryId: string, updates: Partial<Pick<TagCategory, 'name' | 'description' | 'color' | 'icon' | 'parentId' | 'sortOrder'>>) => {
     const service = getTagCategoriesService(db)
-    return service.updateCategory(categoryId, updates)
+    const result = service.updateCategory(categoryId, updates)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('tagCategories:delete', async (_ev, categoryId: string) => {
     const service = getTagCategoriesService(db)
-    return service.deleteCategory(categoryId)
+    const result = service.deleteCategory(categoryId)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('tagCategories:assignTag', async (_ev, tagId: string, categoryId: string | null) => {
     const service = getTagCategoriesService(db)
-    return service.assignTagToCategory(tagId, categoryId)
+    const result = service.assignTagToCategory(tagId, categoryId)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('tagCategories:bulkAssignTags', async (_ev, tagIds: string[], categoryId: string | null) => {
     const service = getTagCategoriesService(db)
-    return service.bulkAssignTags(tagIds, categoryId)
+    const result = service.bulkAssignTags(tagIds, categoryId)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('tagCategories:getTagsInCategory', async (_ev, categoryId: string | null) => {
@@ -8346,7 +8390,9 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('tagCategories:autoCategorize', async () => {
     const service = getTagCategoriesService(db)
-    return service.autoCategorize()
+    const result = service.autoCategorize()
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('tagCategories:getStats', async () => {
@@ -8357,6 +8403,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('tagCategories:reorder', async (_ev, orderedIds: string[]) => {
     const service = getTagCategoriesService(db)
     service.reorderCategories(orderedIds)
+    broadcast('vault:changed')
     return { success: true }
   })
 
@@ -8366,32 +8413,44 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('relationships:create', async (_ev, sourceId: string, targetId: string, type: RelationshipType, options?: { bidirectional?: boolean; note?: string }) => {
     const service = getMediaRelationshipsService(db)
-    return service.createRelationship(sourceId, targetId, type, options)
+    const result = service.createRelationship(sourceId, targetId, type, options)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('relationships:linkAsSequel', async (_ev, earlierId: string, laterId: string, note?: string) => {
     const service = getMediaRelationshipsService(db)
-    return service.linkAsSequel(earlierId, laterId, note)
+    const result = service.linkAsSequel(earlierId, laterId, note)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('relationships:linkAsRelated', async (_ev, id1: string, id2: string, note?: string) => {
     const service = getMediaRelationshipsService(db)
-    return service.linkAsRelated(id1, id2, note)
+    const result = service.linkAsRelated(id1, id2, note)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('relationships:linkAsAlternate', async (_ev, id1: string, id2: string, note?: string) => {
     const service = getMediaRelationshipsService(db)
-    return service.linkAsAlternate(id1, id2, note)
+    const result = service.linkAsAlternate(id1, id2, note)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('relationships:linkAsSeries', async (_ev, mediaIds: string[], seriesNote?: string) => {
     const service = getMediaRelationshipsService(db)
-    return service.linkAsSeries(mediaIds, seriesNote)
+    const result = service.linkAsSeries(mediaIds, seriesNote)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('relationships:markAsDuplicates', async (_ev, id1: string, id2: string, note?: string) => {
     const service = getMediaRelationshipsService(db)
-    return service.markAsDuplicates(id1, id2, note)
+    const result = service.markAsDuplicates(id1, id2, note)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('relationships:get', async (_ev, relationshipId: string) => {
@@ -8426,17 +8485,23 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('relationships:update', async (_ev, relationshipId: string, updates: Partial<{ type: RelationshipType; note: string; bidirectional: boolean }>) => {
     const service = getMediaRelationshipsService(db)
-    return service.updateRelationship(relationshipId, updates)
+    const result = service.updateRelationship(relationshipId, updates)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('relationships:delete', async (_ev, relationshipId: string) => {
     const service = getMediaRelationshipsService(db)
-    return service.deleteRelationship(relationshipId)
+    const result = service.deleteRelationship(relationshipId)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('relationships:deleteAllForMedia', async (_ev, mediaId: string) => {
     const service = getMediaRelationshipsService(db)
-    return service.deleteAllForMedia(mediaId)
+    const result = service.deleteAllForMedia(mediaId)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('relationships:areRelated', async (_ev, id1: string, id2: string) => {
@@ -8475,7 +8540,9 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('notes:add', async (_ev, mediaId: string, content: string, options?: { isPinned?: boolean; color?: string }) => {
     const service = getMediaNotesService(db)
-    return service.addNote(mediaId, content, options)
+    const result = service.addNote(mediaId, content, options)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('notes:getForMedia', async (_ev, mediaId: string) => {
@@ -8490,22 +8557,30 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('notes:update', async (_ev, noteId: string, updates: Partial<Pick<MediaNote, 'content' | 'isPinned' | 'color'>>) => {
     const service = getMediaNotesService(db)
-    return service.updateNote(noteId, updates)
+    const result = service.updateNote(noteId, updates)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('notes:delete', async (_ev, noteId: string) => {
     const service = getMediaNotesService(db)
-    return service.deleteNote(noteId)
+    const result = service.deleteNote(noteId)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('notes:deleteAllForMedia', async (_ev, mediaId: string) => {
     const service = getMediaNotesService(db)
-    return service.deleteAllForMedia(mediaId)
+    const result = service.deleteAllForMedia(mediaId)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('notes:togglePin', async (_ev, noteId: string) => {
     const service = getMediaNotesService(db)
-    return service.togglePin(noteId)
+    const result = service.togglePin(noteId)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('notes:search', async (_ev, query: string, limit?: number) => {
@@ -8773,17 +8848,23 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('customFilters:create', async (_ev, name: string, conditions: FilterCondition[], options?: any) => {
     const service = getCustomFiltersService(db)
-    return service.createFilter(name, conditions, options)
+    const result = service.createFilter(name, conditions, options)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('customFilters:update', async (_ev, filterId: string, updates: any) => {
     const service = getCustomFiltersService(db)
-    return service.updateFilter(filterId, updates)
+    const result = service.updateFilter(filterId, updates)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('customFilters:delete', async (_ev, filterId: string) => {
     const service = getCustomFiltersService(db)
-    return service.deleteFilter(filterId)
+    const result = service.deleteFilter(filterId)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('customFilters:execute', async (_ev, filterId: string) => {
@@ -8808,7 +8889,9 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('customFilters:toggleQuickAccess', async (_ev, filterId: string) => {
     const service = getCustomFiltersService(db)
-    return service.toggleQuickAccess(filterId)
+    const result = service.toggleQuickAccess(filterId)
+    broadcast('vault:changed')
+    return result
   })
 
   ipcMain.handle('customFilters:getStats', async () => {
