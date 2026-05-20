@@ -2853,6 +2853,10 @@ export default function App() {
                     <span className="text-white/70">Zen Mode</span>
                   </div>
                   <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">Shift+F</kbd>
+                    <span className="text-white/70">Focus Mode (distraction-free)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <kbd className="px-2 py-1 bg-black/30 rounded text-xs">D</kbd>
                     <span className="text-white/70">URL Downloader</span>
                   </div>
