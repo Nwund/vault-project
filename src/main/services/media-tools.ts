@@ -29,6 +29,47 @@ function runFfmpeg(ffmpegPath: string, args: string[]): Promise<{ ok: boolean; s
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// EXTRACT FRAMES — pull stills from a video at fixed intervals
+// ──────────────────────────────────────────────────────────────────────
+
+export interface ExtractFramesOptions {
+  intervalSec: number  // sample every N seconds
+  outputDir: string    // directory to write frames into
+  quality?: 'high' | 'medium' | 'low'  // JPEG quality
+  width?: number       // resize width; height auto-scaled. Default 640.
+  count?: number       // optional cap on frames returned
+}
+
+export async function extractFrames(
+  ffmpegPath: string,
+  srcPath: string,
+  options: ExtractFramesOptions,
+): Promise<{ ok: boolean; error?: string; frames?: Array<{ time: number; path: string }> }> {
+  if (!fs.existsSync(srcPath)) return { ok: false, error: 'source file missing' }
+  try { fs.mkdirSync(options.outputDir, { recursive: true }) } catch { /* ignore */ }
+  const interval = Math.max(0.1, options.intervalSec)
+  const width = options.width ?? 640
+  const q = options.quality === 'high' ? 2 : options.quality === 'low' ? 6 : 4  // ffmpeg -q:v scale 1-31 (lower=better)
+  const fps = 1 / interval
+  const pattern = path.join(options.outputDir, 'frame-%04d.jpg')
+  const args = ['-i', srcPath, '-vf', `fps=${fps},scale=${width}:-2`, '-q:v', String(q), '-y', pattern]
+  const result = await runFfmpeg(ffmpegPath, args)
+  if (!result.ok) {
+    return { ok: false, error: `ffmpeg failed (${result.code}): ${result.stderr.split('\n').pop()}` }
+  }
+  // Enumerate produced files; their index encodes the time bucket.
+  const files = fs.readdirSync(options.outputDir)
+    .filter((f) => /^frame-\d{4}\.jpg$/.test(f))
+    .sort()
+  const frames = files.map((f, i) => ({
+    time: i * interval,
+    path: path.join(options.outputDir, f),
+  }))
+  const limited = options.count ? frames.slice(0, options.count) : frames
+  return { ok: true, frames: limited }
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // EXPORT — format / quality / resolution / fps / trim / strip audio
 // ──────────────────────────────────────────────────────────────────────
 

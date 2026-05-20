@@ -1346,6 +1346,8 @@ const api = {
         invoke<{ ok: boolean; dstPath?: string; error?: string }>('mediaTools:rotate', args),
       watermark: (args: { srcPath: string; dstPath: string; options: { text?: string; imagePath?: string; position?: 'tl' | 'tr' | 'bl' | 'br' | 'center'; opacity?: number; fontSize?: number; color?: string; imageScale?: number } }) =>
         invoke<{ ok: boolean; dstPath?: string; error?: string }>('mediaTools:watermark', args),
+      extractFrames: (args: { srcPath: string; options: { intervalSec: number; outputDir: string; quality?: 'high' | 'medium' | 'low'; width?: number; count?: number } }) =>
+        invoke<{ ok: boolean; frames?: Array<{ time: number; path: string }>; error?: string }>('mediaTools:extractFrames', args),
     },
     // #237 — silence + black-frame auto-trim
     autoTrim: {
@@ -1557,6 +1559,7 @@ const api = {
     getStatus: () => invoke('thumbs:getStatus'),
     rebuildAll: () => invoke('thumbs:rebuildAll'),
     rebuildMissing: () => invoke<{ enqueued: number; alreadyOk: number }>('thumbs:rebuildMissing'),
+    setCustom: (mediaId: string, dataUrl: string) => invoke<{ ok: boolean; thumbPath?: string; error?: string }>('thumbs:setCustom', mediaId, dataUrl),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

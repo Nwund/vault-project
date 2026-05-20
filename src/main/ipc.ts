@@ -3646,6 +3646,30 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return { enqueued, alreadyOk }
   })
 
+  // Persist a user-chosen custom thumbnail (data URL → disk file → DB).
+  // Used by ThumbnailSelector in the Library tool dropdown to swap a
+  // generated frame or uploaded image into the media's thumbPath slot.
+  ipcMain.handle('thumbs:setCustom', async (_ev, mediaId: string, dataUrl: string) => {
+    try {
+      const m = db.getMedia(mediaId)
+      if (!m) return { ok: false, error: 'media not found' }
+      // Data URL: 'data:image/<ext>;base64,<payload>'
+      const match = /^data:image\/(jpe?g|png|webp);base64,(.+)$/i.exec(dataUrl)
+      if (!match) return { ok: false, error: 'unsupported data URL format' }
+      const ext = match[1].toLowerCase().replace('jpeg', 'jpg')
+      const payload = match[2]
+      const thumbsDir = path.join(app.getPath('userData'), 'thumbs', 'custom')
+      try { fs.mkdirSync(thumbsDir, { recursive: true }) } catch { /* ignore */ }
+      const dst = path.join(thumbsDir, `${mediaId}.${ext}`)
+      fs.writeFileSync(dst, Buffer.from(payload, 'base64'))
+      db.raw.prepare(`UPDATE media SET thumbPath = ? WHERE id = ?`).run(dst, mediaId)
+      broadcast('vault:changed')
+      return { ok: true, thumbPath: dst }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
   // ═══════════════════════════════════════════════════════════════════════════
   // FILE SYSTEM HELPERS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -13524,6 +13548,16 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       const { ffmpegBin } = await import('./ffpaths')
       if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
       return await applyWatermark(ffmpegBin, args.srcPath, args.dstPath, args.options)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('mediaTools:extractFrames', async (_ev, args: { srcPath: string; options: any }) => {
+    try {
+      const { extractFrames } = await import('./services/media-tools')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      return await extractFrames(ffmpegBin, args.srcPath, args.options)
     } catch (err: any) {
       return { ok: false, error: err?.message ?? String(err) }
     }

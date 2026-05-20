@@ -107,7 +107,7 @@ import { VideoChapters } from '../components/VideoChapters'
 import { ColorGrading } from '../components/ColorGrading'
 import { BookmarkManager } from '../components/BookmarkManager'
 import { SubtitleEditor } from '../components/SubtitleEditor'
-import { KeyframeExtractor } from '../components/KeyframeExtractor'
+import { ServerKeyframeExtractor } from '../components/ServerKeyframeExtractor'
 import { VideoFilters } from '../components/VideoFilters'
 import { SplitScreen } from '../components/SplitScreen'
 import { SmartCrop } from '../components/SmartCrop'
@@ -3860,7 +3860,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showKeyframeExtractor && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowKeyframeExtractor(false)}>
           <div className="max-w-2xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
-            <KeyframeExtractor videoRef={React.createRef<HTMLVideoElement>()} duration={activeToolMedia.durationSec || 0} onExtract={(frames) => { showToast('success', `Extracted ${frames.length} keyframes`); setShowKeyframeExtractor(false) }} className="m-4" />
+            <ServerKeyframeExtractor mediaPath={activeToolMedia.path} duration={activeToolMedia.durationSec || 0} onDone={(count) => { showToast('success', `Extracted ${count} keyframes`); setShowKeyframeExtractor(false) }} className="m-4" />
           </div>
         </div>
       )}
@@ -3914,7 +3914,14 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showPlaylistSorter && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowPlaylistSorter(false)}>
           <div className="max-w-2xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
-            <PlaylistSorter items={media.slice(0, 20).map((m: MediaRow, i: number) => ({ id: m.id, title: m.filename || '', duration: m.durationSec || undefined, index: i }))} onSort={(sortedIds: string[]) => { showToast('success', `Sorted ${sortedIds.length} items`); setShowPlaylistSorter(false) }} className="m-4" />
+            <PlaylistSorter items={media.slice(0, 20).map((m: MediaRow, i: number) => ({ id: m.id, title: m.filename || '', duration: m.durationSec || undefined, index: i }))} onSort={(sortedIds: string[]) => {
+              // The PlaylistSorter dialog operates on a slice of the
+              // current Library view, not a saved playlist. To persist
+              // a reorder you'd open a specific playlist from the
+              // Playlists page first; this dialog is preview-only.
+              showToast('info', `Preview sort of ${sortedIds.length} items — open a playlist from the Playlists page to persist a reorder`)
+              setShowPlaylistSorter(false)
+            }} className="m-4" />
           </div>
         </div>
       )}
@@ -3972,7 +3979,16 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showThumbnailSelector && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowThumbnailSelector(false)}>
           <div className="max-w-2xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
-            <ThumbnailSelector duration={activeToolMedia.durationSec || 0} currentThumbnail={activeToolMedia.thumbPath ? toFileUrl(activeToolMedia.thumbPath) : undefined} onSelect={(thumb: string) => { showToast('success', 'Thumbnail updated'); setShowThumbnailSelector(false) }} className="m-4" />
+            <ThumbnailSelector duration={activeToolMedia.durationSec || 0} currentThumbnail={activeToolMedia.thumbPath ? toFileUrl(activeToolMedia.thumbPath) : undefined} onSelect={async (thumb: string) => {
+              try {
+                const res = await window.api.thumbs.setCustom(activeToolMedia.id, thumb)
+                if (res.ok) showToast('success', 'Thumbnail updated')
+                else showToast('error', res.error ?? 'Failed to set thumbnail')
+              } catch (err: any) {
+                showToast('error', err?.message ?? 'Failed to set thumbnail')
+              }
+              setShowThumbnailSelector(false)
+            }} className="m-4" />
           </div>
         </div>
       )}
