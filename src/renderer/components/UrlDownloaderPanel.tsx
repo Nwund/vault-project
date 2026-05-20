@@ -259,16 +259,16 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'queued':
-        return <Clock className="w-4 h-4 text-gray-400" />
+        return <Clock className="w-4 h-4 text-zinc-400" />
       case 'downloading':
       case 'processing':
-        return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+        return <Loader2 className="w-4 h-4 text-[var(--primary)] animate-spin" />
       case 'completed':
-        return <CheckCircle className="w-4 h-4 text-green-500" />
+        return <CheckCircle className="w-4 h-4 text-emerald-400" />
       case 'error':
-        return <AlertCircle className="w-4 h-4 text-red-500" />
+        return <AlertCircle className="w-4 h-4 text-red-400" />
       default:
-        return <Download className="w-4 h-4 text-gray-400" />
+        return <Download className="w-4 h-4 text-zinc-400" />
     }
   }
 
@@ -279,7 +279,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-zinc-800">
         <div className="flex items-center gap-2">
-          <Download className="w-5 h-5 text-blue-500" />
+          <Download className="w-5 h-5 text-[var(--primary)]" />
           <h2 className="font-semibold text-white">URL Downloader</h2>
         </div>
         <button

@@ -79,9 +79,9 @@ export function ModelFileCard({
           {status === null || busy ? (
             <Loader2 size={16} className="animate-spin text-[var(--muted)]" />
           ) : installed ? (
-            <CheckCircle2 size={16} className="text-green-500" />
+            <CheckCircle2 size={16} className="text-emerald-400" />
           ) : (
-            <XCircle size={16} className="text-red-500/60" />
+            <XCircle size={16} className="text-red-400/60" />
           )}
         </div>
       </div>

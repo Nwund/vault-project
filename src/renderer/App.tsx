@@ -1679,17 +1679,15 @@ export default function App() {
   useEffect(() => {
     const unsubAchievement = window.api.events.onAchievementUnlocked?.(async (ids: string[]) => {
       try {
-        // Get achievement details to show names
-        const allAchievements = await window.api.goon.getAchievements()
-        const unlockedNames = ids.map(id => {
-          const achievement = allAchievements.find((a: { id: string; name: string }) => a.id === id)
-          return achievement?.name || id
-        })
+        // Get achievement details to show names + description.
+        const allAchievements = await window.api.goon.getAchievements() as Array<{ id: string; name: string; description: string; icon: string }>
+        const unlocked = ids.map(id => allAchievements.find((a) => a.id === id)).filter(Boolean) as Array<{ id: string; name: string; description: string; icon: string }>
 
-        // Show toast notification for each achievement
-        unlockedNames.forEach((name, i) => {
+        // Show toast notification for each achievement with name + description
+        // so the user knows WHY it unlocked, not just THAT it did.
+        unlocked.forEach((ach, i) => {
           setTimeout(() => {
-            showToast('success', `Achievement Unlocked: ${name}`)
+            showToast('success', `${ach.icon} Achievement: ${ach.name} — ${ach.description}`, 6000)
           }, i * 500) // Stagger toasts
         })
 
