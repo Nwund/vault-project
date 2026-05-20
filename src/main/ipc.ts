@@ -13095,6 +13095,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       const stmt = db.raw.prepare(`UPDATE media SET triage_status = ? WHERE id = ?`)
       const tx = db.raw.transaction((ids: string[], s: string) => { for (const id of ids) stmt.run(s, id) })
       tx(args.mediaIds, args.status)
+      broadcast('vault:changed')
       return { ok: true, updated: args.mediaIds.length }
     } catch (err: any) {
       return { ok: false, error: err?.message ?? String(err) }
@@ -13178,6 +13179,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       sets.push(`updated_at = ?`)
       params.push(Date.now(), args.id)
       db.raw.prepare(`UPDATE studios SET ${sets.join(', ')} WHERE id = ?`).run(...params)
+      broadcast('vault:changed')
       return { ok: true }
     } catch (err: any) {
       return { ok: false, error: err?.message ?? String(err) }
@@ -13186,6 +13188,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('studios:delete', async (_ev, id: string) => {
     try {
       db.raw.prepare(`DELETE FROM studios WHERE id = ?`).run(id)
+      broadcast('vault:changed')
       return { ok: true }
     } catch (err: any) {
       return { ok: false, error: err?.message ?? String(err) }
@@ -13195,6 +13198,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     try {
       db.raw.prepare(`UPDATE performers_db SET studio_id = ?, updated_at = ? WHERE id = ?`)
         .run(args.studioId, Date.now(), args.performerId)
+      broadcast('vault:changed')
       return { ok: true }
     } catch (err: any) {
       return { ok: false, error: err?.message ?? String(err) }
@@ -13203,6 +13207,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('studios:assignMedia', async (_ev, args: { mediaId: string; studioId: string | null }) => {
     try {
       db.raw.prepare(`UPDATE media SET studio_id = ? WHERE id = ?`).run(args.studioId, args.mediaId)
+      broadcast('vault:changed')
       return { ok: true }
     } catch (err: any) {
       return { ok: false, error: err?.message ?? String(err) }
