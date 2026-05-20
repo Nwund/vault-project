@@ -6,6 +6,7 @@ import { Copy, Trash2, Check, X, HardDrive, FileText, Hash, Loader2, ChevronDown
 import { formatBytes } from '../utils/formatters'
 import { useToast } from '../contexts'
 import { useEscapeClose } from '../hooks/useEscapeClose'
+import { useConfirm } from './ConfirmDialog'
 
 interface DuplicateMedia {
   id: string
@@ -44,6 +45,7 @@ type ScanType = 'exact' | 'size' | 'name' | 'visual' | 'visual-mf' | 'audio-fp'
 
 export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModalProps) {
   const { showToast } = useToast()
+  const confirm = useConfirm()
   const [scanType, setScanType] = useState<ScanType>('size')
   const [isScanning, setIsScanning] = useState(false)
   const [scanResult, setScanResult] = useState<DuplicateScanResult | null>(null)
@@ -255,7 +257,13 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
 
   const handleDeleteSelected = async () => {
     if (selectedForDeletion.size === 0) return
-    if (!confirm(`Delete ${selectedForDeletion.size} duplicate files? This cannot be undone.`)) return
+    const ok = await confirm({
+      title: `Delete ${selectedForDeletion.size} duplicate file${selectedForDeletion.size === 1 ? '' : 's'}?`,
+      body: 'This permanently deletes the selected duplicates from disk. The action cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!ok) return
 
     setIsDeleting(true)
     try {

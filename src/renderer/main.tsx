@@ -3,6 +3,8 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import Detached from './Detached'
+import { ToastProvider, ToastContainer } from './contexts'
+import { ConfirmProvider } from './components/ConfirmDialog'
 import './index.css'
 
 // @fontsource bundles each Google Font as woff2 we can serve locally — works
@@ -45,6 +47,15 @@ const detachId = getDetachId()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {detachId ? <Detached mediaId={detachId} /> : <App />}
+    <ToastProvider>
+      <ConfirmProvider>
+        {detachId ? <Detached mediaId={detachId} /> : <App />}
+        {/* Renders toasts emitted via useToast() imported from '../contexts'.
+            App.tsx has its own local ToastContext + container for App-tree
+            components that import the local useToast(). Two containers
+            coexist; each shows only its own toasts. */}
+        <ToastContainer />
+      </ConfirmProvider>
+    </ToastProvider>
   </React.StrictMode>
 )
