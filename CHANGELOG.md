@@ -7,6 +7,113 @@ For per-session work logs (the live ground truth), see **[SESSION_NOTES.md](SESS
 
 ---
 
+## v2.7.1 — 2026-05-20 — Polish, cohesion, dead-code purge
+
+Followup to v2.7.0. No new features; instead, a deep cohesion + cleanup
+pass uncovered and fixed a long list of broken UX, dead imports, and
+glue gaps. Headline numbers: **~24,000 lines of dead code removed**,
+**64 unused files deleted**, **45 broken or partial buttons wired
+end-to-end**, **one critical silent toast bug fixed**.
+
+### Critical bug: useToast was a no-op for most components
+
+`useToast` imported from `src/renderer/contexts/` resolved to a
+ToastContext whose `ToastProvider` was never mounted anywhere. Every
+component outside the App.tsx subtree (FloatingVideoPlayer,
+ExportPipelineModal, DupTriageModal, AdminCards, every network card)
+called `showToast(...)` against an empty default context — silently
+no-op. Fixed by mounting `ToastProvider` + `ToastContainer` in
+`main.tsx` wrapping the whole tree; App.tsx's local-mirror toast
+context was deleted and routed through the canonical one.
+
+### Stub tool dialogs now actually do things
+
+Four Library tool dialogs were full UIs that toasted "Success" on
+submit and produced no output. Wired all four to real ffmpeg
+backends via a new `mediaTools:*` IPC namespace:
+
+- **MediaExporter** (`mediaTools:export`) — format/quality/resolution/fps/trim
+- **MediaMerger** (`mediaTools:merge`) — concat demuxer for N inputs
+- **MediaRotator** (`mediaTools:rotate`) — 0/90/180/270 + flip H/V
+- **WatermarkAdder** (`mediaTools:watermark`) — text or image overlay
+
+Plus more individual stub fixes:
+
+- **KeyframeExtractor** — was structurally impossible (passed
+  `React.createRef()` with no video). Replaced with
+  ServerKeyframeExtractor that runs ffmpeg server-side.
+- **ThumbnailSelector** — new `thumbs:setCustom` IPC actually saves.
+- **AITagger.onApplyTags** — calls `tags.addToMedia` for each tag.
+- **AutoPlaylist.onSave** — actually creates the playlist.
+- **SubtitleEditor.onChange** — writes real `.srt` sidecars.
+- **WatchProgress remove** — `watchHistory:removeEntry` actually deletes.
+
+### Cohesion glue (35 broadcasts + handoffs)
+
+`vault:changed` broadcasts added to 35 DB-mutating handlers across
+media metadata, captions, viewPresets, customFilters, tagCategories,
+relationships, bookmarks, notes, studios, triage, trash, thumb regen,
+and export pipeline completion. preload's new `onBoth()` helper
+bridges the IPC channel AND a renderer window CustomEvent so
+renderer-side state changes propagate. TagCategoriesManager,
+BookmarksPanel, MediaNotesPanel now cascade-refresh.
+
+Five context menu tool actions (Edit Metadata, AI Auto-Tag, Scene
+Detection, Extract Keyframes, Export/Convert) failed silently from
+any page other than /library; now use sessionStorage handoff +
+navigate. Same pattern fixed `vault-add-url-download` (Rule34 → Downloads).
+
+Other dead-letter events wired: `navigate-tab` global handler,
+`vault:seekActivePlayer` → FloatingVideoPlayer, `vault:toggle-info-pane`
+(I-key) → MediaInfoModal, DupTriage decision → AI re-tag,
+ExportPipeline completion → vault:changed.
+
+### Dead code purge: 64 files removed
+
+54 dead components, 14 dead hooks, 4 dead main services, 10 dead
+Diabella stub IPC handlers (returned `{ error: 'disabled' }` since
+v2.1.5). Notable: StreaksAchievements had its own achievement tree
+that never matched the backend's checkAndUnlockAchievements list;
+backend is now single source of truth via goon.getAchievements().
+
+### Reusable infrastructure
+
+- New **`<ModalShell>`** captures the shared modal pattern. 12
+  modals now use it.
+- New **`<ConfirmDialog>`** + `useConfirm()` replaced all 14
+  `window.confirm()` calls with a styled, promise-based dialog.
+- New **`useLocalStorage`** hook centralizes the try/catch +
+  JSON-parse pattern.
+
+### Type + style cleanup
+
+22 `(window.api as any)` casts removed. All `border-zinc-700` swept
+to `var(--border)` across 82 files. All inline `/1024/1024` math
+replaced with `formatBytes()`. All ad-hoc spring transitions migrated
+to named `SPRINGS.*` tokens. All `setPage()` direct calls routed
+through `navigateTo()` for View Transitions consistency. Stale
+v2.3.0 comments updated. Version strings updated to v2.7.0 in
+AboutPage default, export-service HTML footer, booru User-Agent.
+
+### UX polish
+
+Empty state CTAs added to FeedPage and PerformersPage. Emoji icons
+(📅, 🎬, ⚠️, 🔒) replaced with Lucide components (Film, AlertTriangle,
+Lock) for consistent rendering. Shift+F focus mode hotkey is now
+documented in the actual user-visible help modal (was previously
+missing despite being globally bound). DownloadsPage status colors
+use theme variables. SessionsPage tab pill nav wraps to 2 lines
+instead of overflowing at narrow window widths.
+
+### Performance
+
+Scanner SQLITE_BUSY_SNAPSHOT spam fixed via immediate-mode
+transactions. AI Review schema-cache stale workaround caches the
+parallel sqlite connection. Bundle size: index.js dropped from
+2880 KB → 2877 KB.
+
+---
+
 ## v2.7.0 — 2026-05-17 — The integration sweep: 160 backlog items wired through to UI
 
 The largest release since v2.6.0. The 160-item v2.7 research backlog (#220–#385) shipped as backend services + utilities + hooks throughout May 16; this release turns all of it into user-facing UI. **32 new components**, **23 new Settings cards**, **6 player overlay buttons**, **8 Library Tools entries**, **React 19 + React Compiler**, a new MessagePort fast-path for scrub-thumbs, and View Transitions API across page swaps.
