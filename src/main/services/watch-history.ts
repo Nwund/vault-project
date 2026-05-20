@@ -442,6 +442,17 @@ export class WatchHistoryService {
     const result = this.db.raw.prepare(`DELETE FROM watch_sessions`).run()
     return result.changes
   }
+
+  /**
+   * Remove all watch_sessions for a single media item. Used by the
+   * "Remove from progress" action in WatchProgress so the entry
+   * actually disappears across sessions instead of just from the
+   * local panel state.
+   */
+  removeForMedia(mediaId: string): number {
+    const result = this.db.raw.prepare(`DELETE FROM watch_sessions WHERE mediaId = ?`).run(mediaId)
+    return result.changes
+  }
 }
 
 // Singleton

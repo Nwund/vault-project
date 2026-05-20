@@ -795,21 +795,10 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
         hideContextMenu()
       }
     },
-    {
-      label: 'Re-analyze with AI',
-      icon: <RefreshCw size={14} />,
-      action: async () => {
-        if (contextMenu.mediaId) {
-          try {
-            const r = await window.api.ai?.requeueSpecific?.([contextMenu.mediaId])
-            showToast('success', `Queued for re-analysis${r?.requeued ? ` (${r.requeued})` : ''}`)
-          } catch (e: any) {
-            showToast('error', e?.message || 'Failed to queue for re-analysis')
-          }
-        }
-        hideContextMenu()
-      }
-    },
+    // "Re-tag with AI" above (line ~597) is the canonical v2.7 path
+    // that uses ai.reanalyzeBatch — it queues with proper priority and
+    // unified review handling. The older "Re-analyze with AI" entry
+    // here was removed as a duplicate.
     { type: 'separator' as const },
     {
       label: 'Rate 5 Stars',

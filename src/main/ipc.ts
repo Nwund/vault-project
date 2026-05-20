@@ -6447,6 +6447,19 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // Drop all watch_sessions for a single media item. Used by the
+  // "Remove from Continue Watching" entry in the Library tools panel.
+  ipcMain.handle('watchHistory:removeEntry', async (_ev, mediaId: string) => {
+    try {
+      const history = getWatchHistoryService(db)
+      const removed = history.removeForMedia(mediaId)
+      broadcast('vault:changed')
+      return { ok: true, removed }
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? String(e) }
+    }
+  })
+
   ipcMain.handle('watch:get-stats', async () => {
     try {
       const history = getWatchHistoryService(db)

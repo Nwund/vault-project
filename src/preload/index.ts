@@ -1577,6 +1577,11 @@ const api = {
     writeText: (absPath: string, content: string) => invoke<{ ok: boolean; error?: string }>('fs:writeText', absPath, content),
   },
 
+  watchHistory: {
+    list: (opts?: { limit?: number; since?: number }) => invoke('watchHistory:list', opts),
+    removeEntry: (mediaId: string) => invoke<{ ok: boolean; removed?: number; error?: string }>('watchHistory:removeEntry', mediaId),
+  },
+
   // ═══════════════════════════════════════════════════════════════════════════
   // AUDIO - Sound Packs & Voice Lines
   // ═══════════════════════════════════════════════════════════════════════════

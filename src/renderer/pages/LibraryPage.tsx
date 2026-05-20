@@ -3969,7 +3969,15 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showWatchProgress && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowWatchProgress(false)}>
           <div className="max-w-2xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
-            <WatchProgress onResume={(id: string) => { addFloatingPlayer(id); setShowWatchProgress(false) }} onRemove={(id: string) => showToast('info', 'Removed from progress')} className="m-4" />
+            <WatchProgress onResume={(id: string) => { addFloatingPlayer(id); setShowWatchProgress(false) }} onRemove={async (id: string) => {
+              try {
+                const res = await window.api.watchHistory.removeEntry(id)
+                if (res.ok) showToast('info', 'Removed from progress')
+                else showToast('error', res.error ?? 'Failed to remove')
+              } catch (err: any) {
+                showToast('error', err?.message ?? 'Failed to remove')
+              }
+            }} className="m-4" />
           </div>
         </div>
       )}
