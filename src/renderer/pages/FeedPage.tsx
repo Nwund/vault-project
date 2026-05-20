@@ -13,7 +13,9 @@ import {
   Clock,
   Eye,
   EyeOff,
+  Film,
   Heart,
+  Library,
   Loader2,
   Maximize2,
   Plus,
@@ -556,10 +558,19 @@ export function FeedPage() {
 
   if (videos.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-black text-center p-8">
-            <div className="text-6xl mb-4 opacity-30">📅</div>
-        <div className="text-lg font-medium text-white/60">No videos found</div>
-        <div className="text-sm text-white/40 mt-2">Add some videos to your library first</div>
+      <div className="h-full flex flex-col items-center justify-center bg-black text-center p-8 gap-3">
+        <Film size={64} className="text-white/20" />
+        <div className="text-lg font-medium text-white/70">No videos in your feed yet</div>
+        <div className="text-sm text-white/50 max-w-md">
+          The feed shuffles videos from your Library based on tags, favorites, and recent activity. Add some videos to get started.
+        </div>
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'library' }))}
+          className="mt-4 flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[var(--primary)] hover:bg-[var(--primary)]/80 text-white text-sm font-medium transition shadow-lg shadow-[var(--primary)]/30"
+        >
+          <Library size={16} />
+          Open Library
+        </button>
       </div>
     )
   }

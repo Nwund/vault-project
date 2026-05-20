@@ -7,8 +7,10 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  AlertTriangle,
   Eye,
   EyeOff,
+  Film,
   LayoutGrid,
   Maximize2,
   Minimize2,
@@ -842,7 +844,7 @@ export function GoonWallPage(props: {
       {!loading && !error && showPreloadOption && videos.length > 0 && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black z-40">
           <div className="text-center max-w-md px-4">
-            <div className="text-4xl mb-4">🎬</div>
+            <Film size={48} className="mx-auto mb-4 text-[var(--primary)]" />
             <div className="text-xl font-bold mb-2">GoonWall Ready</div>
             <div className="text-white/60 mb-6">
               {videos.length} videos available • {tileCount} tiles
@@ -936,10 +938,10 @@ export function GoonWallPage(props: {
 
       {/* Error state */}
       {error && !loading && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black">
-          <div className="text-6xl mb-4">⚠️</div>
-          <div className="text-lg font-medium text-red-400 mb-2">Error</div>
-          <div className="text-sm text-white/60 mb-4 max-w-md text-center">{error}</div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black gap-3">
+          <AlertTriangle size={64} className="text-amber-400/70" />
+          <div className="text-lg font-medium text-red-400">Couldn't load wall</div>
+          <div className="text-sm text-white/60 max-w-md text-center">{error}</div>
           <Btn onClick={() => loadVideos()}>Retry</Btn>
         </div>
       )}
