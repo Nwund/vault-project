@@ -6,7 +6,7 @@
 // many pages for celebratory effects).
 
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Clock, Star } from 'lucide-react'
+import { CheckCircle2, Clock, Lock, Star } from 'lucide-react'
 import { useToast } from '../contexts'
 import { useConfetti } from '../hooks/useConfetti'
 import { useAnime } from '../hooks/useAnime'
@@ -509,7 +509,11 @@ export function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof us
                 )}
               >
                 <div className="flex items-start gap-2 mb-2">
-                  <div className={cn('text-xl', !unlocked && 'grayscale opacity-50')}>{unlocked ? a.icon : '🔒'}</div>
+                  {unlocked ? (
+                    <div className="text-xl">{a.icon}</div>
+                  ) : (
+                    <Lock size={18} className="text-white/40 mt-0.5" />
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium truncate">{a.name}</div>
                     <div className="text-[10px] text-[var(--muted)] leading-tight">{a.description}</div>

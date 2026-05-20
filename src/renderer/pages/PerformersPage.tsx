@@ -361,12 +361,18 @@ export default function PerformersPage() {
           </div>
         )}
         {tab === 'faces' && !loading && visibleClusters.length === 0 && (
-          <div className="text-center text-[var(--muted)] py-20">
+          <div className="text-center text-[var(--muted)] py-20 max-w-md mx-auto">
             <Users size={48} className="mx-auto mb-3 opacity-30" />
-            <p>No clusters yet.</p>
-            <p className="text-xs mt-2 opacity-70">
-              Run AI tagging on some media — SFace will start building clusters automatically.
+            <p className="text-lg font-medium text-white/70 mb-2">No face clusters yet</p>
+            <p className="text-xs mb-4 opacity-70">
+              Run AI tagging on your media — SFace will start building clusters automatically as faces are detected.
             </p>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'ai' }))}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--primary)] hover:bg-[var(--primary)]/80 text-white text-sm font-medium transition"
+            >
+              Open AI Tools
+            </button>
           </div>
         )}
         {tab === 'faces' && (

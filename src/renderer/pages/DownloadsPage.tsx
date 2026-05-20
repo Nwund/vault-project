@@ -188,12 +188,12 @@ export function DownloadsPage() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'queued': return <Clock className="w-5 h-5 text-gray-400" />
+      case 'queued': return <Clock className="w-5 h-5 text-zinc-400" />
       case 'downloading':
-      case 'processing': return <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-      case 'completed': return <CheckCircle2 className="w-5 h-5 text-green-500" />
-      case 'error': return <AlertCircle className="w-5 h-5 text-red-500" />
-      default: return <Download className="w-5 h-5 text-gray-400" />
+      case 'processing': return <Loader2 className="w-5 h-5 text-[var(--primary)] animate-spin" />
+      case 'completed': return <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+      case 'error': return <AlertCircle className="w-5 h-5 text-red-400" />
+      default: return <Download className="w-5 h-5 text-zinc-400" />
     }
   }
 
