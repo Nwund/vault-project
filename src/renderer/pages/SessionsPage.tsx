@@ -65,8 +65,9 @@ export default function SessionsPage() {
           </div>
         </div>
 
-        {/* Pill nav with animated indicator */}
-        <nav className="relative flex items-center gap-1 rounded-2xl bg-black/30 border border-white/5 p-1 backdrop-blur-xl">
+        {/* Pill nav with animated indicator. flex-wrap so 5 tabs don't
+            overflow a narrow header — wraps to two lines at <960px. */}
+        <nav className="relative flex flex-wrap items-center gap-1 rounded-2xl bg-black/30 border border-white/5 p-1 backdrop-blur-xl">
           {SUB_TABS.map((tab) => {
             const isActive = sub === tab.id
             return (

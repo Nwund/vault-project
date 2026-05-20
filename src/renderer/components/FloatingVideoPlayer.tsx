@@ -1092,7 +1092,23 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
       }
     }
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+
+    // Listen for external seek requests (SubtitleEditor → click line).
+    // Only honor if this instance is showing the same media as the
+    // dispatched event's mediaId.
+    const onExternalSeek = (e: Event) => {
+      const detail = (e as CustomEvent<{ mediaId: string; time: number }>).detail
+      if (!detail || detail.mediaId !== media.id) return
+      if (videoRef.current && Number.isFinite(detail.time)) {
+        videoRef.current.currentTime = Math.max(0, detail.time)
+      }
+    }
+    window.addEventListener('vault:seekActivePlayer', onExternalSeek)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('vault:seekActivePlayer', onExternalSeek)
+    }
   }, [goToPrev, goToNext, onClose, isFullscreen, togglePlay, handleToggleLike, media.id, media.type, isLooping, loopStart])
 
   // Fullscreen handling
