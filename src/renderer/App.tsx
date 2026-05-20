@@ -277,71 +277,12 @@ function GlobalProgressBar() {
 
 //
 // TOAST NOTIFICATION SYSTEM - Global toast messages
-// Toast + ToastType moved to ./types (#87 phase A).
-//
-
-const ToastContext = React.createContext<{
-  toasts: Toast[]
-  showToast: (type: ToastType, message: string, duration?: number) => void
-  dismissToast: (id: string) => void
-}>({
-  toasts: [],
-  showToast: () => {},
-  dismissToast: () => {}
-})
-
-// File-local — same Fast Refresh reason as useGlobalTasks above.
-// External callers should import from `../contexts` (UrlDownloaderPanel
-// already updated 2026-05-10).
-function useToast() {
-  return React.useContext(ToastContext)
-}
-
-function ToastContainer() {
-  const { toasts, dismissToast } = useToast()
-
-  if (toasts.length === 0) return null
-
-  const getToastStyles = (type: ToastType) => {
-    switch (type) {
-      case 'success': return 'bg-green-500/90 border-green-400'
-      case 'error': return 'bg-red-500/90 border-red-400'
-      case 'warning': return 'bg-yellow-500/90 border-yellow-400'
-      case 'info': default: return 'bg-blue-500/90 border-blue-400'
-    }
-  }
-
-  const getToastIcon = (type: ToastType) => {
-    switch (type) {
-      case 'success': return <CheckCircle2 size={16} />
-      case 'error': return <XCircle size={16} />
-      case 'warning': return <AlertCircle size={16} />
-      case 'info': default: return <Info size={16} />
-    }
-  }
-
-  return (
-    <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
-      {toasts.map(toast => (
-        <div
-          key={toast.id}
-          className={`pointer-events-auto flex items-center gap-2 px-4 py-3 rounded-xl border backdrop-blur-sm shadow-lg text-white text-sm animate-in slide-in-from-right duration-300 ${getToastStyles(toast.type)}`}
-        >
-          {getToastIcon(toast.type)}
-          <span className="flex-1">{toast.message}</span>
-          <button
-            onClick={(e) => { e.stopPropagation(); dismissToast(toast.id) }}
-            className="p-1 hover:bg-white/20 rounded transition"
-            aria-label="Dismiss notification"
-            title="Dismiss"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      ))}
-    </div>
-  )
-}
+// Toast — single source of truth in src/renderer/contexts/ToastContext.tsx.
+// App.tsx used to define its own local context here; that was the cause
+// of the long-standing bug where toasts from non-App components silently
+// no-op'd. Now everything funnels through one provider mounted in main.tsx.
+import { useToast as useContextsToast } from './contexts'
+const useToast = useContextsToast
 
 // ContextMenuContext / useContextMenu / ContextMenuState moved to
 // src/renderer/contexts/ContextMenuContext.tsx (#48 phase E) so that
@@ -1146,7 +1087,10 @@ export default function App() {
   const [playlistPickerMediaId, setPlaylistPickerMediaId] = useState<string | null>(null)
 
   // Toast context for global notifications
-  const { showToast: globalShowToast } = useToast()
+  const { showToast } = useToast()
+  // Some code paths refer to the toast via this name for clarity vs.
+  // the nested ContextMenuOverlay's local showToast scope.
+  const globalShowToast = showToast
 
   // v2.7 — Focus mode toggle handler at the app level so it works from
   // anywhere (CommandPalette, Shift+F hotkey, etc.) even if
@@ -1313,38 +1257,8 @@ export default function App() {
     removeTask: removeGlobalTask
   }), [globalTasks, addGlobalTask, updateGlobalTask, removeGlobalTask])
 
-  // Toast notification state with proper timer cleanup
-  const [toasts, setToasts] = useState<Toast[]>([])
-  const toastTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-
-  const showToast = useCallback((type: ToastType, message: string, duration: number = 4000) => {
-    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    setToasts(prev => [...prev, { id, type, message, duration }])
-    // Auto-dismiss with tracked timer
-    if (duration > 0) {
-      const timer = setTimeout(() => {
-        toastTimersRef.current.delete(id)
-        setToasts(prev => prev.filter(t => t.id !== id))
-      }, duration)
-      toastTimersRef.current.set(id, timer)
-    }
-  }, [])
-
-  const dismissToast = useCallback((id: string) => {
-    // Clear timer when manually dismissed
-    const timer = toastTimersRef.current.get(id)
-    if (timer) {
-      clearTimeout(timer)
-      toastTimersRef.current.delete(id)
-    }
-    setToasts(prev => prev.filter(t => t.id !== id))
-  }, [])
-
-  const toastContextValue = useMemo(() => ({
-    toasts,
-    showToast,
-    dismissToast
-  }), [toasts, showToast, dismissToast])
+  // Toast state moved to src/renderer/contexts/ToastContext.tsx
+  // (single source of truth, mounted via ToastProvider in main.tsx).
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -1916,7 +1830,6 @@ export default function App() {
   }, [])
 
   return (
-    <ToastContext.Provider value={toastContextValue}>
     <ContextMenuContext.Provider value={contextMenuValue}>
     <GlobalTaskContext.Provider value={globalTaskContextValue}>
     <div
@@ -1958,8 +1871,11 @@ export default function App() {
         </defs>
       </svg>
 
-      {/* Toast Notifications */}
-      <ToastContainer />
+      {/* Toast Notifications are mounted in main.tsx via ToastProvider +
+          ToastContainer, wrapping the entire tree. App.tsx used to mount
+          its own ToastContainer here against a local context, which left
+          non-App-tree components silently no-op-ing showToast — now
+          consolidated to one provider. */}
 
       {/* Floating Action Button — draggable + glides on release. Position
           persists per machine via localStorage. Click toggles the menu;
@@ -3428,7 +3344,6 @@ export default function App() {
     </div>
     </GlobalTaskContext.Provider>
     </ContextMenuContext.Provider>
-    </ToastContext.Provider>
   )
 }
 
