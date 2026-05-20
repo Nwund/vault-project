@@ -286,7 +286,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
           onClick={onClose}
           className="p-1.5 hover:bg-zinc-800 rounded-lg transition-colors"
         >
-          <X className="w-5 h-5 text-gray-400" />
+          <X className="w-5 h-5 text-zinc-400" />
         </button>
       </div>
 
@@ -303,11 +303,11 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
       {/* Version & Settings Toggle */}
       <div className="px-4 pt-2 flex items-center justify-between">
         {ytdlpVersion && (
-          <span className="text-xs text-gray-500">yt-dlp {ytdlpVersion}</span>
+          <span className="text-xs text-zinc-500">yt-dlp {ytdlpVersion}</span>
         )}
         <button
           onClick={() => setShowSettings(!showSettings)}
-          className={`p-1.5 rounded-lg transition-colors ${showSettings ? 'bg-blue-600/20 text-blue-400' : 'hover:bg-zinc-800 text-gray-400'}`}
+          className={`p-1.5 rounded-lg transition-colors ${showSettings ? 'bg-[var(--primary)]/20 text-[var(--primary)]' : 'hover:bg-zinc-800 text-zinc-400'}`}
           title="Download settings"
         >
           <Settings className="w-4 h-4" />
@@ -319,7 +319,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
         <div className="mx-4 mt-2 p-3 bg-zinc-800/50 border border-[var(--border)] rounded-lg space-y-3">
           {/* Quality Selector */}
           <div className="flex items-center justify-between">
-            <label className="text-xs text-gray-400">Quality</label>
+            <label className="text-xs text-zinc-400">Quality</label>
             <div className="relative">
               <select
                 value={quality}
@@ -332,19 +332,19 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
                 <option value="480p">480p</option>
                 <option value="audio">Audio Only</option>
               </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
             </div>
           </div>
 
           {/* Auto-Import Toggle */}
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-xs text-gray-400">Auto-import to library</label>
-              <p className="text-[10px] text-gray-500">Add to library when complete</p>
+              <label className="text-xs text-zinc-400">Auto-import to library</label>
+              <p className="text-[10px] text-zinc-500">Add to library when complete</p>
             </div>
             <button
               onClick={() => setAutoImport(!autoImport)}
-              className={`w-10 h-5 rounded-full transition-colors relative ${autoImport ? 'bg-blue-600' : 'bg-zinc-600'}`}
+              className={`w-10 h-5 rounded-full transition-colors relative ${autoImport ? 'bg-[var(--primary)]' : 'bg-zinc-600'}`}
             >
               <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${autoImport ? 'translate-x-5' : 'translate-x-0.5'}`} />
             </button>
@@ -356,7 +356,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
       <div className="p-4 border-b border-zinc-800">
         <div className="flex gap-2">
           <div className="flex-1 relative">
-            <Link className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${urlError ? 'text-red-400' : 'text-gray-500'}`} />
+            <Link className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${urlError ? 'text-red-400' : 'text-zinc-500'}`} />
             <input
               ref={inputRef}
               type="text"
@@ -382,7 +382,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
           </div>
           <button
             onClick={handlePaste}
-            className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-[var(--border)] rounded-lg text-gray-400 hover:text-white transition-colors"
+            className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-[var(--border)] rounded-lg text-zinc-400 hover:text-white transition-colors"
             title="Paste from clipboard"
           >
             <Clipboard className="w-4 h-4" />
@@ -390,7 +390,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
           <button
             onClick={handleAddDownload}
             disabled={!urlInput.trim() || adding || !isAvailable || !!urlError}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white font-medium transition-colors flex items-center gap-2"
+            className="px-4 py-2 bg-[var(--primary)] hover:bg-[var(--primary)] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white font-medium transition-colors flex items-center gap-2"
           >
             {adding ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -407,10 +407,10 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
             <span>{urlError}</span>
           </div>
         )}
-        <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+        <div className="mt-2 flex items-center justify-between text-xs text-zinc-500">
           <span>Supports 1000+ sites</span>
           {quality !== 'best' && (
-            <span className="px-2 py-0.5 bg-zinc-800 rounded text-[10px] text-gray-400">
+            <span className="px-2 py-0.5 bg-zinc-800 rounded text-[10px] text-zinc-400">
               {quality === 'audio' ? '🎵 Audio' : quality}
             </span>
           )}
@@ -421,10 +421,10 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32">
-            <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+            <Loader2 className="w-6 h-6 text-zinc-400 animate-spin" />
           </div>
         ) : downloads.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-gray-500">
+          <div className="flex flex-col items-center justify-center h-48 text-zinc-500">
             <Download className="w-12 h-12 mb-3 opacity-50" />
             <p>No downloads yet</p>
             <p className="text-sm">Paste a URL above to start</p>
@@ -460,7 +460,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
                       )}
                       {item.source === 'desktop' && (
                         <span title="From desktop">
-                          <Monitor className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                          <Monitor className="w-3 h-3 text-[var(--primary)] flex-shrink-0" />
                         </span>
                       )}
                     </div>
@@ -468,7 +468,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
                     {/* Progress */}
                     {(item.status === 'downloading' || item.status === 'processing') && (
                       <div className="mt-2">
-                        <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+                        <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
                           <span>{item.progress.toFixed(1)}%</span>
                           <span>
                             {item.speed && `${item.speed} • `}
@@ -477,7 +477,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
                         </div>
                         <div className="h-1.5 bg-zinc-700 rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-blue-500 transition-all duration-300"
+                            className="h-full bg-[var(--primary)] transition-all duration-300"
                             style={{ width: `${item.progress}%` }}
                           />
                         </div>
@@ -485,7 +485,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
                     )}
 
                     {/* Info */}
-                    <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
+                    <div className="mt-1 flex items-center gap-3 text-xs text-zinc-500">
                       {item.fileSize && <span>{item.fileSize}</span>}
                       {item.duration && <span>{item.duration}</span>}
                       {item.status === 'error' && (
@@ -497,7 +497,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
                         <span className="text-green-400">Completed</span>
                       )}
                       {item.status === 'queued' && (
-                        <span className="text-gray-400">Queued</span>
+                        <span className="text-zinc-400">Queued</span>
                       )}
                     </div>
                   </div>
@@ -509,14 +509,14 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
                     <>
                       <button
                         onClick={() => handleOpenFolder(item.id)}
-                        className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-xs text-gray-400 hover:text-white flex items-center gap-1.5"
+                        className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-xs text-zinc-400 hover:text-white flex items-center gap-1.5"
                       >
                         <FolderOpen className="w-3 h-3" />
                         Open
                       </button>
                       <button
                         onClick={() => handleImport(item.id)}
-                        className="px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600/30 rounded text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1.5"
+                        className="px-2.5 py-1 bg-[var(--primary)]/20 hover:bg-[var(--primary)]/30 rounded text-xs text-[var(--primary)] hover:text-blue-300 flex items-center gap-1.5"
                       >
                         <Import className="w-3 h-3" />
                         Import
@@ -526,14 +526,14 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
                   {(item.status === 'downloading' || item.status === 'queued') && (
                     <button
                       onClick={() => handleCancel(item.id)}
-                      className="px-2.5 py-1 bg-zinc-800 hover:bg-red-600/20 rounded text-xs text-gray-400 hover:text-red-400"
+                      className="px-2.5 py-1 bg-zinc-800 hover:bg-red-600/20 rounded text-xs text-zinc-400 hover:text-red-400"
                     >
                       Cancel
                     </button>
                   )}
                   <button
                     onClick={() => handleRemove(item.id)}
-                    className="p-1 hover:bg-zinc-700 rounded text-gray-500 hover:text-red-400 ml-auto"
+                    className="p-1 hover:bg-zinc-700 rounded text-zinc-500 hover:text-red-400 ml-auto"
                     title="Remove"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -550,7 +550,7 @@ export function UrlDownloaderPanel({ isOpen, onClose }: UrlDownloaderPanelProps)
         <div className="p-4 border-t border-zinc-800">
           <button
             onClick={handleClearCompleted}
-            className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm text-gray-400 hover:text-white transition-colors"
+            className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm text-zinc-400 hover:text-white transition-colors"
           >
             Clear Completed
           </button>
