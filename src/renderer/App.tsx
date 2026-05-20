@@ -327,6 +327,22 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
   if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 10
   if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 10
 
+  // Open a Library tool from anywhere in the app. On Library, fires the
+  // event directly so listener picks it up. Off Library, stashes the
+  // payload in sessionStorage + navigates to /library — the page's
+  // mount drains the key and opens the tool. Race-free.
+  const openLibraryTool = (tool: string) => {
+    if (!contextMenu.mediaData) return
+    const payload = { tool, media: contextMenu.mediaData }
+    const onLibrary = document.querySelector('[data-page="library"]') !== null
+    if (onLibrary) {
+      window.dispatchEvent(new CustomEvent('vault-open-tool', { detail: payload }))
+    } else {
+      try { sessionStorage.setItem('vault.pendingLibraryToolPayload', JSON.stringify(payload)) } catch { /* quota */ }
+      window.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'library' }))
+    }
+  }
+
   const menuItems = [
     {
       label: 'View Info',
@@ -818,32 +834,19 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
     {
       label: 'Edit Metadata',
       icon: <Edit2 size={14} />,
-      action: () => {
-        if (contextMenu.mediaData) {
-          window.dispatchEvent(new CustomEvent('vault-open-tool', { detail: { tool: 'metadata', media: contextMenu.mediaData } }))
-        }
-        hideContextMenu()
-      }
+      action: () => { openLibraryTool('metadata'); hideContextMenu() }
     },
     {
       label: 'AI Auto-Tag',
       icon: <Sparkles size={14} />,
-      action: () => {
-        if (contextMenu.mediaData) {
-          window.dispatchEvent(new CustomEvent('vault-open-tool', { detail: { tool: 'ai-tagger', media: contextMenu.mediaData } }))
-        }
-        hideContextMenu()
-      }
+      action: () => { openLibraryTool('ai-tagger'); hideContextMenu() }
     },
     {
       label: 'Scene Detection',
       icon: <Zap size={14} />,
       action: () => {
-        if (contextMenu.mediaData?.type === 'video') {
-          window.dispatchEvent(new CustomEvent('vault-open-tool', { detail: { tool: 'scene-detector', media: contextMenu.mediaData } }))
-        } else {
-          showToast('info', 'Scene detection is only available for videos')
-        }
+        if (contextMenu.mediaData?.type === 'video') openLibraryTool('scene-detector')
+        else showToast('info', 'Scene detection is only available for videos')
         hideContextMenu()
       }
     },
@@ -851,23 +854,15 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
       label: 'Extract Keyframes',
       icon: <ImageIcon size={14} />,
       action: () => {
-        if (contextMenu.mediaData?.type === 'video') {
-          window.dispatchEvent(new CustomEvent('vault-open-tool', { detail: { tool: 'keyframe', media: contextMenu.mediaData } }))
-        } else {
-          showToast('info', 'Keyframe extraction is only available for videos')
-        }
+        if (contextMenu.mediaData?.type === 'video') openLibraryTool('keyframe')
+        else showToast('info', 'Keyframe extraction is only available for videos')
         hideContextMenu()
       }
     },
     {
       label: 'Export / Convert',
       icon: <Download size={14} />,
-      action: () => {
-        if (contextMenu.mediaData) {
-          window.dispatchEvent(new CustomEvent('vault-open-tool', { detail: { tool: 'export', media: contextMenu.mediaData } }))
-        }
-        hideContextMenu()
-      }
+      action: () => { openLibraryTool('export'); hideContextMenu() }
     },
     { type: 'separator' as const },
     {

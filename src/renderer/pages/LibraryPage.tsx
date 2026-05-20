@@ -423,10 +423,12 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
     }
   }, [])
 
-  // Handle tool panel events from context menu
+  // Handle tool panel events from context menu — direct dispatch when
+  // user is already on /library, OR drain sessionStorage handoff when
+  // arriving from another page (App.tsx context menu stashes there
+  // before navigating).
   useEffect(() => {
-    const handleToolEvent = (e: CustomEvent<{ tool: string; media: MediaRow }>) => {
-      const { tool, media } = e.detail
+    const openByName = (tool: string, media: MediaRow) => {
       setActiveToolMedia(media)
       switch (tool) {
         case 'metadata': setShowMetadataEditor(true); break
@@ -447,7 +449,21 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
         case 'note': setShowQuickNote(true); break
       }
     }
+    const handleToolEvent = (e: CustomEvent<{ tool: string; media: MediaRow }>) => {
+      const { tool, media } = e.detail
+      openByName(tool, media)
+    }
     window.addEventListener('vault-open-tool', handleToolEvent as EventListener)
+    // Drain handoff on mount — for context-menu actions fired from
+    // another page that navigated here.
+    try {
+      const pending = sessionStorage.getItem('vault.pendingLibraryToolPayload')
+      if (pending) {
+        sessionStorage.removeItem('vault.pendingLibraryToolPayload')
+        const parsed = JSON.parse(pending) as { tool: string; media: MediaRow }
+        if (parsed.tool && parsed.media) openByName(parsed.tool, parsed.media)
+      }
+    } catch { /* ignore */ }
     return () => window.removeEventListener('vault-open-tool', handleToolEvent as EventListener)
   }, [])
 
@@ -1422,7 +1438,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
   }
 
   return (
-    <div className="h-full w-full flex flex-col overflow-hidden">
+    <div className="h-full w-full flex flex-col overflow-hidden" data-page="library">
       <TopBar
         title="Library"
         right={
