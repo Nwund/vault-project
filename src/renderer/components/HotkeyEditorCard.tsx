@@ -12,6 +12,7 @@
 
 import React, { useMemo, useState, useCallback, useEffect } from 'react'
 import { Keyboard, RotateCcw, AlertTriangle, X as XIcon } from 'lucide-react'
+import { useConfirm } from './ConfirmDialog'
 import {
   useHotkeyOverrides,
   chordFromEvent,
@@ -60,6 +61,7 @@ const ACTIONS: Action[] = [
 const CATEGORIES: Array<Action['category']> = ['Playback', 'Navigation', 'View', 'Actions']
 
 export function HotkeyEditorCard(): React.JSX.Element {
+  const confirm = useConfirm()
   const { map, set, clear, resetAll } = useHotkeyOverrides()
   const [recordingId, setRecordingId] = useState<string | null>(null)
   const [recentlySaved, setRecentlySaved] = useState<string | null>(null)
@@ -114,10 +116,14 @@ export function HotkeyEditorCard(): React.JSX.Element {
           <div className="text-sm font-semibold">Keyboard shortcuts</div>
         </div>
         <button
-          onClick={() => {
-            if (confirm('Reset all keyboard shortcuts to defaults?')) {
-              resetAll()
-            }
+          onClick={async () => {
+            const ok = await confirm({
+              title: 'Reset all keyboard shortcuts?',
+              body: 'All custom keybindings will revert to defaults.',
+              confirmLabel: 'Reset',
+              danger: true,
+            })
+            if (ok) resetAll()
           }}
           className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition text-zinc-300"
         >

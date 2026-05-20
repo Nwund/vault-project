@@ -14,6 +14,7 @@ import {
 import { useDebounce, toFileUrlCached, useLazyLoad } from './hooks/usePerformance'
 import { useVideoPreview } from './hooks/useVideoPreview'
 import { useLocalStorage } from './hooks/useLocalStorage'
+import { useConfirm } from './components/ConfirmDialog'
 import { AboutPage } from './pages/AboutPage'
 import SessionsPage from './pages/SessionsPage'
 // v2.7 — lazy-load every non-essential page so initial bundle shrinks.
@@ -349,6 +350,7 @@ function ToastContainer() {
 function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?: (mediaId: string) => void; onViewInfo?: (media: MediaRow) => void }) {
   const { contextMenu, hideContextMenu } = useContextMenu()
   const { showToast } = useToast()
+  const confirm = useConfirm()
   const menuRef = React.useRef<HTMLDivElement>(null)
 
   // Close on click outside
@@ -944,7 +946,12 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
       danger: true,
       action: async () => {
         if (contextMenu.mediaId) {
-          const confirmed = window.confirm('Remove this item from your library? (File will not be deleted from disk)')
+          const confirmed = await confirm({
+            title: 'Remove this item from your library?',
+            body: 'The file stays on disk — only the library entry is removed. Press Ctrl+Z immediately after to undo.',
+            confirmLabel: 'Remove',
+            danger: true,
+          })
           if (confirmed) {
             const result = await window.api.media?.delete?.(contextMenu.mediaId)
             if (result?.success) {
@@ -1057,6 +1064,7 @@ const NavIcon: React.FC<{ id: string; active?: boolean }> = ({ id, active }) => 
 type NavId = (typeof NAV)[number]['id']
 
 export default function App() {
+  const confirm = useConfirm()
   const [page, setPage] = useState<NavId>('home')
   const [prevPage, setPrevPage] = useState<NavId>('home')
   const [pageTransition, setPageTransition] = useState<'enter' | 'exit' | null>(null)

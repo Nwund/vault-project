@@ -10,6 +10,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import { ChevronDown, User, Plus, Pencil, Trash2, Check, X as XIcon } from 'lucide-react'
+import { useConfirm } from './ConfirmDialog'
 
 interface Profile {
   id: string
@@ -29,6 +30,7 @@ function pickColor(name: string): string {
 }
 
 export function ProfileSwitcher({ className }: { className?: string }) {
+  const confirm = useConfirm()
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [activeId, setActiveId] = useState<string>('default')
   const [open, setOpen] = useState(false)
@@ -89,13 +91,19 @@ export function ProfileSwitcher({ className }: { className?: string }) {
 
   const deleteProfile = useCallback(async (id: string) => {
     if (id === 'default') return
-    if (!confirm('Delete this profile? Its watch history is reassigned to the default profile.')) return
+    const ok = await confirm({
+      title: 'Delete this profile?',
+      body: 'Its watch history is reassigned to the default profile.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!ok) return
     const api: any = (window as any).api
     try {
       await api.userProfilesDelete(id)
       await refresh()
     } catch { /* noop */ }
-  }, [refresh])
+  }, [confirm, refresh])
 
   const active = profiles.find((p) => p.id === activeId)
   const activeColor = active?.color ?? pickColor(active?.name ?? 'Default')

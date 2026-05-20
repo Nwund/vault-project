@@ -32,6 +32,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { useToast } from '../contexts'
+import { useConfirm } from '../components/ConfirmDialog'
 import { formatBytes } from '../utils/formatters'
 import { cn } from '../utils/cn'
 import { ReviewHoverPreview } from '../components/ReviewHoverPreview'
@@ -87,6 +88,7 @@ interface ReviewItem {
 
 export function AiTaggerPage() {
   const { showToast } = useToast()
+  const confirm = useConfirm()
 
   // Model state
   const [models, setModels] = useState<ModelInfo[]>([])
@@ -2922,7 +2924,12 @@ export function AiTaggerPage() {
                 </button>
                 <button
                   onClick={async () => {
-                    if (!window.confirm('Re-scan every previously-scanned video that is NOT already approved? Items the user approved are skipped to preserve manual review work.')) return
+                    const ok = await confirm({
+                      title: 'Re-scan every previously-scanned video?',
+                      body: 'Items you already approved are skipped to preserve manual review work. Only pending/rejected items get re-queued.',
+                      confirmLabel: 'Re-queue all',
+                    })
+                    if (!ok) return
                     try {
                       const result = await window.api.ai.requeueAll()
                       const skippedNote = result.skippedApproved > 0
@@ -2942,7 +2949,13 @@ export function AiTaggerPage() {
                 </button>
                 <button
                   onClick={async () => {
-                    if (!window.confirm('WIPE all reviews and re-scan everything from scratch — including items you already approved? This deletes all your manual approval work and runs the full pipeline on every video. Only use this after major model/prompt upgrades.')) return
+                    const ok = await confirm({
+                      title: 'Wipe ALL reviews and re-scan from scratch?',
+                      body: 'This deletes every manual approval and runs the full pipeline on every video — including items you already curated. Only use this after major model or prompt upgrades.',
+                      confirmLabel: 'Wipe + re-scan all',
+                      danger: true,
+                    })
+                    if (!ok) return
                     try {
                       const result = await window.api.ai.requeueAll({ includeApproved: true })
                       showToast('warning', `Wiped reviews — re-queued ${result.requeued} items including approved`)
@@ -4874,7 +4887,12 @@ export function AiTaggerPage() {
               </p>
               <button
                 onClick={async () => {
-                  if (!confirm('This will rename files with messy names to cleaner versions. Proceed?')) return
+                  const ok = await confirm({
+                    title: 'Rename files with messy names?',
+                    body: 'Removes random codes, underscores, and gibberish from filenames while preserving meaningful parts. The originals are renamed on disk; sidecars and DB rows update too.',
+                    confirmLabel: 'Rename all',
+                  })
+                  if (!ok) return
                   try {
                     const result = await window.api.media?.optimizeAllNames?.()
                     if (result?.optimized > 0) {

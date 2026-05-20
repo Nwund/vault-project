@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { toFileUrlCached } from '../hooks/usePerformance'
 import { formatDuration } from '../utils/formatters'
+import { useConfirm } from './ConfirmDialog'
 
 interface WatchHistoryItem {
   id: string
@@ -52,6 +53,7 @@ export function WatchHistoryTimeline({
   onPlayMedia,
   className = ''
 }: WatchHistoryTimelineProps) {
+  const confirm = useConfirm()
   const [history, setHistory] = useState<WatchHistoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set())
@@ -144,7 +146,13 @@ export function WatchHistoryTimeline({
   }, [])
 
   const handleClearHistory = useCallback(async () => {
-    if (confirm('Are you sure you want to clear your watch history?')) {
+    const ok = await confirm({
+      title: 'Clear your watch history?',
+      body: 'All view records are deleted. Recommendations and recap stats will reset.',
+      confirmLabel: 'Clear history',
+      danger: true,
+    })
+    if (ok) {
       try {
         await window.api.invoke('watchHistory:clear')
         setHistory([])
@@ -152,7 +160,7 @@ export function WatchHistoryTimeline({
         console.error('Failed to clear history:', e)
       }
     }
-  }, [])
+  }, [confirm])
 
   const formatRelativeDate = (dateStr: string): string => {
     const date = new Date(dateStr)

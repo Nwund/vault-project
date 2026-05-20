@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Volume2, X, Plus, RefreshCw, Sparkles, AlertCircle, Loader2, Mic, Brain, Save, Check, Wand2, Play, Square, FolderOpen, Upload, FileAudio } from 'lucide-react'
 import { useToast } from '../contexts'
+import { useConfirm } from './ConfirmDialog'
 
 // ─── Session preview engine ─────────────────────────────────────────────────
 //
@@ -1467,6 +1468,7 @@ interface SessionLearningEntry {
 }
 
 function BrainEditor() {
+  const confirm = useConfirm()
   const [entries, setEntries] = useState<BrainEntry[] | null>(null)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -1553,9 +1555,15 @@ function BrainEditor() {
         </h3>
         <div className="flex items-center gap-2 flex-wrap">
           <button
-            onClick={() => {
-              if (someExisting && !confirm('Some categories already have content. Overwrite with bibles? Click Cancel to APPEND below your existing text instead.')) {
-                runBootstrap(true)
+            onClick={async () => {
+              if (someExisting) {
+                const overwrite = await confirm({
+                  title: 'Some categories already have content',
+                  body: 'Choose Overwrite to replace your existing text with the bibles. Choose Append to keep your text and add the bibles below it.',
+                  confirmLabel: 'Overwrite',
+                  cancelLabel: 'Append',
+                })
+                runBootstrap(!overwrite)  // overwrite=true → append=false
               } else {
                 runBootstrap(false)
               }

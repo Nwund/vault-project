@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { Clock, Play, Trash2, GripVertical, Shuffle, ChevronUp, X, Plus, Bell } from 'lucide-react'
 import { formatDuration } from '../utils/formatters'
 import { ModalShell } from './ModalShell'
+import { useConfirm } from './ConfirmDialog'
 
 interface WatchLaterItem {
   id: string
@@ -27,6 +28,7 @@ interface WatchLaterPanelProps {
 }
 
 export function WatchLaterPanel({ isOpen, onClose, onPlayMedia, selectedMediaIds = [] }: WatchLaterPanelProps) {
+  const confirm = useConfirm()
   const [queue, setQueue] = useState<WatchLaterItem[]>([])
   const [stats, setStats] = useState<{ totalItems: number; totalDuration: number } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -92,7 +94,13 @@ export function WatchLaterPanel({ isOpen, onClose, onPlayMedia, selectedMediaIds
   }
 
   const handleClearQueue = async () => {
-    if (confirm('Clear entire watch later queue?')) {
+    const ok = await confirm({
+      title: 'Clear entire watch later queue?',
+      body: `Removes ${queue.length} item${queue.length === 1 ? '' : 's'} from the queue. The media files are not deleted.`,
+      confirmLabel: 'Clear queue',
+      danger: true,
+    })
+    if (ok) {
       try {
         await window.api.invoke('watchLater:clearQueue')
         loadQueue()

@@ -11,6 +11,7 @@
 // poller show up without a refresh.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useConfirm } from './ConfirmDialog'
 import {
   Bell, Plus, Trash2, RefreshCw, Pause, Play, Save, X as XIcon,
   AlertTriangle, Clock,
@@ -63,6 +64,7 @@ function relTime(ts: number | null): string {
 }
 
 export function SubscriptionsPanel({ availableSources, onSaveToLibrary, className }: Props) {
+  const confirm = useConfirm()
   const [subs, setSubs] = useState<Subscription[]>([])
   const [inbox, setInbox] = useState<InboxItem[]>([])
   const [creating, setCreating] = useState(false)
@@ -126,11 +128,17 @@ export function SubscriptionsPanel({ availableSources, onSaveToLibrary, classNam
   }, [refresh])
 
   const deleteSub = useCallback(async (id: string) => {
-    if (!confirm('Delete this subscription and all its inbox items?')) return
+    const ok = await confirm({
+      title: 'Delete this subscription?',
+      body: 'Also deletes all its inbox items.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!ok) return
     const api: any = (window as any).api
     await api.subscriptionsDelete(id)
     await refresh()
-  }, [refresh])
+  }, [confirm, refresh])
 
   const dismiss = useCallback(async (inboxId: string) => {
     const api: any = (window as any).api

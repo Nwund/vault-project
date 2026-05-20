@@ -20,6 +20,7 @@ import {
   Users, Loader2, Edit2, Trash2, Check, X, Search, GitMerge, User, Link2, Plus,
 } from 'lucide-react'
 import { useToast } from '../contexts'
+import { useConfirm } from '../components/ConfirmDialog'
 import { cn } from '../utils/cn'
 import { toFileUrlCached } from '../hooks/usePerformance'
 import { MultiAngleViewer } from '../components/MultiAngleViewer'
@@ -46,6 +47,7 @@ interface ClusterMedia {
 
 export default function PerformersPage() {
   const { showToast } = useToast()
+  const confirm = useConfirm()
   const [tab, setTab] = useState<Tab>('faces')
   const [clusters, setClusters] = useState<Cluster[]>([])
   const [loading, setLoading] = useState(true)
@@ -170,7 +172,13 @@ export default function PerformersPage() {
   }
 
   const handleDelete = async (clusterId: string) => {
-    if (!confirm('Delete this cluster? Embeddings are removed but media isn\'t affected.')) return
+    const ok = await confirm({
+      title: 'Delete this performer cluster?',
+      body: "All face embeddings in this cluster are removed. The underlying media files aren't affected.",
+      confirmLabel: 'Delete cluster',
+      danger: true,
+    })
+    if (!ok) return
     try {
       await window.api.ai.faceClusterDelete?.(clusterId)
       showToast('success', 'Cluster deleted')

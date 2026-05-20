@@ -31,6 +31,7 @@ import {
 import type { VaultSettings } from '../types'
 import { formatBytes } from '../utils/formatters'
 import { useLocalStorage } from '../hooks/useLocalStorage'
+import { useConfirm } from '../components/ConfirmDialog'
 import { useToast } from '../contexts'
 import { cn } from '../utils/cn'
 import { Btn, TopBar, ToggleSwitch } from '../components/ui'
@@ -147,6 +148,7 @@ export function SettingsPage(props: {
 }) {
   const s = props.settings
   const { showToast } = useToast()
+  const confirm = useConfirm()
   type SettingsTab = 'library' | 'appearance' | 'effects' | 'playback' | 'sound' | 'data' | 'services' | 'xyrene'
   const [activeTab, setActiveTab] = useState<SettingsTab>('library')
   const [isPremium, setIsPremium] = useState(false)
@@ -513,7 +515,15 @@ export function SettingsPage(props: {
                     <Btn
                       tone="danger"
                       onClick={async () => {
-                        if (!confirm('Clear all cached thumbnails? They will be regenerated on next scan.')) return
+                        {
+                          const ok = await confirm({
+                            title: 'Clear all cached thumbnails?',
+                            body: 'Thumbnails will be regenerated automatically on the next scan. Frees disk space immediately.',
+                            confirmLabel: 'Clear cache',
+                            danger: true,
+                          })
+                          if (!ok) return
+                        }
                         try {
                           const result = await window.api.cache?.clearThumbnails?.()
                           if (result?.success) {
@@ -672,7 +682,13 @@ export function SettingsPage(props: {
                 <div className="text-sm font-semibold">Appearance</div>
                 <button
                   onClick={async () => {
-                    if (confirm('Reset all Appearance settings to defaults?')) {
+                    const ok = await confirm({
+                      title: 'Reset Appearance settings?',
+                      body: 'All theme, color, and chrome customizations revert to defaults.',
+                      confirmLabel: 'Reset',
+                      danger: true,
+                    })
+                    if (ok) {
                       try {
                         const next = await window.api.settings.resetSection?.('appearance')
                         if (next) {
@@ -1908,7 +1924,13 @@ export function SettingsPage(props: {
                 <div className="text-sm font-semibold">Playback Settings</div>
                 <button
                   onClick={async () => {
-                    if (confirm('Reset all Playback settings to defaults?')) {
+                    const ok = await confirm({
+                      title: 'Reset Playback settings?',
+                      body: 'Volume, autoplay, loop, picture-in-picture, and other player defaults revert.',
+                      confirmLabel: 'Reset',
+                      danger: true,
+                    })
+                    if (ok) {
                       try {
                         const next = await window.api.settings.resetSection?.('playback')
                         if (next) {
@@ -2062,7 +2084,13 @@ export function SettingsPage(props: {
                   <div className="text-sm font-semibold">Sound Settings</div>
                   <button
                     onClick={async () => {
-                      if (confirm('Reset all Sound settings to defaults?')) {
+                      const ok = await confirm({
+                        title: 'Reset Sound settings?',
+                        body: 'All sound engine, soundpack, and volume preferences revert to defaults.',
+                        confirmLabel: 'Reset',
+                        danger: true,
+                      })
+                      if (ok) {
                         try {
                           const next = await window.api.settings.resetSection?.('sound')
                           if (next) {
@@ -2451,7 +2479,13 @@ export function SettingsPage(props: {
                             className="text-xs px-2 py-1"
                             tone="danger"
                             onClick={async () => {
-                              if (confirm(`Delete profile "${profile.name}"?`)) {
+                              const ok = await confirm({
+                                title: `Delete profile "${profile.name}"?`,
+                                body: 'The profile and its settings snapshot are removed. Active profile resets to default.',
+                                confirmLabel: 'Delete profile',
+                                danger: true,
+                              })
+                              if (ok) {
                                 try {
                                   await window.api.profiles?.delete?.(profile.id)
                                   if (activeProfileId === profile.id) {
