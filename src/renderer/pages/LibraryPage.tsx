@@ -4060,7 +4060,13 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showViewModeSelector && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowViewModeSelector(false)}>
           <div className="max-w-md w-full" onClick={e => e.stopPropagation()}>
-            <ViewModeSelector mode="grid" config={{ columns: 4, showInfo: true, showThumbnails: true, cardSize: 'medium', aspectRatio: '16:9' }} onChange={(mode, config) => { setLayout(mode === 'masonry' ? 'wall' : 'grid'); showToast('success', `View: ${mode}`); setShowViewModeSelector(false) }} className="m-4" />
+            <ViewModeSelector mode="grid" config={{ columns: 4, showInfo: true, showThumbnails: true, cardSize: 'medium', aspectRatio: '16:9' }} onChange={(mode, _config) => {
+              const next = mode === 'masonry' ? 'wall' : 'grid'
+              setLayout(next)
+              try { localStorage.setItem('vault.library.layout', next) } catch { /* quota */ }
+              showToast('success', `View: ${mode}`)
+              setShowViewModeSelector(false)
+            }} className="m-4" />
           </div>
         </div>
       )}
