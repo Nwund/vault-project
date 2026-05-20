@@ -1574,6 +1574,7 @@ const api = {
     chooseFile: (opts?: { filters?: any[]; title?: string }) => invoke('fs:chooseFile', opts),
     chooseFolder: (opts?: { title?: string }) => invoke('fs:chooseFolder', opts),
     saveFile: (opts?: { defaultPath?: string; filters?: any[]; title?: string }) => invoke<string | null>('fs:saveFile', opts),
+    writeText: (absPath: string, content: string) => invoke<{ ok: boolean; error?: string }>('fs:writeText', absPath, content),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

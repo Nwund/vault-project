@@ -3836,7 +3836,11 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showColorGrading && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowColorGrading(false)}>
           <div className="max-w-xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
-            <ColorGrading settings={colorGradingStyle || { brightness: 100, contrast: 100, saturation: 100, hue: 0, temperature: 0, tint: 0, shadows: 0, highlights: 0, vibrance: 0 }} onChange={(s) => { setColorGradingStyle(s); showToast('success', 'Color grading applied') }} className="m-4" />
+            <ColorGrading settings={colorGradingStyle || { brightness: 100, contrast: 100, saturation: 100, hue: 0, temperature: 0, tint: 0, shadows: 0, highlights: 0, vibrance: 0 }} onChange={(s) => {
+              setColorGradingStyle(s)
+              // Persist per-media so re-opening the media gets the same grade.
+              try { localStorage.setItem(`vault.effects.colorGrading.${activeToolMedia.id}`, JSON.stringify(s)) } catch { /* quota */ }
+            }} className="m-4" />
           </div>
         </div>
       )}
@@ -3852,7 +3856,33 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showSubtitleEditor && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowSubtitleEditor(false)}>
           <div className="max-w-3xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
-            <SubtitleEditor currentTime={0} duration={activeToolMedia.durationSec || 0} subtitles={[]} onChange={(subs) => { showToast('success', `Updated ${subs.length} subtitles`) }} onSeek={(time: number) => showToast('info', `Seek to ${formatDuration(time)}`)} className="m-4" />
+            <SubtitleEditor currentTime={0} duration={activeToolMedia.durationSec || 0} subtitles={[]} onChange={async (subs) => {
+              // Serialize to SRT and write a sidecar next to the media
+              // file. Players that consume external subs (FloatingVideoPlayer
+              // libass-wasm path) will pick this up automatically.
+              const srt = subs.map((s, i) => {
+                const fmt = (t: number) => {
+                  const ms = Math.floor((t % 1) * 1000)
+                  const total = Math.floor(t)
+                  const h = String(Math.floor(total / 3600)).padStart(2, '0')
+                  const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0')
+                  const s = String(total % 60).padStart(2, '0')
+                  return `${h}:${m}:${s},${String(ms).padStart(3, '0')}`
+                }
+                return `${i + 1}\n${fmt(s.start)} --> ${fmt(s.end)}\n${s.text}\n`
+              }).join('\n')
+              const srtPath = activeToolMedia.path.replace(/\.[^./]+$/, '.srt')
+              try {
+                const res = await window.api.fs.writeText?.(srtPath, srt)
+                if (res?.ok !== false) showToast('success', `Saved ${subs.length} subtitles to .srt`)
+                else showToast('error', res?.error ?? 'Subtitle write failed')
+              } catch (err: any) {
+                showToast('error', err?.message ?? 'Subtitle write failed')
+              }
+            }} onSeek={(time: number) => {
+              // Seek the active floating player if one is showing this media.
+              window.dispatchEvent(new CustomEvent('vault:seekActivePlayer', { detail: { mediaId: activeToolMedia.id, time } }))
+            }} className="m-4" />
           </div>
         </div>
       )}
@@ -3868,7 +3898,11 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showVideoFilters && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowVideoFilters(false)}>
           <div className="max-w-xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
-            <VideoFilters onFilterChange={(filter: string) => { setVideoFiltersStyle(filter); showToast('success', 'Video filter applied') }} currentFilter={videoFiltersStyle || 'none'} className="m-4" />
+            <VideoFilters onFilterChange={(filter: string) => {
+              setVideoFiltersStyle(filter)
+              // Persist per-media so re-opening retains the filter.
+              try { localStorage.setItem(`vault.effects.videoFilter.${activeToolMedia.id}`, filter) } catch { /* quota */ }
+            }} currentFilter={videoFiltersStyle || 'none'} className="m-4" />
           </div>
         </div>
       )}
@@ -3898,7 +3932,13 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {showSmartCrop && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowSmartCrop(false)}>
           <div className="max-w-2xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
-            <SmartCrop imageSrc={toFileUrl(activeToolMedia.thumbPath || activeToolMedia.path)} onCrop={(region, aspect) => { showToast('success', `Crop applied: ${Math.round(region.width)}x${Math.round(region.height)} (${aspect})`); setShowSmartCrop(false) }} className="m-4" />
+            <SmartCrop imageSrc={toFileUrl(activeToolMedia.thumbPath || activeToolMedia.path)} onCrop={(region, aspect) => {
+              // Persist crop preference per-media so the player can apply
+              // it the next time this media is opened.
+              try { localStorage.setItem(`vault.effects.crop.${activeToolMedia.id}`, JSON.stringify({ region, aspect })) } catch { /* quota */ }
+              showToast('success', `Crop saved: ${Math.round(region.width)}×${Math.round(region.height)} (${aspect})`)
+              setShowSmartCrop(false)
+            }} className="m-4" />
           </div>
         </div>
       )}

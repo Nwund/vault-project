@@ -3694,6 +3694,18 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // Write a UTF-8 text file at the given absolute path. Used by the
+  // subtitle editor in the Library tool dropdown to save .srt sidecars
+  // next to the source media.
+  ipcMain.handle('fs:writeText', async (_ev, absPath: string, content: string) => {
+    try {
+      fs.writeFileSync(absPath, content, 'utf8')
+      return { ok: true }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
   ipcMain.handle('fs:tempDir', async () => {
     const os = await import('node:os')
     return os.tmpdir()
