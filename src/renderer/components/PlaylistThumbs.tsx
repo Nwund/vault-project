@@ -7,6 +7,7 @@
 // shows a spinner while loading + a fallback when missing.
 
 import { useState, useEffect } from 'react'
+import { Film } from 'lucide-react'
 import { toFileUrlCached } from '../hooks/usePerformance'
 
 // MediaRow is structurally shared with App.tsx; the loose shape here is
@@ -98,7 +99,7 @@ export function PlaylistGridThumb(props: { item: any }) {
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
         />
       ) : error ? (
-        <div className="w-full h-full flex items-center justify-center text-2xl opacity-30">🎬</div>
+        <div className="w-full h-full flex items-center justify-center"><Film size={24} className="text-white/20" /></div>
       ) : (
         <div className="w-full h-full flex items-center justify-center">
           <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />

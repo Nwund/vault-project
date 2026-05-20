@@ -5,14 +5,18 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Activity,
   ArrowUp,
   ChevronDown,
   Clock,
   Download,
   Edit2,
+  Flame,
   GripVertical,
+  Heart,
   ListMusic,
   Loader2,
+  Moon,
   Play,
   Plus,
   RefreshCw,
@@ -36,16 +40,6 @@ import { FloatingVideoPlayer } from '../components/FloatingVideoPlayer'
 // ═══════════════════════════════════════════════════════════════════════════
 // PLAYLISTS PAGE
 // ═══════════════════════════════════════════════════════════════════════════
-
-type PlaylistMood = 'chill' | 'intense' | 'sensual' | 'quick' | 'marathon' | null
-
-const MOOD_CONFIG: Record<Exclude<PlaylistMood, null>, { name: string; icon: string; color: string }> = {
-  chill: { name: 'Chill', icon: '🌙', color: '#60a5fa' },
-  intense: { name: 'Intense', icon: '🔥', color: '#ef4444' },
-  sensual: { name: 'Sensual', icon: '💜', color: '#a855f7' },
-  quick: { name: 'Quick', icon: '⚡', color: '#fbbf24' },
-  marathon: { name: 'Marathon', icon: '🏃', color: '#22c55e' }
-}
 
 type PlaylistSortBy = 'manual' | 'name' | 'duration' | 'added' | 'random'
 
@@ -110,11 +104,11 @@ export function PlaylistsPage() {
   // Session Templates
   const [showTemplates, setShowTemplates] = useState(false)
   const SESSION_TEMPLATES = [
-    { id: 'quick', name: 'Quick Session', icon: '⚡', duration: 10, intensity: 'medium' as const, description: '10 min warm-up' },
-    { id: 'chill', name: 'Chill Mode', icon: '🌙', duration: 30, intensity: 'chill' as const, description: 'Relaxed 30 min' },
-    { id: 'intense', name: 'Intense', icon: '🔥', duration: 45, intensity: 'intense' as const, description: 'High energy 45 min' },
-    { id: 'marathon', name: 'Marathon', icon: '🏃', duration: 90, intensity: 'medium' as const, description: 'Extended 90 min' },
-    { id: 'edging', name: 'Edge Session', icon: '💜', duration: 60, intensity: 'intense' as const, description: '60 min edging focus' },
+    { id: 'quick', name: 'Quick Session', Icon: Zap, duration: 10, intensity: 'medium' as const, description: '10 min warm-up' },
+    { id: 'chill', name: 'Chill Mode', Icon: Moon, duration: 30, intensity: 'chill' as const, description: 'Relaxed 30 min' },
+    { id: 'intense', name: 'Intense', Icon: Flame, duration: 45, intensity: 'intense' as const, description: 'High energy 45 min' },
+    { id: 'marathon', name: 'Marathon', Icon: Activity, duration: 90, intensity: 'medium' as const, description: 'Extended 90 min' },
+    { id: 'edging', name: 'Edge Session', Icon: Heart, duration: 60, intensity: 'intense' as const, description: '60 min edging focus' },
   ]
 
   const refresh = async () => {
@@ -920,7 +914,7 @@ export function PlaylistsPage() {
                       onClick={() => createFromTemplate(t)}
                       className="p-2 rounded-lg bg-black/30 border border-[var(--border)] hover:border-white/20 transition text-left"
                     >
-                      <div className="text-lg mb-1">{t.icon}</div>
+                      <t.Icon size={18} className="mb-1 text-[var(--primary)]" />
                       <div className="text-xs font-medium">{t.name}</div>
                       <div className="text-[10px] text-[var(--muted)]">{t.description}</div>
                     </button>
@@ -1229,7 +1223,7 @@ export function PlaylistsPage() {
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center p-6">
-              <div className="text-6xl mb-4 opacity-30">🎬</div>
+              <ListMusic size={64} className="mb-4 text-white/15" />
               <div className="text-lg font-medium text-[var(--muted)]">Select a session</div>
               <div className="text-sm text-[var(--text-subtle)] mt-2 max-w-xs">
                 Choose a playlist from the sidebar or use a quick-start template
@@ -1385,8 +1379,8 @@ export function PlaylistsPage() {
                           : 'border-[var(--border)] hover:border-white/20'
                       )}
                     >
-                      <div className="text-lg mb-1">
-                        {intensity === 'chill' ? '🌙' : intensity === 'intense' ? '🔥' : '💜'}
+                      <div className="flex justify-center mb-1">
+                        {intensity === 'chill' ? <Moon size={18} /> : intensity === 'intense' ? <Flame size={18} /> : <Heart size={18} />}
                       </div>
                       <div className="text-xs font-medium capitalize">{intensity}</div>
                     </button>
