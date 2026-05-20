@@ -1800,6 +1800,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       if (thumbPath) {
         // Update DB with thumb path
         db.raw.prepare('UPDATE media SET thumbPath=? WHERE id=?').run(thumbPath, mediaId)
+        broadcast('vault:changed')
       }
       return thumbPath
     } catch (err: any) {
@@ -2074,6 +2075,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('media:trash:purgeOne', async (_ev, trashId: string) => {
     try {
       const r = db.raw.prepare(`DELETE FROM media_trash WHERE id = ?`).run(trashId)
+      broadcast('vault:changed')
       return { ok: true, removed: r.changes }
     } catch (err: any) {
       return { ok: false, error: err?.message ?? String(err) }
@@ -2084,6 +2086,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('media:trash:purgeAll', async () => {
     try {
       const r = db.raw.prepare(`DELETE FROM media_trash`).run()
+      broadcast('vault:changed')
       return { ok: true, removed: r.changes }
     } catch (err: any) {
       return { ok: false, error: err?.message ?? String(err) }
