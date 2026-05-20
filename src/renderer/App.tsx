@@ -93,7 +93,7 @@ import { DuplicatesModal } from './components/DuplicatesModal'
 import { HomeDashboard } from './components/HomeDashboard'
 import { TVRemotePanel } from './components/TVRemotePanel'
 import { PmvEditorPage } from './components/PmvEditor'
-// v2.3.0 Components - Professional video editing and media management
+// Library tool components - Professional video editing and media management
 import { QRCodeSVG } from 'qrcode.react'
 import {
   Library,
@@ -2944,7 +2944,7 @@ export default function App() {
                   { id: 'urlDownloader', icon: Download, label: 'Download from URL', shortcut: 'D', action: () => { window.dispatchEvent(new CustomEvent('vault-open-url-downloader')); setShowCommandPalette(false) } },
                   { id: 'fullscreen', icon: Maximize2, label: 'Toggle Fullscreen', shortcut: 'F11', action: () => { window.api.window?.toggleFullscreen?.(); setShowCommandPalette(false) } },
                   { id: 'divider3', divider: true },
-                  // v2.3.0 Tools - Use custom events to communicate with LibraryPage component
+                  // Library tools - Use custom events to communicate with LibraryPage component
                   { id: 'mediaTimeline', icon: Clock, label: 'Open Media Timeline', action: () => { window.dispatchEvent(new CustomEvent('vault-open-media-timeline')); setShowCommandPalette(false) } },
                   { id: 'watchProgress', icon: Play, label: 'Open Watch Progress', action: () => { window.dispatchEvent(new CustomEvent('vault-open-watch-progress')); setShowCommandPalette(false) } },
                   { id: 'mediaQueue', icon: ListMusic, label: 'Open Media Queue', action: () => { window.dispatchEvent(new CustomEvent('vault-open-media-queue')); setShowCommandPalette(false) } },

@@ -18,7 +18,7 @@ function cn(...xs: Array<string | false | null | undefined>): string {
 export function AboutPage() {
   const [tier, setTier] = useState<string>('free')
   const [vaultStats, setVaultStats] = useState<any>(null)
-  const [appVersion, setAppVersion] = useState('2.4.0')
+  const [appVersion, setAppVersion] = useState('2.7.0')
 
   useEffect(() => {
     window.api.license?.getTier?.().then((t: any) => setTier(t || 'free'))

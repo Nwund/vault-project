@@ -110,7 +110,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [showRelatedPanel, setShowRelatedPanel] = useState(false)
   const [showNotesPanel, setShowNotesPanel] = useState(false)
   const [showBookmarksPanel, setShowBookmarksPanel] = useState(false)
-  // v2.3.0 Tool panels
+  // Library tool panels
   const [showColorGrading, setShowColorGrading] = useState(false)
   const [showVideoFilters, setShowVideoFilters] = useState(false)
   const [showAudioVisualizer, setShowAudioVisualizer] = useState(false)

@@ -1417,7 +1417,7 @@ async function searchBluesky(
   }
   const headers: Record<string, string> = {
     Accept: 'application/json',
-    'User-Agent': 'vault/2.6.0',
+    'User-Agent': 'vault/2.7.0',
   }
   if (bearer) headers.Authorization = `Bearer ${bearer}`
 

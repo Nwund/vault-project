@@ -59,7 +59,7 @@ export function ModalShell({
   useEscapeClose(open, onClose)
 
   return (
-    <AnimatePresence>
+    <AnimatePresence mode="wait">
       {open && (
         <motion.div
           {...FADE_SLIDE}

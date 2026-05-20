@@ -104,7 +104,7 @@ const HOTKEY_CATEGORIES: HotkeyCategory[] = [
     name: 'View',
     icon: Maximize,
     shortcuts: [
-      { keys: ['F11', 'Shift+F'], description: 'Toggle fullscreen' },
+      { keys: ['F11'], description: 'Toggle fullscreen' },
       { keys: ['Ctrl+F', '/'], description: 'Focus search' },
       { keys: ['Ctrl+K'], description: 'Open command palette' },
       { keys: ['Ctrl+,'], description: 'Open settings' },

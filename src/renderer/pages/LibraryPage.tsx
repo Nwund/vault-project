@@ -367,7 +367,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
   const [showAnalytics, setShowAnalytics] = useState(false) // Personal analytics dashboard
   const [showTVRemotePanel, setShowTVRemotePanel] = useState(false) // TV Remote control panel
   const [showUrlDownloaderPanel, setShowUrlDownloaderPanel] = useState(false) // URL Downloader panel
-  // v2.3.0 Panel states
+  // Library tool panel states
   const [showSceneDetector, setShowSceneDetector] = useState(false)
   const [showVideoChapters, setShowVideoChapters] = useState(false)
   const [showColorGrading, setShowColorGrading] = useState(false)
@@ -589,7 +589,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
     const handleOpenDuplicates = () => setShowDuplicatesModal(true)
     const handleOpenTVRemote = () => setShowTVRemotePanel(true)
     const handleOpenUrlDownloader = () => setShowUrlDownloaderPanel(true)
-    // v2.3.0 Tool handlers
+    // Library tool handlers
     const handleOpenMediaTimeline = () => setShowMediaTimeline(true)
     const handleOpenWatchProgress = () => setShowWatchProgress(true)
     const handleOpenMediaQueue = () => setShowMediaQueue(true)
@@ -608,7 +608,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
     window.addEventListener('vault-open-duplicates', handleOpenDuplicates)
     window.addEventListener('vault-open-tv-remote', handleOpenTVRemote)
     window.addEventListener('vault-open-url-downloader', handleOpenUrlDownloader)
-    // v2.3.0 Tool event listeners
+    // Library tool event listeners
     window.addEventListener('vault-open-media-timeline', handleOpenMediaTimeline)
     window.addEventListener('vault-open-watch-progress', handleOpenWatchProgress)
     window.addEventListener('vault-open-media-queue', handleOpenMediaQueue)
@@ -631,7 +631,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       window.removeEventListener('vault-open-duplicates', handleOpenDuplicates)
       window.removeEventListener('vault-open-tv-remote', handleOpenTVRemote)
       window.removeEventListener('vault-open-url-downloader', handleOpenUrlDownloader)
-      // v2.3.0 Tool cleanup
+      // Library tool cleanup
       window.removeEventListener('vault-open-media-timeline', handleOpenMediaTimeline)
       window.removeEventListener('vault-open-watch-progress', handleOpenWatchProgress)
       window.removeEventListener('vault-open-media-queue', handleOpenMediaQueue)
@@ -3816,7 +3816,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
         onClose={() => setShowUrlDownloaderPanel(false)}
       />
 
-      {/* v2.3.0 Tool Panels */}
+      {/* Library tool panels */}
       {showSceneDetector && activeToolMedia && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setShowSceneDetector(false)}>
           <div className="max-w-2xl w-full max-h-safe overflow-auto pb-safe" onClick={e => e.stopPropagation()}>
