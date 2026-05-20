@@ -1038,10 +1038,18 @@ export function GoonWallPage(props: {
 
       {/* Empty state */}
       {!loading && !error && tiles.length === 0 && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <div className="text-6xl mb-4 opacity-30">🎬</div>
-          <div className="text-lg font-medium text-white/60">No videos found</div>
-          <div className="text-sm text-white/40 mt-2">Add some videos to your library first</div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-8 text-center">
+          <Film size={64} className="text-white/20" />
+          <div className="text-lg font-medium text-white/70">No videos to wall yet</div>
+          <div className="text-sm text-white/50 max-w-md">
+            Add videos to your Library and they'll appear here for the multi-tile shuffle.
+          </div>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'library' }))}
+            className="mt-3 flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[var(--primary)] hover:bg-[var(--primary)]/80 text-white text-sm font-medium transition shadow-lg shadow-[var(--primary)]/30"
+          >
+            Open Library
+          </button>
         </div>
       )}
 

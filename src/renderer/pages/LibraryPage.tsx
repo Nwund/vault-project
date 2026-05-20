@@ -33,6 +33,7 @@ import {
   Image as ImageIcon,
   Layers,
   LayoutGrid,
+  Library,
   ListMusic,
   ListVideo,
   MessageSquare,
@@ -2889,6 +2890,41 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                     </div>
                   </div>
                 ))
+              )}
+              {/* Empty state — loaded but zero results. Two cases:
+                    - Library actually has zero media → suggest scan/import
+                    - Search/filter returned no matches → suggest clearing */}
+              {!isLoading && sortedMedia.length === 0 && (
+                <div className="col-span-full row-span-full flex flex-col items-center justify-center gap-3 py-20 text-center">
+                  <Library size={64} className="text-white/15" />
+                  {(debouncedQuery || activeTags.length > 0 || colorFilterIds || typeFilter !== 'all') ? (
+                    <>
+                      <div className="text-lg font-medium text-white/70">No matches</div>
+                      <div className="text-sm text-white/50 max-w-md">
+                        Your filters returned 0 results. Try widening the search or clearing tags.
+                      </div>
+                      <button
+                        onClick={() => { setQuery(''); setActiveTags([]); setColorFilterIds(null); setTypeFilter('all') }}
+                        className="mt-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm text-white/80 transition"
+                      >
+                        Clear all filters
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-lg font-medium text-white/70">Your library is empty</div>
+                      <div className="text-sm text-white/50 max-w-md">
+                        Add a media folder in Settings → Library, then rescan to import.
+                      </div>
+                      <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'settings' }))}
+                        className="mt-2 px-5 py-2.5 rounded-lg bg-[var(--primary)] hover:bg-[var(--primary)]/80 text-white text-sm font-medium transition shadow-lg shadow-[var(--primary)]/30"
+                      >
+                        Open Settings
+                      </button>
+                    </>
+                  )}
+                </div>
               )}
               {/* When pageSize !== -1, the server already returned the windowed
                   page (limit + offset applied at media:search). Don't slice
