@@ -34,6 +34,7 @@ import { cn } from '../utils/cn'
 import { extractItems } from '../utils/api'
 import { toFileUrlCached } from '../hooks/usePerformance'
 import GifMakerModal from '../components/GifMakerModal'
+import { expandCaptionTemplate, KNOWN_CAPTION_VARIABLES, type CaptionContext } from '../utils/caption-template'
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -249,6 +250,44 @@ export function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
   // button is now the canonical entry point for GIF creation.
   const [activeTab, setActiveTab] = useState<'editor' | 'captioned' | 'templates' | 'gifmaker'>('editor')
   const [captionModeEnabled, setCaptionModeEnabled] = useState(settings?.captions?.enabled ?? false)
+  // Tag list for the currently-selected media — fetched on selection
+  // change so caption-template variables like {tag1}, {tags}, and
+  // {performer} (derived from `performer:Name` tags) can resolve.
+  const [selectedMediaTags, setSelectedMediaTags] = useState<string[]>([])
+  useEffect(() => {
+    if (!selectedMedia?.id) { setSelectedMediaTags([]); return }
+    let cancelled = false
+    void (async () => {
+      try {
+        const tags: any = await window.api.tags.listForMedia(selectedMedia.id)
+        const names: string[] = Array.isArray(tags)
+          ? tags.map((t: any) => typeof t === 'string' ? t : t?.name).filter(Boolean)
+          : []
+        if (!cancelled) setSelectedMediaTags(names)
+      } catch {
+        if (!cancelled) setSelectedMediaTags([])
+      }
+    })()
+    return () => { cancelled = true }
+  }, [selectedMedia?.id])
+  // Context used to expand {performer}, {duration}, {tags}, etc. at
+  // render time. Performers are extracted from tags prefixed with
+  // `performer:` (the canonical convention).
+  const captionCtx = useMemo<CaptionContext>(() => {
+    const performers = selectedMediaTags
+      .filter((t) => t.toLowerCase().startsWith('performer:'))
+      .map((t) => t.slice('performer:'.length).trim())
+    return {
+      filename: selectedMedia?.filename ?? null,
+      durationSec: selectedMedia?.durationSec ?? null,
+      tags: selectedMediaTags.filter((t) => !t.includes(':')),
+      performers,
+    }
+  }, [selectedMedia, selectedMediaTags])
+  // Memoize the expanded preview strings so re-renders of unrelated
+  // panel sections don't re-walk the template.
+  const expandedTopText = useMemo(() => expandCaptionTemplate(topText, captionCtx), [topText, captionCtx])
+  const expandedBottomText = useMemo(() => expandCaptionTemplate(bottomText, captionCtx), [bottomText, captionCtx])
 
   // New filter states
   const [activeFilters, setActiveFilters] = useState<ImageFilter[]>([])
@@ -1206,7 +1245,7 @@ export function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                               textTransform: currentPreset?.textTransform || 'uppercase',
                             }}
                           >
-                            {topText}
+                            {expandedTopText}
                           </div>
                         )}
                       </div>
@@ -1379,7 +1418,10 @@ export function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                         </div>
                       )}
 
-                      {/* Caption overlay preview (when bars are off) - DRAGGABLE */}
+                      {/* Caption overlay preview (when bars are off) - DRAGGABLE.
+                          Renders the template-expanded text so users see
+                          variables like {performer} resolved in the live
+                          preview. The raw template still sits in the textarea. */}
                       {!showCaptionBar && !cropMode && topText && (
                         <div
                           onMouseDown={handleTextDragStart('top')}
@@ -1405,7 +1447,7 @@ export function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                           }}
                           title="Drag to reposition"
                         >
-                          {topText}
+                          {expandedTopText}
                         </div>
                       )}
                       {!showCaptionBar && !cropMode && bottomText && (
@@ -1433,7 +1475,7 @@ export function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                           }}
                           title="Drag to reposition"
                         >
-                          {bottomText}
+                          {expandedBottomText}
                         </div>
                       )}
                       {/* Media type badge */}
@@ -1463,7 +1505,7 @@ export function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                               textTransform: currentPreset?.textTransform || 'uppercase',
                             }}
                           >
-                            {bottomText}
+                            {expandedBottomText}
                           </div>
                         )}
                       </div>
@@ -1919,6 +1961,41 @@ export function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                         placeholder="Bottom caption..."
                         className="w-full px-3 py-2 rounded-xl bg-black/30 border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)]"
                       />
+                    </div>
+                    {/* Variable hints — wrap each as a click-to-insert
+                        chip so users can build templates without
+                        remembering syntax. Targets the last-focused
+                        input via document.activeElement. */}
+                    <div className="text-[10px] text-[var(--muted)] leading-relaxed">
+                      <span className="font-medium text-white/70">Variables:</span>{' '}
+                      {KNOWN_CAPTION_VARIABLES.map((v) => (
+                        <button
+                          key={v}
+                          onClick={() => {
+                            const token = `{${v}}`
+                            const ae = document.activeElement as HTMLInputElement | null
+                            if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) {
+                              const start = ae.selectionStart ?? ae.value.length
+                              const end = ae.selectionEnd ?? ae.value.length
+                              const next = ae.value.slice(0, start) + token + ae.value.slice(end)
+                              if (ae === document.activeElement && (ae as any).setRangeText) {
+                                (ae as any).setRangeText(token, start, end, 'end')
+                                ae.dispatchEvent(new Event('input', { bubbles: true }))
+                              } else {
+                                ae.value = next
+                                ae.dispatchEvent(new Event('input', { bubbles: true }))
+                              }
+                              return
+                            }
+                            // Fallback: append to top text
+                            setTopText((t) => (t + ' ' + token).trim())
+                          }}
+                          className="inline-block mr-1 mb-1 px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 transition text-[var(--primary)]/90 font-mono"
+                          title={`Insert {${v}}`}
+                        >
+                          {`{${v}}`}
+                        </button>
+                      ))}
                     </div>
                     <div>
                       <label className="text-xs text-[var(--muted)] block mb-1">Text Style</label>
