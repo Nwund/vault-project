@@ -119,6 +119,11 @@ export function CockHeroOverlay({ videoRef, beatmap, active, audioClick = false 
 
   if (!active || !beatmap) return null
 
+  // Most recent accent-hit timestamp drives the screen-edge vignette
+  // pulse. Whenever an accent fires we reset the key so the framer
+  // animation replays from scratch.
+  const lastAccent = hits.filter((h) => h.isAccent).slice(-1)[0]
+
   return (
     <>
       {/* Pulse rings stack — center of player */}
@@ -143,6 +148,25 @@ export function CockHeroOverlay({ videoRef, beatmap, active, audioClick = false 
           ))}
         </AnimatePresence>
       </div>
+
+      {/* Accent-only full-frame vignette pulse — fires on downbeats so
+          the rhythm is felt at the periphery, not just at the player
+          center. Pink, fades quickly to avoid eye fatigue. */}
+      <AnimatePresence>
+        {lastAccent && (
+          <motion.div
+            key={lastAccent.id}
+            initial={{ opacity: 0.7 }}
+            animate={{ opacity: 0 }}
+            transition={{ duration: 0.45, ease: 'easeOut' }}
+            className="absolute inset-0 pointer-events-none z-10"
+            style={{
+              background: `radial-gradient(ellipse at center, transparent 40%, rgba(244,114,182,${0.35 + lastAccent.intensity * 0.4}) 100%)`,
+              mixBlendMode: 'screen',
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Top-left HUD — beatmap stats */}
       <motion.div
