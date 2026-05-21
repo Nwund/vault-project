@@ -3155,6 +3155,10 @@ export interface CumCountdownConfig {
   visualStyle?: 'minimal' | 'dramatic' | 'intense'
   showPulse?: boolean
   playVoice?: boolean
+  /** WebAudio chimes — rising "tick" on each of the last 5 seconds,
+   *  big bell on zero. Default ON. Independent from playVoice so the
+   *  user can have audio cues without TTS narration. */
+  playFinalCue?: boolean
 }
 
 export const CumCountdownOverlay: React.FC<{
@@ -3256,6 +3260,62 @@ export const CumCountdownOverlay: React.FC<{
       window.speechSynthesis.speak(utterance)
     }
   }, [active, timeLeft, config.playVoice])
+
+  // Synthesized cue chime — independent from TTS so the user can have
+  // audio feedback without speech. Rising bell on the last 5 ticks +
+  // big sustained "climax" tone on zero.
+  const lastCuedRef = useRef<number>(-1)
+  const cueCtxRef = useRef<AudioContext | null>(null)
+  useEffect(() => () => {
+    cueCtxRef.current?.close().catch(() => {})
+    cueCtxRef.current = null
+  }, [])
+  useEffect(() => {
+    if (!active || config.playFinalCue === false) return
+    if (timeLeft === lastCuedRef.current) return
+    if (timeLeft > 5) return // only the final stretch
+    lastCuedRef.current = timeLeft
+    // Lazy AudioContext.
+    if (!cueCtxRef.current) {
+      try {
+        const Ctx = window.AudioContext || (window as any).webkitAudioContext
+        cueCtxRef.current = new Ctx()
+      } catch { return }
+    }
+    const ctx = cueCtxRef.current
+    if (!ctx) return
+    const now = ctx.currentTime
+    if (timeLeft > 0) {
+      // Rising tick — pitch climbs as we get closer to zero.
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      // 5 → 720Hz, 1 → 1440Hz
+      osc.frequency.value = 720 + (5 - timeLeft) * 180
+      gain.gain.setValueAtTime(0.0001, now)
+      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25)
+      osc.connect(gain).connect(ctx.destination)
+      osc.start(now)
+      osc.stop(now + 0.3)
+    } else {
+      // Climax chime — three stacked partials with longer decay.
+      const partials = [440, 660, 880]
+      partials.forEach((freq, i) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.type = i === 0 ? 'sawtooth' : 'sine'
+        osc.frequency.value = freq
+        const peak = 0.28 / (i + 1)
+        gain.gain.setValueAtTime(0.0001, now)
+        gain.gain.exponentialRampToValueAtTime(peak, now + 0.02)
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2)
+        osc.connect(gain).connect(ctx.destination)
+        osc.start(now)
+        osc.stop(now + 1.3)
+      })
+    }
+  }, [active, timeLeft, config.playFinalCue])
 
   if (!active && phase !== 'complete') return null
 
