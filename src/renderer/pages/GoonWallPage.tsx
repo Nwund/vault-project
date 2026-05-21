@@ -78,6 +78,7 @@ export function GoonWallPage(props: {
   const [edgeActive, setEdgeActive] = useState(false) // True when mouse near edge
   const [countdownActive, setCountdownActive] = useState(false) // Cum countdown active
   const [countdownDuration, setCountdownDuration] = useState(30) // Countdown duration in seconds
+  const [countdownClimaxType, setCountdownClimaxType] = useState<'cum' | 'squirt' | 'orgasm'>('cum')
   const [showCountdownPicker, setShowCountdownPicker] = useState(false) // Show duration picker
 
   // Visual effects settings from goonwall settings
@@ -746,14 +747,12 @@ export function GoonWallPage(props: {
               <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-gray-900/95 backdrop-blur-md rounded-xl border border-white/20 p-3 shadow-xl z-50 min-w-[160px]">
                 <div className="text-xs text-white/60 mb-2 text-center">Select Duration</div>
                 <div className="grid grid-cols-2 gap-2">
-                  {[10, 30, 60, 120].map(sec => (
+                  {[10, 30, 45, 60, 90, 120, 180, 300].map(sec => (
                     <button
                       key={sec}
                       onClick={() => {
                         setCountdownDuration(sec)
                         saveSettings({ countdownDuration: sec })
-                        setShowCountdownPicker(false)
-                        setCountdownActive(true)
                       }}
                       className={cn(
                         'px-3 py-2 rounded-lg text-sm font-medium transition',
@@ -762,9 +761,28 @@ export function GoonWallPage(props: {
                           : 'bg-white/10 text-white hover:bg-white/20'
                       )}
                     >
-                      {sec < 60 ? `${sec}s` : `${sec / 60}m`}
+                      {sec < 60 ? `${sec}s` : sec === 60 ? '1m' : sec === 90 ? '1:30' : sec === 120 ? '2m' : sec === 180 ? '3m' : `${sec / 60}m`}
                     </button>
                   ))}
+                </div>
+                <div className="mt-3 mb-1">
+                  <div className="text-xs text-white/60 mb-2 text-center">Climax type</div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(['cum', 'squirt', 'orgasm'] as const).map(t => (
+                      <button
+                        key={t}
+                        onClick={() => setCountdownClimaxType(t)}
+                        className={cn(
+                          'px-2 py-1.5 rounded-md text-[11px] font-medium transition capitalize',
+                          countdownClimaxType === t
+                            ? 'bg-pink-600 text-white'
+                            : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+                        )}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="mt-2 pt-2 border-t border-white/10">
                   <input
@@ -1060,7 +1078,7 @@ export function GoonWallPage(props: {
           duration: countdownDuration,
           onComplete: () => {
             setCountdownActive(false)
-            props.onClimax('cum')
+            props.onClimax(countdownClimaxType)
           },
           onCancel: () => setCountdownActive(false),
         }}

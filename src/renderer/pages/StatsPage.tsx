@@ -528,11 +528,18 @@ export function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof us
                     />
                   </div>
                 )}
-                {!unlocked && pct > 0 && (
+                {!unlocked && a.target > 0 && (
+                  <div className="text-[9px] text-[var(--muted)] mt-1 tabular-nums">
+                    {Math.round(progress * a.target)} / {a.target} ({pct}%)
+                  </div>
+                )}
+                {!unlocked && a.target === 0 && pct > 0 && (
                   <div className="text-[9px] text-[var(--muted)] mt-1">{pct}%</div>
                 )}
                 {unlocked && (
-                  <div className="text-[9px] text-[var(--primary)] font-medium mt-1">Unlocked</div>
+                  <div className="text-[9px] text-[var(--primary)] font-medium mt-1 flex items-center gap-1">
+                    <CheckCircle2 size={9} /> Unlocked
+                  </div>
                 )}
               </div>
             )
