@@ -5,7 +5,7 @@
 // from the dup_triage queue and shows them side-by-side, swipe to keep
 // one or merge or delete-both. Resolves and auto-advances.
 
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { motion } from 'motion/react'
 import {
   X,
@@ -146,12 +146,16 @@ export function DupTriageModal({ open, onClose }: { open: boolean; onClose: () =
                   </span>
                 </div>
               ) : (
-                <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-stretch">
-                  <DupTile media={pair.a} accent="left" />
-                  <div className="grid place-items-center px-2">
-                    <ArrowLeftRight size={24} className="text-amber-400" />
+                <div className="space-y-4">
+                  <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-stretch">
+                    <DupTile media={pair.a} accent="left" />
+                    <div className="grid place-items-center px-2">
+                      <ArrowLeftRight size={24} className="text-amber-400" />
+                    </div>
+                    <DupTile media={pair.b} accent="right" />
                   </div>
-                  <DupTile media={pair.b} accent="right" />
+                  {/* Comparison stats — quick visual cue for which is better */}
+                  <DiffPanel a={pair.a} b={pair.b} />
                 </div>
               )}
             </div>
@@ -197,6 +201,50 @@ export function DupTriageModal({ open, onClose }: { open: boolean; onClose: () =
             )}
           </div>
     </ModalShell>
+  )
+}
+
+// Comparison stats panel — highlights the differences between A and B
+// so the user can decide quickly. Bigger / longer / higher-res isn't
+// always better, but at least the user can see the gap at a glance.
+function DiffPanel({ a, b }: { a: MediaPreview; b: MediaPreview }) {
+  // Each row: label, A-value, B-value, winner ('a' | 'b' | null)
+  type Row = { label: string; aStr: string; bStr: string; winner: 'a' | 'b' | null }
+  const rows: Row[] = []
+  // File size — bigger isn't always better but usually = higher quality
+  if (a.sizeBytes != null && b.sizeBytes != null) {
+    const winner = a.sizeBytes > b.sizeBytes ? 'a' : a.sizeBytes < b.sizeBytes ? 'b' : null
+    rows.push({ label: 'Size', aStr: formatBytes(a.sizeBytes), bStr: formatBytes(b.sizeBytes), winner })
+  }
+  // Duration — longer often = more content
+  if (a.durationSec != null && b.durationSec != null) {
+    const winner = a.durationSec > b.durationSec ? 'a' : a.durationSec < b.durationSec ? 'b' : null
+    rows.push({ label: 'Duration', aStr: `${a.durationSec.toFixed(1)}s`, bStr: `${b.durationSec.toFixed(1)}s`, winner })
+  }
+  // Resolution — higher area = better
+  if (a.width && a.height && b.width && b.height) {
+    const areaA = a.width * a.height
+    const areaB = b.width * b.height
+    const winner = areaA > areaB ? 'a' : areaA < areaB ? 'b' : null
+    rows.push({ label: 'Resolution', aStr: `${a.width}×${a.height}`, bStr: `${b.width}×${b.height}`, winner })
+  }
+  if (rows.length === 0) return null
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+      <div className="grid grid-cols-[1fr_auto_1fr] gap-2 text-[11px] tabular-nums">
+        {rows.map((r) => (
+          <React.Fragment key={r.label}>
+            <div className={`text-right ${r.winner === 'a' ? 'text-emerald-300 font-medium' : 'text-white/70'}`}>
+              {r.aStr}
+            </div>
+            <div className="text-center text-[var(--muted)] uppercase tracking-wider text-[9px]">{r.label}</div>
+            <div className={`text-left ${r.winner === 'b' ? 'text-emerald-300 font-medium' : 'text-white/70'}`}>
+              {r.bStr}
+            </div>
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
   )
 }
 
