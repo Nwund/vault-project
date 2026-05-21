@@ -106,6 +106,29 @@ export function GoonWallPage(props: {
     return { enabled, subliminalText: phrases, intervalRange }
   }, [props.settings?.goonwall])
 
+  // Edge timer — fires a configured action every N seconds. The
+  // setting has been declared in main/settings.ts since v1 but had
+  // no consumer; wiring it here means the user can pick an action
+  // ('pause', 'shuffle', 'minimize', 'cooldown') and the wall will
+  // enforce edging rhythm without manual intervention.
+  const edgeTimer = useMemo(() => {
+    const e = props.settings?.goonwall?.edgeTimer ?? {}
+    return {
+      enabled: e.enabled ?? false,
+      interval: Math.max(15, e.interval ?? 120), // seconds
+      warningTime: Math.max(0, e.warningTime ?? 10),
+      action: (e.action ?? 'pause') as 'pause' | 'shuffle' | 'minimize' | 'cooldown',
+    }
+  }, [props.settings?.goonwall])
+
+  // Cooldown overlay flash + seconds-until-next-edge for the HUD.
+  const [edgeCooldown, setEdgeCooldown] = useState(false)
+  const [edgeNextAt, setEdgeNextAt] = useState<number | null>(null)
+  const [edgeWarning, setEdgeWarning] = useState(false)
+  // Each fire bumps this so the scheduling effect re-runs and arms
+  // the next interval, without re-running on every other state change.
+  const [edgeFireTick, setEdgeFireTick] = useState(0)
+
   // Load settings from props
   useEffect(() => {
     const gw = props.settings?.goonwall
@@ -126,6 +149,58 @@ export function GoonWallPage(props: {
   useEffect(() => {
     updateGoonMaxVideos(tileCount)
   }, [tileCount])
+
+  // Edge timer ticker. When enabled, schedules the next firing
+  // `interval` seconds out; a "Get ready..." warning at
+  // (interval - warningTime) seconds; the action at firing time;
+  // then reschedules. The action handlers reuse the existing
+  // wall controls (mute, shuffle, etc.) so they participate in
+  // the same save-settings flow.
+  useEffect(() => {
+    if (!edgeTimer.enabled) {
+      setEdgeNextAt(null)
+      setEdgeWarning(false)
+      setEdgeCooldown(false)
+      return
+    }
+    const fireAt = Date.now() + edgeTimer.interval * 1000
+    setEdgeNextAt(fireAt)
+    setEdgeWarning(false)
+    setEdgeCooldown(false)
+
+    const warningTimer = edgeTimer.warningTime > 0
+      ? window.setTimeout(() => setEdgeWarning(true), (edgeTimer.interval - edgeTimer.warningTime) * 1000)
+      : null
+    const fireTimer = window.setTimeout(() => {
+      setEdgeWarning(false)
+      switch (edgeTimer.action) {
+        case 'pause':
+          setMuted(true)
+          saveSettings({ muted: true })
+          break
+        case 'shuffle':
+          shuffleTiles()
+          break
+        case 'minimize':
+          setMuted(true)
+          saveSettings({ muted: true, showHud: false })
+          setShowHud(false)
+          break
+        case 'cooldown':
+          setEdgeCooldown(true)
+          window.setTimeout(() => setEdgeCooldown(false), 5000)
+          break
+      }
+      // Re-arm for the next interval by bumping the tick counter.
+      setEdgeFireTick((t) => t + 1)
+    }, edgeTimer.interval * 1000)
+
+    return () => {
+      if (warningTimer != null) clearTimeout(warningTimer)
+      clearTimeout(fireTimer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edgeTimer.enabled, edgeTimer.interval, edgeTimer.warningTime, edgeTimer.action, edgeFireTick])
 
   // Save settings when they change
   const saveSettings = useCallback(async (patch: Partial<{
@@ -1094,6 +1169,22 @@ export function GoonWallPage(props: {
               placement: 'random',
             }}
           />
+
+          {/* Edge timer warning + cooldown overlays */}
+          {edgeWarning && (
+            <div className="absolute inset-x-0 top-16 flex justify-center z-40 pointer-events-none">
+              <div className="px-4 py-2 rounded-full bg-amber-500/30 backdrop-blur-md border border-amber-300/40 text-amber-100 text-sm font-semibold uppercase tracking-widest animate-pulse">
+                Get ready · edge in {edgeTimer.warningTime}s
+              </div>
+            </div>
+          )}
+          {edgeCooldown && (
+            <div className="absolute inset-0 z-40 grid place-items-center pointer-events-none bg-black/60 backdrop-blur-sm">
+              <div className="text-3xl sm:text-5xl font-black text-rose-200 uppercase tracking-[0.3em] animate-pulse">
+                Cool down
+              </div>
+            </div>
+          )}
         </div>
       )}
 

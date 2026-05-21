@@ -254,6 +254,12 @@ export type VaultSettings = {
       subliminalText?: string[]
       textFrequency?: number // flashes per minute
     }
+    edgeTimer?: {
+      enabled?: boolean
+      interval?: number      // seconds between firings
+      warningTime?: number   // seconds of warning before firing
+      action?: 'pause' | 'shuffle' | 'minimize' | 'cooldown'
+    }
   }
   captions?: {
     enabled: boolean
