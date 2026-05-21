@@ -21,7 +21,7 @@ import { SPRINGS } from '../components/network/motion-tokens'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import {
   Search, Download, Loader2, Globe, X, ChevronLeft, ChevronRight, ExternalLink, Play,
-  Maximize2, Minimize2,
+  Maximize2, Minimize2, Flame, Dices, Sparkles,
 } from 'lucide-react'
 import { useToast } from '../contexts'
 import { cn } from '../utils/cn'
@@ -1789,9 +1789,9 @@ export default function Rule34Page() {
               void search('', 0, source)
             }}
             title="Trending / top recent posts across active sources"
-            className="px-3 py-2.5 rounded-lg text-sm font-medium bg-white/5 border border-[var(--border)] text-[var(--muted)] hover:text-white hover:border-white/30"
+            className="px-3 py-2.5 rounded-lg text-sm font-medium bg-white/5 border border-[var(--border)] text-[var(--muted)] hover:text-white hover:border-white/30 flex items-center justify-center"
           >
-            🔥
+            <Flame size={16} />
           </button>
           <button
             onClick={() => {
@@ -1820,9 +1820,9 @@ export default function Rule34Page() {
             }}
             title="Open a random post from current results (R)"
             disabled={posts.length === 0}
-            className="px-3 py-2.5 rounded-lg text-sm font-medium bg-white/5 border border-[var(--border)] text-[var(--muted)] hover:text-white hover:border-white/30 disabled:opacity-30"
+            className="px-3 py-2.5 rounded-lg text-sm font-medium bg-white/5 border border-[var(--border)] text-[var(--muted)] hover:text-white hover:border-white/30 disabled:opacity-30 flex items-center justify-center"
           >
-            🎲
+            <Dices size={16} />
           </button>
         </div>
         {pasteOpen && (
@@ -3155,10 +3155,10 @@ export default function Rule34Page() {
                       void search(topTags, 0, source)
                     }
                   }}
-                  className="text-xs px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 text-[var(--muted)] hover:text-white transition"
+                  className="text-xs px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 text-[var(--muted)] hover:text-white transition inline-flex items-center gap-1.5"
                   title="Re-search using this post's top tags"
                 >
-                  ✨ More like this
+                  <Sparkles size={12} /> More like this
                 </button>
                 <button
                   type="button"
