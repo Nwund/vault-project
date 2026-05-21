@@ -25,12 +25,14 @@ const VISIBLE_AFTER_HIT_MS = 350
 
 export function CockHeroOverlay({ videoRef, beatmap, active }: CockHeroOverlayProps) {
   const [hits, setHits] = useState<Array<{ id: number; isAccent: boolean; intensity: number }>>([])
+  const [stats, setStats] = useState({ hit: 0, miss: 0, combo: 0, bestCombo: 0 })
   const lastBeatIndexRef = useRef<number>(-1)
   const hitIdRef = useRef(0)
 
   // Reset on beatmap change / toggle
   useEffect(() => {
     setHits([])
+    setStats({ hit: 0, miss: 0, combo: 0, bestCombo: 0 })
     lastBeatIndexRef.current = -1
   }, [beatmap, active])
 
@@ -48,14 +50,19 @@ export function CockHeroOverlay({ videoRef, beatmap, active }: CockHeroOverlayPr
           const delta = (t - b.timeSec) * 1000
           if (delta < -HIT_WINDOW_MS) break // not yet
           if (delta > HIT_WINDOW_MS) {
-            // Missed this beat — skip
+            // Missed this beat — combo resets
             lastBeatIndexRef.current = i
+            setStats((prev) => ({ ...prev, miss: prev.miss + 1, combo: 0 }))
             continue
           }
           // Fire!
           lastBeatIndexRef.current = i
           const id = hitIdRef.current++
           setHits((prev) => [...prev, { id, isAccent: b.isAccent, intensity: b.intensity }])
+          setStats((prev) => {
+            const combo = prev.combo + 1
+            return { ...prev, hit: prev.hit + 1, combo, bestCombo: Math.max(prev.bestCombo, combo) }
+          })
           setTimeout(() => {
             setHits((prev) => prev.filter((h) => h.id !== id))
           }, VISIBLE_AFTER_HIT_MS)
@@ -95,7 +102,7 @@ export function CockHeroOverlay({ videoRef, beatmap, active }: CockHeroOverlayPr
         </AnimatePresence>
       </div>
 
-      {/* Top-left HUD */}
+      {/* Top-left HUD — beatmap stats */}
       <motion.div
         initial={{ x: -10, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
@@ -118,6 +125,34 @@ export function CockHeroOverlay({ videoRef, beatmap, active }: CockHeroOverlayPr
           {beatmap.patternSummary.intensityArc}
         </span>
       </motion.div>
+
+      {/* Top-right HUD — live combo + hit/miss counter */}
+      {(stats.hit > 0 || stats.miss > 0) && (
+        <motion.div
+          initial={{ x: 10, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={SPRINGS.standard}
+          className="absolute top-3 right-3 z-30 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 px-2.5 py-1.5 text-[10px] flex items-center gap-2 pointer-events-none tabular-nums"
+        >
+          <span className="text-emerald-300">{stats.hit}</span>
+          <span className="text-white/40">hit</span>
+          <span className="text-white/30">·</span>
+          <span className="text-red-300">{stats.miss}</span>
+          <span className="text-white/40">miss</span>
+          {stats.combo > 1 && (
+            <>
+              <span className="text-white/30">·</span>
+              <span className="text-amber-300 font-bold">{stats.combo}×</span>
+            </>
+          )}
+          {stats.bestCombo > 3 && stats.bestCombo > stats.combo && (
+            <>
+              <span className="text-white/30">·</span>
+              <span className="text-white/50 text-[9px]">best {stats.bestCombo}</span>
+            </>
+          )}
+        </motion.div>
+      )}
     </>
   )
 }
