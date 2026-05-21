@@ -4,7 +4,7 @@
 // (local ONNX) + Tier 2 (Venice AI) tagging pipeline. Extracted from
 // App.tsx as part of #48.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   Activity,
   AlertCircle,
