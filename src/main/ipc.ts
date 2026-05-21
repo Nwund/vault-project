@@ -11672,6 +11672,16 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       return { ok: false, error: err?.message ?? String(err) }
     }
   })
+  // Bulk endpoint — Library can paint denial badges on cards without
+  // firing one IPC per card.
+  ipcMain.handle('denial:listActive', async () => {
+    try {
+      const { listActiveDenials } = await import('./services/edging-tracker')
+      return { ok: true, items: listActiveDenials(db.raw as any) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), items: [] }
+    }
+  })
 
   // #294 — Apple Photos "Feature less" suppression. Sets/clears the
   // boolean on media_stats; the recommender consults this when

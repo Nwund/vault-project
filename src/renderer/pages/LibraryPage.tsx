@@ -52,6 +52,7 @@ import {
   Star,
   Tag,
   Tv,
+  Lock,
   Type,
   Volume2,
   VolumeX,
@@ -345,6 +346,34 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
   const [showSaveSearchModal, setShowSaveSearchModal] = useState(false) // Save search modal
   const [saveSearchName, setSaveSearchName] = useState('') // Name for saving current search
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set()) // Track liked media
+  // Map of mediaId → denialUntil timestamp for any media with an
+  // active per-media denial cooldown. Refreshed on mount, on
+  // vault:changed, and every minute while mounted so badges count
+  // down without leaning on a per-card subscription.
+  const [denialUntilByMedia, setDenialUntilByMedia] = useState<Map<string, number>>(new Map())
+  useEffect(() => {
+    let cancelled = false
+    const refresh = async () => {
+      try {
+        const res: any = await window.api.tags?.denial?.listActive?.()
+        if (cancelled) return
+        const next = new Map<string, number>()
+        if (res?.ok && Array.isArray(res.items)) {
+          for (const r of res.items) next.set(r.mediaId, r.until)
+        }
+        setDenialUntilByMedia(next)
+      } catch { /* ignore */ }
+    }
+    void refresh()
+    const onChange = () => { void refresh() }
+    window.addEventListener('vault:changed', onChange)
+    const tick = window.setInterval(refresh, 60_000)
+    return () => {
+      cancelled = true
+      window.removeEventListener('vault:changed', onChange)
+      window.clearInterval(tick)
+    }
+  }, [])
   const [selectionMode, setSelectionMode] = useState(false) // Bulk selection mode
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set()) // Selected media IDs for bulk actions
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false) // Show playlist picker for bulk add
@@ -3043,6 +3072,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                       liked={likedIds.has(m.id)}
                       onToggleLike={() => toggleLike(m.id)}
                       selectionMode={selectionMode}
+                      denialUntil={denialUntilByMedia.get(m.id) ?? null}
                     />
                   )}
                 </div>
@@ -4279,8 +4309,9 @@ const MediaTile = memo(function MediaTile(props: {
   liked?: boolean
   onToggleLike?: () => void
   selectionMode?: boolean
+  denialUntil?: number | null
 }) {
-  const { media, compact, layout, disabled, showStats, stats, previewMuted = true, liked, onToggleLike } = props
+  const { media, compact, layout, disabled, showStats, stats, previewMuted = true, liked, onToggleLike, denialUntil } = props
   // #209 — Live-subscribed card-layout prefs. Hooked here so toggling
   // any field in Settings → Appearance flips the visible affordances
   // without a tile remount.
@@ -4572,6 +4603,31 @@ const MediaTile = memo(function MediaTile(props: {
           {media.type === 'gif' && <Repeat size={compact ? 8 : 10} />}
           {media.type === 'image' && <Eye size={compact ? 8 : 10} />}
         </div>
+
+        {/* Denial badge — shown when the media has an active denial
+            cooldown. Positioned below the type badge with a hot red
+            tone + lock icon. Stays visible even when the rest of the
+            HUD is hidden so the user can't miss it. */}
+        {denialUntil != null && denialUntil > Date.now() && (
+          <div
+            className={cn(
+              'absolute top-8 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded backdrop-blur-sm',
+              'bg-red-600/80 border border-red-300/40 text-white shadow-lg shadow-red-900/40 tabular-nums',
+              compact ? 'text-[8px]' : 'text-[10px]'
+            )}
+            title={`Denied until ${new Date(denialUntil).toLocaleString()}`}
+          >
+            <Lock size={compact ? 8 : 10} />
+            {(() => {
+              const remMs = denialUntil - Date.now()
+              const mins = Math.ceil(remMs / 60000)
+              if (mins < 60) return `${mins}m`
+              const hrs = Math.ceil(mins / 60)
+              if (hrs < 24) return `${hrs}h`
+              return `${Math.ceil(hrs / 24)}d`
+            })()}
+          </div>
+        )}
 
         {/* Duration badge for videos with glow effect - hidden during preview.
             #209 — gated on cardFields.duration so users can hide it. */}

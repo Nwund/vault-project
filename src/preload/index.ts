@@ -802,6 +802,7 @@ const api = {
       set: (args: { mediaId: string; durationMin: number }) => invoke<{ ok: boolean; until?: number; error?: string }>('denial:set', args),
       clear: (mediaId: string) => invoke<{ ok: boolean; error?: string }>('denial:clear', mediaId),
       status: (mediaId: string) => invoke<{ ok: boolean; status?: { active: boolean; until: number | null; remainingMs: number }; error?: string }>('denial:status', mediaId),
+      listActive: () => invoke<{ ok: boolean; items: Array<{ mediaId: string; until: number; remainingMs: number }>; error?: string }>('denial:listActive'),
     },
     // #347 — post-nut clarity lockout
     lockout: {

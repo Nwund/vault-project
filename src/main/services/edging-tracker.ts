@@ -258,3 +258,13 @@ export function getDenialStatus(db: Raw, mediaId: string): { active: boolean; un
   const active = !!(until && until > now)
   return { active, until, remainingMs: active ? until! - now : 0 }
 }
+
+// Bulk lookup — returns every media with an active denial cooldown, so
+// the library can paint badges on cards without firing N IPCs.
+export function listActiveDenials(db: Raw): Array<{ mediaId: string; until: number; remainingMs: number }> {
+  const now = Date.now()
+  const rows = db.prepare(
+    `SELECT mediaId, denialUntilTs FROM media_stats WHERE denialUntilTs IS NOT NULL AND denialUntilTs > ?`
+  ).all(now) as Array<{ mediaId: string; denialUntilTs: number }>
+  return rows.map((r) => ({ mediaId: r.mediaId, until: r.denialUntilTs, remainingMs: r.denialUntilTs - now }))
+}
