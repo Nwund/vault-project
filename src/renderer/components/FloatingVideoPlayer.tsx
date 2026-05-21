@@ -2305,10 +2305,22 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
           >
             {/* #197 — Funscript heatmap. Renders only when a .funscript
                 sidecar exists next to the video; the component returns
-                null otherwise so the seek bar layout is unchanged. */}
+                null otherwise so the seek bar layout is unchanged.
+                Now interactive: passing onSeek makes the buckets
+                clickable + hover-tooltip'd so the user can jump to a
+                specific intensity peak. The wrapper drops
+                pointer-events-none so the buckets receive the click. */}
             {duration > 0 && (
-              <div className="absolute inset-0 pointer-events-none opacity-60">
-                <FunscriptHeatmap mediaId={media.id} durationMs={duration * 1000} />
+              <div className="absolute inset-0 opacity-60">
+                <FunscriptHeatmap
+                  mediaId={media.id}
+                  durationMs={duration * 1000}
+                  onSeek={(timeMs) => {
+                    if (videoRef.current) {
+                      videoRef.current.currentTime = timeMs / 1000
+                    }
+                  }}
+                />
               </div>
             )}
             {/* Progress fill */}

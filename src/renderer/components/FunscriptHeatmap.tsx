@@ -20,6 +20,11 @@ interface Props {
   /** Bucket count. Default 200 for a thin horizontal strip. */
   buckets?: number
   className?: string
+  /** When provided, the heatmap becomes interactive — each bucket is
+   *  clickable and seeks to its midpoint, and hover surfaces a small
+   *  tooltip showing the timestamp + intensity %. When omitted, the
+   *  strip stays purely decorative (pointer-events-none upstream). */
+  onSeek?: (timeMs: number) => void
 }
 
 /**
@@ -60,8 +65,9 @@ function intensityColor(v: number): string {
   return `rgba(248, 113, 113, ${0.6 + v * 0.4})`                 // red
 }
 
-export function FunscriptHeatmap({ mediaId, durationMs, buckets = 200, className }: Props) {
+export function FunscriptHeatmap({ mediaId, durationMs, buckets = 200, className, onSeek }: Props) {
   const [actions, setActions] = useState<FunscriptAction[] | null>(null)
+  const [hover, setHover] = useState<{ bucket: number; intensity: number; timeMs: number } | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -88,22 +94,81 @@ export function FunscriptHeatmap({ mediaId, durationMs, buckets = 200, className
   // existing seek bar layout for users without Funscript sidecars.
   if (!intensity) return null
 
+  const interactive = !!onSeek
+  const bucketWidthMs = durationMs / buckets
+
   return (
     <div
       className={className}
-      title={`Funscript intensity heatmap · ${actions?.length ?? 0} actions`}
-      style={{ display: 'flex', gap: 0, height: '100%', width: '100%' }}
+      title={`Funscript intensity heatmap · ${actions?.length ?? 0} actions${interactive ? ' · click to seek' : ''}`}
+      style={{
+        display: 'flex',
+        gap: 0,
+        height: '100%',
+        width: '100%',
+        position: 'relative',
+        // When interactive, the parent must let pointer events through
+        // to the buckets themselves — overrides any wrapper opacity-60.
+        pointerEvents: interactive ? 'auto' : undefined,
+      }}
+      onMouseLeave={() => setHover(null)}
     >
-      {Array.from(intensity).map((v, i) => (
+      {Array.from(intensity).map((v, i) => {
+        const midMs = (i + 0.5) * bucketWidthMs
+        return (
+          <div
+            key={i}
+            onMouseEnter={interactive ? () => setHover({ bucket: i, intensity: v, timeMs: midMs }) : undefined}
+            onClick={interactive ? (e) => {
+              e.stopPropagation()
+              onSeek!(midMs)
+            } : undefined}
+            style={{
+              flex: 1,
+              background: intensityColor(v),
+              minWidth: 0,
+              cursor: interactive ? 'pointer' : undefined,
+              // Subtle highlight on hover so the user knows the bucket
+              // is clickable and which bucket is under the cursor.
+              outline: interactive && hover?.bucket === i ? '1px solid rgba(255,255,255,0.6)' : undefined,
+              outlineOffset: -1,
+            }}
+          />
+        )
+      })}
+
+      {interactive && hover && (
         <div
-          key={i}
           style={{
-            flex: 1,
-            background: intensityColor(v),
-            minWidth: 0,
+            position: 'absolute',
+            // Anchor at the bucket center; clamp so the tooltip stays inside.
+            left: `${((hover.bucket + 0.5) / buckets) * 100}%`,
+            bottom: '110%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(0,0,0,0.85)',
+            color: 'white',
+            padding: '3px 6px',
+            fontSize: 10,
+            borderRadius: 4,
+            border: '1px solid rgba(255,255,255,0.15)',
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+            fontFamily: 'monospace',
           }}
-        />
-      ))}
+        >
+          {formatMs(hover.timeMs)} · {(hover.intensity * 100).toFixed(0)}%
+        </div>
+      )}
     </div>
   )
+}
+
+function formatMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '0:00'
+  const s = Math.floor(ms / 1000)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const r = s % 60
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${r.toString().padStart(2, '0')}`
+  return `${m}:${r.toString().padStart(2, '0')}`
 }
