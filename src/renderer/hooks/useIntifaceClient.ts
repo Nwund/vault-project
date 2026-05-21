@@ -134,6 +134,23 @@ export function useIntifaceClient(): IntifaceClient {
 
   const scan = useCallback(() => send({ StartScanning: {} }), [send])
 
+  // Subscribe to window `vault:haptic-pulse` events. Any component
+  // can dispatch one to fire a short, auto-stopping pulse without
+  // owning the Intiface connection — Cock-Hero beats, climax cues,
+  // tutorial highlights, etc. No-op when no devices are connected.
+  useEffect(() => {
+    const onPulse = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as { intensity?: number; durationMs?: number } | undefined
+      if (!detail) return
+      const intensity = Math.max(0, Math.min(1, detail.intensity ?? 0.6))
+      const durationMs = Math.max(40, Math.min(2000, detail.durationMs ?? 120))
+      vibrate(intensity)
+      window.setTimeout(() => vibrate(0), durationMs)
+    }
+    window.addEventListener('vault:haptic-pulse', onPulse as EventListener)
+    return () => window.removeEventListener('vault:haptic-pulse', onPulse as EventListener)
+  }, [vibrate])
+
   // Cleanup on unmount.
   useEffect(() => () => {
     if (wsRef.current) try { wsRef.current.close() } catch { /* noop */ }

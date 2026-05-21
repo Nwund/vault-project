@@ -105,6 +105,18 @@ export function CockHeroOverlay({ videoRef, beatmap, active, audioClick = false 
             return { ...prev, hit: prev.hit + 1, combo, bestCombo: Math.max(prev.bestCombo, combo) }
           })
           if (audioClick) playClick(b.isAccent, b.intensity)
+          // Haptic bus dispatch — any active Intiface connection picks
+          // this up via the vault:haptic-pulse listener in
+          // useIntifaceClient. Accent beats get a stronger pulse; the
+          // intensity scaler keeps the haptic in line with the beat's
+          // detected loudness.
+          try {
+            const haptic = b.isAccent ? 0.55 + b.intensity * 0.45 : 0.25 + b.intensity * 0.35
+            const durMs = b.isAccent ? 220 : 110
+            window.dispatchEvent(new CustomEvent('vault:haptic-pulse', {
+              detail: { intensity: haptic, durationMs: durMs },
+            }))
+          } catch { /* SSR / older runtimes — ignore */ }
           setTimeout(() => {
             setHits((prev) => prev.filter((h) => h.id !== id))
           }, VISIBLE_AFTER_HIT_MS)
