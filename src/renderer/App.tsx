@@ -57,43 +57,29 @@ import type {
   ToastType,
   Toast,
 } from './types'
-import { Btn, TopBar, Dropdown, ToggleSwitch, AnimatedCounter, DurationDisplay } from './components/ui'
-import { SessionMediaThumb, PlaylistItemThumb, PlaylistGridThumb } from './components/PlaylistThumbs'
-import { HardwareEncoderSettings } from './components/HardwareEncoderSettings'
-import { GIFTile } from './components/GIFTile'
-import { ReviewHoverPreview } from './components/ReviewHoverPreview'
+import { Btn, TopBar, Dropdown, ToggleSwitch, AnimatedCounter } from './components/ui'
 import { ProfileSwitcher } from './components/ProfileSwitcher'
 import { SubscriptionsBellButton } from './components/SubscriptionsBellButton'
-import { CrossDeviceCard, TaggerQualityCard } from './components/AdminCards'
-import { PlaylistPicker, AddToPlaylistPopup } from './components/PlaylistPickers'
 
-import { TagSelector } from './components/TagSelector'
-import { XyreneSettings } from './components/XyreneSettings'
 import { useHeatLevel } from './components/HeatOverlay'
-import { ArousalEffects, CumCountdownOverlay, HeartsOverlay, RainOverlay, GlitchOverlay, BubblesOverlay, MatrixRainOverlay, ConfettiOverlay } from './components/VisualStimulants'
+import { ArousalEffects, HeartsOverlay, RainOverlay, GlitchOverlay, BubblesOverlay, MatrixRainOverlay, ConfettiOverlay } from './components/VisualStimulants'
 import { AuroraBands, NeonRain, LightningVeil } from './components/NewAmbientEffects'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import DraggableFab from './components/DraggableFab'
-import Fuse from 'fuse.js'
 import { shuffleTake } from './utils/shuffle'
 import { formatDuration, formatBytes } from './utils/formatters'
-import { cleanupVideo, videoPool } from './hooks/useVideoCleanup'
+import { videoPool } from './hooks/useVideoCleanup'
 import { useAnime } from './hooks/useAnime'
 import { useConfetti } from './hooks/useConfetti'
 import { useUiSounds } from './hooks/useUiSounds'
 import { useAmbienceAudio } from './hooks/useAmbienceAudio'
 import { FloatingVideoPlayer } from './components/FloatingVideoPlayer'
-import { WatchLaterPanel } from './components/WatchLaterPanel'
-import { MediaNotesPanel } from './components/MediaNotesPanel'
 import { MediaInfoModal } from './components/MediaInfoModal'
 const WhatsNewModal = React.lazy(() => import('./components/WhatsNewModal').then((m) => ({ default: m.WhatsNewModal })))
-import { UrlDownloaderPanel } from './components/UrlDownloaderPanel'
 import { DuplicatesModal } from './components/DuplicatesModal'
 import { HomeDashboard } from './components/HomeDashboard'
-import { TVRemotePanel } from './components/TVRemotePanel'
 import { PmvEditorPage } from './components/PmvEditor'
 // Library tool components - Professional video editing and media management
-import { QRCodeSVG } from 'qrcode.react'
 import {
   Library,
   Home,
