@@ -40,6 +40,15 @@ export interface VoiceCommandHandlers {
   onMarkBookmark?: () => void // "bookmark this"
 }
 
+export interface VoiceLogEntry {
+  /** ms epoch — when the transcript was finalized. */
+  at: number
+  /** Verbatim transcript heard by the recognizer. */
+  transcript: string
+  /** Matched command label, or null if no rule fired. */
+  command: string | null
+}
+
 export interface UseVoiceCommandsState {
   /** True while the recognizer is actively listening. */
   listening: boolean
@@ -49,7 +58,12 @@ export interface UseVoiceCommandsState {
   lastTranscript: string | null
   /** Last error message (mic denied, recognition unsupported, etc). */
   error: string | null
+  /** Rolling log of the last N (default 20) transcripts + match outcome.
+   *  Surfaceable in a HUD panel for "what did Xy hear?" debuggability. */
+  log: VoiceLogEntry[]
 }
+
+const LOG_CAP = 20
 
 interface CommandPattern {
   patterns: RegExp[]
@@ -89,7 +103,15 @@ export function useVoiceCommands(
   const [lastCommand, setLastCommand] = useState<string | null>(null)
   const [lastTranscript, setLastTranscript] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [log, setLog] = useState<VoiceLogEntry[]>([])
   const recognitionRef = useRef<any>(null)
+  const appendLog = (entry: VoiceLogEntry) => {
+    setLog((prev) => {
+      const next = [entry, ...prev]
+      if (next.length > LOG_CAP) next.length = LOG_CAP
+      return next
+    })
+  }
   // Stash handlers in a ref so the recognizer always sees the latest
   // closures without us tearing it down on every parent re-render.
   const handlersRef = useRef(handlers)
@@ -125,6 +147,7 @@ export function useVoiceCommands(
       for (const cmd of COMMAND_GRAMMAR) {
         if (cmd.patterns.some((p) => p.test(transcript))) {
           setLastCommand(cmd.label)
+          appendLog({ at: Date.now(), transcript, command: cmd.label })
           const fn = handlersRef.current[cmd.action]
           if (typeof fn === 'function') {
             try {
@@ -138,6 +161,8 @@ export function useVoiceCommands(
           return
         }
       }
+      // No match — still log so the user can see what was heard.
+      appendLog({ at: Date.now(), transcript, command: null })
     }
 
     recognition.onerror = (e: any) => {
@@ -179,5 +204,5 @@ export function useVoiceCommands(
     }
   }, [enabled])
 
-  return { listening, lastCommand, lastTranscript, error }
+  return { listening, lastCommand, lastTranscript, error, log }
 }

@@ -1485,6 +1485,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   // Settings → Xyrene → "Listen for voice commands". Only the primary
   // player listens (instanceIndex 0) so we don't run multiple recognizers.
   const [voiceCommandsEnabled, setVoiceCommandsEnabled] = useState(false)
+  const [showVoiceLog, setShowVoiceLog] = useState(false)
   useEffect(() => {
     ;(async () => {
       try {
@@ -2048,12 +2049,38 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
             {instanceIndex === 0 && (
               <div className={`absolute right-2 z-20 pointer-events-none transition-all duration-300 flex items-center gap-1.5 ${showControls ? 'top-9' : 'top-2'}`}>
                 {voice.listening && (
-                  <div
-                    className="pointer-events-auto px-2 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider border bg-emerald-500/25 text-emerald-200 border-emerald-400/40 backdrop-blur flex items-center gap-1"
-                    title={voice.error ? voice.error : voice.lastCommand ? `Last: ${voice.lastCommand}` : 'Listening for voice commands'}
-                  >
-                    <Mic size={10} className="animate-pulse" />
-                    {voice.lastCommand ?? 'listening'}
+                  <div className="relative pointer-events-auto group">
+                    <button
+                      type="button"
+                      onClick={() => setShowVoiceLog((v) => !v)}
+                      className="px-2 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider border bg-emerald-500/25 hover:bg-emerald-500/35 text-emerald-200 border-emerald-400/40 backdrop-blur flex items-center gap-1 transition"
+                      title={voice.error ? voice.error : `Voice log · ${voice.log.length} entries — click to toggle`}
+                    >
+                      <Mic size={10} className="animate-pulse" />
+                      {voice.lastCommand ?? 'listening'}
+                    </button>
+                    {showVoiceLog && voice.log.length > 0 && (
+                      <div className="absolute right-0 top-full mt-1 w-72 max-h-72 overflow-y-auto rounded-xl border border-white/10 bg-black/80 backdrop-blur-md p-2 shadow-2xl text-[10px] font-mono z-50">
+                        <div className="text-[9px] text-white/40 uppercase tracking-widest mb-1.5 px-1">
+                          Voice log · last {voice.log.length}
+                        </div>
+                        <div className="space-y-1">
+                          {voice.log.map((entry, i) => (
+                            <div key={i} className="flex items-start gap-2 px-1.5 py-1 rounded hover:bg-white/5">
+                              <span className="text-white/30 tabular-nums shrink-0">
+                                {new Date(entry.at).toLocaleTimeString().slice(0, 8)}
+                              </span>
+                              <span className="text-white/70 flex-1 break-words">"{entry.transcript}"</span>
+                              <span className={entry.command
+                                ? 'text-emerald-300 uppercase tracking-wider shrink-0'
+                                : 'text-white/30 italic shrink-0'}>
+                                {entry.command ?? 'no match'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 <button
