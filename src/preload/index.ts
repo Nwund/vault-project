@@ -543,6 +543,12 @@ const api = {
     listWithCounts: () => invoke('tags:listWithCounts'),
     forMedia: (mediaId: string) => invoke('tags:forMedia', mediaId),
     listForMedia: (mediaId: string) => invoke('tags:listForMedia', mediaId),
+    // Per-tag source/confidence derived from the staged AI analysis
+    // row (tier1 ONNX / tier2 Venice / synonym match) — used by the
+    // tag-source explainability tooltip in chips.
+    getSources: (mediaId: string) => invoke<
+      Record<string, { source: 'tier1' | 'tier2' | 'synonym' | 'user'; confidence?: number }>
+    >('tags:getSources', mediaId),
     setForMedia: (mediaId: string, tags: string[]) => invoke('tags:setForMedia', mediaId, tags),
     addToMedia: (mediaId: string, tag: string) => invoke('tags:addToMedia', mediaId, tag),
     removeFromMedia: (mediaId: string, tag: string) => invoke('tags:removeFromMedia', mediaId, tag),

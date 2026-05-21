@@ -12,9 +12,24 @@ import { MediaNotesPanel } from './MediaNotesPanel'
 import { BacklinksPanel } from './BacklinksPanel'
 import { ModalShell } from './ModalShell'
 
+type TagSource = 'tier1' | 'tier2' | 'synonym' | 'user'
+
+function tagSourceLabel(s: TagSource): { label: string; tone: string } {
+  switch (s) {
+    case 'tier2': return { label: 'Venice (vision LLM)', tone: 'text-fuchsia-300' }
+    case 'tier1': return { label: 'ONNX detector', tone: 'text-cyan-300' }
+    case 'synonym': return { label: 'Synonym match', tone: 'text-amber-300' }
+    case 'user': return { label: 'User-added', tone: 'text-emerald-300' }
+  }
+}
+
 export function MediaInfoModal({ media, onClose }: { media: MediaRow; onClose: () => void }) {
   const [stats, setStats] = useState<MediaStatsRow | null>(null)
   const [tags, setTags] = useState<TagRow[]>([])
+  // Per-tag source map for the explainability tooltip. Lazy-fetched
+  // alongside the tag list. Tags not present in any tier are inferred
+  // as user-added on the backend.
+  const [tagSources, setTagSources] = useState<Record<string, { source: TagSource; confidence?: number }>>({})
 
   // v2.7 cross-cutting state: denial timer + featureLess flag for this item.
   const [denialStatus, setDenialStatus] = useState<{ active: boolean; until: number | null; remainingMs: number } | null>(null)
@@ -29,6 +44,11 @@ export function MediaInfoModal({ media, onClose }: { media: MediaRow; onClose: (
       if (s) setStats(s as MediaStatsRow)
       if (t) setTags(t as TagRow[])
     })
+    // Fire-and-forget tag-source lookup. Missing AI analysis row =
+    // empty map = all tags treated as user-added in tooltip.
+    window.api.tags?.getSources?.(media.id)
+      .then((map: any) => { if (map) setTagSources(map) })
+      .catch(() => {})
     // Probe the cross-cutting flags in parallel; both are tolerant of
     // missing rows ("not set" = null / false).
     window.api.tags?.denial?.status?.(media.id)?.then((r: any) => {
@@ -240,16 +260,44 @@ export function MediaInfoModal({ media, onClose }: { media: MediaRow; onClose: (
 
           {tags.length > 0 && (
             <div className="pt-3 border-t border-[var(--border)]">
-              <div className="text-xs text-[var(--muted)] uppercase tracking-wide mb-2">Tags</div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs text-[var(--muted)] uppercase tracking-wide">Tags</div>
+                {/* Source legend — quick visual cue for what the colored
+                    dot on each chip means. */}
+                <div className="flex items-center gap-2 text-[9px] text-[var(--muted)]">
+                  <span className="flex items-center gap-1"><span className="size-1.5 rounded-full bg-fuchsia-300" />Venice</span>
+                  <span className="flex items-center gap-1"><span className="size-1.5 rounded-full bg-cyan-300" />ONNX</span>
+                  <span className="flex items-center gap-1"><span className="size-1.5 rounded-full bg-amber-300" />synonym</span>
+                  <span className="flex items-center gap-1"><span className="size-1.5 rounded-full bg-emerald-300" />user</span>
+                </div>
+              </div>
               <div className="flex flex-wrap gap-1.5">
-                {tags.map(tag => (
-                  <span
-                    key={tag.id}
-                    className="px-2 py-1 text-xs rounded-lg bg-[var(--primary)]/20 text-[var(--primary)] border border-[var(--primary)]/30"
-                  >
-                    {tag.name}
-                  </span>
-                ))}
+                {tags.map(tag => {
+                  const src = tagSources[tag.name]
+                  const sourceKey: TagSource = src?.source ?? 'user'
+                  const { label, tone } = tagSourceLabel(sourceKey)
+                  const confPct = typeof src?.confidence === 'number'
+                    ? Math.round(src.confidence * 100)
+                    : null
+                  return (
+                    <span
+                      key={tag.id}
+                      className="px-2 py-1 text-xs rounded-lg bg-[var(--primary)]/20 text-[var(--primary)] border border-[var(--primary)]/30 flex items-center gap-1.5"
+                      title={`Source: ${label}${confPct != null ? ` (${confPct}% confidence)` : ''}`}
+                    >
+                      <span className={`size-1.5 rounded-full ${
+                        sourceKey === 'tier2' ? 'bg-fuchsia-300'
+                        : sourceKey === 'tier1' ? 'bg-cyan-300'
+                        : sourceKey === 'synonym' ? 'bg-amber-300'
+                        : 'bg-emerald-300'
+                      }`} />
+                      <span className={tone === '' ? '' : ''}>{tag.name}</span>
+                      {confPct != null && (
+                        <span className="text-[9px] text-white/40 tabular-nums">{confPct}%</span>
+                      )}
+                    </span>
+                  )
+                })}
               </div>
             </div>
           )}

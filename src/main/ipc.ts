@@ -2550,6 +2550,57 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return db.listMediaTags(mediaId)
   })
 
+  // Derive a per-tag source/confidence map from the staged AI analysis
+  // row. Lets the renderer show tooltips like "From Venice (87%)" on
+  // tag chips. Tags absent from any tier list are assumed user-added.
+  ipcMain.handle('tags:getSources', async (_ev, mediaId: string) => {
+    type TagSource = { source: 'tier1' | 'tier2' | 'synonym' | 'user'; confidence?: number }
+    const out: Record<string, TagSource> = {}
+    try {
+      const row = (db.raw as any).prepare(
+        `SELECT tier1_raw_tags, tier2_extra_tags, matched_tags
+         FROM ai_analysis_results WHERE media_id = ?`
+      ).get(mediaId) as { tier1_raw_tags: string | null; tier2_extra_tags: string | null; matched_tags: string | null } | undefined
+      if (row) {
+        const parseList = (json: string | null) => {
+          if (!json) return [] as Array<{ name: string; confidence?: number }>
+          try {
+            const arr = JSON.parse(json)
+            if (!Array.isArray(arr)) return []
+            return arr.map((t: any) => {
+              if (typeof t === 'string') return { name: t }
+              const name = t.name ?? t.label ?? t.tag ?? null
+              if (!name) return null
+              const c = t.confidence ?? t.score ?? t.prob
+              return { name: String(name), confidence: typeof c === 'number' ? c : undefined }
+            }).filter(Boolean) as Array<{ name: string; confidence?: number }>
+          } catch { return [] }
+        }
+        // Synonym matches first (lowest priority — overwritten by higher tiers).
+        for (const t of parseList(row.matched_tags)) {
+          out[t.name] = { source: 'synonym', confidence: t.confidence }
+        }
+        for (const t of parseList(row.tier1_raw_tags)) {
+          out[t.name] = { source: 'tier1', confidence: t.confidence }
+        }
+        // tier2 is the strongest signal (curated by Venice).
+        for (const t of parseList(row.tier2_extra_tags)) {
+          out[t.name] = { source: 'tier2', confidence: t.confidence }
+        }
+      }
+    } catch {
+      // Best-effort; missing table just yields an empty map.
+    }
+    // Any tag attached to the media but absent from the AI analysis
+    // tiers is treated as user-added (manual tag, alias canonicalize,
+    // post-approval edit).
+    const attached = db.listMediaTags(mediaId)
+    for (const t of attached) {
+      if (!out[t.name]) out[t.name] = { source: 'user' }
+    }
+    return out
+  })
+
   ipcMain.handle('tags:setForMedia', async (_ev, mediaId: string, tagNames: string[]) => {
     const existing = db.listMediaTags(mediaId)
     for (const t of existing) {
