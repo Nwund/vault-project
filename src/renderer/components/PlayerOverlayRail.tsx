@@ -84,6 +84,9 @@ export function PlayerOverlayRail({ videoRef, storageKey = 'vault.player.overlay
   const [beatsEnabled, setBeatsEnabled] = useState(false)
   const [beatmap, setBeatmap] = useState<CockHeroBeatmap | null>(null)
   const [beatsLoading, setBeatsLoading] = useState(false)
+  // Per-beat audio click. Off by default — toggled in the Beats panel.
+  // Persisted alongside the other rail state in localStorage.
+  const [beatsAudioClick, setBeatsAudioClick] = useState(false)
 
   // Moment capture state -----------------------------------------------------
   const [momentFlash, setMomentFlash] = useState(false)
@@ -240,15 +243,19 @@ export function PlayerOverlayRail({ videoRef, storageKey = 'vault.player.overlay
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) || '{}')
       if (saved.scopes) onScopesOn()
+      if (saved.beatsAudioClick) setBeatsAudioClick(true)
     } catch { /* ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ scopes: scopesEnabled }))
+      localStorage.setItem(storageKey, JSON.stringify({
+        scopes: scopesEnabled,
+        beatsAudioClick,
+      }))
     } catch { /* ignore */ }
-  }, [storageKey, scopesEnabled])
+  }, [storageKey, scopesEnabled, beatsAudioClick])
 
   const buttons: Array<{ id: OverlayId; Icon: typeof Layers; label: string; active: boolean; tone: string }> = [
     { id: 'lut', Icon: Layers, label: 'LUT grade', active: lutEnabled, tone: 'from-amber-400 to-orange-500' },
@@ -293,7 +300,12 @@ export function PlayerOverlayRail({ videoRef, storageKey = 'vault.player.overlay
           Lazy-mounted only when there's actually a beatmap. */}
       <React.Suspense fallback={null}>
         {beatmap && beatsEnabled && (
-          <CockHeroOverlay videoRef={videoRef} beatmap={beatmap} active={beatsEnabled} />
+          <CockHeroOverlay
+            videoRef={videoRef}
+            beatmap={beatmap}
+            active={beatsEnabled}
+            audioClick={beatsAudioClick}
+          />
         )}
 
         {/* Body-part heatmap strip — pulled from tags.heatmap.build */}
@@ -520,6 +532,15 @@ export function PlayerOverlayRail({ videoRef, storageKey = 'vault.player.overlay
                     >
                       {beatsEnabled ? <><RotateCcw size={11} /> Disable overlay</> : <><Music size={11} /> Enable overlay</>}
                     </button>
+                    <label className="flex items-center justify-between gap-2 text-[10px] text-white/70 px-1 py-0.5 select-none cursor-pointer">
+                      <span>Audio click on each beat</span>
+                      <input
+                        type="checkbox"
+                        checked={beatsAudioClick}
+                        onChange={(e) => setBeatsAudioClick(e.target.checked)}
+                        className="accent-pink-400"
+                      />
+                    </label>
                     <button
                       onClick={() => { setBeatmap(null); setBeatsEnabled(false) }}
                       className="w-full text-[10px] text-white/40 hover:text-white/70 py-0.5"

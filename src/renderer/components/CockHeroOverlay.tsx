@@ -9,7 +9,7 @@
 // Renders as a transparent layer over the FloatingVideoPlayer. Beat
 // generation happens on demand (analyzes audio via OfflineAudioContext).
 
-import { useEffect, useRef, useState, RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, RefObject } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import type { CockHeroBeatmap } from '../utils/cock-hero'
 import { SPRINGS } from './network/motion-tokens'
@@ -18,16 +18,57 @@ interface CockHeroOverlayProps {
   videoRef: RefObject<HTMLVideoElement | null>
   beatmap: CockHeroBeatmap | null
   active: boolean
+  /** When true, play a short synthesized click on every beat. Accent
+   *  beats use a higher pitch + slightly louder gain. */
+  audioClick?: boolean
 }
 
 const HIT_WINDOW_MS = 120
 const VISIBLE_AFTER_HIT_MS = 350
 
-export function CockHeroOverlay({ videoRef, beatmap, active }: CockHeroOverlayProps) {
+export function CockHeroOverlay({ videoRef, beatmap, active, audioClick = false }: CockHeroOverlayProps) {
   const [hits, setHits] = useState<Array<{ id: number; isAccent: boolean; intensity: number }>>([])
   const [stats, setStats] = useState({ hit: 0, miss: 0, combo: 0, bestCombo: 0 })
   const lastBeatIndexRef = useRef<number>(-1)
   const hitIdRef = useRef(0)
+
+  // Shared AudioContext for beat clicks. Lazy-created on first use so
+  // we don't trip the "AudioContext was not allowed to start" warning
+  // until the user has interacted (they have, by toggling).
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const getAudioCtx = useCallback(() => {
+    if (!audioCtxRef.current) {
+      try {
+        const Ctx = window.AudioContext || (window as any).webkitAudioContext
+        audioCtxRef.current = new Ctx()
+      } catch { return null }
+    }
+    return audioCtxRef.current
+  }, [])
+  // Tear down on unmount so we don't leak audio graphs across mounts.
+  useEffect(() => () => {
+    audioCtxRef.current?.close().catch(() => {})
+    audioCtxRef.current = null
+  }, [])
+
+  const playClick = useCallback((isAccent: boolean, intensity: number) => {
+    const ctx = getAudioCtx()
+    if (!ctx) return
+    const now = ctx.currentTime
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    // Accent: bright high tick. Normal: lower, more woody tick.
+    osc.type = 'triangle'
+    osc.frequency.value = isAccent ? 1800 : 1100
+    // Quick exponential decay — ~80ms tick.
+    const peak = (isAccent ? 0.22 : 0.13) * (0.6 + intensity * 0.4)
+    gain.gain.setValueAtTime(0.0001, now)
+    gain.gain.exponentialRampToValueAtTime(peak, now + 0.005)
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09)
+    osc.connect(gain).connect(ctx.destination)
+    osc.start(now)
+    osc.stop(now + 0.12)
+  }, [getAudioCtx])
 
   // Reset on beatmap change / toggle
   useEffect(() => {
@@ -63,6 +104,7 @@ export function CockHeroOverlay({ videoRef, beatmap, active }: CockHeroOverlayPr
             const combo = prev.combo + 1
             return { ...prev, hit: prev.hit + 1, combo, bestCombo: Math.max(prev.bestCombo, combo) }
           })
+          if (audioClick) playClick(b.isAccent, b.intensity)
           setTimeout(() => {
             setHits((prev) => prev.filter((h) => h.id !== id))
           }, VISIBLE_AFTER_HIT_MS)
@@ -73,7 +115,7 @@ export function CockHeroOverlay({ videoRef, beatmap, active }: CockHeroOverlayPr
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [active, beatmap, videoRef])
+  }, [active, beatmap, videoRef, audioClick, playClick])
 
   if (!active || !beatmap) return null
 
