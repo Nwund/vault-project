@@ -64,6 +64,9 @@ export function HeatmapStrip({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hoverBucket, setHoverBucket] = useState<Bucket | null>(null)
+  // Class filter — when set, buckets that don't have this class as
+  // dominant render dimmed. Click a legend chip to focus.
+  const [focusClass, setFocusClass] = useState<string | null>(null)
 
   const build = useCallback(async () => {
     if (!mediaId || duration <= 0) return
@@ -120,7 +123,11 @@ export function HeatmapStrip({
             >
               {data.buckets.map((b, i) => {
                 const color = colorFor(b.dominantClass)
-                const opacity = b.dominantScore > 0 ? 0.55 + b.dominantScore * 0.45 : 0.2
+                let opacity = b.dominantScore > 0 ? 0.55 + b.dominantScore * 0.45 : 0.2
+                // When a class focus is active, dim buckets that don't
+                // have it as the dominant class so the user can spot
+                // the timeline of one specific body part.
+                if (focusClass && b.dominantClass !== focusClass) opacity *= 0.15
                 return (
                   <motion.button
                     key={i}
@@ -139,22 +146,39 @@ export function HeatmapStrip({
             </div>
           )}
 
-          {/* Class totals legend (top 4) */}
+          {/* Class totals legend (top 4) — click a chip to focus that
+              class on the timeline; click again to clear. */}
           {data && (
             <div className="flex items-center gap-2 flex-wrap text-[9px] text-white/60">
               {Object.entries(data.classTotals)
                 .sort(([, a], [, b]) => b - a)
-                .slice(0, 4)
-                .map(([cls, n]) => (
-                  <span key={cls} className="flex items-center gap-1">
-                    <span
-                      className="inline-block size-2 rounded-sm"
-                      style={{ background: colorFor(cls) }}
-                    />
-                    <span className="font-mono">{cls.replace(/_/g, ' ')}</span>
-                    <span className="text-white/30 tabular-nums">{n}</span>
-                  </span>
-                ))}
+                .slice(0, 6)
+                .map(([cls, n]) => {
+                  const focused = focusClass === cls
+                  return (
+                    <button
+                      key={cls}
+                      onClick={() => setFocusClass(focused ? null : cls)}
+                      className={`flex items-center gap-1 rounded px-1.5 py-0.5 transition ${focused ? 'bg-white/15 ring-1 ring-white/25' : 'hover:bg-white/5'}`}
+                      title={focused ? 'Click to clear filter' : 'Click to focus this class'}
+                    >
+                      <span
+                        className="inline-block size-2 rounded-sm"
+                        style={{ background: colorFor(cls) }}
+                      />
+                      <span className="font-mono">{cls.replace(/_/g, ' ')}</span>
+                      <span className="text-white/30 tabular-nums">{n}</span>
+                    </button>
+                  )
+                })}
+              {focusClass && (
+                <button
+                  onClick={() => setFocusClass(null)}
+                  className="text-white/40 hover:text-white text-[9px] underline ml-1"
+                >
+                  clear
+                </button>
+              )}
             </div>
           )}
 
