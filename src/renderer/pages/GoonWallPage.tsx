@@ -28,6 +28,7 @@ import { cn } from '../utils/cn'
 import { shuffleTake } from '../utils/shuffle'
 import { Btn } from '../components/ui'
 import { CumCountdownOverlay } from '../components/VisualStimulants'
+import { SubliminalOverlay } from '../components/SubliminalOverlay'
 import { videoPool } from '../hooks/useVideoCleanup'
 
 
@@ -93,6 +94,18 @@ export function GoonWallPage(props: {
     }
   }, [props.settings?.goonwall])
 
+  // Hypno-mode (subliminal text flash). textFrequency is "flashes per
+  // minute" — convert to a ±25% randomized ms interval range.
+  const hypnoMode = useMemo(() => {
+    const h = props.settings?.goonwall?.hypnoMode ?? {}
+    const enabled = h.enabled ?? false
+    const phrases: string[] = Array.isArray(h.subliminalText) ? h.subliminalText : []
+    const freqPerMin = Math.max(1, h.textFrequency ?? 5)
+    const meanMs = 60_000 / freqPerMin
+    const intervalRange: [number, number] = [Math.round(meanMs * 0.75), Math.round(meanMs * 1.25)]
+    return { enabled, subliminalText: phrases, intervalRange }
+  }, [props.settings?.goonwall])
+
   // Load settings from props
   useEffect(() => {
     const gw = props.settings?.goonwall
@@ -115,7 +128,14 @@ export function GoonWallPage(props: {
   }, [tileCount])
 
   // Save settings when they change
-  const saveSettings = useCallback(async (patch: Partial<{ tileCount: number; muted: boolean; showHud: boolean; layout: GoonWallLayout; countdownDuration: number }>) => {
+  const saveSettings = useCallback(async (patch: Partial<{
+    tileCount: number
+    muted: boolean
+    showHud: boolean
+    layout: GoonWallLayout
+    countdownDuration: number
+    hypnoMode: Partial<{ enabled: boolean; subliminalText: string[]; textFrequency: number }>
+  }>) => {
     try {
       await window.api.settings.goonwall?.update?.(patch)
     } catch (e) {
@@ -720,6 +740,23 @@ export function GoonWallPage(props: {
 
           <div className="w-px h-6 bg-white/20" />
 
+          {/* Hypno / subliminal text flash toggle. Reads phrases from
+              settings.goonwall.hypnoMode.subliminalText. */}
+          <button
+            onClick={() => saveSettings({ hypnoMode: { enabled: !hypnoMode.enabled } })}
+            className={cn(
+              'w-7 h-7 rounded-lg text-sm transition flex items-center justify-center',
+              hypnoMode.enabled ? 'bg-fuchsia-500/30 text-fuchsia-300' : 'bg-white/5 text-white/60 hover:bg-white/10'
+            )}
+            title={hypnoMode.enabled
+              ? `Hypno ON · ${hypnoMode.subliminalText.length} phrases`
+              : 'Hypno text flashes OFF'}
+          >
+            <Sparkles size={14} />
+          </button>
+
+          <div className="w-px h-6 bg-white/20" />
+
           {/* Cum Countdown */}
           <div className="relative">
             <button
@@ -1043,6 +1080,20 @@ export function GoonWallPage(props: {
               }}
             />
           )}
+
+          {/* Subliminal text flashes — reads settings.goonwall.hypnoMode.
+              Frequency setting is "flashes per minute" → convert to ms. */}
+          <SubliminalOverlay
+            active={hypnoMode.enabled && hypnoMode.subliminalText.length > 0}
+            config={{
+              phrases: hypnoMode.subliminalText,
+              minIntervalMs: hypnoMode.intervalRange[0],
+              maxIntervalMs: hypnoMode.intervalRange[1],
+              visibleMs: 650,
+              intensity: 0.55,
+              placement: 'random',
+            }}
+          />
         </div>
       )}
 

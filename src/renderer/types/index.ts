@@ -247,6 +247,13 @@ export type VaultSettings = {
       contrastBoost?: number
       heatOverlay?: boolean
     }
+    hypnoMode?: {
+      enabled?: boolean
+      spiralOverlay?: boolean
+      pulseSync?: boolean
+      subliminalText?: string[]
+      textFrequency?: number // flashes per minute
+    }
   }
   captions?: {
     enabled: boolean
