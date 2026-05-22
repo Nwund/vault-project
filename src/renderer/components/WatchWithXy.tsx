@@ -570,12 +570,13 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       // (~50% gain), body baseline (~75%), build escalating (~90%),
       // climax full peak (100%). Mirrors the climax-burst voice volume
       // so commentary feels like a continuous arc, not a flat layer.
-      // Multiplied by refractoryFactor so post-climax volume is softer.
+      // Multiplied by refractoryFactor (softer post-climax) and
+      // warmupFactor (softer first 30s).
       const phaseGain = (enginePhase === 'climax' ? 1.0
         : enginePhase === 'build' ? 0.9
         : enginePhase === 'body' ? 0.75
         : enginePhase === 'intro' || enginePhase === 'cooldown' ? 0.55
-        : 0.85) * refractoryFactor
+        : 0.85) * refractoryFactor * warmupFactor
       // Persona baseline + phase overlay + per-line jitter. Persona
       // defines resting voice; phase adds escalation; jitter ensures
       // no two consecutive lines sound exactly the same (real humans
@@ -1396,6 +1397,25 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     return () => window.removeEventListener('vault:user-said', onSaid)
   }, [enabled])
 
+  // Warm-up timestamp — when she first enables, she "settles in"
+  // gradually instead of being at full intensity immediately. For
+  // the first 30 seconds her cadence is slightly slower and her
+  // volume is softer; smoothly ramps to baseline.
+  const warmupStartRef = useRef<number>(0)
+  useEffect(() => {
+    if (enabled) warmupStartRef.current = Date.now()
+    else warmupStartRef.current = 0
+  }, [enabled])
+  const warmupFactor = (() => {
+    if (warmupStartRef.current === 0) return 1.0
+    const elapsed = Date.now() - warmupStartRef.current
+    if (elapsed > 30_000) return 1.0
+    // Slow start: 0.5 at t=0, easing to 1.0 at t=30s with ease-out cubic.
+    const t = elapsed / 30_000
+    const eased = 1 - Math.pow(1 - t, 3)
+    return 0.5 + 0.5 * eased
+  })()
+
   // Voice character drift — small Brownian-motion parameter walk
   // that accumulates over the session so no two enable cycles sound
   // identical. By ~60 minutes in, her voice has slightly drifted in
@@ -1450,13 +1470,14 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   // Scales the user-supplied intervalSec by a per-phase factor so the
   // override still works (e.g. interval=4 still gives 2.5s at climax).
   // Multiplied by refractoryFactor (1.0 normally, smaller right after
-  // climax) so post-climax cadence lengthens proportionally.
+  // climax) and divided by warmupFactor (smaller = longer cadence
+  // during settle-in).
   const effectiveIntervalSec = (() => {
     const factor = enginePhase === 'climax' ? 0.5
       : enginePhase === 'build' ? 0.75
       : enginePhase === 'cooldown' ? 1.75
       : 1.0
-    return Math.max(3, intervalSec * factor / refractoryFactor)
+    return Math.max(3, intervalSec * factor / refractoryFactor / warmupFactor)
   })()
 
   // Start / stop the ticker when `enabled` flips. Session-tracking starts
