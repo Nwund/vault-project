@@ -196,6 +196,14 @@ export function useVoiceCommands(
       const confidence = typeof last[0]?.confidence === 'number' ? last[0].confidence : null
       if (!transcript) return
       setLastTranscript(transcript)
+      // Broadcast ALL final transcripts (regardless of match) so
+      // other components can build a user-voice memory. Xyrene's
+      // commentary prompt uses this to "remember what you said".
+      try {
+        window.dispatchEvent(new CustomEvent('vault:user-said', {
+          detail: { transcript, confidence },
+        }))
+      } catch { /* ignore */ }
       const opts = optionsRef.current
       // Confidence gate — drops noisy/garbled transcripts before they
       // can match. Chromium often returns ~0.85 for clean speech,

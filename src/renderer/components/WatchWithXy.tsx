@@ -1167,6 +1167,9 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
           chaos: Number(lastSceneMetricsRef.current.chaos.toFixed(2)),
           intensity: Number(lastSceneMetricsRef.current.intensity.toFixed(2)),
         } : null,
+        // What the user has said recently via voice commands —
+        // she can respond to specific things they've said.
+        userSaid: userVoiceMemoryRef.current.slice(-4).map((e) => e.text),
       })
 
       if (!result?.text) return
@@ -1369,6 +1372,29 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     const decay = Math.max(0, 1 - since / 60_000)
     return decay * escalateCountRef.current
   })()
+
+  // User voice memory — captures every final transcript the user
+  // says via STT. Surfaced to Xyrene's prompt so she "remembers what
+  // you said". Capped at 10 entries to keep prompt size bounded.
+  const userVoiceMemoryRef = useRef<Array<{ ts: number; text: string }>>([])
+  useEffect(() => {
+    if (!enabled) return
+    const onSaid = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as { transcript?: string } | undefined
+      const t = detail?.transcript?.trim()
+      if (!t || t.length < 3) return
+      // De-dupe against the most recent entry — STT sometimes fires
+      // overlapping results.
+      const recent = userVoiceMemoryRef.current[userVoiceMemoryRef.current.length - 1]
+      if (recent && recent.text === t) return
+      userVoiceMemoryRef.current.push({ ts: Date.now(), text: t })
+      if (userVoiceMemoryRef.current.length > 10) {
+        userVoiceMemoryRef.current.shift()
+      }
+    }
+    window.addEventListener('vault:user-said', onSaid)
+    return () => window.removeEventListener('vault:user-said', onSaid)
+  }, [enabled])
 
   // Voice character drift — small Brownian-motion parameter walk
   // that accumulates over the session so no two enable cycles sound

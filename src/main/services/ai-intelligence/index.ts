@@ -5283,6 +5283,9 @@ RULES:
       chaos: number
       intensity: number
     } | null
+    /** What the user has said recently via voice commands. Lets her
+     *  respond to user speech directly. */
+    userSaid?: string[]
   }): Promise<{
     text: string | null
     audioBase64: string | null
@@ -5325,6 +5328,7 @@ RULES:
       persona: args.persona,
       recallMoment: args.recallMoment,
       sceneMetrics: args.sceneMetrics ?? undefined,
+      userSaid: args.userSaid ?? [],
     })
 
     // Generate the line via Venice

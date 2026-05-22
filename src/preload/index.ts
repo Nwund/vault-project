@@ -2824,6 +2824,10 @@ const api = {
         chaos: number           // 0-1 horizontal edge density
         intensity: number       // 0-1 composite "how intense"
       } | null
+      /** Recent things the USER has said via STT voice commands.
+       *  Surfaced to the prompt so she can respond to specific
+       *  things they've said ("you said you loved this one"). */
+      userSaid?: string[]
     }) => invoke<{
       text: string | null
       audioBase64: string | null

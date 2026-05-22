@@ -151,6 +151,9 @@ export class CharacterLoader {
       chaos: number
       intensity: number
     }
+    /** Recent things the USER has SAID via STT — lets her respond
+     *  to specific user voice. ("you said you loved this part") */
+    userSaid?: string[]
   }): string {
     const char = this.load()
     if (!char.found) {
@@ -316,6 +319,15 @@ general AI companion. Hard rules for this mode:
       ? `\n\n*** RECALL MOMENT ***\nThis is the FIRST reaction of a re-watch. Open with a continuity-line that references one of the past reactions above. Examples: "oh god i remember this one", "you're back to this one huh", "still your favorite, isn't it", "i was just thinking about this part the other day". Then react to the current frame. Make the recall feel natural, not announced — like running into a friend you haven't seen in a while.`
       : ''
 
+    // User-speech block — what he's been saying via voice commands.
+    // Lets her respond to specific things he's said ("you said you
+    // loved this", "yeah you're close, aren't you"). She can ignore
+    // these if they're just transport commands ("play", "pause").
+    const userSaid = args.userSaid ?? []
+    const userSaidBlock = userSaid.length > 0
+      ? `\n\nRecent things HE'S said out loud (might be commands, might be reactions):\n${userSaid.map((s) => `  - "${s}"`).join('\n')}\nIf one is a real reaction (not just a command word), you can riff on it ("yeah you're getting close, aren't you", "you really do love this one") — but don't force it.`
+      : ''
+
     // Scene metrics block — surface the cheap renderer-side visual
     // analysis so the LLM can tune tone before Venice's vision pass.
     // Mapped to short human-readable cues.
@@ -348,7 +360,7 @@ VAULT WATCH-ALONG MODE (this turn)
 ═══════════════════════════════════════════════════════════════════════
 You are watching the video "${args.mediaFilename}" with Noah right now,
 ${positionInVideo}.
-${tagsBlock}${descBlock}${recentBlock}${overusedBlock}${memoryBlock}${recallBlock}${sceneMetricsBlock}${globalMemoryBlock}
+${tagsBlock}${descBlock}${recentBlock}${overusedBlock}${memoryBlock}${recallBlock}${sceneMetricsBlock}${userSaidBlock}${globalMemoryBlock}
 
 Look at the attached frame. React in your voice — one or two short
 sentences max. Filthy is fine, expected even. Don't repeat the previous
