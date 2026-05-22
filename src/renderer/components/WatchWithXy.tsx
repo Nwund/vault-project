@@ -945,6 +945,19 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   }
 
   // ── Polling loop ──────────────────────────────────────────────────────
+  // Track whether this session has fired its first tick yet for the
+  // CURRENT media. Used to flag "recall moment" on the first comment
+  // if the media has past memories, biasing the LLM toward an opener
+  // that references continuity.
+  const firstTickRef = useRef<{ mediaId: string | null; fired: boolean }>({
+    mediaId: null,
+    fired: false,
+  })
+  // Reset on media change.
+  useEffect(() => {
+    firstTickRef.current = { mediaId, fired: false }
+  }, [mediaId])
+
   const tick = useCallback(async () => {
     if (!enabled) return
     const video = videoRef.current
@@ -1002,6 +1015,15 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
           })
         }
       }
+      // First-tick recall flag — if this is the FIRST comment for the
+      // current media AND she has memories of it, mark this as a
+      // "recall moment" so the prompt strongly biases her toward
+      // referencing past reactions in the opener.
+      const isRecallMoment =
+        !firstTickRef.current.fired &&
+        firstTickRef.current.mediaId === mediaId &&
+        videoMemoryRef.current.length > 0
+      firstTickRef.current = { mediaId, fired: true }
       const result: any = await window.api.ai.xyreneComment({
         mediaId,
         currentTimeSec: video.currentTime,
@@ -1020,6 +1042,10 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         speak: false,
         phase: enginePhase,
         persona: personaRef.current,
+        // First-comment recall hint — the prompt builder will inject
+        // an explicit "this is a re-watch, OPEN with a recall" line
+        // when this is true.
+        recallMoment: isRecallMoment,
       })
 
       if (!result?.text) return

@@ -5270,6 +5270,10 @@ RULES:
      *  / boss / cheerleader). When omitted, the prompt builder picks
      *  'goonbud' as the default. */
     persona?: 'goonbud' | 'mistress' | 'stepsister' | 'boss' | 'cheerleader'
+    /** Recall-moment flag — when true the prompt explicitly tells the
+     *  LLM to OPEN with a continuity reference to past memories. Used
+     *  for the first comment after re-enabling on a known video. */
+    recallMoment?: boolean
   }): Promise<{
     text: string | null
     audioBase64: string | null
@@ -5310,6 +5314,7 @@ RULES:
       globalMemories: args.globalMemories ?? [],
       phase: args.phase,
       persona: args.persona,
+      recallMoment: args.recallMoment,
     })
 
     // Generate the line via Venice

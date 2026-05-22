@@ -2811,6 +2811,10 @@ const api = {
        *  stepsister / boss / cheerleader). Defaults to settings value
        *  or 'goonbud'. */
       persona?: 'goonbud' | 'mistress' | 'stepsister' | 'boss' | 'cheerleader'
+      /** When true, the prompt instructs the LLM to OPEN with a
+       *  recall-style reference to a past memory of this media. Used
+       *  for the first comment after re-enabling on a known video. */
+      recallMoment?: boolean
     }) => invoke<{
       text: string | null
       audioBase64: string | null

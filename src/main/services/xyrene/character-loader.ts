@@ -137,6 +137,10 @@ export class CharacterLoader {
      *  commentary tone tracks the actual session escalation instead
      *  of always reading as a flat 7/8. Falls back to 7/8 if unset. */
     phase?: 'intro' | 'body' | 'build' | 'climax' | 'cooldown'
+    /** Recall-moment flag — when true, the prompt instructs the LLM
+     *  to OPEN with a continuity reference to past memories instead
+     *  of treating this as a fresh first impression. */
+    recallMoment?: boolean
   }): string {
     const char = this.load()
     if (!char.found) {
@@ -294,6 +298,14 @@ general AI companion. Hard rules for this mode:
       ? `\n\nYou've watched THIS video with him before. Some of what you said previously:\n${pastMemories.map((m) => `  - "${m}"`).join('\n')}\nYou can optionally reference these (briefly) to build continuity — "i remember this one", "you were obsessed with this part last time", "still hot, isn't it" — but don't dwell. Most reactions should still be FRESH and about THIS moment.`
       : ''
 
+    // Recall-moment directive — when this is the first comment on a
+    // known re-watch, EXPLICITLY tell the LLM to open with a memory
+    // reference rather than a fresh observation. Stronger than the
+    // optional reference in memoryBlock.
+    const recallBlock = args.recallMoment && pastMemories.length > 0
+      ? `\n\n*** RECALL MOMENT ***\nThis is the FIRST reaction of a re-watch. Open with a continuity-line that references one of the past reactions above. Examples: "oh god i remember this one", "you're back to this one huh", "still your favorite, isn't it", "i was just thinking about this part the other day". Then react to the current frame. Make the recall feel natural, not announced — like running into a friend you haven't seen in a while.`
+      : ''
+
     // Cross-video memory block — sample of her reactions to OTHER
     // media she's seen recently. Useful for session-arc continuity
     // ("earlier you were losing it over that blonde — this is hotter
@@ -314,7 +326,7 @@ VAULT WATCH-ALONG MODE (this turn)
 ═══════════════════════════════════════════════════════════════════════
 You are watching the video "${args.mediaFilename}" with Noah right now,
 ${positionInVideo}.
-${tagsBlock}${descBlock}${recentBlock}${overusedBlock}${memoryBlock}${globalMemoryBlock}
+${tagsBlock}${descBlock}${recentBlock}${overusedBlock}${memoryBlock}${recallBlock}${globalMemoryBlock}
 
 Look at the attached frame. React in your voice — one or two short
 sentences max. Filthy is fine, expected even. Don't repeat the previous
