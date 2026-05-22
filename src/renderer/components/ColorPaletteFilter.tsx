@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Palette, Loader2, X, Sparkles } from 'lucide-react'
+import { Palette, Loader2, X, Sparkles, Pipette } from 'lucide-react'
 import { SPRINGS, FADE_SLIDE } from './network/motion-tokens'
 
 const CURATED_SWATCHES: Array<{ name: string; rgb: [number, number, number]; tone: string }> = [
@@ -92,6 +92,43 @@ export function ColorPaletteFilter({ tolerance = 32, limit = 500 }: { tolerance?
     setActive(null)
     dispatchFilter({ rgb: null, mediaIds: [], swatchName: null })
   }, [dispatchFilter])
+
+  // Eyedropper — uses the native Chromium EyeDropper API (Electron 32+
+  // ships Chromium 128+, which supports it). Lets the user click any
+  // pixel on screen — typically a thumbnail in the library — and use
+  // that color as the palette filter. Falls back to an error if the
+  // API isn't available.
+  const onEyedrop = useCallback(async () => {
+    setError(null)
+    const Ctor = (window as any).EyeDropper
+    if (typeof Ctor !== 'function') {
+      setError('EyeDropper API not supported in this build')
+      return
+    }
+    try {
+      const result = await new Ctor().open()
+      const hex: string | undefined = result?.sRGBHex
+      if (!hex) return
+      // Parse #RRGGBB
+      const m = /^#?([0-9a-f]{6})$/i.exec(hex)
+      if (!m) { setError('Could not parse picked color'); return }
+      const hexNum = parseInt(m[1], 16)
+      const rgb: [number, number, number] = [
+        (hexNum >> 16) & 0xff,
+        (hexNum >> 8) & 0xff,
+        hexNum & 0xff,
+      ]
+      const ids = await window.api.palette.filter(rgb, tolerance, limit)
+      const name = `#${m[1].toUpperCase()}`
+      setActive({ name, rgb })
+      setCounts((c) => ({ ...c, [name]: ids.length }))
+      dispatchFilter({ rgb, mediaIds: ids, swatchName: name })
+    } catch (e: any) {
+      // AbortError = user closed picker without selecting.
+      if (e?.name === 'AbortError') return
+      setError(e?.message ?? String(e))
+    }
+  }, [tolerance, limit, dispatchFilter])
 
   const onIndexAll = useCallback(async () => {
     setIndexing({ done: 0, total: 0 })
@@ -181,6 +218,16 @@ export function ColorPaletteFilter({ tolerance = 32, limit = 500 }: { tolerance?
             </div>
 
             <div className="mt-3 pt-3 border-t border-white/5 space-y-2">
+              {/* Eyedropper — picks any pixel from anywhere on screen
+                  (including thumbnails). Uses the native Chromium API
+                  so a no-op gracefully error-msgs if unavailable. */}
+              <button
+                onClick={onEyedrop}
+                className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-zinc-700/40 hover:bg-zinc-700/60 text-white text-[11px] font-medium transition"
+              >
+                <Pipette size={11} />
+                Pick from screen
+              </button>
               <button
                 onClick={onIndexAll}
                 disabled={indexing != null}
