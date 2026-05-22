@@ -1465,19 +1465,36 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     return 0.4 + 0.6 * recovery
   })()
 
+  // Scene intensity tracker — drives cadence boost. Stores a smoothed
+  // rolling average so a single high-intensity frame doesn't whiplash
+  // her, but a sustained intense run does compress cadence.
+  const [intensityMA, setIntensityMA] = useState(0.4)
+  useEffect(() => {
+    if (!enabled) return
+    const interval = window.setInterval(() => {
+      const current = lastSceneMetricsRef.current?.intensity ?? 0.4
+      // EMA with alpha 0.3 — smooth but responsive.
+      setIntensityMA((prev) => prev * 0.7 + current * 0.3)
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [enabled])
+
   // Phase-adaptive cadence — comments more often at climax (every 5s),
   // less often at cooldown (every 14s), default 8s in body/intro.
   // Scales the user-supplied intervalSec by a per-phase factor so the
   // override still works (e.g. interval=4 still gives 2.5s at climax).
   // Multiplied by refractoryFactor (1.0 normally, smaller right after
   // climax) and divided by warmupFactor (smaller = longer cadence
-  // during settle-in).
+  // during settle-in) AND intensity boost — high visual intensity
+  // tightens the cadence further so she reacts more in hot scenes.
   const effectiveIntervalSec = (() => {
     const factor = enginePhase === 'climax' ? 0.5
       : enginePhase === 'build' ? 0.75
       : enginePhase === 'cooldown' ? 1.75
       : 1.0
-    return Math.max(3, intervalSec * factor / refractoryFactor / warmupFactor)
+    // intensityMA 0.0 → 1.0× (no change), 1.0 → 0.5× (twice as fast)
+    const intensityBoost = 1 / (1 + intensityMA * 0.7)
+    return Math.max(3, intervalSec * factor * intensityBoost / refractoryFactor / warmupFactor)
   })()
 
   // Start / stop the ticker when `enabled` flips. Session-tracking starts
