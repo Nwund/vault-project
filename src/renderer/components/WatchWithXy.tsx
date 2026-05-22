@@ -474,6 +474,24 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       const personaProfile = PERSONA_VOICE[persona] ?? PERSONA_VOICE.goonbud
       const phaseSpeedShift = enginePhase === 'climax' ? 0 : enginePhase === 'build' ? -0.03 : enginePhase === 'body' ? -0.07 : -0.1
       const phasePitchShift = enginePhase === 'climax' ? 1.0 : enginePhase === 'build' ? 0.5 : enginePhase === 'body' ? 0 : -1.0
+      // Time-of-day affect — humans don't sound the same at 11am as
+      // at 3am. Late-night = slower, lower pitch (tired/intimate);
+      // morning = brighter, slightly faster (waking up).
+      const hour = new Date().getHours()
+      const todSpeed = (hour >= 23 || hour <= 5) ? -0.04   // 11pm - 5am: slower
+        : (hour <= 9) ? 0.02                                // 6am - 9am: brighter
+        : 0
+      const todPitch = (hour >= 23 || hour <= 5) ? -0.5    // sultry-late
+        : (hour <= 9) ? 0.3                                  // bright morning
+        : 0
+      // Session-length affect — after 30+ minutes she sounds more
+      // worn-in. Caps at -7% speed / -1 semitone past 2h.
+      const sessionMin = sessionRef.current.startedAt
+        ? (Date.now() - sessionRef.current.startedAt) / 60_000
+        : 0
+      const fatigueFactor = Math.min(1, Math.max(0, (sessionMin - 30) / 90))
+      const fatigueSpeed = -0.07 * fatigueFactor
+      const fatiguePitch = -1.0 * fatigueFactor
       // Per-line jitter: ±5% speed, ±0.7 semitones pitch. Small enough
       // not to break character; large enough that repeated reactions
       // don't sound mechanically identical.
@@ -493,8 +511,8 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       const volumeJitter = 1 + (Math.random() - 0.5) * 0.1
       const handle = streaming.speakStreaming(text, {
         voice,
-        speed: personaProfile.speed + phaseSpeedShift + speedJitter,
-        pitch: personaProfile.pitch + phasePitchShift + pitchJitter,
+        speed: personaProfile.speed + phaseSpeedShift + todSpeed + fatigueSpeed + speedJitter,
+        pitch: personaProfile.pitch + phasePitchShift + todPitch + fatiguePitch + pitchJitter,
         expression: lineExpression,
         volume: audioMuted ? 0 : Math.max(0, Math.min(1, phaseGain * volumeJitter)),
         onStart: () => setIsSpeaking(true),
