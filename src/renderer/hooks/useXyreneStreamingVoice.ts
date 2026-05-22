@@ -160,9 +160,23 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
       try {
         const Ctor = window.AudioContext || (window as any).webkitAudioContext
         const ctx: AudioContext = new Ctor({ sampleRate: 24000 })
+        // Master output — soft-knee compressor → makeup gain → destination.
+        // The compressor tames peaks so transient synth artifacts (mouth
+        // clicks, climax voice) don't hit clipping; threshold + ratio
+        // tuned to feel like a gentle natural-loudness curve, not
+        // squashed studio compression.
+        const compressor = ctx.createDynamicsCompressor()
+        compressor.threshold.value = -18    // dB; starts compressing past quiet speech
+        compressor.knee.value = 6           // soft knee — gentle onset
+        compressor.ratio.value = 3          // 3:1 — gentle limiting
+        compressor.attack.value = 0.003     // 3ms — catches transients
+        compressor.release.value = 0.25     // smooth release
+        const makeup = ctx.createGain()
+        makeup.gain.value = 1.4             // recover lost level from compression
+        compressor.connect(makeup).connect(ctx.destination)
         const master = ctx.createGain()
         master.gain.value = 1
-        master.connect(ctx.destination)
+        master.connect(compressor)
         // Build the reverb chain — convolver + wet gain into master.
         const convolver = ctx.createConvolver()
         convolver.buffer = buildReverbIR(ctx)
