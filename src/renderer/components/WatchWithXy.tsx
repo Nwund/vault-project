@@ -541,8 +541,8 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       const contagionVolume = 1 + contagionBoost * 0.05
       const handle = streaming.speakStreaming(text, {
         voice,
-        speed: personaProfile.speed + phaseSpeedShift + todSpeed + fatigueSpeed + contagionSpeed + speedJitter,
-        pitch: personaProfile.pitch + phasePitchShift + todPitch + fatiguePitch + contagionPitch + pitchJitter,
+        speed: personaProfile.speed + phaseSpeedShift + todSpeed + fatigueSpeed + contagionSpeed + driftRef.current.speed + speedJitter,
+        pitch: personaProfile.pitch + phasePitchShift + todPitch + fatiguePitch + contagionPitch + driftRef.current.pitch + pitchJitter,
         expression: lineExpression,
         volume: audioMuted ? 0 : Math.max(0, Math.min(1, phaseGain * volumeJitter * contagionVolume)),
         onStart: () => setIsSpeaking(true),
@@ -1248,6 +1248,38 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     const decay = Math.max(0, 1 - since / 60_000)
     return decay * escalateCountRef.current
   })()
+
+  // Voice character drift — small Brownian-motion parameter walk
+  // that accumulates over the session so no two enable cycles sound
+  // identical. By ~60 minutes in, her voice has slightly drifted in
+  // speed/pitch/expression bias. Resets on disable.
+  //
+  // Drift bounds:
+  //   speed: ±0.06 (±6%)
+  //   pitch: ±1.2 semitones
+  // Each ~10s tick walks by a small random step within these bounds.
+  const driftRef = useRef<{ speed: number; pitch: number }>({ speed: 0, pitch: 0 })
+  useEffect(() => {
+    if (!enabled) {
+      driftRef.current = { speed: 0, pitch: 0 }
+      return
+    }
+    const interval = window.setInterval(() => {
+      // Each tick: random walk ±0.005 speed, ±0.1 semi pitch.
+      // Pull toward zero by a small factor so drift doesn't grow
+      // unbounded (mean-reverting Ornstein-Uhlenbeck-ish).
+      const pull = 0.92
+      const stepSpeed = (Math.random() - 0.5) * 0.01
+      const stepPitch = (Math.random() - 0.5) * 0.2
+      const newSpeed = driftRef.current.speed * pull + stepSpeed
+      const newPitch = driftRef.current.pitch * pull + stepPitch
+      driftRef.current = {
+        speed: Math.max(-0.06, Math.min(0.06, newSpeed)),
+        pitch: Math.max(-1.2, Math.min(1.2, newPitch)),
+      }
+    }, 10_000)
+    return () => clearInterval(interval)
+  }, [enabled])
 
   // Track the last climax timestamp so we can apply a "refractory
   // period" — after a real climax, real humans are spent. She gets
