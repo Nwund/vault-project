@@ -42,6 +42,9 @@ interface StreamState {
   onStart?: () => void
   onEnd?: () => void
   hasStarted: boolean
+  // Cached expression so post-line audio effects (vocal fry tail)
+  // can decide whether to fire when the stream ends.
+  expression?: string
 }
 
 // Decode int16 PCM chunk into Float32 in [-1, 1].
@@ -151,6 +154,50 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     src.connect(filter).connect(gain).connect(gainRef.current ?? ctx.destination)
     src.start(now)
     src.stop(now + dur + 0.005)
+    return Math.round(dur * 1000)
+  }, [getCtx])
+
+  /**
+   * Synthesize a vocal-fry / creaky-voice tail. Real humans at peak
+   * arousal often end words with a low-register creaky growl that
+   * pure TTS can't produce. ~150-280ms of low-frequency irregular
+   * oscillation panned through a narrow bandpass for that "creak"
+   * texture.
+   *
+   * Only fired for moaned/desperate expressions — sounds wrong on
+   * neutral or commanded lines.
+   */
+  const playVocalFry = useCallback((): number => {
+    const ctx = getCtx()
+    if (!ctx) return 0
+    if (Math.random() < 0.6) return 0  // only ~40% of qualifying lines
+    const now = ctx.currentTime
+    const dur = (150 + Math.random() * 130) / 1000
+    const sampleCount = Math.floor(ctx.sampleRate * dur)
+    const buf = ctx.createBuffer(1, sampleCount, ctx.sampleRate)
+    const data = buf.getChannelData(0)
+    // Synthesize a low-register pulse train with irregular spacing —
+    // that's what vocal fry actually IS biologically.
+    const baseFreq = 65 + Math.random() * 25  // 65-90Hz = creaky range
+    for (let i = 0; i < sampleCount; i++) {
+      const t = i / ctx.sampleRate
+      const phase = t * baseFreq * 2 * Math.PI
+      // Add slight irregularity — fry isn't perfectly periodic.
+      const jitter = (Math.random() - 0.5) * 0.3
+      const env = Math.exp(-t * 5)  // decay envelope
+      data[i] = (Math.sin(phase + jitter) + Math.sin(phase * 2 + jitter) * 0.3) * 0.5 * env
+    }
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.value = 200 + Math.random() * 200
+    filter.Q.value = 0.8
+    const gain = ctx.createGain()
+    gain.gain.value = 0.06
+    src.connect(filter).connect(gain).connect(gainRef.current ?? ctx.destination)
+    src.start(now)
+    src.stop(now + dur + 0.01)
     return Math.round(dur * 1000)
   }, [getCtx])
 
@@ -281,9 +328,13 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
           state.sources.delete(src)
           state.liveChunks--
           // If the stream end has fired AND this was the last chunk,
-          // fire the user's onEnd. Defensive against race where
-          // :end fires before the last chunk finishes playing.
+          // fire vocal-fry tail (if applicable) and the user's onEnd.
+          // Defensive against race where :end fires before the last
+          // chunk finishes playing.
           if (state.done && state.liveChunks <= 0) {
+            if (state.expression === 'moaned' || state.expression === 'desperate') {
+              try { playVocalFry() } catch { /* ignore */ }
+            }
             try { state.onEnd?.() } catch { /* ignore */ }
             streamsRef.current.delete(state.id)
           }
@@ -299,7 +350,10 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
       if (sampleRate && sampleRate > 0) state.sampleRate = sampleRate
       if (state.liveChunks <= 0) {
         // No chunks were actually queued (or all already finished).
-        // Fire onEnd immediately so callers can clean up.
+        // Fire vocal fry + onEnd immediately so callers can clean up.
+        if (state.expression === 'moaned' || state.expression === 'desperate') {
+          try { playVocalFry() } catch { /* ignore */ }
+        }
         try { state.onEnd?.() } catch { /* ignore */ }
         streamsRef.current.delete(state.id)
       }
@@ -413,6 +467,7 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
       onStart: options.onStart,
       onEnd: options.onEnd,
       hasStarted: false,
+      expression: options.expression,
     }
     streamsRef.current.set(id, state)
     // Fire the IPC. The handler will start sending chunk events as the
