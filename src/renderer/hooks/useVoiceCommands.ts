@@ -153,6 +153,17 @@ export function useVoiceCommands(
     recognition.interimResults = false
     recognition.lang = 'en-US'
 
+    // Listening-mode bridge — when the recognizer detects user speech
+    // start/end, dispatch window events so other components (like the
+    // Xyrene voice queue) can pause her synth and let the user be heard.
+    // Chromium's webkitSpeechRecognition emits these as bare events.
+    recognition.onspeechstart = () => {
+      try { window.dispatchEvent(new CustomEvent('vault:user-speaking', { detail: { state: 'start' } })) } catch { /* ignore */ }
+    }
+    recognition.onspeechend = () => {
+      try { window.dispatchEvent(new CustomEvent('vault:user-speaking', { detail: { state: 'end' } })) } catch { /* ignore */ }
+    }
+
     recognition.onresult = (event: any) => {
       const last = event.results[event.results.length - 1]
       if (!last?.isFinal) return

@@ -321,12 +321,39 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     }
   }, [isSpeaking, videoRef])
 
+  // Listening mode — when the user starts speaking (voice command
+  // recognizer fires onspeechstart), interrupt her current line and
+  // pause the queue. Resumes when the user stops speaking. Without
+  // this she'd talk over them and the recognizer would mishear.
+  const queuePausedRef = useRef(false)
+  useEffect(() => {
+    const onSpeaking = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as { state?: 'start' | 'end' } | undefined
+      if (detail?.state === 'start') {
+        // Cancel in-flight streams immediately — don't wait for the
+        // line to finish. The user is talking NOW.
+        streaming.cancelAll()
+        queuePausedRef.current = true
+        setIsSpeaking(false)
+      } else if (detail?.state === 'end') {
+        if (queuePausedRef.current) {
+          queuePausedRef.current = false
+          // Don't replay the cancelled line — just let new commentary
+          // ticks land naturally. Queue is empty anyway after cancelAll.
+        }
+      }
+    }
+    window.addEventListener('vault:user-speaking', onSpeaking)
+    return () => window.removeEventListener('vault:user-speaking', onSpeaking)
+  }, [streaming])
+
   // ── Polling loop ──────────────────────────────────────────────────────
   const tick = useCallback(async () => {
     if (!enabled) return
     const video = videoRef.current
     if (!video || video.paused) return  // skip while paused; resumes naturally
     if (inFlightRef.current) return     // skip if previous tick still running
+    if (queuePausedRef.current) return  // listening mode — user is talking
     inFlightRef.current = true
     setBusy(true)
     try {
