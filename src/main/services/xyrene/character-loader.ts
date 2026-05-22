@@ -123,6 +123,10 @@ export class CharacterLoader {
      *  this together before" hint so her commentary builds
      *  continuity. Empty = first time watching this media. */
     pastMemories?: string[]
+    /** Cross-video memories — earlier reactions to OTHER media. Each
+     *  entry has a filename + line so she can reference them as
+     *  "earlier you said X about Y". Empty = no global continuity. */
+    globalMemories?: Array<{ filename: string; line: string }>
     // #354 G-130 — persona switcher. Defaults to 'goonbud' (the
     // shipping Xyrene voice). 'mistress' makes her dominant + commanding
     // with denial/degradation. 'stepsister' / 'boss' / 'cheerleader'
@@ -269,6 +273,15 @@ general AI companion. Hard rules for this mode:
       ? `\n\nYou've watched THIS video with him before. Some of what you said previously:\n${pastMemories.map((m) => `  - "${m}"`).join('\n')}\nYou can optionally reference these (briefly) to build continuity — "i remember this one", "you were obsessed with this part last time", "still hot, isn't it" — but don't dwell. Most reactions should still be FRESH and about THIS moment.`
       : ''
 
+    // Cross-video memory block — sample of her reactions to OTHER
+    // media she's seen recently. Useful for session-arc continuity
+    // ("earlier you were losing it over that blonde — this is hotter
+    // somehow"). Only inject when there's something to surface.
+    const globalMemories = args.globalMemories ?? []
+    const globalMemoryBlock = globalMemories.length > 0
+      ? `\n\nEarlier in this session you watched other videos with him. A couple things you said:\n${globalMemories.map((m) => `  - about "${m.filename}": "${m.line}"`).join('\n')}\nYou can OPTIONALLY tie back to one if it's a natural thread ("this beats that brunette earlier", "still thinking about that scene from before"). Rare references only — don't force it.`
+      : ''
+
     // Append a vault-specific situational coda. Tells her exactly what we
     // need from this turn so she returns one short reaction, not a whole
     // chat response.
@@ -279,7 +292,7 @@ VAULT WATCH-ALONG MODE (this turn)
 ═══════════════════════════════════════════════════════════════════════
 You are watching the video "${args.mediaFilename}" with Noah right now,
 ${positionInVideo}.
-${tagsBlock}${descBlock}${recentBlock}${memoryBlock}
+${tagsBlock}${descBlock}${recentBlock}${memoryBlock}${globalMemoryBlock}
 
 Look at the attached frame. React in your voice — one or two short
 sentences max. Filthy is fine, expected even. Don't repeat the previous

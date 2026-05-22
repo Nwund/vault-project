@@ -5256,6 +5256,10 @@ RULES:
      *  sessions). The prompt surfaces these with a "you've watched this
      *  before" hint so her commentary builds session-to-session continuity. */
     pastMemories?: string[]
+    /** Cross-video memories — earlier reactions to OTHER media she
+     *  watched recently. Each entry has filename + line so she can
+     *  reference them by content. */
+    globalMemories?: Array<{ filename: string; line: string }>
     speak?: boolean
     /** Current XyreneSoundEngine phase if the caller knows it. Drives
      *  {{arousal}}/{{engagement}} placeholder values so her commentary
@@ -5302,6 +5306,7 @@ RULES:
       durationSec: args.durationSec ?? mediaRow.durationSec,
       recentXyComments: args.recentComments ?? [],
       pastMemories: args.pastMemories ?? [],
+      globalMemories: args.globalMemories ?? [],
       phase: args.phase,
       persona: args.persona,
     })

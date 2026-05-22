@@ -2796,6 +2796,11 @@ const api = {
        *  sessions). Surfaced in the prompt with a "you've watched this
        *  before" hint so she can build continuity. */
       pastMemories?: string[]
+      /** Cross-video memories — sampled from her global rolling log so
+       *  she can reference earlier-today reactions to OTHER media.
+       *  Each entry carries the filename so she knows what she's
+       *  remembering ("earlier you said X about Y"). */
+      globalMemories?: Array<{ filename: string; line: string }>
       speak?: boolean
       /** Current XyreneSoundEngine phase; drives her arousal/engagement
        *  values in the prompt so commentary intensity tracks session

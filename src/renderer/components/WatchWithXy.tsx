@@ -196,6 +196,29 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   // per video so storage stays bounded.
   const MEMORY_KEY = (id: string) => `vault.xyrene.memory.${id}`
   const MEMORY_CAP = 12
+  // GLOBAL cross-video memory — every reaction (with the filename it
+  // was about) gets appended to a single rolling log so she can also
+  // reference "earlier today you watched that brunette..." across
+  // different media. Capped at 40 entries.
+  const GLOBAL_MEMORY_KEY = 'vault.xyrene.global-memory'
+  const GLOBAL_MEMORY_CAP = 40
+  type GlobalMemoryEntry = { ts: number; mediaId: string; filename: string; line: string }
+  const loadGlobalMemory = (): GlobalMemoryEntry[] => {
+    try {
+      const raw = window.localStorage.getItem(GLOBAL_MEMORY_KEY)
+      if (!raw) return []
+      const arr = JSON.parse(raw)
+      if (!Array.isArray(arr)) return []
+      return arr.filter((e: any) => e && typeof e.line === 'string' && typeof e.filename === 'string') as GlobalMemoryEntry[]
+    } catch { return [] }
+  }
+  const appendGlobalMemory = (entry: GlobalMemoryEntry) => {
+    try {
+      const existing = loadGlobalMemory()
+      const next = [...existing, entry].slice(-GLOBAL_MEMORY_CAP)
+      window.localStorage.setItem(GLOBAL_MEMORY_KEY, JSON.stringify(next))
+    } catch { /* ignore */ }
+  }
   const loadVideoMemory = (id: string): string[] => {
     try {
       const raw = window.localStorage.getItem(MEMORY_KEY(id))
@@ -221,6 +244,13 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   // Cache her memory for the current media at mount time so we don't
   // hit localStorage on every tick. Refreshed on mediaId change.
   const videoMemoryRef = useRef<string[]>([])
+  // Cache the global cross-video memory; refreshed on enable so it
+  // includes reactions from prior sessions even after a page reload.
+  const globalMemoryRef = useRef<GlobalMemoryEntry[]>([])
+  useEffect(() => {
+    if (!enabled) return
+    globalMemoryRef.current = loadGlobalMemory()
+  }, [enabled])
 
   // Session tracking for the auto-learn pass (#44). Captures everything
   // that happens between toggle-on and toggle-off OR mediaId-change so the
@@ -552,6 +582,21 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       // Ask for text-only response — we'll synthesize via streaming
       // TTS in the renderer for sub-second voice latency. Falls back
       // to buffered audio if the renderer can't stream.
+      // Sample 2 cross-video memories from OTHER media (not this one),
+      // weighted toward recent — she can reference earlier-today
+      // reactions like "i was just losing it over that brunette".
+      const otherMemories = globalMemoryRef.current
+        .filter((e) => e.mediaId !== mediaId)
+        .slice(-15)  // recency window
+      const sampledGlobal: Array<{ filename: string; line: string }> = []
+      if (otherMemories.length > 0) {
+        // Pick at most 2 random entries from the recency window.
+        const picks = Math.min(2, otherMemories.length)
+        const shuffled = [...otherMemories].sort(() => Math.random() - 0.5)
+        for (let i = 0; i < picks; i++) {
+          sampledGlobal.push({ filename: shuffled[i].filename, line: shuffled[i].line })
+        }
+      }
       const result: any = await window.api.ai.xyreneComment({
         mediaId,
         currentTimeSec: video.currentTime,
@@ -563,6 +608,10 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         // recentComments — the prompt will surface them with a
         // "you've watched this before" hint.
         pastMemories: videoMemoryRef.current.slice(-3),
+        // Cross-video memories — sampled from her global log to give
+        // her continuity across the whole session arc, not just this
+        // media. Prompt surfaces these as "earlier you said…" cues.
+        globalMemories: sampledGlobal,
         speak: false,
         phase: enginePhase,
         persona: personaRef.current,
@@ -581,6 +630,16 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       videoMemoryRef.current.push(cleanForMemory)
       if (videoMemoryRef.current.length > MEMORY_CAP) {
         videoMemoryRef.current = videoMemoryRef.current.slice(-MEMORY_CAP)
+      }
+      // Also append to the GLOBAL cross-video memory so she can later
+      // say "earlier today you watched that brunette..." across media.
+      const mediaRowForName = await window.api.media?.get?.(mediaId).catch(() => null) as any
+      const filename = mediaRowForName?.filename ?? mediaRowForName?.path?.split(/[\\/]/).pop() ?? mediaId
+      const globalEntry: GlobalMemoryEntry = { ts: Date.now(), mediaId, filename, line: cleanForMemory }
+      appendGlobalMemory(globalEntry)
+      globalMemoryRef.current.push(globalEntry)
+      if (globalMemoryRef.current.length > GLOBAL_MEMORY_CAP) {
+        globalMemoryRef.current = globalMemoryRef.current.slice(-GLOBAL_MEMORY_CAP)
       }
       // Track for session-learning aggregation.
       sessionRef.current.mediaIds.add(mediaId)
