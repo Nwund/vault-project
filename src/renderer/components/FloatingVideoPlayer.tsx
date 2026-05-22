@@ -1532,6 +1532,9 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     // driven on the next timeupdate event.
     onEscalate: () => { xyreneEngine.forcePhase?.('build') },
     onSlowDown: () => { xyreneEngine.forcePhase?.('body') },
+    onTalkNow: () => {
+      try { window.dispatchEvent(new CustomEvent('vault:xyrene-talk-now')) } catch { /* ignore */ }
+    },
   }, {
     wakeWords: voiceWakeWords,
     minConfidence: voiceMinConfidence,

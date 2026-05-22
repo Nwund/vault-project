@@ -35,6 +35,10 @@ export interface VoiceCommandHandlers {
   // xyreneEngine.forcePhase('build' | 'body').
   onEscalate?: () => void   // "i'm close", "build it up", "edging now"
   onSlowDown?: () => void   // "slow down", "back off", "not yet"
+  // Force an immediate Xyrene reaction tick, ignoring the cadence
+  // schedule. Caller should fire the same capture+xyreneComment path
+  // it uses internally.
+  onTalkNow?: () => void
   // #364 G-140 — hands-free edging-session controls. Lets you drive
   // the SelfControlCard scoreboard without touching the keyboard.
   onSessionStart?: () => void
@@ -94,6 +98,10 @@ const COMMAND_GRAMMAR: CommandPattern[] = [
   // pulls her back to body phase.
   { patterns: [/\b(i'?m close|getting close|edging now|build (it )?up|gonna cum)\b/i], action: 'onEscalate',    label: 'escalate' },
   { patterns: [/\b(slow down|back off|not yet|too much|stop edging|cool (it )?down)\b/i], action: 'onSlowDown', label: 'slow down' },
+  // "Talk now" — forces an immediate frame-capture + Xyrene comment
+  // instead of waiting for the next cadence tick. Useful when she
+  // pauses for several seconds and the user wants engagement NOW.
+  { patterns: [/\b(react now|talk now|say (it|something) now|comment (now|on this)|what do you think)\b/i], action: 'onTalkNow', label: 'talk now' },
   // #364 — session-control verbs. These map to SelfControlCard /
   // edging-tracker / lockout / task-wheel actions so a full session
   // can run hands-free.

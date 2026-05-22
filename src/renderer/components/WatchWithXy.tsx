@@ -451,6 +451,7 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   // pause the queue. Resumes when the user stops speaking. Without
   // this she'd talk over them and the recognizer would mishear.
   const queuePausedRef = useRef(false)
+
   useEffect(() => {
     const onSpeaking = (ev: Event) => {
       const detail = (ev as CustomEvent).detail as { state?: 'start' | 'end' } | undefined
@@ -567,6 +568,19 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       setBusy(false)
     }
   }, [enabled, mediaId, durationSec, videoRef, playNextInQueue])
+
+  // Voice-command-triggered immediate commentary. Listens for a
+  // "vault:xyrene-talk-now" window event and fires a tick out-of-band.
+  // Uses a ref to the latest tick closure so phase changes are
+  // reflected even with a long-lived listener.
+  const tickRef = useRef(tick)
+  useEffect(() => { tickRef.current = tick }, [tick])
+  useEffect(() => {
+    if (!enabled) return
+    const onTalkNow = () => { void tickRef.current?.() }
+    window.addEventListener('vault:xyrene-talk-now', onTalkNow)
+    return () => window.removeEventListener('vault:xyrene-talk-now', onTalkNow)
+  }, [enabled])
 
   // Phase-adaptive cadence — comments more often at climax (every 5s),
   // less often at cooldown (every 14s), default 8s in body/intro.
