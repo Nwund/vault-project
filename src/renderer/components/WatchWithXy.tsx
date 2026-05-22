@@ -329,19 +329,37 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         </button>
       </div>
 
-      {/* Live transcript — most recent line on top, fades older lines. */}
+      {/* Live transcript — most recent line on top, fades older lines.
+          Inflection cue tags ([BREATHY], [MOANED], etc) get rendered as
+          colored chips so the user can see how she's saying things. */}
       {enabled && comments.length > 0 && (
         <div className="bg-black/75 backdrop-blur-md border border-white/10 rounded-xl p-3 max-h-48 overflow-y-auto w-[20rem] shadow-xl pointer-events-auto">
-          {[...comments].reverse().slice(0, 6).map((c, idx) => (
-            <div
-              key={c.id}
-              className="text-xs text-white/90 mb-1.5 last:mb-0 leading-relaxed"
-              style={{ opacity: Math.max(0.4, 1 - idx * 0.15) }}
-            >
-              <span className="font-semibold text-pink-300 mr-1.5">Xy</span>
-              {c.text}
-            </div>
-          ))}
+          {[...comments].reverse().slice(0, 6).map((c, idx) => {
+            const m = c.text.match(/^\s*\[(BREATHY|WHISPERED|MOANED|DESPERATE|COMMANDED|LAUGHING)\]\s*/i)
+            const cue = m ? m[1].toUpperCase() : null
+            const body = m ? c.text.slice(m[0].length).trim() : c.text
+            // Cue → color: warm pink for intimate, red for peak, etc.
+            const cueClass = cue === 'MOANED' || cue === 'DESPERATE' ? 'bg-rose-500/30 text-rose-200'
+              : cue === 'BREATHY' || cue === 'WHISPERED' ? 'bg-pink-500/20 text-pink-200'
+              : cue === 'COMMANDED' ? 'bg-violet-500/25 text-violet-200'
+              : cue === 'LAUGHING' ? 'bg-amber-500/20 text-amber-200'
+              : ''
+            return (
+              <div
+                key={c.id}
+                className="text-xs text-white/90 mb-1.5 last:mb-0 leading-relaxed"
+                style={{ opacity: Math.max(0.4, 1 - idx * 0.15) }}
+              >
+                <span className="font-semibold text-pink-300 mr-1.5">Xy</span>
+                {cue && (
+                  <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-mono uppercase tracking-widest mr-1.5 align-middle ${cueClass}`}>
+                    {cue}
+                  </span>
+                )}
+                {body}
+              </div>
+            )
+          })}
         </div>
       )}
 
