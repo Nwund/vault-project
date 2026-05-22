@@ -171,6 +171,42 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   // small.
   const recentTextsRef = useRef<string[]>([])
 
+  // Per-video commentary memory ACROSS sessions. Persists her reactions
+  // to each media in localStorage so when the user re-watches a video
+  // later, she can reference what she said before ("i remember this
+  // one — last time you were obsessed with how she moved").
+  //
+  // Storage key: vault.xyrene.memory.<mediaId>
+  // Format: { lastSeen: number, lines: string[] } — capped at 12 lines
+  // per video so storage stays bounded.
+  const MEMORY_KEY = (id: string) => `vault.xyrene.memory.${id}`
+  const MEMORY_CAP = 12
+  const loadVideoMemory = (id: string): string[] => {
+    try {
+      const raw = window.localStorage.getItem(MEMORY_KEY(id))
+      if (!raw) return []
+      const parsed = JSON.parse(raw)
+      const lines: string[] = Array.isArray(parsed?.lines) ? parsed.lines : []
+      return lines.filter((l) => typeof l === 'string' && l.trim().length > 0)
+    } catch { return [] }
+  }
+  const appendVideoMemory = (id: string, line: string) => {
+    try {
+      const existing = loadVideoMemory(id)
+      // Skip duplicates — she shouldn't think she said something three
+      // times across sessions when really it just happens to be similar.
+      if (existing.includes(line)) return
+      const next = [...existing, line].slice(-MEMORY_CAP)
+      window.localStorage.setItem(MEMORY_KEY(id), JSON.stringify({
+        lastSeen: Date.now(),
+        lines: next,
+      }))
+    } catch { /* storage full / disabled — ignore */ }
+  }
+  // Cache her memory for the current media at mount time so we don't
+  // hit localStorage on every tick. Refreshed on mediaId change.
+  const videoMemoryRef = useRef<string[]>([])
+
   // Session tracking for the auto-learn pass (#44). Captures everything
   // that happens between toggle-on and toggle-off OR mediaId-change so the
   // session-learning extractor has enough signal to produce useful
@@ -441,6 +477,11 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         durationSec: durationSec ?? video.duration ?? null,
         frameDataUrl: frame,
         recentComments: recentTextsRef.current.slice(-6),
+        // Sprinkle 3 lines from her per-video memory so she can
+        // reference past sessions with this media. Sent alongside
+        // recentComments — the prompt will surface them with a
+        // "you've watched this before" hint.
+        pastMemories: videoMemoryRef.current.slice(-3),
         speak: false,
         phase: enginePhase,
       })
@@ -450,6 +491,15 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
       setComments(prev => [...prev.slice(-19), { id, text, at: video.currentTime, generatedAt: Date.now() }])
       recentTextsRef.current.push(text)
+      // Persist to per-video memory so future sessions can reference
+      // this reaction. Stutter / cue prefixes are stripped so the
+      // memory holds clean "what she said".
+      const cleanForMemory = text.replace(/^\s*\[[^\]]+\]\s*/, '').trim()
+      appendVideoMemory(mediaId, cleanForMemory)
+      videoMemoryRef.current.push(cleanForMemory)
+      if (videoMemoryRef.current.length > MEMORY_CAP) {
+        videoMemoryRef.current = videoMemoryRef.current.slice(-MEMORY_CAP)
+      }
       // Track for session-learning aggregation.
       sessionRef.current.mediaIds.add(mediaId)
       sessionRef.current.allComments.push(text)
@@ -537,6 +587,8 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   // Reset comment state when media changes — but DON'T reset the session
   // (the user is still in the same watch-along session, just on a
   // different video). The session captures the multi-video arc.
+  // Also loads her per-video memory so she can reference past reactions
+  // to the same media.
   useEffect(() => {
     setComments([])
     recentTextsRef.current = []
@@ -545,6 +597,7 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     if (sessionRef.current.startedAt) {
       sessionRef.current.mediaIds.add(mediaId)
     }
+    videoMemoryRef.current = loadVideoMemory(mediaId)
   }, [mediaId])
 
   // Cleanup on unmount — flush any in-flight session.

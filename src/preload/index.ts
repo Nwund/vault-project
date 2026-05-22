@@ -2792,6 +2792,10 @@ const api = {
       durationSec?: number | null
       frameDataUrl: string
       recentComments?: string[]
+      /** A few of her past reactions to this same media (across prior
+       *  sessions). Surfaced in the prompt with a "you've watched this
+       *  before" hint so she can build continuity. */
+      pastMemories?: string[]
       speak?: boolean
       /** Current XyreneSoundEngine phase; drives her arousal/engagement
        *  values in the prompt so commentary intensity tracks session

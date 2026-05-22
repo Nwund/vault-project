@@ -5252,6 +5252,10 @@ RULES:
     durationSec?: number | null
     frameDataUrl: string  // base64 PNG/JPEG from a <canvas>.toDataURL()
     recentComments?: string[]
+    /** Sample of her PAST reactions to this same media (across earlier
+     *  sessions). The prompt surfaces these with a "you've watched this
+     *  before" hint so her commentary builds session-to-session continuity. */
+    pastMemories?: string[]
     speak?: boolean
     /** Current XyreneSoundEngine phase if the caller knows it. Drives
      *  {{arousal}}/{{engagement}} placeholder values so her commentary
@@ -5293,6 +5297,7 @@ RULES:
       currentTimeSec: args.currentTimeSec,
       durationSec: args.durationSec ?? mediaRow.durationSec,
       recentXyComments: args.recentComments ?? [],
+      pastMemories: args.pastMemories ?? [],
       phase: args.phase,
     })
 

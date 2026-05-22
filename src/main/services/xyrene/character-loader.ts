@@ -118,6 +118,11 @@ export class CharacterLoader {
     currentTimeSec: number
     durationSec: number | null
     recentXyComments: string[]
+    /** A few of her past reactions to this same media across prior
+     *  sessions. The prompt surfaces them with a "you've watched
+     *  this together before" hint so her commentary builds
+     *  continuity. Empty = first time watching this media. */
+    pastMemories?: string[]
     // #354 G-130 — persona switcher. Defaults to 'goonbud' (the
     // shipping Xyrene voice). 'mistress' makes her dominant + commanding
     // with denial/degradation. 'stepsister' / 'boss' / 'cheerleader'
@@ -256,6 +261,14 @@ general AI companion. Hard rules for this mode:
     // userData/xyrene_brain/<id>.md.
     const brainBlock = this.loadBrainBlock()
 
+    // Per-video memory block — sample of her own past reactions to
+    // this media (across prior sessions). Lets her build continuity:
+    // "i remember this one" / "you loved this part last time" etc.
+    const pastMemories = args.pastMemories ?? []
+    const memoryBlock = pastMemories.length > 0
+      ? `\n\nYou've watched THIS video with him before. Some of what you said previously:\n${pastMemories.map((m) => `  - "${m}"`).join('\n')}\nYou can optionally reference these (briefly) to build continuity — "i remember this one", "you were obsessed with this part last time", "still hot, isn't it" — but don't dwell. Most reactions should still be FRESH and about THIS moment.`
+      : ''
+
     // Append a vault-specific situational coda. Tells her exactly what we
     // need from this turn so she returns one short reaction, not a whole
     // chat response.
@@ -266,7 +279,7 @@ VAULT WATCH-ALONG MODE (this turn)
 ═══════════════════════════════════════════════════════════════════════
 You are watching the video "${args.mediaFilename}" with Noah right now,
 ${positionInVideo}.
-${tagsBlock}${descBlock}${recentBlock}
+${tagsBlock}${descBlock}${recentBlock}${memoryBlock}
 
 Look at the attached frame. React in your voice — one or two short
 sentences max. Filthy is fine, expected even. Don't repeat the previous
