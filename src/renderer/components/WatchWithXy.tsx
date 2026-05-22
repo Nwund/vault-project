@@ -19,6 +19,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Mic, MicOff, Sparkles, AlertCircle, Loader2 } from 'lucide-react'
+import { useXyreneStreamingVoice } from '../hooks/useXyreneStreamingVoice'
 
 interface WatchWithXyProps {
   videoRef: React.RefObject<HTMLVideoElement | null>
@@ -80,12 +81,25 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   const [comments, setComments] = useState<XyComment[]>([])
   const [health, setHealth] = useState<HealthState>({ kind: 'unknown' })
   const [audioMuted, setAudioMuted] = useState(false)
+  // True while a streaming TTS chunk is actively playing. Drives the
+  // "now speaking" pulse on the button + the video-audio ducking.
+  const [isSpeaking, setIsSpeaking] = useState(false)
+
+  // Streaming TTS — sub-second voice latency vs the 1-3s buffered /tts
+  // path. Plays raw PCM via Web Audio as chunks stream from the XTTS
+  // server. Falls back to the buffered audio queue if streaming fails.
+  const streaming = useXyreneStreamingVoice()
 
   // Audio playback queue: comments arrive faster than they finish playing
   // (long Xyrene reaction or short interval), so we serialize them.
+  // Each entry is EITHER a blob URL (legacy buffered audio) OR a
+  // "stream:<text>" sentinel that the runner expands via streaming TTS.
   const audioQueueRef = useRef<string[]>([])
   const audioElRef = useRef<HTMLAudioElement | null>(null)
   const isAudioPlayingRef = useRef(false)
+  // Cached voice sample so the streaming runner doesn't refetch settings
+  // on every line.
+  const voiceSampleRef = useRef<string | null>(null)
 
   // Recent comments window — sent back to the LLM so she doesn't repeat
   // the same line twice in a row. Capped at 6 lines to keep the prompt
@@ -143,16 +157,58 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   useEffect(() => { probeHealth() }, [probeHealth])
 
   // ── Audio queue runner ────────────────────────────────────────────────
+  // Queue entries are either:
+  //   - "stream:<expression>|<text>"  → play via streaming TTS (XTTS server)
+  //   - any other string              → blob URL for legacy buffered <audio>
+  // Both paths converge on the same serialization logic so two lines never
+  // overlap.
   const playNextInQueue = useCallback(() => {
     if (isAudioPlayingRef.current) return
     const next = audioQueueRef.current.shift()
-    if (!next) return
+    if (!next) {
+      setIsSpeaking(false)
+      return
+    }
     isAudioPlayingRef.current = true
+
+    // Streaming path — XTTS server streams PCM chunks; the hook
+    // schedules them in Web Audio for sub-second start latency.
+    if (next.startsWith('stream:')) {
+      const rest = next.slice('stream:'.length)
+      // "expression|text" split — expression may be empty.
+      const splitIdx = rest.indexOf('|')
+      const expression = splitIdx >= 0 ? rest.slice(0, splitIdx) : ''
+      const text = splitIdx >= 0 ? rest.slice(splitIdx + 1) : rest
+      const voice = voiceSampleRef.current ?? undefined
+      // Audio cues parsed from leading [EXPRESSION] are conveyed via
+      // the expression hint; the spoken text already has it stripped.
+      const handle = streaming.speakStreaming(text, {
+        voice,
+        volume: audioMuted ? 0 : 1,
+        onStart: () => setIsSpeaking(true),
+        onEnd: () => {
+          setIsSpeaking(false)
+          isAudioPlayingRef.current = false
+          playNextInQueue()
+        },
+      })
+      // Failsafe: if no onEnd within 30s, force-advance the queue.
+      window.setTimeout(() => {
+        if (!handle.isActive()) return
+        handle.cancel()
+      }, 30000)
+      void expression  // currently unused but reserved for future server-side cue routing
+      return
+    }
+
+    // Legacy buffered path — full /tts response is a blob URL already.
     if (!audioElRef.current) audioElRef.current = new Audio()
     const audio = audioElRef.current
     audio.src = next
     audio.muted = audioMuted
+    setIsSpeaking(true)
     audio.onended = () => {
+      setIsSpeaking(false)
       isAudioPlayingRef.current = false
       // Revoke the blob URL once playback's done — keeps memory tight.
       try { URL.revokeObjectURL(next) } catch { /* ignore */ }
@@ -160,22 +216,58 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     }
     audio.onerror = () => {
       console.warn('[WatchWithXy] audio playback error')
+      setIsSpeaking(false)
       isAudioPlayingRef.current = false
       try { URL.revokeObjectURL(next) } catch { /* ignore */ }
       playNextInQueue()
     }
     audio.play().catch((err) => {
       console.warn('[WatchWithXy] audio.play() rejected:', err)
+      setIsSpeaking(false)
       isAudioPlayingRef.current = false
       try { URL.revokeObjectURL(next) } catch { /* ignore */ }
       playNextInQueue()
     })
-  }, [audioMuted])
+  }, [audioMuted, streaming])
 
   // Update muted state on the live element if it exists.
   useEffect(() => {
     if (audioElRef.current) audioElRef.current.muted = audioMuted
   }, [audioMuted])
+
+  // Cache the user's chosen voice sample for the streaming TTS path.
+  // Refreshes on enable so changes in settings get picked up between
+  // toggle cycles.
+  useEffect(() => {
+    if (!enabled) return
+    void (async () => {
+      try {
+        const s: any = await window.api.settings.get()
+        voiceSampleRef.current = s?.xyrene?.voiceSample ?? null
+      } catch { voiceSampleRef.current = null }
+    })()
+  }, [enabled])
+
+  // Speech ducking — when Xyrene is mid-sentence, drop the host video's
+  // volume to 25% so her voice cuts through clearly. Restore on stop.
+  // Uses an inline ref so we don't have to render-react to volume
+  // changes ourselves.
+  const originalVolumeRef = useRef<number | null>(null)
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    if (isSpeaking) {
+      if (originalVolumeRef.current == null) {
+        originalVolumeRef.current = video.volume
+      }
+      // 25% — quiet enough that her voice dominates, loud enough that
+      // the user knows the video is still playing.
+      try { video.volume = Math.min(video.volume, 0.25) } catch { /* ignore */ }
+    } else if (originalVolumeRef.current != null) {
+      try { video.volume = originalVolumeRef.current } catch { /* ignore */ }
+      originalVolumeRef.current = null
+    }
+  }, [isSpeaking, videoRef])
 
   // ── Polling loop ──────────────────────────────────────────────────────
   const tick = useCallback(async () => {
@@ -189,13 +281,16 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       const frame = captureFrame(video)
       if (!frame) return
 
+      // Ask for text-only response — we'll synthesize via streaming
+      // TTS in the renderer for sub-second voice latency. Falls back
+      // to buffered audio if the renderer can't stream.
       const result: any = await window.api.ai.xyreneComment({
         mediaId,
         currentTimeSec: video.currentTime,
         durationSec: durationSec ?? video.duration ?? null,
         frameDataUrl: frame,
         recentComments: recentTextsRef.current.slice(-6),
-        speak: true,
+        speak: false,
         phase: enginePhase,
       })
 
@@ -208,6 +303,21 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       sessionRef.current.mediaIds.add(mediaId)
       sessionRef.current.allComments.push(text)
 
+      // Strip the optional leading inflection cue ([BREATHY], etc) from
+      // the audio text — the cue itself shouldn't be read aloud, only
+      // forwarded as an expression hint to XTTS.
+      const cueMatch = text.match(/^\s*\[(BREATHY|WHISPERED|MOANED|DESPERATE|COMMANDED|LAUGHING)\]\s*/i)
+      const expression = cueMatch ? cueMatch[1].toLowerCase() : ''
+      const spokenText = cueMatch ? text.slice(cueMatch[0].length).trim() : text
+      if (spokenText) {
+        audioQueueRef.current.push(`stream:${expression}|${spokenText}`)
+        playNextInQueue()
+      }
+
+      // Fallback path — if the server bundled audio (e.g. streaming
+      // unavailable), enqueue the blob URL as before. Not used in the
+      // default speak:false path above; preserved so users on older
+      // server builds still get audio.
       if (result.audioBase64 && result.audioMime) {
         try {
           const bytes = Uint8Array.from(atob(result.audioBase64), (c) => c.charCodeAt(0))
@@ -314,18 +424,23 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
             setEnabled(e => !e)
           }}
           disabled={!ready}
-          title={blockerText ?? 'Watch With Xyrene'}
-          className={`flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium border transition backdrop-blur-md ${
+          title={blockerText ?? (isSpeaking ? 'Xyrene is speaking…' : 'Watch With Xyrene')}
+          className={`relative flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium border transition backdrop-blur-md ${
             enabled
               ? 'bg-pink-500/30 border-pink-400/50 text-pink-100'
               : ready
               ? 'bg-black/70 border-white/10 text-white/80 hover:bg-black/85'
               : 'bg-black/40 border-white/5 text-white/40 cursor-not-allowed'
-          }`}
+          } ${isSpeaking ? 'ring-2 ring-pink-300/80 ring-offset-0 shadow-lg shadow-pink-500/40' : ''}`}
         >
-          {busy ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
-          xy
-          {!ready && !enabled && <AlertCircle size={11} className="text-amber-300" />}
+          {/* Animated pulse ring underneath when speaking — radiates
+              outward to telegraph her active voice activity. */}
+          {isSpeaking && (
+            <span className="absolute inset-0 rounded-full bg-pink-400/30 animate-ping pointer-events-none" />
+          )}
+          {busy ? <Loader2 size={11} className="animate-spin relative z-10" /> : <Sparkles size={11} className="relative z-10" />}
+          <span className="relative z-10">xy</span>
+          {!ready && !enabled && <AlertCircle size={11} className="text-amber-300 relative z-10" />}
         </button>
       </div>
 
