@@ -5310,9 +5310,28 @@ RULES:
       return { text, audioBase64: null, audioMime: null }
     }
 
+    // Parse out an optional leading inflection cue like "[BREATHY]" /
+    // "[MOANED]". If present, it becomes the expression hint passed to
+    // XTTS and gets stripped from the spoken text so the cue itself
+    // doesn't get read aloud. The cue is preserved in the returned
+    // text so the UI can highlight it on screen.
+    const cueMatch = text.match(/^\s*\[(BREATHY|WHISPERED|MOANED|DESPERATE|COMMANDED|LAUGHING)\]\s*/i)
+    const expression = cueMatch ? cueMatch[1].toLowerCase() : undefined
+    const spokenText = cueMatch ? text.slice(cueMatch[0].length).trim() : text
+
     let audioBase64: string | null = null
     try {
-      const wav = await getXyreneVoiceClient().synth(text, { timeoutMs: 60000 })
+      const wav = await getXyreneVoiceClient().synth(spokenText, {
+        timeoutMs: 60000,
+        // Phase-driven speed/pitch echoing the climax-voice plumbing so
+        // commentary doesn't sound robotic during build/climax phases.
+        ...(args.phase === 'climax' ? { speed: 1.0, pitch: 1 }
+          : args.phase === 'build' ? { speed: 0.97, pitch: 0.5 }
+          : args.phase === 'body' ? { speed: 0.95, pitch: 0 }
+          : args.phase === 'intro' || args.phase === 'cooldown' ? { speed: 0.9, pitch: -1 }
+          : {}),
+        expression,
+      })
       if (wav) audioBase64 = wav.toString('base64')
     } catch (err) {
       console.warn('[Xyrene] TTS failed (returning text only):', err)
