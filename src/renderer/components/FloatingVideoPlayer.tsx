@@ -1485,12 +1485,17 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   // Settings → Xyrene → "Listen for voice commands". Only the primary
   // player listens (instanceIndex 0) so we don't run multiple recognizers.
   const [voiceCommandsEnabled, setVoiceCommandsEnabled] = useState(false)
+  const [voiceWakeWords, setVoiceWakeWords] = useState<string[]>([])
+  const [voiceMinConfidence, setVoiceMinConfidence] = useState<number>(0)
   const [showVoiceLog, setShowVoiceLog] = useState(false)
   useEffect(() => {
     ;(async () => {
       try {
         const s = await window.api.settings.get()
-        setVoiceCommandsEnabled(!!(s as any)?.xyrene?.voiceCommandsEnabled)
+        const xy: any = (s as any)?.xyrene
+        setVoiceCommandsEnabled(!!xy?.voiceCommandsEnabled)
+        setVoiceWakeWords(Array.isArray(xy?.voiceWakeWords) ? xy.voiceWakeWords : [])
+        setVoiceMinConfidence(typeof xy?.voiceMinConfidence === 'number' ? xy.voiceMinConfidence : 0)
       } catch { /* ignore */ }
     })()
   }, [])
@@ -1512,6 +1517,9 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     // surface as the HUD pill, just spoken instead of clicked.
     onMuteXy: () => setXyreneEngineEnabled(false),
     onUnmuteXy: () => setXyreneEngineEnabled(true),
+  }, {
+    wakeWords: voiceWakeWords,
+    minConfidence: voiceMinConfidence,
   })
 
   // Handle resolution change - persists across all videos

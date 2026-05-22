@@ -417,6 +417,10 @@ interface XyreneSettingsState {
   arousalSensitivity: number
   goonWallMasturbationMode: boolean
   voiceCommandsEnabled: boolean
+  /** Optional wake-words to gate voice commands. Comma-separated in UI. */
+  voiceWakeWords?: string[]
+  /** Minimum recognizer confidence (0-1) before considering a transcript. */
+  voiceMinConfidence?: number
   sounds: Record<SoundCategoryName, string[]>
   soundsEnabled: Record<SoundCategoryName, boolean>
   climaxVoice?: {
@@ -894,6 +898,51 @@ export function XyreneSettings() {
           checked={settings.voiceCommandsEnabled}
           onChange={(v) => savePatch({ voiceCommandsEnabled: v })}
         />
+        {settings.voiceCommandsEnabled && (
+          <>
+            {/* Wake-word gate — when filled, only transcripts containing
+                one of these phrases (case-insensitive) trigger commands.
+                Strips the matched wake-word before pattern matching. */}
+            <div className="space-y-1">
+              <label className="text-xs text-[var(--muted)] flex items-center justify-between">
+                <span>Wake-words</span>
+                <span className="text-[10px] italic text-white/40">comma-separated; blank = listen always</span>
+              </label>
+              <input
+                type="text"
+                value={(settings.voiceWakeWords ?? []).join(', ')}
+                onChange={(e) => {
+                  const words = e.target.value.split(',').map((w) => w.trim()).filter(Boolean)
+                  savePatch({ voiceWakeWords: words } as any)
+                }}
+                placeholder="xyrene, hey xy"
+                className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs font-mono"
+              />
+            </div>
+            {/* Confidence threshold — drops noisy transcripts before match.
+                Clean speech ~85%; mumbles ~50%. Default 0 (no gate). */}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm">Min confidence</div>
+                <div className="text-xs text-[var(--muted)]">Reject transcripts below this confidence</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={settings.voiceMinConfidence ?? 0}
+                  onChange={(e) => savePatch({ voiceMinConfidence: Number(e.target.value) } as any)}
+                  className="w-24 h-1 accent-emerald-400 cursor-pointer"
+                />
+                <span className="text-xs text-[var(--muted)] w-10 tabular-nums">
+                  {Math.round((settings.voiceMinConfidence ?? 0) * 100)}%
+                </span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Voice picker — XTTS server already has Xyrene's cloned voice
