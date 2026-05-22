@@ -466,13 +466,19 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         : enginePhase === 'body' ? 0.75
         : enginePhase === 'intro' || enginePhase === 'cooldown' ? 0.55
         : 0.85) * refractoryFactor
-      // Persona baseline + phase overlay. Persona defines the character's
-      // resting voice (mistress = lower / commanded, cheerleader =
-      // higher / enthusiastic). Phase adds an additive shift on top.
+      // Persona baseline + phase overlay + per-line jitter. Persona
+      // defines resting voice; phase adds escalation; jitter ensures
+      // no two consecutive lines sound exactly the same (real humans
+      // vary slightly per utterance).
       const persona = personaRef.current
       const personaProfile = PERSONA_VOICE[persona] ?? PERSONA_VOICE.goonbud
       const phaseSpeedShift = enginePhase === 'climax' ? 0 : enginePhase === 'build' ? -0.03 : enginePhase === 'body' ? -0.07 : -0.1
       const phasePitchShift = enginePhase === 'climax' ? 1.0 : enginePhase === 'build' ? 0.5 : enginePhase === 'body' ? 0 : -1.0
+      // Per-line jitter: ±5% speed, ±0.7 semitones pitch. Small enough
+      // not to break character; large enough that repeated reactions
+      // don't sound mechanically identical.
+      const speedJitter = (Math.random() - 0.5) * 0.1
+      const pitchJitter = (Math.random() - 0.5) * 1.4
       // Expression: prefer the parsed inflection cue from the LLM if
       // present; fall back to a phase-default tinted by persona.
       const lineExpression = expression || (
@@ -481,12 +487,16 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         : enginePhase === 'cooldown' || enginePhase === 'intro' ? 'breathy'
         : personaProfile.expression
       )
+      // Per-line volume jitter (±5%) on top of phase gain — adds the
+      // last bit of natural variance, prevents "every line at exactly
+      // the same loudness" robotic feel.
+      const volumeJitter = 1 + (Math.random() - 0.5) * 0.1
       const handle = streaming.speakStreaming(text, {
         voice,
-        speed: personaProfile.speed + phaseSpeedShift,
-        pitch: personaProfile.pitch + phasePitchShift,
+        speed: personaProfile.speed + phaseSpeedShift + speedJitter,
+        pitch: personaProfile.pitch + phasePitchShift + pitchJitter,
         expression: lineExpression,
-        volume: audioMuted ? 0 : phaseGain,
+        volume: audioMuted ? 0 : Math.max(0, Math.min(1, phaseGain * volumeJitter)),
         onStart: () => setIsSpeaking(true),
         onEnd: () => {
           setIsSpeaking(false)
