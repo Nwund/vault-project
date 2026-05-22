@@ -2636,7 +2636,16 @@ const api = {
     // samples it can clone from. The cloning was already done upstream
     // in xyrene-portable; vault is just letting the user pick which one.
     xyreneListVoices: () => invoke<string[]>('xyrene:listVoices'),
-    xyrenePreviewVoice: (args: { voice: string; text?: string }) =>
+    xyrenePreviewVoice: (args: {
+      voice: string
+      text?: string
+      /** Playback speed multiplier (1.0 default, 0.85 breathy, 1.15 urgent). */
+      speed?: number
+      /** Pitch shift in semitones (0 default, -2 sultry, +2 playful). */
+      pitch?: number
+      /** Free-form expression hint forwarded to the XTTS server. */
+      expression?: string
+    }) =>
       invoke<{ base64: string; mime: string }>('xyrene:previewVoice', args),
     // Voice intake pipeline — user drops .wav/.mp3/.m4a into a watch
     // folder (or picks a file via processOne), service runs the ffmpeg

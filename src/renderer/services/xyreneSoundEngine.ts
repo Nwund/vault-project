@@ -45,6 +45,14 @@ export interface XyreneSettingsState {
   climaxVoice?: {
     enabled: boolean
     lines: string[]
+    /** Optional TTS tuning passed through to the XTTS server. Older
+     *  servers ignore unknown fields, so leaving these undefined keeps
+     *  the original behavior. Inflection cues let her sound less robotic
+     *  — pitch -2 + expression "breathy" reads as sultry; pitch +1 +
+     *  expression "moaned" reads as peak climax. */
+    speed?: number
+    pitch?: number
+    expression?: string
   }
 }
 
@@ -130,7 +138,11 @@ export interface EngineConfig {
   // Optional: synthesize a voice line via XTTS in Xyrene's cloned voice.
   // When provided AND settings.climaxVoice.enabled is true, the climax
   // burst overlays a synthesized vocal on top of the sample layers.
-  synthVoice?: (text: string, voiceSample: string) => Promise<{ base64: string; mime: string } | null>
+  synthVoice?: (
+    text: string,
+    voiceSample: string,
+    opts?: { speed?: number; pitch?: number; expression?: string }
+  ) => Promise<{ base64: string; mime: string } | null>
   // Master volume (0-1). All event volumes get multiplied by this. Lets
   // the host duck the engine under TTS commentary if needed.
   masterVolume?: number
@@ -443,8 +455,31 @@ export class XyreneSoundEngine {
     if (lines.length === 0) return
     const line = this.pickClimaxLine(lines)
     const voice = this.config.settings.voiceSample || 'xyrene.wav'
+    // Phase-driven TTS tuning. If the user has set baseline tuning in
+    // climaxVoice, layer phase-specific adjustments on top so her
+    // delivery shifts from intimate (intro) to peak (climax) without
+    // requiring manual line-pool segmentation.
+    const baseSpeed = cv.speed ?? 1.0
+    const basePitch = cv.pitch ?? 0
+    const phaseSpeed = this.currentPhase === 'climax' ? 1.0
+      : this.currentPhase === 'build' ? 0.97
+      : this.currentPhase === 'body' ? 0.93
+      : 0.9
+    const phasePitch = this.currentPhase === 'climax' ? 1.0
+      : this.currentPhase === 'build' ? 0.5
+      : this.currentPhase === 'body' ? 0.0
+      : -1.0
+    const phaseExpr = cv.expression ?? (
+      this.currentPhase === 'climax' ? 'moaned'
+      : this.currentPhase === 'build' ? 'breathy'
+      : 'sultry'
+    )
     try {
-      const result = await this.config.synthVoice(line, voice)
+      const result = await this.config.synthVoice(line, voice, {
+        speed: baseSpeed * phaseSpeed,
+        pitch: basePitch + phasePitch,
+        expression: phaseExpr,
+      })
       if (!result?.base64 || !this.running || this.paused) return
       const url = `data:${result.mime};base64,${result.base64}`
       const audio = new Audio(url)

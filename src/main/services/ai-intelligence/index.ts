@@ -2660,10 +2660,22 @@ Rules:
   // Synthesize a fixed preview line in the requested voice and return
   // base64-encoded WAV bytes. The renderer plays the result via an
   // <audio> element. Used by the voice-picker preview button.
-  ipcMain.handle('xyrene:previewVoice', async (_ev, args: { voice: string; text?: string }) => {
+  ipcMain.handle('xyrene:previewVoice', async (_ev, args: {
+    voice: string
+    text?: string
+    speed?: number
+    pitch?: number
+    expression?: string
+  }) => {
     const { getXyreneVoiceClient } = await import('../xyrene/voice-client')
     const text = args.text?.trim() || 'mmm hi baby... i was just thinking about you'
-    const buf = await getXyreneVoiceClient().synth(text, { voice: args.voice, timeoutMs: 30000 })
+    const buf = await getXyreneVoiceClient().synth(text, {
+      voice: args.voice,
+      timeoutMs: 30000,
+      speed: args.speed,
+      pitch: args.pitch,
+      expression: args.expression,
+    })
     if (!buf) throw new Error('XTTS synth returned no audio (server offline?)')
     return { base64: buf.toString('base64'), mime: 'audio/wav' }
   })

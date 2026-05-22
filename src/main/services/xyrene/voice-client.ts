@@ -128,17 +128,42 @@ export class XyreneVoiceClient {
    */
   async synth(
     text: string,
-    options?: { voice?: string; language?: string; timeoutMs?: number }
+    options?: {
+      voice?: string
+      language?: string
+      timeoutMs?: number
+      /** Playback speed multiplier; 1.0 = normal, 0.85 = breathy/slow,
+       *  1.15 = urgent. The XTTS server applies this server-side when
+       *  the `speed` field is present in the payload; older servers
+       *  silently ignore it. */
+      speed?: number
+      /** Pitch shift in semitones; 0 = no change, -2 = lower/sultry,
+       *  +2 = higher/playful. Same server-side opt-in handling. */
+      pitch?: number
+      /** Free-form emotion/expression hint forwarded to compatible
+       *  XTTS builds ("breathy", "moaned", "commanded"). Server-side
+       *  may either prepend an SSML cue or pass to a stylized voice
+       *  variant. Ignored otherwise. */
+      expression?: string
+    }
   ): Promise<Buffer | null> {
     if (!text || !text.trim()) return null
     try {
+      const payload: Record<string, any> = {
+        text,
+        speaker_wav: options?.voice ?? DEFAULT_VOICE,
+        language: options?.language ?? DEFAULT_LANG,
+      }
+      // Only include the optional parameters when explicitly provided
+      // so older XTTS servers don't choke on unknown fields.
+      if (typeof options?.speed === 'number') payload.speed = options.speed
+      if (typeof options?.pitch === 'number') payload.pitch = options.pitch
+      if (typeof options?.expression === 'string' && options.expression.trim()) {
+        payload.expression = options.expression.trim()
+      }
       return await postJson<Buffer>(
         '/tts',
-        {
-          text,
-          speaker_wav: options?.voice ?? DEFAULT_VOICE,
-          language: options?.language ?? DEFAULT_LANG
-        },
+        payload,
         { responseType: 'buffer', timeoutMs: options?.timeoutMs ?? 90000 }
       )
     } catch (err) {

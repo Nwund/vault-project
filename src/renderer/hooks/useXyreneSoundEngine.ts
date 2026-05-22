@@ -103,9 +103,15 @@ export function useXyreneSoundEngine(
       },
       // Climax voice synth — XTTS server, Xyrene's cloned voice. Used by
       // fireClimaxBurst when settings.climaxVoice.enabled is true.
-      synthVoice: async (text, voice) => {
+      synthVoice: async (text, voice, opts) => {
         try {
-          return await window.api.ai.xyrenePreviewVoice({ voice, text })
+          return await window.api.ai.xyrenePreviewVoice({
+            voice,
+            text,
+            speed: opts?.speed,
+            pitch: opts?.pitch,
+            expression: opts?.expression,
+          })
         } catch (err) {
           console.warn('[useXyreneSoundEngine] synthVoice failed:', err)
           return null
