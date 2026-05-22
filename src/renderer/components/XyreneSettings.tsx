@@ -421,11 +421,17 @@ interface XyreneSettingsState {
   voiceWakeWords?: string[]
   /** Minimum recognizer confidence (0-1) before considering a transcript. */
   voiceMinConfidence?: number
+  /** Persona selection — drives both her commentary tone (prompt framing)
+   *  and her voice baseline (speed / pitch / expression cues to XTTS). */
+  persona?: 'goonbud' | 'mistress' | 'stepsister' | 'boss' | 'cheerleader'
   sounds: Record<SoundCategoryName, string[]>
   soundsEnabled: Record<SoundCategoryName, boolean>
   climaxVoice?: {
     enabled: boolean
     lines: string[]
+    speed?: number
+    pitch?: number
+    expression?: string
   }
 }
 
@@ -879,6 +885,26 @@ export function XyreneSettings() {
           min={3} max={30} step={1}
           onChange={(v) => savePatch({ cadenceSec: v })}
         />
+        {/* Persona picker — each persona has a distinct prompt framing
+            + voice baseline (speed/pitch/expression). Goonbud is the
+            default shipping voice; the others retune her character. */}
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm">Persona</div>
+            <div className="text-xs text-[var(--muted)]">Voice + commentary framing</div>
+          </div>
+          <select
+            value={settings.persona ?? 'goonbud'}
+            onChange={(e) => savePatch({ persona: e.target.value as any })}
+            className="px-2 py-1 rounded bg-black/40 border border-white/10 text-xs"
+          >
+            <option value="goonbud">Goon bud · sultry</option>
+            <option value="mistress">Mistress · commanded</option>
+            <option value="stepsister">Stepsister · playful</option>
+            <option value="boss">Boss · commanding</option>
+            <option value="cheerleader">Cheerleader · enthusiastic</option>
+          </select>
+        </div>
         <SliderRow
           label={`Arousal sensitivity (${(settings.arousalSensitivity * 100).toFixed(0)}%)`}
           hint="How quickly her commentary + sound rhythm escalates."
