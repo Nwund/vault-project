@@ -1569,6 +1569,13 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
             <span className="text-[8px] uppercase tracking-wider opacity-70">mem</span>
           </button>
         )}
+        {/* Live waveform — taps the streaming hook's analyser node
+            and draws a real-time bar-graph visualization of her
+            voice activity. Hidden when not speaking. */}
+        {enabled && isSpeaking && (
+          <XyreneWaveformCanvas streaming={streaming} />
+        )}
+
         <button
           onClick={() => {
             if (!ready) { void probeHealth(); return }
@@ -1673,6 +1680,61 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Tiny live audio-activity visualizer rendered next to the xy button
+ * while she's speaking. Reads the AnalyserNode tapped off the
+ * streaming hook's master bus and draws a frequency-bar graph at 60fps.
+ */
+function XyreneWaveformCanvas({ streaming }: { streaming: ReturnType<typeof useXyreneStreamingVoice> }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const analyser = streaming.getAnalyser()
+    if (!analyser) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const bufferLength = analyser.frequencyBinCount
+    const dataArray = new Uint8Array(bufferLength)
+    let rafId = 0
+    const draw = () => {
+      analyser.getByteFrequencyData(dataArray)
+      const w = canvas.width
+      const h = canvas.height
+      ctx.clearRect(0, 0, w, h)
+      // Draw bars across the canvas. Use lower 1/3 of frequency bins
+      // (where voice energy concentrates) and stretch across full width.
+      const usedBins = Math.floor(bufferLength * 0.5)
+      const barCount = 14  // discrete bars for clarity
+      const barWidth = w / barCount - 1
+      for (let i = 0; i < barCount; i++) {
+        const binIdx = Math.floor((i / barCount) * usedBins)
+        const value = dataArray[binIdx] / 255  // 0-1
+        const barHeight = Math.max(2, value * h * 0.95)
+        // Pink gradient — brighter at the top of each bar.
+        const grad = ctx.createLinearGradient(0, h, 0, h - barHeight)
+        grad.addColorStop(0, 'rgba(244, 114, 182, 0.55)')   // pink-400 base
+        grad.addColorStop(1, 'rgba(244, 114, 182, 1)')      // pink-400 peak
+        ctx.fillStyle = grad
+        const x = i * (barWidth + 1)
+        ctx.fillRect(x, h - barHeight, barWidth, barHeight)
+      }
+      rafId = requestAnimationFrame(draw)
+    }
+    rafId = requestAnimationFrame(draw)
+    return () => cancelAnimationFrame(rafId)
+  }, [streaming])
+  return (
+    <canvas
+      ref={canvasRef}
+      width={56}
+      height={18}
+      className="rounded pointer-events-none"
+      style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(244, 114, 182, 0.35)' }}
+    />
   )
 }
 

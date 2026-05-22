@@ -98,6 +98,9 @@ export interface UseXyreneStreamingVoice {
   playSniffle: () => number
   /** Synthesize a low throat-clear rumble. */
   playThroatClear: () => number
+  /** Get the AnalyserNode tapped off the master bus for visualization.
+   *  Returns null if the AudioContext hasn't been created yet. */
+  getAnalyser: () => AnalyserNode | null
 }
 
 let streamIdSeq = 0
@@ -114,6 +117,9 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
   const convolverRef = useRef<ConvolverNode | null>(null)
   const wetGainRef = useRef<GainNode | null>(null)
   const dryGainRef = useRef<GainNode | null>(null)
+  // AnalyserNode tap on the master bus so the HUD can render a live
+  // waveform / VU meter visualization of her voice activity.
+  const analyserRef = useRef<AnalyserNode | null>(null)
 
   // Generate a small-room impulse response: exponentially-decaying
   // filtered noise. Larger rooms = longer decay, smaller = shorter.
@@ -177,6 +183,13 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
         const master = ctx.createGain()
         master.gain.value = 1
         master.connect(compressor)
+        // Analyser tap on master — used for the HUD waveform display.
+        // Doesn't affect audio output (just a passive observer).
+        const analyser = ctx.createAnalyser()
+        analyser.fftSize = 256
+        analyser.smoothingTimeConstant = 0.6
+        master.connect(analyser)
+        analyserRef.current = analyser
         // Build the reverb chain — convolver + wet gain into master.
         const convolver = ctx.createConvolver()
         convolver.buffer = buildReverbIR(ctx)
@@ -785,6 +798,8 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     return false
   }, [])
 
+  const getAnalyser = useCallback(() => analyserRef.current, [])
+
   return {
     speakStreaming,
     cancelAll,
@@ -794,5 +809,6 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     playWetMouth,
     playSniffle,
     playThroatClear,
+    getAnalyser,
   }
 }
