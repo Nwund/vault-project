@@ -701,9 +701,32 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   useEffect(() => {
     if (!enabled) return
     const onTalkNow = () => { void tickRef.current?.() }
+    const onReplayLast = () => {
+      // Replay the most recent comment via streaming TTS. Falls back
+      // to the most recent persisted memory line when in-memory list
+      // is empty (e.g. session just started, but she watched this
+      // video before).
+      const lastFromList = comments.length > 0 ? comments[comments.length - 1].text : null
+      const fallback = videoMemoryRef.current.length > 0
+        ? videoMemoryRef.current[videoMemoryRef.current.length - 1]
+        : null
+      const candidate = lastFromList ?? fallback
+      if (!candidate) return
+      const cueMatch = candidate.match(/^\s*\[(BREATHY|WHISPERED|MOANED|DESPERATE|COMMANDED|LAUGHING)\]\s*/i)
+      const expression = cueMatch ? cueMatch[1].toLowerCase() : ''
+      const spokenText = cueMatch ? candidate.slice(cueMatch[0].length).trim() : candidate
+      if (spokenText) {
+        audioQueueRef.current.push(`stream:${expression}|${spokenText}`)
+        playNextInQueue()
+      }
+    }
     window.addEventListener('vault:xyrene-talk-now', onTalkNow)
-    return () => window.removeEventListener('vault:xyrene-talk-now', onTalkNow)
-  }, [enabled])
+    window.addEventListener('vault:xyrene-replay-last', onReplayLast)
+    return () => {
+      window.removeEventListener('vault:xyrene-talk-now', onTalkNow)
+      window.removeEventListener('vault:xyrene-replay-last', onReplayLast)
+    }
+  }, [enabled, comments, playNextInQueue])
 
   // Phase-adaptive cadence — comments more often at climax (every 5s),
   // less often at cooldown (every 14s), default 8s in body/intro.

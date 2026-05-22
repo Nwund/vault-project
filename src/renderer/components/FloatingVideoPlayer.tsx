@@ -1535,6 +1535,9 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     onTalkNow: () => {
       try { window.dispatchEvent(new CustomEvent('vault:xyrene-talk-now')) } catch { /* ignore */ }
     },
+    onReplayLast: () => {
+      try { window.dispatchEvent(new CustomEvent('vault:xyrene-replay-last')) } catch { /* ignore */ }
+    },
   }, {
     wakeWords: voiceWakeWords,
     minConfidence: voiceMinConfidence,

@@ -39,6 +39,9 @@ export interface VoiceCommandHandlers {
   // schedule. Caller should fire the same capture+xyreneComment path
   // it uses internally.
   onTalkNow?: () => void
+  // Replay her most recent commentary line via XTTS. Used when video
+  // audio was loud and the user missed what she said.
+  onReplayLast?: () => void
   // #364 G-140 — hands-free edging-session controls. Lets you drive
   // the SelfControlCard scoreboard without touching the keyboard.
   onSessionStart?: () => void
@@ -102,6 +105,9 @@ const COMMAND_GRAMMAR: CommandPattern[] = [
   // instead of waiting for the next cadence tick. Useful when she
   // pauses for several seconds and the user wants engagement NOW.
   { patterns: [/\b(react now|talk now|say (it|something) now|comment (now|on this)|what do you think)\b/i], action: 'onTalkNow', label: 'talk now' },
+  // "What did you say" — replay her most recent line via XTTS. Useful
+  // when video audio was loud and the user missed it.
+  { patterns: [/\b(what did you say|say (it|that) again|repeat (that|it)|what was that)\b/i], action: 'onReplayLast', label: 'replay last' },
   // #364 — session-control verbs. These map to SelfControlCard /
   // edging-tracker / lockout / task-wheel actions so a full session
   // can run hands-free.
