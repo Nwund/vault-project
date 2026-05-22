@@ -1526,6 +1526,12 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     // surface as the HUD pill, just spoken instead of clicked.
     onMuteXy: () => setXyreneEngineEnabled(false),
     onUnmuteXy: () => setXyreneEngineEnabled(true),
+    // Direct engine phase overrides — let the user drive Xyrene's
+    // arousal state by voice. Bypasses the position-based phase
+    // detector for the next tick or two; she snaps back to position-
+    // driven on the next timeupdate event.
+    onEscalate: () => { xyreneEngine.forcePhase?.('build') },
+    onSlowDown: () => { xyreneEngine.forcePhase?.('body') },
   }, {
     wakeWords: voiceWakeWords,
     minConfidence: voiceMinConfidence,

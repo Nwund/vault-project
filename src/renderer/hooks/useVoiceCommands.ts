@@ -29,6 +29,12 @@ export interface VoiceCommandHandlers {
   onClimax?: () => void
   onMuteXy?: () => void
   onUnmuteXy?: () => void
+  // Engine phase override commands — let the user drive Xyrene's
+  // arousal state with their voice instead of waiting for the
+  // position-based detector. Handlers should call
+  // xyreneEngine.forcePhase('build' | 'body').
+  onEscalate?: () => void   // "i'm close", "build it up", "edging now"
+  onSlowDown?: () => void   // "slow down", "back off", "not yet"
   // #364 G-140 — hands-free edging-session controls. Lets you drive
   // the SelfControlCard scoreboard without touching the keyboard.
   onSessionStart?: () => void
@@ -83,6 +89,11 @@ const COMMAND_GRAMMAR: CommandPattern[] = [
   { patterns: [/\b(climax|make me (cum|finish)|i'?m (cumming|close))\b/i], action: 'onClimax',    label: 'climax' },
   { patterns: [/\b(shush|shut up|stop talking|be quiet|quiet)\b/i],     action: 'onMuteXy',       label: 'mute xy' },
   { patterns: [/\b(talk to me|say something|speak|talk)\b/i],           action: 'onUnmuteXy',     label: 'unmute xy' },
+  // Engine phase escalation / de-escalation. "i'm close" / "edging"
+  // jumps her to build phase so commentary intensifies; "slow down"
+  // pulls her back to body phase.
+  { patterns: [/\b(i'?m close|getting close|edging now|build (it )?up|gonna cum)\b/i], action: 'onEscalate',    label: 'escalate' },
+  { patterns: [/\b(slow down|back off|not yet|too much|stop edging|cool (it )?down)\b/i], action: 'onSlowDown', label: 'slow down' },
   // #364 — session-control verbs. These map to SelfControlCard /
   // edging-tracker / lockout / task-wheel actions so a full session
   // can run hands-free.
