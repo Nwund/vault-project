@@ -201,16 +201,27 @@ export class XyreneVoiceClient {
       voice?: string
       language?: string
       timeoutMs?: number
+      /** Optional TTS tuning — same fields as synth(). Forwarded to
+       *  /tts_stream; older servers ignore unknown fields. */
+      speed?: number
+      pitch?: number
+      expression?: string
       onChunk: (pcmChunk: Buffer) => void
     }
   ): Promise<{ sampleRate: number; bytesStreamed: number } | null> {
     if (!text || !text.trim()) return null
     const timeoutMs = options.timeoutMs ?? 90000
-    const body = Buffer.from(JSON.stringify({
+    const payload: Record<string, any> = {
       text,
       speaker_wav: options.voice ?? DEFAULT_VOICE,
       language: options.language ?? DEFAULT_LANG,
-    }), 'utf8')
+    }
+    if (typeof options.speed === 'number') payload.speed = options.speed
+    if (typeof options.pitch === 'number') payload.pitch = options.pitch
+    if (typeof options.expression === 'string' && options.expression.trim()) {
+      payload.expression = options.expression.trim()
+    }
+    const body = Buffer.from(JSON.stringify(payload), 'utf8')
 
     return new Promise((resolve, reject) => {
       let bytesStreamed = 0

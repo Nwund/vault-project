@@ -5367,6 +5367,9 @@ RULES:
     streamId: string
     voice?: string
     language?: string
+    speed?: number
+    pitch?: number
+    expression?: string
   }): Promise<{ ok: boolean; sampleRate: number }> => {
     const { getXyreneVoiceClient } = await import('../xyrene/voice-client')
     const wc = ev.sender
@@ -5374,6 +5377,9 @@ RULES:
       const result = await getXyreneVoiceClient().streamSynth(args.text, {
         voice: args.voice,
         language: args.language,
+        speed: args.speed,
+        pitch: args.pitch,
+        expression: args.expression,
         timeoutMs: 90000,
         onChunk: (pcm) => {
           if (wc.isDestroyed()) return

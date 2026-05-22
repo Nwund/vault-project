@@ -66,6 +66,12 @@ export interface UseXyreneStreamingVoice {
       language?: string
       /** Output gain 0-1; multiplied by master if provided. */
       volume?: number
+      /** Playback speed multiplier; forwarded to XTTS server. */
+      speed?: number
+      /** Pitch shift in semitones; forwarded to XTTS server. */
+      pitch?: number
+      /** Expression hint forwarded to XTTS server. */
+      expression?: string
       /** Called when the first chunk plays (i.e. she's audibly speaking). */
       onStart?: () => void
       /** Called when stream end has fired AND all queued chunks finished. */
@@ -229,13 +235,17 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     }
     streamsRef.current.set(id, state)
     // Fire the IPC. The handler will start sending chunk events as the
-    // server produces them.
+    // server produces them. speed/pitch/expression are forwarded only
+    // when set so older XTTS servers don't choke on unknown fields.
     void window.api.ai.xyreneSpeakStream({
       text,
       streamId: id,
       voice: options.voice,
       language: options.language,
-    }).catch((err: any) => {
+      ...(typeof options.speed === 'number' ? { speed: options.speed } : {}),
+      ...(typeof options.pitch === 'number' ? { pitch: options.pitch } : {}),
+      ...(options.expression ? { expression: options.expression } : {}),
+    } as any).catch((err: any) => {
       console.warn('[useXyreneStreamingVoice] speakStream invoke failed:', err)
       // Schedule onEnd so callers don't hang waiting for it.
       state.done = true

@@ -565,6 +565,13 @@ export interface XyreneSettings {
   goonWallMasturbationMode: boolean
   // Respect user voice commands during watch-along (gates STT use).
   voiceCommandsEnabled: boolean
+  // Optional wake-word(s) and confidence threshold for voice commands.
+  voiceWakeWords?: string[]
+  voiceMinConfidence?: number
+  // Persona selection — drives both her commentary tone (via prompt
+  // framing in character-loader) and her voice baseline (speed / pitch
+  // / expression cues passed to XTTS). Default 'goonbud'.
+  persona?: 'goonbud' | 'mistress' | 'stepsister' | 'boss' | 'cheerleader'
   // Sound selection — relative paths under the organized userData/audio/voice
   // tree. Multi-select per category so the engine can rotate through them
   // for variety / realism. Empty arrays = engine picks at random from the
@@ -819,6 +826,7 @@ const DEFAULTS: VaultSettings = {
     arousalSensitivity: 0.6,
     goonWallMasturbationMode: false,
     voiceCommandsEnabled: false,
+    persona: 'goonbud',
     sounds: {
       plaps: [],
       wet: [],

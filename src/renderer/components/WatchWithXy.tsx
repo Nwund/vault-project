@@ -49,6 +49,21 @@ type HealthState =
   | { kind: 'error'; message: string }
 
 /**
+ * Persona → voice baseline. Each persona is a different character with
+ * a different default voice signature; phase-driven adjustments layer
+ * on top so e.g. a "mistress" persona's climax still escalates but
+ * stays commanding instead of moaned. Default is goonbud.
+ */
+type PersonaName = 'goonbud' | 'mistress' | 'stepsister' | 'boss' | 'cheerleader'
+const PERSONA_VOICE: Record<PersonaName, { speed: number; pitch: number; expression: string }> = {
+  goonbud:     { speed: 1.0,  pitch: 0,    expression: 'sultry' },
+  mistress:    { speed: 0.93, pitch: -1.5, expression: 'commanded' },
+  stepsister:  { speed: 1.05, pitch: 1.0,  expression: 'playful' },
+  boss:        { speed: 0.95, pitch: -0.5, expression: 'commanding' },
+  cheerleader: { speed: 1.1,  pitch: 1.5,  expression: 'enthusiastic' },
+}
+
+/**
  * Apply phase-keyed verbal "stutters" to a sentence. At high arousal
  * (build/climax), randomly stutter the first character of select words
  * — "fuck" → "f-fuck", "i" → "i-i". Adds a human, near-edge quality
@@ -306,8 +321,26 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         : enginePhase === 'body' ? 0.75
         : enginePhase === 'intro' || enginePhase === 'cooldown' ? 0.55
         : 0.85
+      // Persona baseline + phase overlay. Persona defines the character's
+      // resting voice (mistress = lower / commanded, cheerleader =
+      // higher / enthusiastic). Phase adds an additive shift on top.
+      const persona = personaRef.current
+      const personaProfile = PERSONA_VOICE[persona] ?? PERSONA_VOICE.goonbud
+      const phaseSpeedShift = enginePhase === 'climax' ? 0 : enginePhase === 'build' ? -0.03 : enginePhase === 'body' ? -0.07 : -0.1
+      const phasePitchShift = enginePhase === 'climax' ? 1.0 : enginePhase === 'build' ? 0.5 : enginePhase === 'body' ? 0 : -1.0
+      // Expression: prefer the parsed inflection cue from the LLM if
+      // present; fall back to a phase-default tinted by persona.
+      const lineExpression = expression || (
+        enginePhase === 'climax' ? (persona === 'mistress' ? 'commanded' : 'moaned')
+        : enginePhase === 'build' ? 'desperate'
+        : enginePhase === 'cooldown' || enginePhase === 'intro' ? 'breathy'
+        : personaProfile.expression
+      )
       const handle = streaming.speakStreaming(text, {
         voice,
+        speed: personaProfile.speed + phaseSpeedShift,
+        pitch: personaProfile.pitch + phasePitchShift,
+        expression: lineExpression,
         volume: audioMuted ? 0 : phaseGain,
         onStart: () => setIsSpeaking(true),
         onEnd: () => {
@@ -359,15 +392,18 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     if (audioElRef.current) audioElRef.current.muted = audioMuted
   }, [audioMuted])
 
-  // Cache the user's chosen voice sample for the streaming TTS path.
-  // Refreshes on enable so changes in settings get picked up between
-  // toggle cycles.
+  // Cache the user's chosen voice sample + persona for the streaming
+  // TTS path. Refreshes on enable so changes in settings get picked up
+  // between toggle cycles.
+  const personaRef = useRef<PersonaName>('goonbud')
   useEffect(() => {
     if (!enabled) return
     void (async () => {
       try {
         const s: any = await window.api.settings.get()
         voiceSampleRef.current = s?.xyrene?.voiceSample ?? null
+        const p = s?.xyrene?.persona as PersonaName | undefined
+        personaRef.current = p && PERSONA_VOICE[p] ? p : 'goonbud'
       } catch { voiceSampleRef.current = null }
     })()
   }, [enabled])

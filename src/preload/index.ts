@@ -2810,7 +2810,15 @@ const api = {
     // Streaming TTS — kicks off /tts_stream. The renderer subscribes to
     // 'xyrene:speakStream:chunk' / ':end' / ':error' via window.api.events
     // to receive PCM chunks tagged with the matching streamId.
-    xyreneSpeakStream: (args: { text: string; streamId: string; voice?: string; language?: string }) =>
+    xyreneSpeakStream: (args: {
+      text: string
+      streamId: string
+      voice?: string
+      language?: string
+      speed?: number
+      pitch?: number
+      expression?: string
+    }) =>
       invoke<{ ok: boolean; sampleRate: number }>('xyrene:speakStream', args),
 
     // Calibration learning summary — what the AI has picked up from your review decisions.
