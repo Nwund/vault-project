@@ -64,6 +64,66 @@ const PERSONA_VOICE: Record<PersonaName, { speed: number; pitch: number; express
 }
 
 /**
+ * Inject filler words / hesitation markers at sentence boundaries.
+ * Humans say "um", "uh", "like", "fuck" 100% of the time; LLM output
+ * never does. Phase-keyed pools so fillers match arousal level.
+ *
+ * Probability per sentence is moderate (~25%) so fillers don't
+ * dominate — they should sound like natural rhythm punctuation, not
+ * a tic.
+ */
+function injectFillers(text: string, phase: string | undefined): string {
+  if (!text || text.length < 4) return text
+  // Per-phase filler pool. "like" is omnipresent in modern casual
+  // speech; phase-specific fillers add character.
+  const pool = phase === 'climax' ? ['fuck', 'oh', 'god', 'i—', 'fuck fuck']
+    : phase === 'build' ? ['fuck', 'shit', 'oh god', 'like', 'i—']
+    : phase === 'body' ? ['uh', 'okay', 'fuck', 'like', 'mmm']
+    : phase === 'cooldown' ? ['mmm', 'okay', 'jesus', 'fuck']
+    : ['uh', 'like', 'okay', 'mmm']
+  // 25% chance to prepend a filler to the FIRST sentence (where it
+  // sounds most natural — false start vibe).
+  if (Math.random() < 0.25) {
+    const filler = pool[Math.floor(Math.random() * pool.length)]
+    const sep = filler.endsWith('—') ? ' ' : ', '
+    return `${filler}${sep}${text}`
+  }
+  return text
+}
+
+/**
+ * Occasionally inject a self-correction or false-start mid-sentence.
+ * "fuck this is — wait — this is so hot." Adds a 8-12% chance per
+ * sentence and only fires on longer sentences (>30 chars) where the
+ * correction feels natural rather than forced.
+ */
+function injectSelfCorrection(text: string, phase: string | undefined): string {
+  if (!text || text.length < 30) return text
+  // Higher probability at climax/build where falling-apart speech is
+  // characteristic. Skip at intro/cooldown — those are intimate, not
+  // chaotic.
+  const chance = phase === 'climax' || phase === 'build' ? 0.15 : 0.08
+  if (Math.random() > chance) return text
+  // Pick a word boundary somewhere in the middle 1/3 of the sentence
+  // and insert a stammered repair. Use the same word that follows so
+  // it sounds like she repeated herself to recover, not random.
+  const words = text.split(/(\s+)/)
+  if (words.length < 6) return text
+  const minIdx = Math.floor(words.length / 3)
+  const maxIdx = Math.floor((words.length * 2) / 3)
+  const splitAt = minIdx + Math.floor(Math.random() * (maxIdx - minIdx))
+  // Repairs vary by phase.
+  const repairs = phase === 'climax' ? [' — fuck — ', ' — i — ', ' — oh god — ']
+    : phase === 'build' ? [' — fuck — ', ' — wait — ', ' — shit — ']
+    : [' — wait — ', ' — i mean — ', ' — actually — ']
+  const repair = repairs[Math.floor(Math.random() * repairs.length)]
+  // Echo the next non-whitespace word so the recovery reads like a
+  // restart, not a non-sequitur.
+  const restart = words.slice(splitAt).join('').trimStart()
+  return `${words.slice(0, splitAt).join('')}${repair}${restart}`
+}
+
+/**
  * Apply casual phonetic contractions to make her speech sound less
  * scripted. LLM responses often output formal "going to" / "want to"
  * because that's what training data has — humans (especially in
@@ -840,11 +900,17 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       const cueMatch = text.match(/^\s*\[(BREATHY|WHISPERED|MOANED|DESPERATE|COMMANDED|LAUGHING)\]\s*/i)
       const expression = cueMatch ? cueMatch[1].toLowerCase() : ''
       const stripped = cueMatch ? text.slice(cueMatch[0].length).trim() : text
-      // Apply casual phonetic contractions (going to → gonna, etc) so
-      // her speech doesn't sound LLM-formal. Then phase-keyed verbal
-      // stutter (build/climax phases only) on top.
+      // Apply layered speech-realism transforms in order:
+      //   1. Casual contractions (going to → gonna)
+      //   2. Filler word at sentence start (~25%)
+      //   3. Mid-sentence self-correction (~8-15%)
+      //   4. High-arousal stutter (build/climax, ~25%)
+      // The combined effect is that no two utterances come out the
+      // same way — each gets its own dialect treatment.
       const contracted = applyCasualContractions(stripped)
-      const spokenText = applyArousalStutter(contracted, enginePhase)
+      const filled = injectFillers(contracted, enginePhase)
+      const corrected = injectSelfCorrection(filled, enginePhase)
+      const spokenText = applyArousalStutter(corrected, enginePhase)
       if (spokenText) {
         // Multi-sentence sequencing — split her reaction into sentences
         // and queue each separately with a natural breath pause between.
