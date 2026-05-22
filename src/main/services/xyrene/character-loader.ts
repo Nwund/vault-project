@@ -124,9 +124,9 @@ export class CharacterLoader {
      *  continuity. Empty = first time watching this media. */
     pastMemories?: string[]
     /** Cross-video memories — earlier reactions to OTHER media. Each
-     *  entry has a filename + line so she can reference them as
-     *  "earlier you said X about Y". Empty = no global continuity. */
-    globalMemories?: Array<{ filename: string; line: string }>
+     *  entry has a filename + line + optional mood tag so the prompt
+     *  can reference both what she said and what she was feeling. */
+    globalMemories?: Array<{ filename: string; line: string; mood?: string }>
     // #354 G-130 — persona switcher. Defaults to 'goonbud' (the
     // shipping Xyrene voice). 'mistress' makes her dominant + commanding
     // with denial/degradation. 'stepsister' / 'boss' / 'cheerleader'
@@ -276,10 +276,11 @@ general AI companion. Hard rules for this mode:
     // Cross-video memory block — sample of her reactions to OTHER
     // media she's seen recently. Useful for session-arc continuity
     // ("earlier you were losing it over that blonde — this is hotter
-    // somehow"). Only inject when there's something to surface.
+    // somehow"). Mood tags let her reference how she FELT at each
+    // memory, not just what she said.
     const globalMemories = args.globalMemories ?? []
     const globalMemoryBlock = globalMemories.length > 0
-      ? `\n\nEarlier in this session you watched other videos with him. A couple things you said:\n${globalMemories.map((m) => `  - about "${m.filename}": "${m.line}"`).join('\n')}\nYou can OPTIONALLY tie back to one if it's a natural thread ("this beats that brunette earlier", "still thinking about that scene from before"). Rare references only — don't force it.`
+      ? `\n\nEarlier in this session you watched other videos with him. A couple things you said${globalMemories.some((m) => m.mood) ? ' (with how you were feeling at the time)' : ''}:\n${globalMemories.map((m) => `  - about "${m.filename}"${m.mood ? ` (you were ${m.mood})` : ''}: "${m.line}"`).join('\n')}\nYou can OPTIONALLY tie back to one if it's a natural thread — reference either the content ("this beats that brunette earlier") or how you felt ("i was peaking earlier on that other one, this might top it"). Rare references only — don't force it.`
       : ''
 
     // Append a vault-specific situational coda. Tells her exactly what we

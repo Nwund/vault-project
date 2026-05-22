@@ -5257,9 +5257,10 @@ RULES:
      *  before" hint so her commentary builds session-to-session continuity. */
     pastMemories?: string[]
     /** Cross-video memories — earlier reactions to OTHER media she
-     *  watched recently. Each entry has filename + line so she can
-     *  reference them by content. */
-    globalMemories?: Array<{ filename: string; line: string }>
+     *  watched recently. Each entry has filename + line + optional
+     *  mood tag so the prompt can reference both what she said and
+     *  what she was feeling at the time. */
+    globalMemories?: Array<{ filename: string; line: string; mood?: string }>
     speak?: boolean
     /** Current XyreneSoundEngine phase if the caller knows it. Drives
      *  {{arousal}}/{{engagement}} placeholder values so her commentary

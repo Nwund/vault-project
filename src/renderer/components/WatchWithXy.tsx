@@ -202,7 +202,15 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   // different media. Capped at 40 entries.
   const GLOBAL_MEMORY_KEY = 'vault.xyrene.global-memory'
   const GLOBAL_MEMORY_CAP = 40
-  type GlobalMemoryEntry = { ts: number; mediaId: string; filename: string; line: string }
+  type GlobalMemoryEntry = {
+    ts: number
+    mediaId: string
+    filename: string
+    line: string
+    /** Captured phase at the moment of the comment — gives the prompt
+     *  builder context on her affective state at each memory. */
+    mood?: string
+  }
   const loadGlobalMemory = (): GlobalMemoryEntry[] => {
     try {
       const raw = window.localStorage.getItem(GLOBAL_MEMORY_KEY)
@@ -710,13 +718,17 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       const otherMemories = globalMemoryRef.current
         .filter((e) => e.mediaId !== mediaId)
         .slice(-15)  // recency window
-      const sampledGlobal: Array<{ filename: string; line: string }> = []
+      const sampledGlobal: Array<{ filename: string; line: string; mood?: string }> = []
       if (otherMemories.length > 0) {
         // Pick at most 2 random entries from the recency window.
         const picks = Math.min(2, otherMemories.length)
         const shuffled = [...otherMemories].sort(() => Math.random() - 0.5)
         for (let i = 0; i < picks; i++) {
-          sampledGlobal.push({ filename: shuffled[i].filename, line: shuffled[i].line })
+          sampledGlobal.push({
+            filename: shuffled[i].filename,
+            line: shuffled[i].line,
+            mood: shuffled[i].mood,
+          })
         }
       }
       const result: any = await window.api.ai.xyreneComment({
@@ -757,7 +769,16 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       // say "earlier today you watched that brunette..." across media.
       const mediaRowForName = await window.api.media?.get?.(mediaId).catch(() => null) as any
       const filename = mediaRowForName?.filename ?? mediaRowForName?.path?.split(/[\\/]/).pop() ?? mediaId
-      const globalEntry: GlobalMemoryEntry = { ts: Date.now(), mediaId, filename, line: cleanForMemory }
+      // Derive a short mood tag from the current engine phase so the
+      // prompt can later say "you were peaking" / "you were warming up"
+      // about each past memory.
+      const moodTag = enginePhase === 'climax' ? 'peaking'
+        : enginePhase === 'build' ? 'getting close'
+        : enginePhase === 'body' ? 'into it'
+        : enginePhase === 'intro' ? 'warming up'
+        : enginePhase === 'cooldown' ? 'spent'
+        : undefined
+      const globalEntry: GlobalMemoryEntry = { ts: Date.now(), mediaId, filename, line: cleanForMemory, mood: moodTag }
       appendGlobalMemory(globalEntry)
       globalMemoryRef.current.push(globalEntry)
       if (globalMemoryRef.current.length > GLOBAL_MEMORY_CAP) {

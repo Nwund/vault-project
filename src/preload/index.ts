@@ -2798,9 +2798,10 @@ const api = {
       pastMemories?: string[]
       /** Cross-video memories — sampled from her global rolling log so
        *  she can reference earlier-today reactions to OTHER media.
-       *  Each entry carries the filename so she knows what she's
-       *  remembering ("earlier you said X about Y"). */
-      globalMemories?: Array<{ filename: string; line: string }>
+       *  Each entry carries the filename + optional mood tag so she
+       *  knows what she was feeling about each ("earlier you were
+       *  peaking on that brunette"). */
+      globalMemories?: Array<{ filename: string; line: string; mood?: string }>
       speak?: boolean
       /** Current XyreneSoundEngine phase; drives her arousal/engagement
        *  values in the prompt so commentary intensity tracks session
