@@ -1237,6 +1237,22 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       const cueMatch = text.match(/^\s*\[(BREATHY|WHISPERED|MOANED|DESPERATE|COMMANDED|LAUGHING)\]\s*/i)
       const expression = cueMatch ? cueMatch[1].toLowerCase() : ''
       const stripped = cueMatch ? text.slice(cueMatch[0].length).trim() : text
+
+      // PEAK VOCALIZATION — at climax phase (or with persona at peak
+      // build), pre-pend a non-word peak sound to the audio queue
+      // BEFORE her actual reaction. Routes through streaming TTS so it
+      // gets the full breath + EQ + reverb treatment. Fires ~45% of
+      // climax-phase reactions, ~15% of build reactions.
+      const peakFireChance = enginePhase === 'climax' ? 0.45 : enginePhase === 'build' ? 0.15 : 0
+      if (peakFireChance > 0 && Math.random() < peakFireChance) {
+        const PEAK_VOCALS_CLIMAX = ['aaah', 'oh god', 'aahh fuck', 'aaaah', 'oh oh oh', 'fuck fuck fuck', 'mmmnh']
+        const PEAK_VOCALS_BUILD = ['aaah', 'mmm fuck', 'oh god', 'unh', 'oh oh', 'haaah']
+        const pool = enginePhase === 'climax' ? PEAK_VOCALS_CLIMAX : PEAK_VOCALS_BUILD
+        const peak = pool[Math.floor(Math.random() * pool.length)]
+        const peakExpression = enginePhase === 'climax' ? 'moaned' : 'desperate'
+        audioQueueRef.current.push(`stream:${peakExpression}|${peak}`)
+        audioQueueRef.current.push('pause:180')
+      }
       // Apply layered speech-realism transforms in order:
       //   1. Casual contractions (going to → gonna)
       //   2. Filler word at sentence start (~25%)
