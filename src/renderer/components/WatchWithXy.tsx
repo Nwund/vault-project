@@ -571,6 +571,16 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   // /cache_voice so the first synth call doesn't pay the 1-2s
   // embedding-load cost.
   const personaRef = useRef<PersonaName>('goonbud')
+  // Start the ambient room-tone loop on enable, stop on disable.
+  // The loop is barely audible (-45dB-ish) but makes silences feel
+  // like a real space — major realism upgrade.
+  useEffect(() => {
+    if (enabled) {
+      streaming.startRoomTone()
+      return () => streaming.stopRoomTone()
+    }
+    return undefined
+  }, [enabled, streaming])
   useEffect(() => {
     if (!enabled) return
     void (async () => {

@@ -82,6 +82,11 @@ export interface UseXyreneStreamingVoice {
   cancelAll: () => void
   /** True if any stream is currently producing or playing audio. */
   isAnyActive: () => boolean
+  /** Start the ambient room-tone loop — extremely quiet pink noise that
+   *  makes silences feel like a real space instead of dead air. */
+  startRoomTone: () => void
+  /** Stop the ambient room-tone loop. */
+  stopRoomTone: () => void
 }
 
 let streamIdSeq = 0
@@ -248,6 +253,10 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
         }
       }
       streamsRef.current.clear()
+      // Stop room tone if running.
+      try { roomToneSrcRef.current?.stop() } catch { /* ignore */ }
+      roomToneSrcRef.current = null
+      roomToneGainRef.current = null
       if (ctxRef.current) {
         try { ctxRef.current.close() } catch { /* ignore */ }
         ctxRef.current = null
@@ -353,6 +362,59 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     streamsRef.current.clear()
   }, [])
 
+  // Ambient "room tone" loop — extremely quiet (-45dB) pink-noise-ish
+  // background that makes the audio feel like it's coming from a
+  // real space, not a sterile synthesis pipe. Real recordings always
+  // have room tone; perfect silence between utterances is a major
+  // "AI" tell.
+  const roomToneSrcRef = useRef<AudioBufferSourceNode | null>(null)
+  const roomToneGainRef = useRef<GainNode | null>(null)
+  const startRoomTone = useCallback(() => {
+    const ctx = getCtx()
+    if (!ctx || roomToneSrcRef.current) return
+    // 8-second loop of softly-filtered pink noise. Filter centered
+    // around the 200-1500Hz "room" range with very low Q so it sounds
+    // like ambient air, not a tone.
+    const seconds = 8
+    const sampleCount = ctx.sampleRate * seconds
+    const buf = ctx.createBuffer(1, sampleCount, ctx.sampleRate)
+    const data = buf.getChannelData(0)
+    // Pink noise via Voss-McCartney approximation (cheaper than FFT).
+    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0
+    for (let i = 0; i < sampleCount; i++) {
+      const white = Math.random() * 2 - 1
+      b0 = 0.99886 * b0 + white * 0.0555179
+      b1 = 0.99332 * b1 + white * 0.0750759
+      b2 = 0.96900 * b2 + white * 0.1538520
+      b3 = 0.86650 * b3 + white * 0.3104856
+      b4 = 0.55000 * b4 + white * 0.5329522
+      b5 = -0.7616 * b5 - white * 0.0168980
+      const pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362
+      b6 = white * 0.115926
+      data[i] = pink * 0.11
+    }
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    src.loop = true
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.value = 600
+    filter.Q.value = 0.3
+    const gain = ctx.createGain()
+    // -45dB ish — barely audible but absolutely there. Subjective
+    // floor that makes silence "alive" without being intrusive.
+    gain.gain.value = 0.0055
+    src.connect(filter).connect(gain).connect(gainRef.current ?? ctx.destination)
+    src.start()
+    roomToneSrcRef.current = src
+    roomToneGainRef.current = gain
+  }, [getCtx])
+  const stopRoomTone = useCallback(() => {
+    try { roomToneSrcRef.current?.stop() } catch { /* ignore */ }
+    roomToneSrcRef.current = null
+    roomToneGainRef.current = null
+  }, [])
+
   const isAnyActive = useCallback(() => {
     for (const state of streamsRef.current.values()) {
       if (!state.done || state.liveChunks > 0) return true
@@ -360,5 +422,5 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     return false
   }, [])
 
-  return { speakStreaming, cancelAll, isAnyActive }
+  return { speakStreaming, cancelAll, isAnyActive, startRoomTone, stopRoomTone }
 }
