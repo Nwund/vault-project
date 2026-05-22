@@ -225,6 +225,14 @@ export function useVoiceCommands(
         if (cmd.patterns.some((p) => p.test(cleaned))) {
           setLastCommand(cmd.label)
           appendLog({ at: Date.now(), transcript, command: cmd.label })
+          // Verbal ack — let listeners (WatchWithXy) emit a short
+          // utterance acknowledging the command, so the user hears
+          // her respond instead of just seeing silent state changes.
+          try {
+            window.dispatchEvent(new CustomEvent('vault:xyrene-command-ack', {
+              detail: { label: cmd.label },
+            }))
+          } catch { /* ignore */ }
           const fn = handlersRef.current[cmd.action]
           if (typeof fn === 'function') {
             try {

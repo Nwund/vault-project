@@ -814,6 +814,39 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     }
   }, [enabled, mediaId, durationSec, videoRef, playNextInQueue])
 
+  // Command acknowledgments — short utterances she emits in response
+  // to specific voice commands so the user gets verbal confirmation
+  // their command was heard. Keyed by command label.
+  const COMMAND_ACK_LINES: Record<string, string[]> = {
+    'escalate':   ['fuck yes', 'come on then', 'show me', 'i\'m here'],
+    'slow down': ['ok baby', 'shh, easy', 'i got you', 'breathe with me'],
+    'play':      ['mhmm', 'good boy', 'thank you'],
+    'pause':     ['ok', 'taking a sec?', 'mmm'],
+    'mute xy':   [],  // her own muting — no ack possible
+    'unmute xy': ['mmm hi'],
+  }
+  useEffect(() => {
+    if (!enabled) return
+    const onAck = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as { label?: string } | undefined
+      const label = detail?.label
+      if (!label) return
+      const pool = COMMAND_ACK_LINES[label]
+      if (!pool || pool.length === 0) return
+      if (audioMuted || queuePausedRef.current) return
+      const utterance = pool[Math.floor(Math.random() * pool.length)]
+      // Use a context-appropriate expression — assertive for escalate,
+      // soft for slow-down, neutral for transport commands.
+      const expression = label === 'escalate' ? 'desperate'
+        : label === 'slow down' ? 'breathy'
+        : 'sultry'
+      audioQueueRef.current.push(`stream:${expression}|${utterance}`)
+      playNextInQueue()
+    }
+    window.addEventListener('vault:xyrene-command-ack', onAck)
+    return () => window.removeEventListener('vault:xyrene-command-ack', onAck)
+  }, [enabled, audioMuted, playNextInQueue])
+
   // Voice-command-triggered immediate commentary. Listens for a
   // "vault:xyrene-talk-now" window event and fires a tick out-of-band.
   // Uses a ref to the latest tick closure so phase changes are
