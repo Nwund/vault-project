@@ -831,6 +831,17 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     return () => window.removeEventListener('vault:user-speaking', onSpeaking)
   }, [streaming])
 
+  // Sub-vocal "thinking" pool — fires while she's processing a
+  // comment (Venice call in flight). Phase-keyed so thinking sounds
+  // match arousal.
+  const THINKING_SOUNDS: Record<NonNullable<typeof enginePhase>, string[]> = {
+    intro:    ['hmm', 'oh', 'mmm', 'huh'],
+    body:     ['hmm', 'oh fuck', 'mmm', 'uhh', 'oh god'],
+    build:    ['oh', 'fuck', 'mmm fuck', 'oh god'],
+    climax:   ['fuck', 'oh', 'mmm', 'ahh'],
+    cooldown: ['hmm', 'mmm', 'oh'],
+  }
+
   // ── Polling loop ──────────────────────────────────────────────────────
   const tick = useCallback(async () => {
     if (!enabled) return
@@ -840,6 +851,29 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     if (queuePausedRef.current) return  // listening mode — user is talking
     inFlightRef.current = true
     setBusy(true)
+    // Schedule a sub-vocal "thinking" sound 800-1400ms after the
+    // Venice call starts — if it returns before then, this is
+    // cancelled. Makes her feel like she's processing, not frozen.
+    let thinkingTimer: ReturnType<typeof setTimeout> | null = null
+    const armThinking = () => {
+      const delay = 800 + Math.random() * 600
+      thinkingTimer = setTimeout(() => {
+        // Skip if she's already mid-line, if the user started talking,
+        // or if the line was muted.
+        if (audioMuted || queuePausedRef.current) return
+        if (isAudioPlayingRef.current) return
+        if (audioQueueRef.current.length > 0) return
+        const phaseKey = enginePhase ?? 'body'
+        const pool = THINKING_SOUNDS[phaseKey] ?? THINKING_SOUNDS.body
+        const utterance = pool[Math.floor(Math.random() * pool.length)]
+        const expression = phaseKey === 'climax' ? 'moaned'
+          : phaseKey === 'build' ? 'desperate'
+          : 'breathy'
+        audioQueueRef.current.push(`stream:${expression}|${utterance}`)
+        playNextInQueue()
+      }, delay)
+    }
+    armThinking()
     try {
       const frame = captureFrame(video)
       if (!frame) return
@@ -974,10 +1008,18 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     } catch (err: any) {
       console.warn('[WatchWithXy] tick failed:', err?.message ?? err)
     } finally {
+      // Cancel any pending thinking sound — Venice has returned (or
+      // errored) so we don't want a "hmm" landing 200ms before her
+      // real reaction.
+      if (thinkingTimer) {
+        clearTimeout(thinkingTimer)
+        thinkingTimer = null
+      }
       inFlightRef.current = false
       setBusy(false)
     }
-  }, [enabled, mediaId, durationSec, videoRef, playNextInQueue])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, mediaId, durationSec, videoRef, playNextInQueue, enginePhase, audioMuted])
 
   // Command acknowledgments — short utterances she emits in response
   // to specific voice commands so the user gets verbal confirmation
