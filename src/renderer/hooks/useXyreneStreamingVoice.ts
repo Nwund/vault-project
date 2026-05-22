@@ -94,6 +94,10 @@ export interface UseXyreneStreamingVoice {
    *  pause-filler between consecutive sentences so the inter-sentence
    *  gap doesn't sound mechanical. Returns the duration scheduled. */
   playWetMouth: () => number
+  /** Synthesize a soft sniffle (high-pass-filtered nasal intake). */
+  playSniffle: () => number
+  /** Synthesize a low throat-clear rumble. */
+  playThroatClear: () => number
 }
 
 let streamIdSeq = 0
@@ -158,6 +162,72 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     src.connect(filter).connect(gain).connect(gainRef.current ?? ctx.destination)
     src.start(now)
     src.stop(now + dur + 0.005)
+    return Math.round(dur * 1000)
+  }, [getCtx])
+
+  /**
+   * Synthesize a soft sniffle — a quick nasal intake. ~150ms of
+   * high-pass-filtered noise simulating sniff. Used as an idle
+   * non-vocal sound to maintain presence between utterances.
+   */
+  const playSniffle = useCallback((): number => {
+    const ctx = getCtx()
+    if (!ctx) return 0
+    const now = ctx.currentTime
+    const dur = (130 + Math.random() * 70) / 1000
+    const sampleCount = Math.floor(ctx.sampleRate * dur)
+    const buf = ctx.createBuffer(1, sampleCount, ctx.sampleRate)
+    const data = buf.getChannelData(0)
+    for (let i = 0; i < sampleCount; i++) data[i] = Math.random() * 2 - 1
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.value = 1800 + Math.random() * 400 // higher than breath = nasal
+    filter.Q.value = 1.5
+    const gain = ctx.createGain()
+    // Inhale envelope: faster attack than breath, snap decay.
+    const peak = 0.05 + Math.random() * 0.02
+    gain.gain.setValueAtTime(0.0001, now)
+    gain.gain.exponentialRampToValueAtTime(peak, now + dur * 0.25)
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + dur)
+    src.connect(filter).connect(gain).connect(gainRef.current ?? ctx.destination)
+    src.start(now)
+    src.stop(now + dur + 0.01)
+    return Math.round(dur * 1000)
+  }, [getCtx])
+
+  /**
+   * Synthesize a soft throat-clear — low-frequency rumble. Adds
+   * physical presence between utterances.
+   */
+  const playThroatClear = useCallback((): number => {
+    const ctx = getCtx()
+    if (!ctx) return 0
+    const now = ctx.currentTime
+    const dur = (180 + Math.random() * 120) / 1000
+    const sampleCount = Math.floor(ctx.sampleRate * dur)
+    const buf = ctx.createBuffer(1, sampleCount, ctx.sampleRate)
+    const data = buf.getChannelData(0)
+    // Low-frequency pulsing oscillator + noise = throat sound
+    for (let i = 0; i < sampleCount; i++) {
+      const t = i / ctx.sampleRate
+      const tone = Math.sin(t * 110 * 2 * Math.PI + (Math.random() - 0.5) * 0.5)
+      const noise = (Math.random() * 2 - 1) * 0.3
+      const env = Math.sin(Math.PI * (t / dur))  // arc-shape
+      data[i] = (tone * 0.5 + noise) * env * 0.4
+    }
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.value = 350
+    filter.Q.value = 0.8
+    const gain = ctx.createGain()
+    gain.gain.value = 0.045
+    src.connect(filter).connect(gain).connect(gainRef.current ?? ctx.destination)
+    src.start(now)
+    src.stop(now + dur + 0.01)
     return Math.round(dur * 1000)
   }, [getCtx])
 
@@ -626,5 +696,14 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     return false
   }, [])
 
-  return { speakStreaming, cancelAll, isAnyActive, startRoomTone, stopRoomTone, playWetMouth }
+  return {
+    speakStreaming,
+    cancelAll,
+    isAnyActive,
+    startRoomTone,
+    stopRoomTone,
+    playWetMouth,
+    playSniffle,
+    playThroatClear,
+  }
 }

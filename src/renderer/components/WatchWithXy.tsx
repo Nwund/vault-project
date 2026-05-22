@@ -606,6 +606,35 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     }
     return undefined
   }, [enabled, streaming])
+
+  // Idle bio-sound scheduler — once per 90-240s while enabled, play a
+  // soft non-vocal sound (throat-clear / sniffle). Skipped while she's
+  // mid-line or in listening mode so it doesn't trample real speech.
+  useEffect(() => {
+    if (!enabled) return
+    const armNext = (): ReturnType<typeof setTimeout> => {
+      const delay = 90_000 + Math.random() * 150_000
+      return setTimeout(() => {
+        if (!queuePausedRef.current && !isAudioPlayingRef.current && audioQueueRef.current.length === 0) {
+          // Skip if muted or if she just spoke (within last 15s).
+          if (!audioMuted) {
+            const now = Date.now()
+            const sinceSpeech = now - lastSpeakingEndedAtRef.current
+            if (sinceSpeech > 15_000) {
+              try {
+                if (Math.random() < 0.5) streaming.playSniffle()
+                else streaming.playThroatClear()
+              } catch { /* ignore */ }
+            }
+          }
+        }
+        idleTimerRef.current = armNext()
+      }, delay)
+    }
+    const idleTimerRef = { current: null as ReturnType<typeof setTimeout> | null }
+    idleTimerRef.current = armNext()
+    return () => { if (idleTimerRef.current) clearTimeout(idleTimerRef.current) }
+  }, [enabled, audioMuted, streaming])
   useEffect(() => {
     if (!enabled) return
     void (async () => {
