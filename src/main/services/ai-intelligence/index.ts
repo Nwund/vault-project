@@ -2611,9 +2611,9 @@ Rules:
     return { success: true }
   })
 
-  ipcMain.handle('xyrene:cacheVoice', async () => {
+  ipcMain.handle('xyrene:cacheVoice', async (_ev, args?: { voice?: string }) => {
     const { getXyreneVoiceClient } = await import('../xyrene/voice-client')
-    const ok = await getXyreneVoiceClient().cacheVoice()
+    const ok = await getXyreneVoiceClient().cacheVoice(args?.voice)
     return { ok }
   })
 

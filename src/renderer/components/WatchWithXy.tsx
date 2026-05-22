@@ -394,7 +394,9 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
 
   // Cache the user's chosen voice sample + persona for the streaming
   // TTS path. Refreshes on enable so changes in settings get picked up
-  // between toggle cycles.
+  // between toggle cycles. ALSO pre-warms the XTTS voice embedding via
+  // /cache_voice so the first synth call doesn't pay the 1-2s
+  // embedding-load cost.
   const personaRef = useRef<PersonaName>('goonbud')
   useEffect(() => {
     if (!enabled) return
@@ -404,6 +406,13 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         voiceSampleRef.current = s?.xyrene?.voiceSample ?? null
         const p = s?.xyrene?.persona as PersonaName | undefined
         personaRef.current = p && PERSONA_VOICE[p] ? p : 'goonbud'
+        // Fire-and-forget pre-warm. Doesn't block the rest of the
+        // hook lifecycle; if it fails (XTTS offline) the first synth
+        // call will just pay the cold-start cost as before.
+        if (voiceSampleRef.current) {
+          window.api.ai.xyreneCacheVoice?.({ voice: voiceSampleRef.current })
+            .catch(() => { /* ignore */ })
+        }
       } catch { voiceSampleRef.current = null }
     })()
   }, [enabled])

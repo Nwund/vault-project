@@ -2622,7 +2622,7 @@ const api = {
         characterDir: string
       }>('xyrene:health'),
     xyreneSetCharacterDir: (dir: string) => invoke<{ success: boolean }>('xyrene:setCharacterDir', dir),
-    xyreneCacheVoice: () => invoke<{ ok: boolean }>('xyrene:cacheVoice'),
+    xyreneCacheVoice: (args?: { voice?: string }) => invoke<{ ok: boolean }>('xyrene:cacheVoice', args),
     // Auto-start the local XTTS server (xyrene-portable/xtts-server).
     // Idempotent: returns ok:true if already reachable. Resolves only
     // after /health responds (or times out — first launch can take 30-60s
