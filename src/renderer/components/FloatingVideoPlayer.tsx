@@ -1510,17 +1510,17 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     onVolumeDown: () => setVolume((v) => Math.max(0, v - 0.1)),
     onClimax: () => {
       // Force the engine directly into climax phase — fires the voice
-      // burst + climax sound layers immediately, no need to scrub the
-      // video forward. Falls back to the legacy time-nudge if the
-      // forcePhase capability isn't exposed for some reason.
+      // burst + climax sound layers immediately. ALSO dispatches a
+      // "sync climax" event so WatchWithXy can fire an immediate
+      // "cumming with you" sequence (peak vocalization → "fuck i'm
+      // cumming too" → post-climax sigh decay).
       const force = xyreneEngine.forcePhase
       if (typeof force === 'function') {
         force('climax')
-        return
-      }
-      if (videoRef.current && videoRef.current.duration) {
+      } else if (videoRef.current && videoRef.current.duration) {
         videoRef.current.currentTime = Math.max(videoRef.current.currentTime, videoRef.current.duration * 0.9)
       }
+      try { window.dispatchEvent(new CustomEvent('vault:xyrene-sync-climax')) } catch { /* ignore */ }
     },
     // Mute/unmute "xy" — flips the engine off/on quickly. Same control
     // surface as the HUD pill, just spoken instead of clicked.

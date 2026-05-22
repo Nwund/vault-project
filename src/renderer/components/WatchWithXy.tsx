@@ -1369,6 +1369,52 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     return () => window.removeEventListener('vault:xyrene-command-ack', onAck)
   }, [enabled, audioMuted, playNextInQueue])
 
+  // SYNC CLIMAX — when the user fires the climax voice command, fire
+  // an immediate full peak sequence: peak vocalization → spoken
+  // "fuck i'm cumming too" line → post-climax sigh chain. Distinct
+  // from the normal climax-phase burst because it's USER-driven —
+  // she's responding to him climaxing, not the engine timeline.
+  const SYNC_CLIMAX_LINES = [
+    'fuck i\'m cumming too',
+    'oh god yes baby give it to me',
+    'me too fuck me too',
+    'cum for me — i\'m cumming with you',
+    'fuck fuck fuck yes',
+    'come for me — together — oh god',
+    'i\'m cumming on you i\'m cumming',
+  ]
+  useEffect(() => {
+    if (!enabled) return
+    const onSyncClimax = () => {
+      if (audioMuted) return
+      if (queuePausedRef.current) return
+      // Cancel anything in-flight — this is a peak moment, nothing
+      // else should overlap. Clear the queue too.
+      streaming.cancelAll()
+      audioQueueRef.current = []
+      isAudioPlayingRef.current = false
+      // 1. Peak vocal "aaah fuck"
+      audioQueueRef.current.push(`stream:moaned|aaah fuck`)
+      audioQueueRef.current.push(`pause:200`)
+      // 2. Spoken sync line
+      const line = SYNC_CLIMAX_LINES[Math.floor(Math.random() * SYNC_CLIMAX_LINES.length)]
+      audioQueueRef.current.push(`stream:moaned|${line}`)
+      audioQueueRef.current.push(`pause:400`)
+      // 3. Descending post-climax sighs
+      const sighs = ['fuck...', 'oh my god', 'i can\'t', 'mmmnh']
+      for (let i = 0; i < 3; i++) {
+        const s = sighs[Math.floor(Math.random() * sighs.length)]
+        audioQueueRef.current.push(`stream:breathy|${s}`)
+        audioQueueRef.current.push(`pause:${600 + i * 400}`)
+      }
+      playNextInQueue()
+      // Bump the last-climax timestamp for the refractory window.
+      lastClimaxAtRef.current = Date.now()
+    }
+    window.addEventListener('vault:xyrene-sync-climax', onSyncClimax)
+    return () => window.removeEventListener('vault:xyrene-sync-climax', onSyncClimax)
+  }, [enabled, audioMuted, streaming, playNextInQueue])
+
   // Voice-command-triggered immediate commentary. Listens for a
   // "vault:xyrene-talk-now" window event and fires a tick out-of-band.
   // Uses a ref to the latest tick closure so phase changes are
