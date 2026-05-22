@@ -297,9 +297,18 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       const voice = voiceSampleRef.current ?? undefined
       // Audio cues parsed from leading [EXPRESSION] are conveyed via
       // the expression hint; the spoken text already has it stripped.
+      // Phase-driven volume envelope — intro/cooldown are quiet/intimate
+      // (~50% gain), body baseline (~75%), build escalating (~90%),
+      // climax full peak (100%). Mirrors the climax-burst voice volume
+      // so commentary feels like a continuous arc, not a flat layer.
+      const phaseGain = enginePhase === 'climax' ? 1.0
+        : enginePhase === 'build' ? 0.9
+        : enginePhase === 'body' ? 0.75
+        : enginePhase === 'intro' || enginePhase === 'cooldown' ? 0.55
+        : 0.85
       const handle = streaming.speakStreaming(text, {
         voice,
-        volume: audioMuted ? 0 : 1,
+        volume: audioMuted ? 0 : phaseGain,
         onStart: () => setIsSpeaking(true),
         onEnd: () => {
           setIsSpeaking(false)
@@ -343,7 +352,7 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       try { URL.revokeObjectURL(next) } catch { /* ignore */ }
       playNextInQueue()
     })
-  }, [audioMuted, streaming])
+  }, [audioMuted, streaming, enginePhase])
 
   // Update muted state on the live element if it exists.
   useEffect(() => {
