@@ -534,12 +534,17 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       // last bit of natural variance, prevents "every line at exactly
       // the same loudness" robotic feel.
       const volumeJitter = 1 + (Math.random() - 0.5) * 0.1
+      // Contagion adds +3% speed / +0.4 semitone per stacked escalate
+      // (capped at +9% / +1.2 semi). Decays linearly over 60s.
+      const contagionSpeed = contagionBoost * 0.03
+      const contagionPitch = contagionBoost * 0.4
+      const contagionVolume = 1 + contagionBoost * 0.05
       const handle = streaming.speakStreaming(text, {
         voice,
-        speed: personaProfile.speed + phaseSpeedShift + todSpeed + fatigueSpeed + speedJitter,
-        pitch: personaProfile.pitch + phasePitchShift + todPitch + fatiguePitch + pitchJitter,
+        speed: personaProfile.speed + phaseSpeedShift + todSpeed + fatigueSpeed + contagionSpeed + speedJitter,
+        pitch: personaProfile.pitch + phasePitchShift + todPitch + fatiguePitch + contagionPitch + pitchJitter,
         expression: lineExpression,
-        volume: audioMuted ? 0 : Math.max(0, Math.min(1, phaseGain * volumeJitter)),
+        volume: audioMuted ? 0 : Math.max(0, Math.min(1, phaseGain * volumeJitter * contagionVolume)),
         onStart: () => setIsSpeaking(true),
         onEnd: () => {
           setIsSpeaking(false)
@@ -1153,6 +1158,37 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       window.removeEventListener('vault:xyrene-replay-last', onReplayLast)
     }
   }, [enabled, comments, playNextInQueue])
+
+  // Emotional contagion — every time the user fires an "escalate"
+  // voice command, she gets a temporary excitement boost (+speed,
+  // +pitch, +volume) for the next ~60s. Each subsequent escalate
+  // stacks (capped at 3x). Decays back to baseline after the window.
+  const lastEscalateAtRef = useRef<number>(0)
+  const escalateCountRef = useRef<number>(0)
+  useEffect(() => {
+    if (!enabled) return
+    const onEscalate = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as { label?: string } | undefined
+      // Only count actual escalate commands, not other acks.
+      if (detail?.label !== 'escalate') return
+      const now = Date.now()
+      // Reset count if it's been >60s since last escalate.
+      if (now - lastEscalateAtRef.current > 60_000) {
+        escalateCountRef.current = 0
+      }
+      escalateCountRef.current = Math.min(3, escalateCountRef.current + 1)
+      lastEscalateAtRef.current = now
+    }
+    window.addEventListener('vault:xyrene-command-ack', onEscalate)
+    return () => window.removeEventListener('vault:xyrene-command-ack', onEscalate)
+  }, [enabled])
+  const contagionBoost = (() => {
+    const since = Date.now() - lastEscalateAtRef.current
+    if (since > 60_000 || lastEscalateAtRef.current === 0) return 0
+    // Linear decay over 60s, scaled by stack count (1-3).
+    const decay = Math.max(0, 1 - since / 60_000)
+    return decay * escalateCountRef.current
+  })()
 
   // Track the last climax timestamp so we can apply a "refractory
   // period" — after a real climax, real humans are spent. She gets
