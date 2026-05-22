@@ -55,12 +55,20 @@ type HealthState =
  * stays commanding instead of moaned. Default is goonbud.
  */
 type PersonaName = 'goonbud' | 'mistress' | 'stepsister' | 'boss' | 'cheerleader'
-const PERSONA_VOICE: Record<PersonaName, { speed: number; pitch: number; expression: string }> = {
-  goonbud:     { speed: 1.0,  pitch: 0,    expression: 'sultry' },
-  mistress:    { speed: 0.93, pitch: -1.5, expression: 'commanded' },
-  stepsister:  { speed: 1.05, pitch: 1.0,  expression: 'playful' },
-  boss:        { speed: 0.95, pitch: -0.5, expression: 'commanding' },
-  cheerleader: { speed: 1.1,  pitch: 1.5,  expression: 'enthusiastic' },
+const PERSONA_VOICE: Record<PersonaName, {
+  speed: number
+  pitch: number
+  expression: string
+  /** Baseline EQ — each persona has a distinct tonal signature
+   *  layered with phase EQ. Mistress = warm authoritative;
+   *  cheerleader = bright energetic; stepsister = playful mid. */
+  eq: { warmth: number; brightness: number }
+}> = {
+  goonbud:     { speed: 1.0,  pitch: 0,    expression: 'sultry',       eq: { warmth: 0,    brightness: 0 } },
+  mistress:    { speed: 0.93, pitch: -1.5, expression: 'commanded',    eq: { warmth: 1.5,  brightness: -1 } },
+  stepsister:  { speed: 1.05, pitch: 1.0,  expression: 'playful',      eq: { warmth: -0.5, brightness: 1.5 } },
+  boss:        { speed: 0.95, pitch: -0.5, expression: 'commanding',   eq: { warmth: 0,    brightness: -0.5 } },
+  cheerleader: { speed: 1.1,  pitch: 1.5,  expression: 'enthusiastic', eq: { warmth: -1,   brightness: 2.5 } },
 }
 
 /**
@@ -620,13 +628,18 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       // last bit of natural variance, prevents "every line at exactly
       // the same loudness" robotic feel.
       const volumeJitter = 1 + (Math.random() - 0.5) * 0.1
-      // Phase-aware EQ — warm/intimate at intro+cooldown, brighter
-      // edge at climax. Subtle (≤3dB) so it doesn't distort her tone.
-      const lineEq = enginePhase === 'climax' ? { warmth: -1.5, brightness: 2.5 }
+      // Phase EQ — warm/intimate at intro+cooldown, brighter edge at
+      // climax. Layered on top of persona EQ baseline so e.g. a
+      // cheerleader's climax is even brighter than goonbud's climax.
+      const phaseEq = enginePhase === 'climax' ? { warmth: -1.5, brightness: 2.5 }
         : enginePhase === 'build' ? { warmth: -0.5, brightness: 1.5 }
         : enginePhase === 'body' ? { warmth: 0, brightness: 0 }
         : enginePhase === 'intro' || enginePhase === 'cooldown' ? { warmth: 2, brightness: -1.5 }
-        : undefined
+        : { warmth: 0, brightness: 0 }
+      const lineEq = {
+        warmth: personaProfile.eq.warmth + phaseEq.warmth,
+        brightness: personaProfile.eq.brightness + phaseEq.brightness,
+      }
       // Contagion adds +3% speed / +0.4 semitone per stacked escalate
       // (capped at +9% / +1.2 semi). Decays linearly over 60s.
       const contagionSpeed = contagionBoost * 0.03
