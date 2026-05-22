@@ -111,6 +111,61 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     return ctxRef.current
   }, [])
 
+  /**
+   * Synthesize a soft pre-speech intake breath using filtered white
+   * noise. Humans always breathe before speaking; AI doesn't — adding
+   * a quick intake makes her sound startlingly more present.
+   *
+   * Variations:
+   *   - Sometimes a quick gasp (60-100ms, climactic context)
+   *   - Sometimes a long intake (180-280ms, intimate/breathy)
+   *   - Sometimes no breath at all (humans don't always)
+   *
+   * Duration / volume / filter pass-band randomized per call so two
+   * breaths never sound identical.
+   */
+  const playPreBreath = useCallback((opts: { intensity?: number; voicedAfter?: boolean } = {}): number => {
+    const ctx = getCtx()
+    if (!ctx) return 0
+    // 30% of the time no breath — humans aren't always audible.
+    if (Math.random() < 0.3) return 0
+    const now = ctx.currentTime
+    const intensity = Math.max(0, Math.min(1, opts.intensity ?? 0.5))
+    // Higher intensity = shorter, faster intake (gasp); lower = longer
+    // and softer (intimate/breathy).
+    const durationMs = intensity > 0.7
+      ? 60 + Math.random() * 60   // 60-120ms gasp
+      : 160 + Math.random() * 140 // 160-300ms intake
+    const dur = durationMs / 1000
+    // Build a white-noise buffer. Filter it through a bandpass
+    // centered around the breath formant range (~600-1400Hz) so
+    // it reads as a real inhale, not just hiss.
+    const sampleCount = Math.floor(ctx.sampleRate * dur)
+    const noiseBuf = ctx.createBuffer(1, sampleCount, ctx.sampleRate)
+    const noiseData = noiseBuf.getChannelData(0)
+    for (let i = 0; i < sampleCount; i++) {
+      noiseData[i] = Math.random() * 2 - 1
+    }
+    const src = ctx.createBufferSource()
+    src.buffer = noiseBuf
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'bandpass'
+    // Center freq jitters per call so each breath has its own character.
+    filter.frequency.value = 800 + Math.random() * 600
+    filter.Q.value = 0.7 + Math.random() * 0.6
+    const breathGain = ctx.createGain()
+    // Inhale envelope — sharp attack, quick decay (sucking in then
+    // the lips close as she starts to speak).
+    const peakVol = (0.04 + 0.06 * intensity) * (Math.random() * 0.4 + 0.8) // small base + jitter
+    breathGain.gain.setValueAtTime(0.0001, now)
+    breathGain.gain.exponentialRampToValueAtTime(peakVol, now + dur * 0.35)
+    breathGain.gain.exponentialRampToValueAtTime(0.0001, now + dur)
+    src.connect(filter).connect(breathGain).connect(gainRef.current ?? ctx.destination)
+    src.start(now)
+    src.stop(now + dur + 0.02)
+    return durationMs
+  }, [getCtx])
+
   // Subscribe to IPC events once. Dispatches each chunk to its stream's
   // scheduler. Cleanup on unmount tears down listeners + context.
   useEffect(() => {
@@ -222,10 +277,22 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     if (gainRef.current && typeof options.volume === 'number') {
       gainRef.current.gain.value = Math.max(0, Math.min(1, options.volume))
     }
+    // Pre-speech intake breath — humans inhale before speaking. Use
+    // expression hint to decide intensity (climax = gasp, breathy =
+    // long intake). Variable per-call so two breaths never match.
+    const breathIntensity = options.expression === 'moaned' || options.expression === 'desperate' ? 0.85
+      : options.expression === 'commanded' || options.expression === 'commanding' ? 0.5
+      : options.expression === 'breathy' || options.expression === 'whispered' ? 0.3
+      : 0.4
+    const breathMs = playPreBreath({ intensity: breathIntensity })
+    // After-breath: brief micro-pause (40-90ms) before the TTS audio
+    // starts — that lip-close pause between intake and first syllable.
+    const postBreathPad = breathMs > 0 ? 40 + Math.random() * 50 : 0
     const state: StreamState = {
       id,
       sampleRate: 24000,
-      nextStartTime: 0,
+      // Reserve audio slot just after the breath so chunks line up.
+      nextStartTime: ctx.currentTime + (breathMs + postBreathPad) / 1000,
       done: false,
       sources: new Set(),
       liveChunks: 0,
