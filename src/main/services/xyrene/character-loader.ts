@@ -123,6 +123,11 @@ export class CharacterLoader {
     // with denial/degradation. 'stepsister' / 'boss' / 'cheerleader'
     // are the other shipping personas the user picked (see input doc).
     persona?: 'goonbud' | 'mistress' | 'stepsister' | 'boss' | 'cheerleader'
+    /** Current XyreneSoundEngine phase, if known. Used to populate the
+     *  {{arousal}} / {{engagement}} placeholders dynamically so her
+     *  commentary tone tracks the actual session escalation instead
+     *  of always reading as a flat 7/8. Falls back to 7/8 if unset. */
+    phase?: 'intro' | 'body' | 'build' | 'climax' | 'cooldown'
   }): string {
     const char = this.load()
     if (!char.found) {
@@ -159,14 +164,37 @@ export class CharacterLoader {
       ? `\nAI summary of the video: ${args.mediaDescription.slice(0, 280)}`
       : ''
 
+    // Phase-driven arousal/engagement scoring. The user reads these
+    // values in the {{arousal}}/{{engagement}} placeholders inside her
+    // bible, which tunes how desperate/loud her commentary sounds.
+    // Range is 1-10. Intro reads as warming up; climax peaks at 10.
+    const arousalForPhase: Record<NonNullable<typeof args.phase>, [number, number]> = {
+      intro:   [4, 6],
+      body:    [6, 8],
+      build:   [8, 9],
+      climax:  [10, 10],
+      cooldown:[3, 5],
+    }
+    const [arousalVal, engagementVal] = args.phase
+      ? arousalForPhase[args.phase]
+      : [7, 8]
+    const moodForPhase: Record<NonNullable<typeof args.phase>, string> = {
+      intro:    'horny / warming up',
+      body:     'horny / focused',
+      build:    'desperate / escalating',
+      climax:   'peak / about to cum',
+      cooldown: 'spent / floaty',
+    }
+    const detectedMood = args.phase ? moodForPhase[args.phase] : 'horny / focused'
+
     let filled = char.systemPrompt
       .replace(/\{\{local_time\}\}/g, localTime)
       .replace(/\{\{local_day\}\}/g, localDay)
       .replace(/\{\{user_name\}\}/g, 'Noah')
       .replace(/\{\{time_since_last_session\}\}/g, 'a few minutes ago')
-      .replace(/\{\{detected_mood\}\}/g, 'horny / focused')
-      .replace(/\{\{arousal\}\}/g, '7')
-      .replace(/\{\{engagement\}\}/g, '8')
+      .replace(/\{\{detected_mood\}\}/g, detectedMood)
+      .replace(/\{\{arousal\}\}/g, String(arousalVal))
+      .replace(/\{\{engagement\}\}/g, String(engagementVal))
       .replace(/\{\{current_source\}\}/g, 'watching adult video')
       .replace(/\{\{recent_messages\}\}/g, args.recentXyComments.slice(-3).join(' / ') || '(none)')
       .replace(/\{\{rag_results\}\}/g, '(disabled in vault watch-mode)')

@@ -29,6 +29,9 @@ interface WatchWithXyProps {
   /** True when the host player's title bar is visible. The button slides
    *  down to clear the title when on, snaps back up to the top when off. */
   titleVisible?: boolean
+  /** Current XyreneSoundEngine phase, threaded through to xyrene:comment
+   *  so her commentary intensity tracks the actual session escalation. */
+  enginePhase?: 'intro' | 'body' | 'build' | 'climax' | 'cooldown'
 }
 
 interface XyComment {
@@ -71,7 +74,7 @@ function captureFrame(video: HTMLVideoElement, maxWidth = 720): string | null {
   }
 }
 
-export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, titleVisible = true }: WatchWithXyProps) {
+export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, titleVisible = true, enginePhase }: WatchWithXyProps) {
   const [enabled, setEnabled] = useState(false)
   const [busy, setBusy] = useState(false)
   const [comments, setComments] = useState<XyComment[]>([])
@@ -193,6 +196,7 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         frameDataUrl: frame,
         recentComments: recentTextsRef.current.slice(-6),
         speak: true,
+        phase: enginePhase,
       })
 
       if (!result?.text) return

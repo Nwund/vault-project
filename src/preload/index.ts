@@ -2793,6 +2793,10 @@ const api = {
       frameDataUrl: string
       recentComments?: string[]
       speak?: boolean
+      /** Current XyreneSoundEngine phase; drives her arousal/engagement
+       *  values in the prompt so commentary intensity tracks session
+       *  escalation. Defaults to a flat 7/8 when omitted. */
+      phase?: 'intro' | 'body' | 'build' | 'climax' | 'cooldown'
     }) => invoke<{
       text: string | null
       audioBase64: string | null

@@ -2023,6 +2023,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                 mediaId={media.id}
                 durationSec={media.durationSec ?? null}
                 titleVisible={showControls}
+                enginePhase={xyreneEngine.phase}
               />
             )}
 

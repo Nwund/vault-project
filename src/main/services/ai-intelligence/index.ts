@@ -5253,6 +5253,10 @@ RULES:
     frameDataUrl: string  // base64 PNG/JPEG from a <canvas>.toDataURL()
     recentComments?: string[]
     speak?: boolean
+    /** Current XyreneSoundEngine phase if the caller knows it. Drives
+     *  {{arousal}}/{{engagement}} placeholder values so her commentary
+     *  tracks intensity instead of always reading 7/8. */
+    phase?: 'intro' | 'body' | 'build' | 'climax' | 'cooldown'
   }): Promise<{
     text: string | null
     audioBase64: string | null
@@ -5288,7 +5292,8 @@ RULES:
       mediaDescription: analysisRow?.description ?? null,
       currentTimeSec: args.currentTimeSec,
       durationSec: args.durationSec ?? mediaRow.durationSec,
-      recentXyComments: args.recentComments ?? []
+      recentXyComments: args.recentComments ?? [],
+      phase: args.phase,
     })
 
     // Generate the line via Venice
