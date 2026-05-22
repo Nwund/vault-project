@@ -618,16 +618,25 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       const pitchJitter = (Math.random() - 0.5) * 1.4
       // Expression: prefer the parsed inflection cue from the LLM if
       // present; fall back to a phase-default tinted by persona.
+      // For intimate phases (intro/cooldown), occasionally swap
+      // 'breathy' for 'whispered' to create real intimate-moment
+      // contrast — fires ~30% of the time on those phases.
+      const intimateWhisper = (enginePhase === 'intro' || enginePhase === 'cooldown')
+        && !expression
+        && Math.random() < 0.3
       const lineExpression = expression || (
         enginePhase === 'climax' ? (persona === 'mistress' ? 'commanded' : 'moaned')
         : enginePhase === 'build' ? 'desperate'
+        : intimateWhisper ? 'whispered'
         : enginePhase === 'cooldown' || enginePhase === 'intro' ? 'breathy'
         : personaProfile.expression
       )
       // Per-line volume jitter (±5%) on top of phase gain — adds the
       // last bit of natural variance, prevents "every line at exactly
-      // the same loudness" robotic feel.
+      // the same loudness" robotic feel. Whisper lines also drop a
+      // further 30% so they feel intimate, not just expressive.
       const volumeJitter = 1 + (Math.random() - 0.5) * 0.1
+      const whisperGain = lineExpression === 'whispered' ? 0.7 : 1.0
       // Phase EQ — warm/intimate at intro+cooldown, brighter edge at
       // climax. Layered on top of persona EQ baseline so e.g. a
       // cheerleader's climax is even brighter than goonbud's climax.
@@ -651,7 +660,7 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         pitch: personaProfile.pitch + phasePitchShift + todPitch + fatiguePitch + contagionPitch + driftRef.current.pitch + pitchJitter,
         expression: lineExpression,
         eq: lineEq,
-        volume: audioMuted ? 0 : Math.max(0, Math.min(1, phaseGain * volumeJitter * contagionVolume)),
+        volume: audioMuted ? 0 : Math.max(0, Math.min(1, phaseGain * volumeJitter * contagionVolume * whisperGain)),
         onStart: () => setIsSpeaking(true),
         onEnd: () => {
           setIsSpeaking(false)
