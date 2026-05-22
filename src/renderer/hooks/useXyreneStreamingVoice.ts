@@ -47,6 +47,9 @@ interface StreamState {
   expression?: string
   // Per-utterance EQ — applied to every chunk before reverb.
   eq?: { warmth?: number; brightness?: number }
+  // Per-utterance gain — each line gets its own scaler so a quiet
+  // line doesn't permanently lower the master / room tone.
+  utteranceGain?: GainNode
 }
 
 // Decode int16 PCM chunk into Float32 in [-1, 1].
@@ -670,10 +673,15 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
         src.buffer = audioBuf
         // Voice chunks route through the reverb chain so her speech
         // sounds spatial. Non-vocal artifacts (mouth click, room tone)
-        // connect directly to master via gainRef. When per-utterance
-        // EQ is set, insert low/high-shelf filters before reverb.
+        // connect directly to master via gainRef. Routing is:
+        //
+        //   src → [optional EQ] → utteranceGain → connectThroughReverb
+        //
+        // The per-utterance gain is the LAST node before reverb, so
+        // each line's loudness scales independently without touching
+        // the master / room tone.
+        let lastNode: AudioNode = src
         if (state.eq && (state.eq.warmth || state.eq.brightness)) {
-          let lastNode: AudioNode = src
           if (typeof state.eq.warmth === 'number' && state.eq.warmth !== 0) {
             const low = ctx.createBiquadFilter()
             low.type = 'lowshelf'
@@ -690,9 +698,12 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
             lastNode.connect(high)
             lastNode = high
           }
-          connectThroughReverb(lastNode)
+        }
+        if (state.utteranceGain) {
+          lastNode.connect(state.utteranceGain)
+          connectThroughReverb(state.utteranceGain)
         } else {
-          connectThroughReverb(src)
+          connectThroughReverb(lastNode)
         }
         // Schedule at the running playhead. First chunk starts ~now;
         // subsequent chunks chain off the previous end so playback is
@@ -792,12 +803,15 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     if (ctx.state === 'suspended') {
       ctx.resume().catch(() => { /* ignore */ })
     }
-    // Apply per-call volume by adjusting the shared gain. Simple but
-    // works since we don't typically run overlapping streams at
-    // different volumes.
-    if (gainRef.current && typeof options.volume === 'number') {
-      gainRef.current.gain.value = Math.max(0, Math.min(1, options.volume))
-    }
+    // Per-utterance gain node — DO NOT write to the shared master
+    // (gainRef.current.gain): that lowered EVERY subsequent stream
+    // and the room tone permanently to the lowest volume seen. Each
+    // TTS chunk routes through this gain before the dry/wet reverb
+    // split so the line's loudness is independent.
+    const utteranceGain = ctx.createGain()
+    utteranceGain.gain.value = typeof options.volume === 'number'
+      ? Math.max(0, Math.min(1, options.volume))
+      : 1
     // Pre-speech mouth click (~45% chance) — small percussive sound
     // that real human speech has at word boundaries after silence.
     const clickMs = playMouthClick()
@@ -851,6 +865,7 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
       hasStarted: false,
       expression: options.expression,
       eq: options.eq,
+      utteranceGain,
     }
     streamsRef.current.set(id, state)
     // Fire the IPC. The handler will start sending chunk events as the
