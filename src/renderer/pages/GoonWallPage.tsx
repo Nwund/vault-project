@@ -82,6 +82,32 @@ export function GoonWallPage(props: {
   const [countdownClimaxType, setCountdownClimaxType] = useState<'cum' | 'squirt' | 'orgasm'>('cum')
   const [showCountdownPicker, setShowCountdownPicker] = useState(false) // Show duration picker
 
+  // Tag-based shuffle presets — saved to localStorage so they persist
+  // across sessions. The empty preset is the default (all videos).
+  // Format: { name: string, tags: string[] }[]
+  const PRESETS_STORAGE_KEY = 'vault.goonwall.tagPresets'
+  type TagPreset = { name: string; tags: string[] }
+  const [tagPresets, setTagPresets] = useState<TagPreset[]>(() => {
+    try {
+      const raw = window.localStorage.getItem(PRESETS_STORAGE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) return parsed
+      }
+    } catch { /* ignore */ }
+    // Sensible defaults a user can replace immediately.
+    return [
+      { name: 'Hardcore', tags: ['hardcore'] },
+      { name: 'POV', tags: ['pov'] },
+      { name: 'Solo', tags: ['solo'] },
+    ]
+  })
+  const [activePresetIdx, setActivePresetIdx] = useState<number | null>(null)
+  const [showPresetEditor, setShowPresetEditor] = useState(false)
+  useEffect(() => {
+    try { window.localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(tagPresets)) } catch { /* ignore */ }
+  }, [tagPresets])
+
   // Visual effects settings from goonwall settings
   const visualEffects = useMemo(() => {
     const ve = props.settings?.goonwall?.visualEffects ?? {}
@@ -222,7 +248,12 @@ export function GoonWallPage(props: {
     setLoading(true)
     setError(null)
     try {
-      const result = await window.api.media.randomByTags([], { limit: 200 })
+      // Use the active preset's tag list (if any) to filter the pool.
+      // Empty array = all videos (existing default behavior).
+      const presetTags = activePresetIdx != null && tagPresets[activePresetIdx]
+        ? tagPresets[activePresetIdx].tags
+        : []
+      const result = await window.api.media.randomByTags(presetTags, { limit: 200 })
       let vids = (Array.isArray(result) ? result : []).filter((m: any) => m.type === 'video')
 
       // Apply blacklist filtering
@@ -477,6 +508,16 @@ export function GoonWallPage(props: {
       })
     }
   }, [])
+
+  // Reload the pool whenever the active tag preset changes so the
+  // wall immediately reflects the new tag filter. Skip the very
+  // first render — the mount effect above already loads.
+  const presetFirstRunRef = useRef(true)
+  useEffect(() => {
+    if (presetFirstRunRef.current) { presetFirstRunRef.current = false; return }
+    void loadVideos()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePresetIdx])
 
   // Keyboard shortcuts for GoonWall
   useEffect(() => {
@@ -829,6 +870,47 @@ export function GoonWallPage(props: {
           >
             <Sparkles size={14} />
           </button>
+
+          <div className="w-px h-6 bg-white/20" />
+
+          {/* Tag preset chips — click to filter the pool to a tagged
+              subset. Long-press / right-click to edit. */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setActivePresetIdx(null)}
+              className={cn(
+                'px-2 py-1 rounded-lg text-[10px] uppercase tracking-wider transition',
+                activePresetIdx == null ? 'bg-white/20 text-white' : 'bg-white/5 text-white/60 hover:bg-white/10'
+              )}
+              title="All videos (no tag filter)"
+            >
+              All
+            </button>
+            {tagPresets.map((p, i) => (
+              <button
+                key={i}
+                onClick={() => setActivePresetIdx(i === activePresetIdx ? null : i)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  setShowPresetEditor(true)
+                }}
+                className={cn(
+                  'px-2 py-1 rounded-lg text-[10px] uppercase tracking-wider transition',
+                  i === activePresetIdx ? 'bg-rose-500/30 text-rose-200' : 'bg-white/5 text-white/60 hover:bg-white/10'
+                )}
+                title={`${p.tags.join(', ') || 'no tags'} — right-click to edit presets`}
+              >
+                {p.name}
+              </button>
+            ))}
+            <button
+              onClick={() => setShowPresetEditor((v) => !v)}
+              className="px-1.5 py-1 rounded-lg text-[10px] bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/70 transition"
+              title="Edit presets"
+            >
+              ⚙
+            </button>
+          </div>
 
           <div className="w-px h-6 bg-white/20" />
 
@@ -1194,6 +1276,74 @@ export function GoonWallPage(props: {
           className="absolute inset-0 z-40"
           onClick={() => setFocusedTileIndex(null)}
         />
+      )}
+
+      {/* Tag preset editor — appears below the HUD bar, click outside
+          to dismiss. Lets the user rename/retag/add/delete presets. */}
+      {showPresetEditor && (
+        <>
+          <div className="absolute inset-0 z-40" onClick={() => setShowPresetEditor(false)} />
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 w-[420px] max-w-[90vw] rounded-2xl bg-gray-900/95 backdrop-blur-md border border-white/15 p-4 shadow-2xl">
+            <div className="text-xs text-white/60 uppercase tracking-widest mb-3">Tag presets</div>
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {tagPresets.map((p, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={p.name}
+                    onChange={(e) => {
+                      const next = [...tagPresets]
+                      next[i] = { ...next[i], name: e.target.value }
+                      setTagPresets(next)
+                    }}
+                    placeholder="Name"
+                    className="w-24 px-2 py-1 rounded bg-black/40 border border-white/10 text-xs"
+                  />
+                  <input
+                    type="text"
+                    value={p.tags.join(', ')}
+                    onChange={(e) => {
+                      const tags = e.target.value.split(',').map((t) => t.trim()).filter(Boolean)
+                      const next = [...tagPresets]
+                      next[i] = { ...next[i], tags }
+                      setTagPresets(next)
+                    }}
+                    placeholder="tag1, tag2, ..."
+                    className="flex-1 px-2 py-1 rounded bg-black/40 border border-white/10 text-xs"
+                  />
+                  <button
+                    onClick={() => {
+                      const next = tagPresets.filter((_, j) => j !== i)
+                      setTagPresets(next)
+                      if (activePresetIdx === i) setActivePresetIdx(null)
+                      else if (activePresetIdx != null && activePresetIdx > i) {
+                        setActivePresetIdx(activePresetIdx - 1)
+                      }
+                    }}
+                    className="px-2 py-1 rounded bg-red-500/15 hover:bg-red-500/30 text-red-200 text-xs"
+                    title="Delete preset"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/10">
+              <button
+                onClick={() => setTagPresets((prev) => [...prev, { name: 'New', tags: [] }])}
+                className="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 text-xs"
+              >
+                + Add preset
+              </button>
+              <button
+                onClick={() => setShowPresetEditor(false)}
+                className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Empty state */}
