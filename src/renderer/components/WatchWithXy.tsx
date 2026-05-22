@@ -1147,6 +1147,17 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     const sceneMetrics = analyzeFrame(video)
     if (sceneMetrics) {
       lastSceneMetricsRef.current = sceneMetrics
+      // SQUELCH — when scene is skin-heavy + intense, ~15% chance per
+      // tick to fire a soft sexual underscore sound. Quieter than her
+      // voice; layers as ambient sexual texture without interrupting
+      // her commentary.
+      if (sceneMetrics.skinSaturation > 0.18
+          && sceneMetrics.intensity > 0.5
+          && !audioMuted
+          && !queuePausedRef.current
+          && Math.random() < 0.15) {
+        try { streaming.playSquelch() } catch { /* ignore */ }
+      }
       // High-intensity scenes also trigger a quick micro-reaction
       // surge — the user is watching something hot RIGHT NOW, she
       // shouldn't wait 8s to react.

@@ -120,6 +120,11 @@ export interface UseXyreneStreamingVoice {
   /** Synthesize a lip-bite click — sharper than the standard mouth
    *  click, two stacked impulses simulating teeth catching lip. */
   playLipBite: () => number
+  /** Synthesize a soft wet squelch — sexual ambient sound. Used
+   *  when scene metrics show high skin density. Routes through
+   *  reverb at lower volume than voice so it underscores rather
+   *  than competes. */
+  playSquelch: () => number
   /** Get the AnalyserNode tapped off the master bus for visualization.
    *  Returns null if the AudioContext hasn't been created yet. */
   getAnalyser: () => AnalyserNode | null
@@ -307,6 +312,48 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     gain.gain.setValueAtTime(0.0001, now)
     gain.gain.exponentialRampToValueAtTime(peak, now + dur * 0.25)
     gain.gain.exponentialRampToValueAtTime(0.0001, now + dur)
+    src.connect(filter).connect(gain)
+    connectThroughReverb(gain)
+    src.start(now)
+    src.stop(now + dur + 0.01)
+    return Math.round(dur * 1000)
+  }, [getCtx, connectThroughReverb])
+
+  /**
+   * Synthesize a wet squelch / sexual sound — short burst of
+   * bandpass-filtered noise with an arc envelope, 120-220ms,
+   * tuned to read as sexual rather than mouth-related. Used to
+   * underscore intimate scene moments alongside her voice.
+   *
+   * Frequency centered at 400-700Hz (wet, mid-low) — distinct from
+   * speech formants so it doesn't interfere with her voice mix.
+   */
+  const playSquelch = useCallback((): number => {
+    const ctx = getCtx()
+    if (!ctx) return 0
+    const now = ctx.currentTime
+    const dur = (120 + Math.random() * 100) / 1000
+    const sampleCount = Math.floor(ctx.sampleRate * dur)
+    const buf = ctx.createBuffer(1, sampleCount, ctx.sampleRate)
+    const data = buf.getChannelData(0)
+    // Filtered noise with rolling low-pass for wet character.
+    let prev = 0
+    for (let i = 0; i < sampleCount; i++) {
+      const t = i / sampleCount
+      const raw = Math.random() * 2 - 1
+      prev = prev * 0.78 + raw * 0.22  // soft low-pass
+      // Arc-shape envelope with slight asymmetry (faster attack, slower release).
+      const env = Math.pow(Math.sin(Math.PI * t), 1.3)
+      data[i] = prev * env * 0.7
+    }
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.value = 400 + Math.random() * 300  // 400-700Hz
+    filter.Q.value = 1.4
+    const gain = ctx.createGain()
+    gain.gain.value = 0.04  // quieter than her voice — supplemental
     src.connect(filter).connect(gain)
     connectThroughReverb(gain)
     src.start(now)
@@ -945,6 +992,7 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     playThroatClear,
     playSwallow,
     playLipBite,
+    playSquelch,
     getAnalyser,
     setReverbAmount,
   }
