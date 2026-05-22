@@ -63,12 +63,20 @@ const PERSONA_VOICE: Record<PersonaName, {
    *  layered with phase EQ. Mistress = warm authoritative;
    *  cheerleader = bright energetic; stepsister = playful mid. */
   eq: { warmth: number; brightness: number }
+  /** Reverb amount 0-1. Maps to wet/dry mix on the reverb chain.
+   *  Higher = sounds further away in the space; lower = up close. */
+  reverb: number
 }> = {
-  goonbud:     { speed: 1.0,  pitch: 0,    expression: 'sultry',       eq: { warmth: 0,    brightness: 0 } },
-  mistress:    { speed: 0.93, pitch: -1.5, expression: 'commanded',    eq: { warmth: 1.5,  brightness: -1 } },
-  stepsister:  { speed: 1.05, pitch: 1.0,  expression: 'playful',      eq: { warmth: -0.5, brightness: 1.5 } },
-  boss:        { speed: 0.95, pitch: -0.5, expression: 'commanding',   eq: { warmth: 0,    brightness: -0.5 } },
-  cheerleader: { speed: 1.1,  pitch: 1.5,  expression: 'enthusiastic', eq: { warmth: -1,   brightness: 2.5 } },
+  // Goon bud — neutral default room.
+  goonbud:     { speed: 1.0,  pitch: 0,    expression: 'sultry',       eq: { warmth: 0,    brightness: 0 },    reverb: 0.55 },
+  // Mistress — closer, dryer (commanding/intimate, no distance).
+  mistress:    { speed: 0.93, pitch: -1.5, expression: 'commanded',    eq: { warmth: 1.5,  brightness: -1 },   reverb: 0.25 },
+  // Stepsister — slightly wetter, bedroom feel.
+  stepsister:  { speed: 1.05, pitch: 1.0,  expression: 'playful',      eq: { warmth: -0.5, brightness: 1.5 },  reverb: 0.7 },
+  // Boss — controlled, near-mic.
+  boss:        { speed: 0.95, pitch: -0.5, expression: 'commanding',   eq: { warmth: 0,    brightness: -0.5 }, reverb: 0.3 },
+  // Cheerleader — wide-open energetic space.
+  cheerleader: { speed: 1.1,  pitch: 1.5,  expression: 'enthusiastic', eq: { warmth: -1,   brightness: 2.5 },  reverb: 0.85 },
 }
 
 /**
@@ -769,6 +777,10 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         voiceSampleRef.current = s?.xyrene?.voiceSample ?? null
         const p = s?.xyrene?.persona as PersonaName | undefined
         personaRef.current = p && PERSONA_VOICE[p] ? p : 'goonbud'
+        // Apply persona-specific reverb amount so each character
+        // lives in their own acoustic space.
+        const personaProfile = PERSONA_VOICE[personaRef.current] ?? PERSONA_VOICE.goonbud
+        try { streaming.setReverbAmount(personaProfile.reverb) } catch { /* ignore */ }
         // Fire-and-forget pre-warm. Doesn't block the rest of the
         // hook lifecycle; if it fails (XTTS offline) the first synth
         // call will just pay the cold-start cost as before.

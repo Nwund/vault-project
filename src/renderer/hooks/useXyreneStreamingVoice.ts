@@ -107,6 +107,10 @@ export interface UseXyreneStreamingVoice {
    *  pause-filler between consecutive sentences so the inter-sentence
    *  gap doesn't sound mechanical. Returns the duration scheduled. */
   playWetMouth: () => number
+  /** Dial in reverb wet/dry balance — useful for persona tuning
+   *  (mistress = closer/drier, cheerleader = brighter wetter, etc).
+   *  amount: 0 = fully dry, 1 = max wet (~30%). */
+  setReverbAmount: (amount: number) => void
   /** Synthesize a soft sniffle (high-pass-filtered nasal intake). */
   playSniffle: () => number
   /** Synthesize a low throat-clear rumble. */
@@ -916,6 +920,20 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
 
   const getAnalyser = useCallback(() => analyserRef.current, [])
 
+  // Adjust wet/dry mix on the reverb chain. Persona handlers use this
+  // to give each character her own perceived acoustic space.
+  const setReverbAmount = useCallback((amount: number) => {
+    const clamped = Math.max(0, Math.min(1, amount))
+    if (wetGainRef.current) {
+      // Map 0-1 to 0-0.3 so even "max" reverb stays subtle.
+      wetGainRef.current.gain.value = clamped * 0.3
+    }
+    if (dryGainRef.current) {
+      // Slightly attenuate dry as wet rises to maintain perceived loudness.
+      dryGainRef.current.gain.value = 0.92 - clamped * 0.1
+    }
+  }, [])
+
   return {
     speakStreaming,
     cancelAll,
@@ -928,5 +946,6 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     playSwallow,
     playLipBite,
     getAnalyser,
+    setReverbAmount,
   }
 }
