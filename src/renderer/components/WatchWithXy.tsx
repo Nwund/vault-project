@@ -49,6 +49,33 @@ type HealthState =
   | { kind: 'error'; message: string }
 
 /**
+ * Apply phase-keyed verbal "stutters" to a sentence. At high arousal
+ * (build/climax), randomly stutter the first character of select words
+ * — "fuck" → "f-fuck", "i" → "i-i". Adds a human, near-edge quality
+ * that flat text-to-speech can't produce on its own.
+ *
+ * Only fires ~25% of the time so it doesn't become a tic. Skips words
+ * shorter than 2 characters or that start with non-letters.
+ */
+function applyArousalStutter(text: string, phase: string | undefined): string {
+  if (phase !== 'build' && phase !== 'climax') return text
+  // 25% chance overall — keeps it occasional, not annoying.
+  if (Math.random() > 0.25) return text
+  // Pick a high-impact word: prefer "fuck", "god", "yes", "oh", "i",
+  // "cum", "please", "more" if present. Otherwise stutter the first
+  // long-enough word.
+  const stutterPool = /\b(fuck|god|jesus|yes|oh|i|cum|please|more|don'?t)\b/i
+  const match = text.match(stutterPool)
+  if (match) {
+    const word = match[0]
+    const firstChar = word[0]
+    const stuttered = `${firstChar.toLowerCase()}-${word.toLowerCase()}`
+    return text.replace(word, stuttered)
+  }
+  return text
+}
+
+/**
  * Split text into speakable chunks with natural breath/pause hints.
  * Splits on sentence boundaries (.!?…) while preserving the punctuation.
  *   - `?` and `!` → slightly longer pause (questions/exclaim land)
@@ -432,7 +459,9 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       // forwarded as an expression hint to XTTS.
       const cueMatch = text.match(/^\s*\[(BREATHY|WHISPERED|MOANED|DESPERATE|COMMANDED|LAUGHING)\]\s*/i)
       const expression = cueMatch ? cueMatch[1].toLowerCase() : ''
-      const spokenText = cueMatch ? text.slice(cueMatch[0].length).trim() : text
+      const stripped = cueMatch ? text.slice(cueMatch[0].length).trim() : text
+      // Apply phase-keyed verbal stutter (build/climax phases only).
+      const spokenText = applyArousalStutter(stripped, enginePhase)
       if (spokenText) {
         // Multi-sentence sequencing — split her reaction into sentences
         // and queue each separately with a natural breath pause between.
