@@ -113,6 +113,9 @@ export interface UseXyreneStreamingVoice {
   playThroatClear: () => number
   /** Synthesize a saliva swallow (descending throat-formant pulse). */
   playSwallow: () => number
+  /** Synthesize a lip-bite click — sharper than the standard mouth
+   *  click, two stacked impulses simulating teeth catching lip. */
+  playLipBite: () => number
   /** Get the AnalyserNode tapped off the master bus for visualization.
    *  Returns null if the AudioContext hasn't been created yet. */
   getAnalyser: () => AnalyserNode | null
@@ -305,6 +308,43 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     src.start(now)
     src.stop(now + dur + 0.01)
     return Math.round(dur * 1000)
+  }, [getCtx, connectThroughReverb])
+
+  /**
+   * Synthesize a lip-bite click — sharper than the standard mouth
+   * click, more "she just bit her lip thinking about it" texture.
+   * Two stacked harder impulses, faster decay, slightly lower
+   * frequency than the regular click.
+   */
+  const playLipBite = useCallback((): number => {
+    const ctx = getCtx()
+    if (!ctx) return 0
+    const now = ctx.currentTime
+    // Two impulses ~22ms apart — "teeth catching lip" character.
+    for (let p = 0; p < 2; p++) {
+      const startAt = now + p * 0.022
+      const dur = 0.010 + Math.random() * 0.008
+      const sampleCount = Math.max(1, Math.floor(ctx.sampleRate * dur))
+      const buf = ctx.createBuffer(1, sampleCount, ctx.sampleRate)
+      const data = buf.getChannelData(0)
+      for (let i = 0; i < sampleCount; i++) {
+        const t = i / sampleCount
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-t * 10) * 0.8
+      }
+      const src = ctx.createBufferSource()
+      src.buffer = buf
+      const filter = ctx.createBiquadFilter()
+      filter.type = 'bandpass'
+      filter.frequency.value = 1700 + Math.random() * 300
+      filter.Q.value = 2.0
+      const gain = ctx.createGain()
+      gain.gain.value = 0.04 - p * 0.012
+      src.connect(filter).connect(gain)
+      connectThroughReverb(gain)
+      src.start(startAt)
+      src.stop(startAt + dur + 0.005)
+    }
+    return 50
   }, [getCtx, connectThroughReverb])
 
   /**
@@ -886,6 +926,7 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     playSniffle,
     playThroatClear,
     playSwallow,
+    playLipBite,
     getAnalyser,
   }
 }

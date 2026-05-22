@@ -1278,6 +1278,13 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         audioQueueRef.current.push(`stream:${peakExpression}|${peak}`)
         audioQueueRef.current.push('pause:180')
       }
+      // LIP-BITE — at build/climax phases, ~20% chance to play a
+      // sharper bite-click before the line. Fires the audio sound
+      // directly (not queued) so it lands JUST before the next stream
+      // begins, layering perceptually like a real held-breath bite.
+      if ((enginePhase === 'build' || enginePhase === 'climax') && Math.random() < 0.2) {
+        try { streaming.playLipBite() } catch { /* ignore */ }
+      }
       // Apply layered speech-realism transforms in order:
       //   1. Casual contractions (going to → gonna)
       //   2. Filler word at sentence start (~25%)
