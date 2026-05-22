@@ -1397,11 +1397,17 @@ function VoicePicker({ currentVoice, onChange }: { currentVoice: string; onChang
 // vibe before committing. Edits go through a textarea below; saving
 // commits to settings.
 function ClimaxVoiceEditor({ config, onChange }: {
-  config: { enabled: boolean; lines: string[] } | undefined
-  onChange: (cv: { enabled: boolean; lines: string[] }) => void
+  config: { enabled: boolean; lines: string[]; speed?: number; pitch?: number; expression?: string } | undefined
+  onChange: (cv: { enabled: boolean; lines: string[]; speed?: number; pitch?: number; expression?: string }) => void
 }) {
   const enabled = config?.enabled ?? false
   const lines = config?.lines ?? []
+  // Baseline TTS tuning — the engine layers phase-specific adjustments
+  // on top of these values, so the sliders effectively shift her
+  // overall timbre while phase still drives within-burst variation.
+  const speed = config?.speed ?? 1.0
+  const pitch = config?.pitch ?? 0
+  const expression = config?.expression ?? ''
   const linesText = useMemo(() => lines.join('\n'), [lines])
   const [draft, setDraft] = useState(linesText)
   useEffect(() => { setDraft(linesText) }, [linesText])
@@ -1423,7 +1429,13 @@ function ClimaxVoiceEditor({ config, onChange }: {
       // Use the user's currently-selected voice sample.
       const settings = await window.api.ai.xyreneGetSettings()
       const voice = (settings as any)?.voiceSample || 'xyrene.wav'
-      const result = await window.api.ai.xyrenePreviewVoice({ voice, text })
+      const result = await window.api.ai.xyrenePreviewVoice({
+        voice,
+        text,
+        speed,
+        pitch,
+        expression: expression || undefined,
+      })
       if (!result?.base64) throw new Error('no audio returned')
       const url = `data:${result.mime};base64,${result.base64}`
       if (!audioRef.current) audioRef.current = new Audio()
@@ -1441,7 +1453,7 @@ function ClimaxVoiceEditor({ config, onChange }: {
 
   const save = () => {
     const newLines = draft.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)
-    onChange({ enabled, lines: newLines })
+    onChange({ enabled, lines: newLines, speed, pitch, expression: expression || undefined })
   }
 
   return (
@@ -1502,6 +1514,48 @@ function ClimaxVoiceEditor({ config, onChange }: {
           <Save size={11} />
           Save lines
         </button>
+      </div>
+
+      {/* Voice tuning — XTTS speed/pitch + free-form expression cue.
+          Engine layers phase-specific adjustments ON TOP of these,
+          so this is the "voice she always has" baseline. */}
+      <div className="border-t border-white/10 pt-3 mt-3 space-y-2">
+        <div className="text-[10px] text-[var(--muted)] uppercase tracking-widest">Voice tuning (baseline)</div>
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="text-white/70">Speed</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="range" min={0.5} max={1.5} step={0.05} value={speed}
+              onChange={(e) => onChange({ enabled, lines, speed: Number(e.target.value), pitch, expression: expression || undefined })}
+              className="w-28 h-1 accent-pink-400 cursor-pointer"
+            />
+            <span className="w-10 tabular-nums text-white/50">{speed.toFixed(2)}×</span>
+          </div>
+        </div>
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="text-white/70">Pitch</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="range" min={-6} max={6} step={0.5} value={pitch}
+              onChange={(e) => onChange({ enabled, lines, speed, pitch: Number(e.target.value), expression: expression || undefined })}
+              className="w-28 h-1 accent-pink-400 cursor-pointer"
+            />
+            <span className="w-10 tabular-nums text-white/50">{pitch >= 0 ? '+' : ''}{pitch.toFixed(1)}</span>
+          </div>
+        </div>
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="text-white/70">Expression</span>
+          <input
+            type="text" value={expression}
+            onChange={(e) => onChange({ enabled, lines, speed, pitch, expression: e.target.value || undefined })}
+            placeholder="sultry / breathy / commanding"
+            className="w-40 px-2 py-0.5 rounded bg-black/40 border border-white/10 text-[11px] font-mono"
+          />
+        </div>
+        <div className="text-[9px] text-white/30 leading-snug">
+          Phase adjustments (intro → climax) are layered on top automatically; these are the
+          baseline that every climax-burst voice line uses before that.
+        </div>
       </div>
     </div>
   )
