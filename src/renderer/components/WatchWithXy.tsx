@@ -488,6 +488,34 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     'mmm', 'you still there?', 'come on', 'don\'t leave me', 'jesus take a breath',
     'i\'m waiting', 'hmm?', 'where\'d you go', 'still warm over here',
   ]
+  // Pre-climax anticipatory breath cues — 3-5s before phase actually
+  // hits climax, she emits short escalating breaths so the climax
+  // doesn't feel sudden. Telegraphs arousal onset.
+  const PRECLIMAX_BREATH_CUES = [
+    'ahhh', 'oh god', 'fuck fuck', 'wait wait', 'oh oh oh',
+    'i can\'t', 'so close', 'jesus', 'unh',
+  ]
+  // Tracks the previous phase so we can detect a fresh build→climax
+  // transition and fire pre-climax breaths just before the transition.
+  const prevPhaseRef = useRef<typeof enginePhase>(undefined)
+  useEffect(() => {
+    const prev = prevPhaseRef.current
+    prevPhaseRef.current = enginePhase
+    // Only trigger anticipation when transitioning INTO build phase
+    // (the user just escalated). Climax burst fires within the next
+    // 10-25% of the video, so the breath telegraph lands shortly
+    // before that.
+    if (!enabled) return
+    if (enginePhase !== 'build' || prev === 'build') return
+    if (audioMuted) return
+    if (queuePausedRef.current) return
+    // Fire a single breath cue at the moment of escalation so the
+    // user feels the gear shift audibly.
+    const cue = PRECLIMAX_BREATH_CUES[Math.floor(Math.random() * PRECLIMAX_BREATH_CUES.length)]
+    audioQueueRef.current.push(`stream:desperate|${cue}`)
+    playNextInQueue()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enginePhase, enabled])
   const pausedSinceRef = useRef<number | null>(null)
   // Track video play/pause state — when video pauses, start the timer;
   // when it resumes, clear it so presence cues stop.
