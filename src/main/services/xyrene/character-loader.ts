@@ -164,6 +164,27 @@ export class CharacterLoader {
     const recentBlock = args.recentXyComments.length > 0
       ? `\nYour previous reactions to THIS video (don't repeat yourself):\n${args.recentXyComments.slice(-4).map((c, i) => `  - "${c}"`).join('\n')}`
       : ''
+    // Lexical repetition guard — count token frequencies in the
+    // last 6 reactions and surface the over-used ones as an AVOID
+    // list. Stops her from drilling into "fuck" / "god" / "hot"
+    // for 8 lines in a row. Tokens limited to content words
+    // (4+ chars) so common "i / you / it" don't dominate.
+    const overusedTokens = (() => {
+      const bag: Record<string, number> = {}
+      for (const c of (args.recentXyComments ?? []).slice(-6)) {
+        const tokens = c.toLowerCase().match(/\b[a-z]{4,}\b/g) ?? []
+        for (const t of tokens) bag[t] = (bag[t] ?? 0) + 1
+      }
+      // Tokens used 2+ times in the recent window are flagged.
+      return Object.entries(bag)
+        .filter(([, n]) => n >= 2)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 8)
+        .map(([t]) => t)
+    })()
+    const overusedBlock = overusedTokens.length > 0
+      ? `\nAVOID these words in this reaction (you've used them recently): ${overusedTokens.join(', ')}.`
+      : ''
 
     const tagsBlock = args.mediaTags.length > 0
       ? `\nKnown tags on this video: ${args.mediaTags.slice(0, 12).join(', ')}`
@@ -293,7 +314,7 @@ VAULT WATCH-ALONG MODE (this turn)
 ═══════════════════════════════════════════════════════════════════════
 You are watching the video "${args.mediaFilename}" with Noah right now,
 ${positionInVideo}.
-${tagsBlock}${descBlock}${recentBlock}${memoryBlock}${globalMemoryBlock}
+${tagsBlock}${descBlock}${recentBlock}${overusedBlock}${memoryBlock}${globalMemoryBlock}
 
 Look at the attached frame. React in your voice — one or two short
 sentences max. Filthy is fine, expected even. Don't repeat the previous
