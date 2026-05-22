@@ -90,6 +90,10 @@ export interface UseXyreneStreamingVoice {
   startRoomTone: () => void
   /** Stop the ambient room-tone loop. */
   stopRoomTone: () => void
+  /** Synthesize a soft wet-mouth / tongue-lip sound — used as a
+   *  pause-filler between consecutive sentences so the inter-sentence
+   *  gap doesn't sound mechanical. Returns the duration scheduled. */
+  playWetMouth: () => number
 }
 
 let streamIdSeq = 0
@@ -155,6 +159,46 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     src.start(now)
     src.stop(now + dur + 0.005)
     return Math.round(dur * 1000)
+  }, [getCtx])
+
+  /**
+   * Synthesize a wet-mouth / tongue-lip sound. Real human speech
+   * between sentences has soft saliva/tongue movement audible — a
+   * brief moist click distinct from a dry tongue click. Used as a
+   * pause-filler when multiple sentences queue back-to-back.
+   *
+   * Two stacked short impulses with bandpass filtering at 1.5-2kHz.
+   * Quieter than the dry click; more "wet" texture.
+   */
+  const playWetMouth = useCallback((): number => {
+    const ctx = getCtx()
+    if (!ctx) return 0
+    if (Math.random() < 0.55) return 0  // ~45% of pauses
+    const now = ctx.currentTime
+    // Two impulses ~30ms apart
+    for (let p = 0; p < 2; p++) {
+      const startAt = now + p * 0.03
+      const dur = 0.012 + Math.random() * 0.008
+      const sampleCount = Math.max(1, Math.floor(ctx.sampleRate * dur))
+      const buf = ctx.createBuffer(1, sampleCount, ctx.sampleRate)
+      const data = buf.getChannelData(0)
+      for (let i = 0; i < sampleCount; i++) {
+        const t = i / sampleCount
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-t * 6) * 0.6
+      }
+      const src = ctx.createBufferSource()
+      src.buffer = buf
+      const filter = ctx.createBiquadFilter()
+      filter.type = 'bandpass'
+      filter.frequency.value = 1500 + Math.random() * 500
+      filter.Q.value = 1.5
+      const gain = ctx.createGain()
+      gain.gain.value = 0.022 - p * 0.005  // second pulse softer
+      src.connect(filter).connect(gain).connect(gainRef.current ?? ctx.destination)
+      src.start(startAt)
+      src.stop(startAt + dur + 0.005)
+    }
+    return 60  // ~60ms total
   }, [getCtx])
 
   /**
@@ -582,5 +626,5 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     return false
   }, [])
 
-  return { speakStreaming, cancelAll, isAnyActive, startRoomTone, stopRoomTone }
+  return { speakStreaming, cancelAll, isAnyActive, startRoomTone, stopRoomTone, playWetMouth }
 }

@@ -457,10 +457,12 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
 
     // Silent inter-sentence breath. setIsSpeaking(true) is kept so the
     // ducking + pulse keep going during the pause — she's still "in"
-    // the line.
+    // the line. Plays a soft wet-mouth sound at the start so the
+    // pause has a biological texture instead of dead silence.
     if (next.startsWith('pause:')) {
       const ms = Math.max(0, parseInt(next.slice('pause:'.length), 10) || 0)
       setIsSpeaking(true)
+      try { streaming.playWetMouth() } catch { /* ignore */ }
       window.setTimeout(() => {
         isAudioPlayingRef.current = false
         playNextInQueue()
