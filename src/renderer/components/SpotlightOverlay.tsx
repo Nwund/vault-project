@@ -25,16 +25,55 @@ interface Props {
   videoRef: React.RefObject<HTMLVideoElement | null>
   /** Optional initial mode. */
   initialMode?: 'spotlight' | 'pixelate'
+  /** When provided, the overlay restores the last saved preset for this
+   *  mediaId on mount and offers a "Save preset" button that persists
+   *  the current settings (mode/center/radius/dim/pixel) to localStorage. */
+  mediaId?: string
   onClose?: () => void
 }
 
-export function SpotlightOverlay({ videoRef, initialMode = 'spotlight', onClose }: Props) {
+type SpotlightPreset = {
+  mode: 'spotlight' | 'pixelate'
+  center: { x: number; y: number } | null
+  radius: number
+  dimOpacity: number
+  pixelSize: number
+}
+
+const PRESET_KEY_PREFIX = 'vault.spotlight.preset.'
+
+function loadPreset(mediaId: string | undefined): SpotlightPreset | null {
+  if (!mediaId) return null
+  try {
+    const raw = window.localStorage.getItem(PRESET_KEY_PREFIX + mediaId)
+    if (!raw) return null
+    const p = JSON.parse(raw)
+    if (typeof p?.radius !== 'number') return null
+    return p as SpotlightPreset
+  } catch { return null }
+}
+
+function savePreset(mediaId: string | undefined, preset: SpotlightPreset): void {
+  if (!mediaId) return
+  try { window.localStorage.setItem(PRESET_KEY_PREFIX + mediaId, JSON.stringify(preset)) } catch { /* ignore */ }
+}
+
+function clearPreset(mediaId: string | undefined): void {
+  if (!mediaId) return
+  try { window.localStorage.removeItem(PRESET_KEY_PREFIX + mediaId) } catch { /* ignore */ }
+}
+
+export function SpotlightOverlay({ videoRef, initialMode = 'spotlight', mediaId, onClose }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [mode, setMode] = useState<'spotlight' | 'pixelate'>(initialMode)
-  const [center, setCenter] = useState<{ x: number; y: number } | null>(null)
-  const [radius, setRadius] = useState(120)
-  const [dimOpacity, setDimOpacity] = useState(0.75)
-  const [pixelSize, setPixelSize] = useState(16)
+  // Load the saved preset (if any) once on mount so the user picks up
+  // where they left off on this video.
+  const initialPreset = loadPreset(mediaId)
+  const [mode, setMode] = useState<'spotlight' | 'pixelate'>(initialPreset?.mode ?? initialMode)
+  const [center, setCenter] = useState<{ x: number; y: number } | null>(initialPreset?.center ?? null)
+  const [radius, setRadius] = useState(initialPreset?.radius ?? 120)
+  const [dimOpacity, setDimOpacity] = useState(initialPreset?.dimOpacity ?? 0.75)
+  const [pixelSize, setPixelSize] = useState(initialPreset?.pixelSize ?? 16)
+  const [savedAt, setSavedAt] = useState<number | null>(initialPreset ? Date.now() : null)
   const draggingRef = useRef(false)
 
   const onCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -145,6 +184,37 @@ export function SpotlightOverlay({ videoRef, initialMode = 'spotlight', onClose 
               className="w-20 accent-[var(--primary)]"
             />
           </div>
+        )}
+        {mediaId && (
+          <>
+            <div className="w-px h-4 bg-zinc-700" />
+            <button
+              onClick={() => {
+                savePreset(mediaId, { mode, center, radius, dimOpacity, pixelSize })
+                setSavedAt(Date.now())
+              }}
+              className={`px-2 py-1 rounded text-[10px] transition ${
+                savedAt && Date.now() - savedAt < 2000
+                  ? 'bg-emerald-500/30 text-emerald-100'
+                  : 'text-zinc-300 hover:bg-zinc-800'
+              }`}
+              title="Save these spotlight settings for this video"
+            >
+              {savedAt && Date.now() - savedAt < 2000 ? 'Saved!' : 'Save preset'}
+            </button>
+            {savedAt && (
+              <button
+                onClick={() => {
+                  clearPreset(mediaId)
+                  setSavedAt(null)
+                }}
+                className="px-2 py-1 rounded text-[10px] text-zinc-400 hover:bg-zinc-800"
+                title="Forget saved spotlight settings for this video"
+              >
+                Reset
+              </button>
+            )}
+          </>
         )}
         {onClose && (
           <button

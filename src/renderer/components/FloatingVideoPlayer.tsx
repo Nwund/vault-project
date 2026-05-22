@@ -2037,6 +2037,7 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
             {showSpotlight && (
               <SpotlightOverlay
                 videoRef={videoRef}
+                mediaId={media.id}
                 onClose={() => setShowSpotlight(false)}
               />
             )}
