@@ -2828,6 +2828,10 @@ const api = {
        *  Surfaced to the prompt so she can respond to specific
        *  things they've said ("you said you loved this one"). */
       userSaid?: string[]
+      /** Body parts she's been fixating on recently. The prompt
+       *  surfaces this so she can either lean deeper into the same
+       *  area or shift to broaden her commentary. */
+      bodyFixation?: string[]
     }) => invoke<{
       text: string | null
       audioBase64: string | null

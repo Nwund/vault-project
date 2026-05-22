@@ -5286,6 +5286,9 @@ RULES:
     /** What the user has said recently via voice commands. Lets her
      *  respond to user speech directly. */
     userSaid?: string[]
+    /** Body parts she's been fixating on. Surfaced to the prompt so
+     *  she can shift focus or lean deeper. */
+    bodyFixation?: string[]
   }): Promise<{
     text: string | null
     audioBase64: string | null
@@ -5329,6 +5332,7 @@ RULES:
       recallMoment: args.recallMoment,
       sceneMetrics: args.sceneMetrics ?? undefined,
       userSaid: args.userSaid ?? [],
+      bodyFixation: args.bodyFixation ?? [],
     })
 
     // Generate the line via Venice

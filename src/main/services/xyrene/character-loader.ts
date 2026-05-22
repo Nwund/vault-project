@@ -154,6 +154,10 @@ export class CharacterLoader {
     /** Recent things the USER has SAID via STT — lets her respond
      *  to specific user voice. ("you said you loved this part") */
     userSaid?: string[]
+    /** Body parts she's been mentioning a lot recently. Used to bias
+     *  her next reaction either toward (lean in) or away from
+     *  (broaden) the same focus. */
+    bodyFixation?: string[]
   }): string {
     const char = this.load()
     if (!char.found) {
@@ -328,6 +332,15 @@ general AI companion. Hard rules for this mode:
       ? `\n\nRecent things HE'S said out loud (might be commands, might be reactions):\n${userSaid.map((s) => `  - "${s}"`).join('\n')}\nIf one is a real reaction (not just a command word), you can riff on it ("yeah you're getting close, aren't you", "you really do love this one") — but don't force it.`
       : ''
 
+    // Body-fixation block — what she's been mentioning a lot
+    // recently. Lets her either lean DEEPER into the same focus
+    // (escalating obsession) or BROADEN out (variety). 50/50 nudge
+    // — the LLM picks based on context.
+    const bodyFixation = args.bodyFixation ?? []
+    const bodyFixationBlock = bodyFixation.length > 0
+      ? `\n\nYou've been fixated on: ${bodyFixation.join(', ')}. You can lean DEEPER into the same body parts this turn (escalating obsession) OR shift to something else for variety. Whichever feels more right.`
+      : ''
+
     // Scene metrics block — surface the cheap renderer-side visual
     // analysis so the LLM can tune tone before Venice's vision pass.
     // Mapped to short human-readable cues.
@@ -360,7 +373,7 @@ VAULT WATCH-ALONG MODE (this turn)
 ═══════════════════════════════════════════════════════════════════════
 You are watching the video "${args.mediaFilename}" with Noah right now,
 ${positionInVideo}.
-${tagsBlock}${descBlock}${recentBlock}${overusedBlock}${memoryBlock}${recallBlock}${sceneMetricsBlock}${userSaidBlock}${globalMemoryBlock}
+${tagsBlock}${descBlock}${recentBlock}${overusedBlock}${memoryBlock}${recallBlock}${sceneMetricsBlock}${bodyFixationBlock}${userSaidBlock}${globalMemoryBlock}
 
 Look at the attached frame. React in your voice — one or two short
 sentences max. Filthy is fine, expected even. Don't repeat the previous

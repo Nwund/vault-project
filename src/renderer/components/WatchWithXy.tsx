@@ -1192,6 +1192,15 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         // What the user has said recently via voice commands —
         // she can respond to specific things they've said.
         userSaid: userVoiceMemoryRef.current.slice(-4).map((e) => e.text),
+        // Top 2 body parts she's been fixating on lately. Surfaced
+        // to the prompt so she can shift focus or lean in.
+        bodyFixation: (() => {
+          return Object.entries(bodyFixationRef.current)
+            .filter(([, n]) => n >= 1.5)  // only count meaningful fixations
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 2)
+            .map(([part]) => part)
+        })(),
       })
 
       if (!result?.text) return
@@ -1203,6 +1212,17 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       // this reaction. Stutter / cue prefixes are stripped so the
       // memory holds clean "what she said".
       const cleanForMemory = text.replace(/^\s*\[[^\]]+\]\s*/, '').trim()
+      // Decay existing fixation counters by 10% each reaction, then
+      // bump matching body parts. Keeps the counter responsive without
+      // letting recent dominate forever.
+      for (const k of Object.keys(bodyFixationRef.current)) {
+        bodyFixationRef.current[k] = bodyFixationRef.current[k] * 0.9
+      }
+      for (const [part, re] of Object.entries(BODY_PART_PATTERNS)) {
+        if (re.test(cleanForMemory)) {
+          bodyFixationRef.current[part] = (bodyFixationRef.current[part] ?? 0) + 1
+        }
+      }
       appendVideoMemory(mediaId, cleanForMemory)
       videoMemoryRef.current.push(cleanForMemory)
       if (videoMemoryRef.current.length > MEMORY_CAP) {
@@ -1410,6 +1430,24 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     const decay = Math.max(0, 1 - since / 60_000)
     return decay * escalateCountRef.current
   })()
+
+  // Body-part fixation memory — counts mentions of body parts across
+  // her last ~10 reactions so the prompt can tell her what she's
+  // been fixating on ("you've been mostly on her tits — broaden
+  // out, OR lean in deeper"). Refreshed when she comments.
+  const BODY_PART_PATTERNS: Record<string, RegExp> = {
+    cock:    /\b(cock|dick|shaft|tip|head)\b/i,
+    tits:    /\b(tits|breasts|nipples|chest)\b/i,
+    ass:    /\b(ass|cheeks|butt|booty)\b/i,
+    pussy:  /\b(pussy|cunt|clit|wet|hole|opening)\b/i,
+    face:   /\b(face|lips|mouth|tongue|throat|cheek)\b/i,
+    legs:   /\b(legs|thighs|hips|spread)\b/i,
+    hands:  /\b(hands|fingers|grip|squeeze)\b/i,
+    eyes:   /\b(eyes|stare|look|gaze)\b/i,
+  }
+  // Counter of which body parts she's mentioned across recent reactions.
+  // Decays slowly so a topic doesn't dominate forever.
+  const bodyFixationRef = useRef<Record<string, number>>({})
 
   // User voice memory — captures every final transcript the user
   // says via STT. Surfaced to Xyrene's prompt so she "remembers what
