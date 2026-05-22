@@ -604,9 +604,9 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToFa
   }, [loadContinueWatching, loadRecommendations, loadRecentlyAdded, loadFavorites, loadMostWatched, loadWatchLater, loadQuickStats, loadUnwatched, loadTodaysPicks, loadTrendingThisWeek, loadLongestVideos])
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full w-full overflow-y-auto overflow-x-hidden">
       {/* Hero Section with Gradient Background */}
-      <div className="relative bg-gradient-to-br from-zinc-900 via-zinc-900 to-zinc-800 border-b border-zinc-800">
+      <div className="relative bg-gradient-to-br from-zinc-900 via-zinc-900 to-zinc-800 border-b border-zinc-800 overflow-hidden">
         {/* Decorative gradient orbs */}
         <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-[var(--primary)]/20 to-purple-600/10 rounded-full blur-3xl" />
         <div className="absolute bottom-0 left-0 w-64 h-64 bg-gradient-to-tr from-blue-600/10 to-cyan-400/5 rounded-full blur-3xl" />

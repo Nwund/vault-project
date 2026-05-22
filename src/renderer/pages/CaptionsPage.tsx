@@ -1065,7 +1065,7 @@ export function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
   const currentPreset = presets.find(p => p.id === selectedPreset) || presets[0]
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full w-full flex flex-col overflow-x-hidden">
       {/* Top Bar */}
       <div className="shrink-0 h-14 flex items-center justify-between px-4 border-b border-[var(--border)] bg-[var(--panel)]">
         <div className="flex items-center gap-3">

@@ -198,7 +198,7 @@ export function DownloadsPage() {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full w-full flex flex-col overflow-x-hidden">
       {/* Header */}
       <div className="p-6 border-b border-[var(--border)]">
         <div className="flex items-center justify-between mb-4">

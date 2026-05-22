@@ -15,6 +15,7 @@ import { useDebounce, toFileUrlCached, useLazyLoad } from './hooks/usePerformanc
 import { useVideoPreview } from './hooks/useVideoPreview'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { useConfirm } from './components/ConfirmDialog'
+import { LoadingSpinner } from './components/LoadingSpinner'
 import { AboutPage } from './pages/AboutPage'
 import SessionsPage from './pages/SessionsPage'
 // v2.7 — lazy-load every non-essential page so initial bundle shrinks.
@@ -2170,7 +2171,7 @@ export default function App() {
                   aria-label={`${n.name}${isActive ? ' (current page)' : ''}`}
                   aria-current={isActive ? 'page' : undefined}
                   className={cn(
-                    'relative w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all duration-200 border flex items-center gap-3',
+                    'relative w-full text-left pl-3 pr-2 py-2.5 rounded-xl text-sm transition-all duration-200 border flex items-center gap-2 overflow-hidden',
                     isActive
                       ? 'bg-[var(--primary)]/15 border-[var(--primary)]/30 text-[var(--primary)] shadow-lg shadow-[var(--primary)]/10'
                       : 'bg-transparent border-transparent hover:bg-white/5 hover:border-white/10 text-[var(--text)] hover:translate-x-1'
@@ -2181,11 +2182,11 @@ export default function App() {
                     <div className="nav-active-indicator" />
                   )}
                   <NavIcon id={n.id} active={isActive} />
-                  <span className="flex-1">{n.name}</span>
+                  <span className="flex-1 min-w-0 truncate">{n.name}</span>
                   {/* AI Processing indicator */}
                   {n.id === 'ai' && globalAiStatus?.isRunning && (
                     <span
-                      className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 animate-pulse"
+                      className="shrink-0 flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 animate-pulse tabular-nums"
                       title={`Processing: ${globalAiStatus.processing} | Pending: ${globalAiStatus.pending} | Completed: ${globalAiStatus.completed}`}
                     >
                       <Loader2 size={10} className="animate-spin" />
@@ -2195,7 +2196,7 @@ export default function App() {
                   {/* Untagged items badge */}
                   {n.id === 'ai' && !globalAiStatus?.isRunning && untaggedCount > 0 && (
                     <span
-                      className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400"
+                      className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 tabular-nums"
                       title={`${untaggedCount} untagged items`}
                     >
                       {untaggedCount > 99 ? '99+' : untaggedCount}
@@ -2334,12 +2335,7 @@ export default function App() {
         >
           <React.Suspense
             fallback={
-              <div className="h-full w-full grid place-items-center">
-                <div className="flex flex-col items-center gap-3 text-[var(--muted)]">
-                  <div className="size-8 rounded-full border-2 border-[var(--primary)] border-t-transparent animate-spin" />
-                  <span className="text-xs">Loading page…</span>
-                </div>
-              </div>
+              <LoadingSpinner fullPage label="Loading page…" />
             }
           >
           {page === 'home' ? (

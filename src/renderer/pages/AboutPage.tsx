@@ -16,12 +16,17 @@ function cn(...xs: Array<string | false | null | undefined>): string {
 }
 
 export function AboutPage() {
-  const [tier, setTier] = useState<string>('free')
+  // null = still resolving; avoids flashing "Free" on every page load
+  // before the IPC returns. Owner mode is the dev default, so users
+  // would briefly see the wrong tier on every navigate.
+  const [tier, setTier] = useState<string | null>(null)
   const [vaultStats, setVaultStats] = useState<any>(null)
   const [appVersion, setAppVersion] = useState('2.7.1')
 
   useEffect(() => {
-    window.api.license?.getTier?.().then((t: any) => setTier(t || 'free'))
+    window.api.license?.getTier?.()
+      .then((t: any) => setTier(typeof t === 'string' && t ? t : 'free'))
+      .catch(() => setTier('free'))
     window.api.vault?.getStats?.().then((s: any) => setVaultStats(s))
     window.api.app?.getVersion?.().then((v: any) => v && setAppVersion(v))
   }, [])
@@ -49,6 +54,7 @@ export function AboutPage() {
                     'px-4 py-1.5 rounded-full text-sm font-medium flex items-center gap-1.5',
                     tier === 'owner' ? 'bg-gradient-to-r from-yellow-500/30 to-amber-500/30 text-yellow-400 border border-yellow-500/30' :
                     tier === 'premium' ? 'bg-gradient-to-r from-[var(--primary)]/30 to-pink-500/30 text-[var(--primary)] border border-[var(--primary)]/30' :
+                    tier === null ? 'bg-zinc-800/40 text-zinc-500 border border-[var(--border)] opacity-50' :
                     'bg-zinc-800/80 text-zinc-400 border border-[var(--border)]'
                   )}
                 >
@@ -56,6 +62,8 @@ export function AboutPage() {
                     <><Crown size={14} /> Owner</>
                   ) : tier === 'premium' ? (
                     <><Zap size={14} /> Premium</>
+                  ) : tier === null ? (
+                    '…'
                   ) : (
                     'Free'
                   )}

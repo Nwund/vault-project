@@ -34,6 +34,7 @@ import { formatDuration } from '../utils/formatters'
 import { cn } from '../utils/cn'
 import { extractItems } from '../utils/api'
 import { Btn, TopBar } from '../components/ui'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 import { SessionMediaThumb, PlaylistGridThumb } from '../components/PlaylistThumbs'
 import { FloatingVideoPlayer } from '../components/FloatingVideoPlayer'
 
@@ -708,11 +709,7 @@ export function PlaylistsPage() {
   const currentMedia = playlistMediaList.find(m => m.id === openMediaId)
 
   if (isLoading && playlists.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <RefreshCw size={24} className="animate-spin text-[var(--muted)]" />
-      </div>
-    )
+    return <LoadingSpinner fullPage label="Loading playlists…" />
   }
 
   if (error && playlists.length === 0) {
