@@ -429,6 +429,14 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     return () => clearInterval(interval)
   }, [enabled, enginePhase, playNextInQueue])
 
+  // Track the memory size in component state so the badge updates
+  // live as she says new things, not just on media change.
+  const [memorySize, setMemorySize] = useState(0)
+  const [showMemory, setShowMemory] = useState(false)
+  useEffect(() => {
+    setMemorySize(videoMemoryRef.current.length)
+  }, [mediaId, comments.length])
+
   // Listening mode — when the user starts speaking (voice command
   // recognizer fires onspeechstart), interrupt her current line and
   // pause the queue. Resumes when the user stops speaking. Without
@@ -648,6 +656,18 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
             {audioMuted ? <MicOff size={14} className="text-white/60" /> : <Mic size={14} className="text-pink-300" />}
           </button>
         )}
+        {/* Memory chip — only shows when she has past reactions to
+            this video. Click to peek at what she remembers. */}
+        {enabled && memorySize > 0 && (
+          <button
+            onClick={() => setShowMemory(v => !v)}
+            title={`She remembers ${memorySize} past reaction${memorySize === 1 ? '' : 's'} to this video`}
+            className="px-2 py-1 rounded-full text-[10px] font-medium border bg-violet-500/20 hover:bg-violet-500/35 border-violet-400/40 text-violet-200 transition flex items-center gap-1 backdrop-blur-md pointer-events-auto"
+          >
+            <span>{memorySize}</span>
+            <span className="text-[8px] uppercase tracking-wider opacity-70">mem</span>
+          </button>
+        )}
         <button
           onClick={() => {
             if (!ready) { void probeHealth(); return }
@@ -705,6 +725,42 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Memory popover — surfaces what she remembers about THIS video
+          across all sessions. Lets the user inspect / delete entries
+          so memory stays curated. */}
+      {enabled && showMemory && (
+        <div className="bg-violet-950/80 backdrop-blur-md border border-violet-500/40 rounded-xl p-3 w-[20rem] shadow-xl pointer-events-auto">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[10px] text-violet-300 uppercase tracking-widest">What Xy remembers</div>
+            <button
+              onClick={() => {
+                try {
+                  window.localStorage.removeItem(MEMORY_KEY(mediaId))
+                  videoMemoryRef.current = []
+                  setMemorySize(0)
+                  setShowMemory(false)
+                } catch { /* ignore */ }
+              }}
+              className="text-[9px] text-violet-300/60 hover:text-red-300 hover:underline"
+              title="Wipe her memory for this video"
+            >
+              forget
+            </button>
+          </div>
+          {videoMemoryRef.current.length === 0 ? (
+            <div className="text-[11px] text-violet-300/50 italic">No memories yet — she'll start remembering after a few reactions.</div>
+          ) : (
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {videoMemoryRef.current.slice().reverse().map((line, i) => (
+                <div key={i} className="text-[11px] text-violet-100 px-2 py-1 rounded bg-violet-500/10 italic leading-relaxed">
+                  "{line}"
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
