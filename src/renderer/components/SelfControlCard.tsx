@@ -132,7 +132,21 @@ export function SelfControlCard(): React.JSX.Element {
         const sess = r.session
         const xp = sess?.xpEarned ?? 0
         const dur = sess?.durationSec ?? 0
-        setInfo(`+${xp} XP · ${fmtSec(dur)} (${outcome})`)
+        // XP breakdown — shows base + streak + ruined bonus separately
+        // so the user understands the score, not just sees a number.
+        const bd = sess?.xpBreakdown
+        const breakdownStr = bd ? (() => {
+          const parts: string[] = []
+          parts.push(`${bd.base} base (${bd.durationMin.toFixed(1)}m × ${bd.multiplier})`)
+          if (bd.streakBonus > 0) parts.push(`+${bd.streakBonus} streak (${bd.streakCount})`)
+          if (bd.ruinedBonus > 0) parts.push(`+${bd.ruinedBonus} ruined`)
+          return parts.join(' · ')
+        })() : null
+        setInfo(
+          breakdownStr
+            ? `+${xp} XP · ${fmtSec(dur)} (${outcome}) · ${breakdownStr}`
+            : `+${xp} XP · ${fmtSec(dur)} (${outcome})`
+        )
         // Auto-trigger lockout on climax (true climax — ruined doesn't trigger).
         if (outcome === 'climax' && lockout?.enabled) {
           await api?.lockout?.trigger?.({})

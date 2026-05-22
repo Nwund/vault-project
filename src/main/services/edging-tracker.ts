@@ -79,7 +79,19 @@ export function startEdgingSession(db: Raw): EdgingSession {
 // prefix. Old clients reading the table see 'ruined' as 'denied'.
 export type EdgingOutcome = 'climax' | 'denied' | 'ruined'
 
-export function endEdgingSession(db: Raw, opts: { outcome?: EdgingOutcome; climaxed?: boolean; notes?: string | null }): EdgingSession | null {
+/** Returned alongside the closed session so the renderer can show
+ *  exactly how the XP total was computed (base + streak + ruined). */
+export interface XpBreakdown {
+  base: number       // floor(durationMin * multiplier)
+  multiplier: number // 0.5 / 1.5 / 2.0 by outcome
+  durationMin: number
+  streakBonus: number
+  streakCount: number
+  ruinedBonus: number
+  total: number
+}
+
+export function endEdgingSession(db: Raw, opts: { outcome?: EdgingOutcome; climaxed?: boolean; notes?: string | null }): (EdgingSession & { xpBreakdown?: XpBreakdown }) | null {
   const open = db.prepare(`SELECT * FROM edging_sessions WHERE endedAt IS NULL ORDER BY startedAt DESC LIMIT 1`).get() as any
   if (!open) return null
   // Accept either the new `outcome` field or the legacy `climaxed` bool.
@@ -87,7 +99,8 @@ export function endEdgingSession(db: Raw, opts: { outcome?: EdgingOutcome; clima
   const now = Date.now()
   const durSec = Math.round((now - open.startedAt) / 1000)
   const continuingStreak = outcome === 'climax' ? 0 : computeCurrentDenialStreak(db) + 1
-  const xp = computeXp(durSec, outcome, continuingStreak)
+  const breakdown = computeXpBreakdown(durSec, outcome, continuingStreak)
+  const xp = breakdown.total
   // Storage encoding: 'climax' → climaxed=1; 'denied'/'ruined' → climaxed=0
   // with the marker stuffed into notes so we can recover it on read.
   const climaxedInt = outcome === 'climax' ? 1 : 0
@@ -97,20 +110,28 @@ export function endEdgingSession(db: Raw, opts: { outcome?: EdgingOutcome; clima
   db.prepare(`UPDATE edging_sessions SET endedAt = ?, durationSec = ?, climaxed = ?, xpEarned = ?, notes = ? WHERE id = ?`)
     .run(now, durSec, climaxedInt, xp, notesOut, open.id)
   const updated = db.prepare(`SELECT * FROM edging_sessions WHERE id = ?`).get(open.id) as any
-  return row2session(updated)
+  return { ...row2session(updated), xpBreakdown: breakdown }
 }
 
-function computeXp(durationSec: number, outcome: EdgingOutcome, streakIfNotClimax: number): number {
-  const durMin = Math.max(0, durationSec / 60)
+function computeXpBreakdown(durationSec: number, outcome: EdgingOutcome, streakIfNotClimax: number): XpBreakdown {
+  const durationMin = Math.max(0, durationSec / 60)
   // Multiplier table: climax = 0.5x (instant gratification penalty),
   // ruined = 2.0x (you got close AND chose to suffer — highest reward),
   // denied = 1.5x (controlled stop).
-  const mult = outcome === 'climax' ? 0.5 : outcome === 'ruined' ? 2.0 : 1.5
-  const base = Math.floor(durMin * mult)
+  const multiplier = outcome === 'climax' ? 0.5 : outcome === 'ruined' ? 2.0 : 1.5
+  const base = Math.floor(durationMin * multiplier)
   const streakBonus = outcome === 'climax' ? 0 : streakIfNotClimax * 5
   // Ruined gets a flat +25 bonus on top — the act itself is XP-worthy.
   const ruinedBonus = outcome === 'ruined' ? 25 : 0
-  return base + streakBonus + ruinedBonus
+  return {
+    base,
+    multiplier,
+    durationMin,
+    streakBonus,
+    streakCount: outcome === 'climax' ? 0 : streakIfNotClimax,
+    ruinedBonus,
+    total: base + streakBonus + ruinedBonus,
+  }
 }
 
 function computeCurrentDenialStreak(db: Raw): number {
