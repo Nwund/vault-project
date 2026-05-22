@@ -64,6 +64,52 @@ const PERSONA_VOICE: Record<PersonaName, { speed: number; pitch: number; express
 }
 
 /**
+ * Apply casual phonetic contractions to make her speech sound less
+ * scripted. LLM responses often output formal "going to" / "want to"
+ * because that's what training data has — humans (especially in
+ * intimate contexts) say "gonna" / "wanna" / "lemme" / "dunno".
+ *
+ * Applied probabilistically per match so the same phrase doesn't
+ * always come out the same way. Skips matches inside quotes so
+ * literal text stays untouched.
+ */
+function applyCasualContractions(text: string): string {
+  if (!text) return text
+  // Each pair: pattern → replacement, and probability of applying.
+  const rules: Array<{ pattern: RegExp; replacement: string; chance: number }> = [
+    { pattern: /\bgoing to\b/gi,    replacement: 'gonna', chance: 0.8 },
+    { pattern: /\bwant to\b/gi,     replacement: 'wanna', chance: 0.8 },
+    { pattern: /\bgot to\b/gi,      replacement: 'gotta', chance: 0.75 },
+    { pattern: /\blet me\b/gi,      replacement: 'lemme', chance: 0.7 },
+    { pattern: /\bgive me\b/gi,     replacement: 'gimme', chance: 0.7 },
+    { pattern: /\bkind of\b/gi,     replacement: 'kinda', chance: 0.85 },
+    { pattern: /\bsort of\b/gi,     replacement: 'sorta', chance: 0.8 },
+    { pattern: /\bout of\b/gi,      replacement: 'outta', chance: 0.6 },
+    { pattern: /\bdon't know\b/gi,  replacement: 'dunno', chance: 0.5 },
+    { pattern: /\byou are\b/gi,     replacement: 'you\'re', chance: 0.85 },
+    { pattern: /\bi am\b/gi,        replacement: 'i\'m', chance: 0.9 },
+    { pattern: /\bdo not\b/gi,      replacement: 'don\'t', chance: 0.9 },
+    { pattern: /\bcannot\b/gi,      replacement: 'can\'t', chance: 0.9 },
+    { pattern: /\bbecause\b/gi,     replacement: 'cause', chance: 0.55 },
+    { pattern: /\babout to\b/gi,    replacement: '\'bout to', chance: 0.4 },
+    { pattern: /\bthem\b/gi,        replacement: '\'em', chance: 0.4 },
+  ]
+  let out = text
+  for (const r of rules) {
+    out = out.replace(r.pattern, (match) => {
+      if (Math.random() < r.chance) {
+        // Preserve case of first character of the match.
+        return match[0] === match[0].toUpperCase()
+          ? r.replacement[0].toUpperCase() + r.replacement.slice(1)
+          : r.replacement
+      }
+      return match
+    })
+  }
+  return out
+}
+
+/**
  * Apply phase-keyed verbal "stutters" to a sentence. At high arousal
  * (build/climax), randomly stutter the first character of select words
  * — "fuck" → "f-fuck", "i" → "i-i". Adds a human, near-edge quality
@@ -794,8 +840,11 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       const cueMatch = text.match(/^\s*\[(BREATHY|WHISPERED|MOANED|DESPERATE|COMMANDED|LAUGHING)\]\s*/i)
       const expression = cueMatch ? cueMatch[1].toLowerCase() : ''
       const stripped = cueMatch ? text.slice(cueMatch[0].length).trim() : text
-      // Apply phase-keyed verbal stutter (build/climax phases only).
-      const spokenText = applyArousalStutter(stripped, enginePhase)
+      // Apply casual phonetic contractions (going to → gonna, etc) so
+      // her speech doesn't sound LLM-formal. Then phase-keyed verbal
+      // stutter (build/climax phases only) on top.
+      const contracted = applyCasualContractions(stripped)
+      const spokenText = applyArousalStutter(contracted, enginePhase)
       if (spokenText) {
         // Multi-sentence sequencing — split her reaction into sentences
         // and queue each separately with a natural breath pause between.
