@@ -486,12 +486,30 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   // recognizer fires onspeechstart), interrupt her current line and
   // pause the queue. Resumes when the user stops speaking. Without
   // this she'd talk over them and the recognizer would mishear.
+  //
+  // Echo suppression: while SHE is speaking, ignore "speaking start"
+  // events — the recognizer is almost certainly picking up her own
+  // audio bleeding through the mic. Without this, every line she says
+  // would cancel itself mid-sentence. The 250ms tail guard extends the
+  // suppression briefly after she finishes so the recognizer doesn't
+  // catch the very end of her last word.
   const queuePausedRef = useRef(false)
+  const isSpeakingRef = useRef(false)
+  const lastSpeakingEndedAtRef = useRef<number>(0)
+  useEffect(() => {
+    isSpeakingRef.current = isSpeaking
+    if (!isSpeaking) lastSpeakingEndedAtRef.current = Date.now()
+  }, [isSpeaking])
 
   useEffect(() => {
     const onSpeaking = (ev: Event) => {
       const detail = (ev as CustomEvent).detail as { state?: 'start' | 'end' } | undefined
       if (detail?.state === 'start') {
+        // Echo guard — if SHE is currently speaking or just stopped
+        // within the last 250ms, treat this as her own voice bleeding
+        // through the mic and ignore.
+        if (isSpeakingRef.current) return
+        if (Date.now() - lastSpeakingEndedAtRef.current < 250) return
         // Cancel in-flight streams immediately — don't wait for the
         // line to finish. The user is talking NOW.
         streaming.cancelAll()
