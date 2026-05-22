@@ -734,7 +734,12 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
             const sinceSpeech = now - lastSpeakingEndedAtRef.current
             if (sinceSpeech > 15_000) {
               try {
-                if (Math.random() < 0.5) streaming.playSniffle()
+                // Three-way: sniffle / throat-clear / swallow. Swallows
+                // are subtler than the other two so they get a slightly
+                // higher weight.
+                const r = Math.random()
+                if (r < 0.42) streaming.playSwallow()
+                else if (r < 0.71) streaming.playSniffle()
                 else streaming.playThroatClear()
               } catch { /* ignore */ }
             }

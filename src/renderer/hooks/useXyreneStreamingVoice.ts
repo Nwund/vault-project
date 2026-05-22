@@ -111,6 +111,8 @@ export interface UseXyreneStreamingVoice {
   playSniffle: () => number
   /** Synthesize a low throat-clear rumble. */
   playThroatClear: () => number
+  /** Synthesize a saliva swallow (descending throat-formant pulse). */
+  playSwallow: () => number
   /** Get the AnalyserNode tapped off the master bus for visualization.
    *  Returns null if the AudioContext hasn't been created yet. */
   getAnalyser: () => AnalyserNode | null
@@ -298,6 +300,44 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     gain.gain.setValueAtTime(0.0001, now)
     gain.gain.exponentialRampToValueAtTime(peak, now + dur * 0.25)
     gain.gain.exponentialRampToValueAtTime(0.0001, now + dur)
+    src.connect(filter).connect(gain)
+    connectThroughReverb(gain)
+    src.start(now)
+    src.stop(now + dur + 0.01)
+    return Math.round(dur * 1000)
+  }, [getCtx, connectThroughReverb])
+
+  /**
+   * Synthesize a saliva swallow — a quick descending glottal sound.
+   * Real speech has occasional swallows between thoughts; this adds
+   * one to the audio path. ~90-130ms of low-frequency tone with
+   * descending pitch and wet-formant filtering.
+   */
+  const playSwallow = useCallback((): number => {
+    const ctx = getCtx()
+    if (!ctx) return 0
+    const now = ctx.currentTime
+    const dur = (90 + Math.random() * 40) / 1000
+    const sampleCount = Math.floor(ctx.sampleRate * dur)
+    const buf = ctx.createBuffer(1, sampleCount, ctx.sampleRate)
+    const data = buf.getChannelData(0)
+    // Descending pitch from ~150Hz to ~80Hz = the "gulp" character.
+    for (let i = 0; i < sampleCount; i++) {
+      const t = i / sampleCount
+      const freq = 150 - 70 * t
+      const phase = (i / ctx.sampleRate) * freq * 2 * Math.PI
+      const env = Math.sin(Math.PI * t) * Math.pow(1 - t, 0.5)
+      // Tone + slight noise for wet quality.
+      data[i] = (Math.sin(phase) * 0.7 + (Math.random() * 2 - 1) * 0.3) * env * 0.5
+    }
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.value = 600   // wet/throat formant
+    filter.Q.value = 1.2
+    const gain = ctx.createGain()
+    gain.gain.value = 0.04
     src.connect(filter).connect(gain)
     connectThroughReverb(gain)
     src.start(now)
@@ -845,6 +885,7 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     playWetMouth,
     playSniffle,
     playThroatClear,
+    playSwallow,
     getAnalyser,
   }
 }
