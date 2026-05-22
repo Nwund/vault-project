@@ -52,12 +52,51 @@ interface UseEngineState {
   forcePhase?: (phase: Phase) => void
 }
 
-function phaseForProgress(p: number): Phase {
+// Phase boundaries — non-overlapping intervals along progress 0..1.
+const PHASE_BOUNDS: Array<{ phase: Phase; start: number; end: number }> = [
+  { phase: 'intro',    start: 0.0,  end: 0.15 },
+  { phase: 'body',     start: 0.15, end: 0.65 },
+  { phase: 'build',    start: 0.65, end: 0.9 },
+  { phase: 'climax',   start: 0.9,  end: 0.95 },
+  { phase: 'cooldown', start: 0.95, end: 1.01 },
+]
+
+function phaseForProgressNaive(p: number): Phase {
   if (p < 0.15) return 'intro'
   if (p < 0.65) return 'body'
   if (p < 0.9) return 'build'
   if (p < 0.95) return 'climax'
   return 'cooldown'
+}
+
+/**
+ * Phase detection with hysteresis. Once she's in a phase, the
+ * progress has to overshoot the boundary by at least 2% before
+ * flipping. Prevents flip-flop when the user scrubs back/forth near
+ * a phase boundary, and creates the feeling that arousal builds
+ * gradually but doesn't snap back at the slightest dip.
+ *
+ * Asymmetric: escalating up requires a small overshoot (1.5%); coming
+ * back down requires a larger one (3.5%) — mimics how real arousal
+ * builds slowly but takes more effort to deflate.
+ */
+function phaseForProgress(p: number, prev?: Phase): Phase {
+  const naive = phaseForProgressNaive(p)
+  if (!prev || prev === naive) return naive
+  const prevIdx = PHASE_BOUNDS.findIndex((b) => b.phase === prev)
+  const nextIdx = PHASE_BOUNDS.findIndex((b) => b.phase === naive)
+  if (prevIdx < 0 || nextIdx < 0) return naive
+  // Escalating (intro→body→build→climax): require 1.5% past the boundary.
+  // Deescalating: require 3.5% past it (arousal sticks).
+  const escalating = nextIdx > prevIdx
+  const required = escalating ? 0.015 : 0.035
+  const prevBound = PHASE_BOUNDS[prevIdx]
+  if (escalating) {
+    if (p < prevBound.end + required) return prev
+  } else {
+    if (p > prevBound.start - required) return prev
+  }
+  return naive
 }
 
 export function useXyreneSoundEngine(
@@ -171,7 +210,7 @@ export function useXyreneSoundEngine(
       const dur = video.duration
       if (!isFinite(dur) || dur <= 0) return
       const p = video.currentTime / dur
-      const next = phaseForProgress(p)
+      const next = phaseForProgress(p, state.phase)
       // Climax is a one-shot — fire once per pass through the climax window
       // and don't bounce back into it.
       if (next === 'climax') {
