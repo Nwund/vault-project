@@ -472,8 +472,21 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     }
   }, [enabled, mediaId, durationSec, videoRef, playNextInQueue])
 
+  // Phase-adaptive cadence — comments more often at climax (every 5s),
+  // less often at cooldown (every 14s), default 8s in body/intro.
+  // Scales the user-supplied intervalSec by a per-phase factor so the
+  // override still works (e.g. interval=4 still gives 2.5s at climax).
+  const effectiveIntervalSec = (() => {
+    const factor = enginePhase === 'climax' ? 0.5
+      : enginePhase === 'build' ? 0.75
+      : enginePhase === 'cooldown' ? 1.75
+      : 1.0
+    return Math.max(3, intervalSec * factor)
+  })()
+
   // Start / stop the ticker when `enabled` flips. Session-tracking starts
-  // on enable and FLUSHES learnings on disable.
+  // on enable and FLUSHES learnings on disable. Cadence re-arms when
+  // the phase changes so escalation feels responsive.
   useEffect(() => {
     if (!enabled) {
       if (tickerRef.current) { clearInterval(tickerRef.current); tickerRef.current = null }
@@ -486,11 +499,11 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     sessionRef.current = { startedAt: Date.now(), mediaIds: new Set([mediaId]), allComments: [] }
     // Fire once immediately, then on cadence.
     void tick()
-    tickerRef.current = setInterval(() => { void tick() }, Math.max(3, intervalSec) * 1000)
+    tickerRef.current = setInterval(() => { void tick() }, effectiveIntervalSec * 1000)
     return () => {
       if (tickerRef.current) { clearInterval(tickerRef.current); tickerRef.current = null }
     }
-  }, [enabled, intervalSec, tick, mediaId, flushSessionLearnings])
+  }, [enabled, effectiveIntervalSec, tick, mediaId, flushSessionLearnings])
 
   // Reset comment state when media changes — but DON'T reset the session
   // (the user is still in the same watch-along session, just on a
