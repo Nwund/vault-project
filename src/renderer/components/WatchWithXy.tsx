@@ -321,6 +321,51 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     }
   }, [isSpeaking, videoRef])
 
+  // Spontaneous micro-reactions — between full commentary ticks (every
+  // 8-15s of NOT-speaking + NOT-listening), randomly inject a short
+  // utterance (a sigh, "mmm", "fuck", etc) so she sounds present
+  // between actual reactions. Phase-keyed so intro phases sound
+  // intimate and climax phases sound peak. Uses the same streaming
+  // path so latency is sub-second.
+  const MICRO_BY_PHASE: Record<NonNullable<typeof enginePhase>, string[]> = {
+    intro:    ['mmm', 'hmm', 'oh wow', 'jesus', 'okay', 'mmm yes'],
+    body:     ['fuck', 'mmm', 'god', 'oh', 'yeah', 'shit', 'mhmm', 'yes baby'],
+    build:    ['fuck yes', 'oh god', "i'm close", 'right there', 'don\'t stop', 'so good', 'ahh'],
+    climax:   ['fuck fuck fuck', 'cumming', 'oh god yes', 'i\'m cumming', 'ahh fuck'],
+    cooldown: ['mmm', 'good boy', 'so good', 'jesus christ', 'wow'],
+  }
+  const lastMicroAtRef = useRef<number>(Date.now())
+  useEffect(() => {
+    if (!enabled) return
+    const interval = window.setInterval(() => {
+      if (queuePausedRef.current) return                       // user is talking
+      if (isAudioPlayingRef.current) return                    // she's mid-line
+      if (audioQueueRef.current.length > 0) return             // queue has a line waiting
+      if (!enginePhase) return                                  // no phase signal yet
+      // Throttle — at least 8s between micro reactions, at most 15s.
+      const now = Date.now()
+      const minGap = 8000 + Math.random() * 7000
+      if (now - lastMicroAtRef.current < minGap) return
+      // 35% chance each tick when eligible — keeps her from being
+      // chatty between actual commentary.
+      if (Math.random() > 0.35) {
+        lastMicroAtRef.current = now
+        return
+      }
+      lastMicroAtRef.current = now
+      const pool = MICRO_BY_PHASE[enginePhase] || MICRO_BY_PHASE.body
+      const utterance = pool[Math.floor(Math.random() * pool.length)]
+      // Phase-keyed expression for the micro reaction.
+      const expression = enginePhase === 'climax' ? 'moaned'
+        : enginePhase === 'build' ? 'desperate'
+        : enginePhase === 'intro' || enginePhase === 'cooldown' ? 'breathy'
+        : 'sultry'
+      audioQueueRef.current.push(`stream:${expression}|${utterance}`)
+      playNextInQueue()
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [enabled, enginePhase, playNextInQueue])
+
   // Listening mode — when the user starts speaking (voice command
   // recognizer fires onspeechstart), interrupt her current line and
   // pause the queue. Resumes when the user stops speaking. Without
