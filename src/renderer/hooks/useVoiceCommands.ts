@@ -239,7 +239,14 @@ export function useVoiceCommands(
         }
       }
       // No match — still log so the user can see what was heard.
+      // Also dispatch a window event so the HUD can flash a "didn't
+      // catch that" hint, making her feel attentive even on failures.
       appendLog({ at: Date.now(), transcript, command: null })
+      try {
+        window.dispatchEvent(new CustomEvent('vault:xyrene-heard-unclear', {
+          detail: { transcript },
+        }))
+      } catch { /* ignore */ }
     }
 
     recognition.onerror = (e: any) => {

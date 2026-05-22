@@ -555,6 +555,22 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   // live as she says new things, not just on media change.
   const [memorySize, setMemorySize] = useState(0)
   const [showMemory, setShowMemory] = useState(false)
+  // Brief "didn't catch that" indicator — flashes when the STT
+  // recognizer finalized a transcript that didn't match any command,
+  // so the user can see she heard *something* but it wasn't usable.
+  const [heardUnclear, setHeardUnclear] = useState<string | null>(null)
+  useEffect(() => {
+    const onUnclear = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as { transcript?: string } | undefined
+      const t = detail?.transcript?.trim()
+      if (!t) return
+      setHeardUnclear(t.length > 40 ? `${t.slice(0, 40)}…` : t)
+      // Auto-dismiss after 3s.
+      window.setTimeout(() => setHeardUnclear((cur) => (cur === (t.length > 40 ? `${t.slice(0, 40)}…` : t) ? null : cur)), 3000)
+    }
+    window.addEventListener('vault:xyrene-heard-unclear', onUnclear)
+    return () => window.removeEventListener('vault:xyrene-heard-unclear', onUnclear)
+  }, [])
   useEffect(() => {
     setMemorySize(videoMemoryRef.current.length)
   }, [mediaId, comments.length])
@@ -863,6 +879,18 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
             {audioMuted ? <MicOff size={14} className="text-white/60" /> : <Mic size={14} className="text-pink-300" />}
           </button>
         )}
+        {/* "Didn't catch that" hint — flashes briefly when STT
+            recognized something that didn't match any command. */}
+        {heardUnclear && (
+          <div
+            className="px-2 py-1 rounded-full text-[10px] font-medium border bg-amber-500/20 border-amber-400/40 text-amber-200 backdrop-blur-md flex items-center gap-1 pointer-events-auto"
+            title="STT heard this but no command matched. Try rephrasing."
+          >
+            <span className="opacity-60">heard:</span>
+            <span className="italic">"{heardUnclear}"</span>
+          </div>
+        )}
+
         {/* Phase / arousal indicator — surfaces what mode she's in
             right now (intro / body / build / climax / cooldown) and
             roughly how desperate her commentary will sound. Updates
