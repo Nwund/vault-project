@@ -961,12 +961,15 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       }
 
       if (!enginePhase) return                                  // no phase signal yet
-      // Throttle — at least 8s between micro reactions, at most 15s.
-      const minGap = 8000 + Math.random() * 7000
+      // Combined-signal cadence — heat (scene intensity + contagion)
+      // tightens the gap AND boosts firing probability. Cold session
+      // = 35% / 8-15s; full heat (intensity 1.0 + 3-stack contagion)
+      // = 65% / 4-9s. Makes her audibly more present during peaks.
+      const heat = Math.min(1, intensityMA + contagionBoost * 0.25)
+      const minGap = (8000 + Math.random() * 7000) * (1 - heat * 0.5)  // 4s minimum at full heat
       if (now - lastMicroAtRef.current < minGap) return
-      // 35% chance each tick when eligible — keeps her from being
-      // chatty between actual commentary.
-      if (Math.random() > 0.35) {
+      const fireProb = 0.35 + heat * 0.3
+      if (Math.random() > fireProb) {
         lastMicroAtRef.current = now
         return
       }
