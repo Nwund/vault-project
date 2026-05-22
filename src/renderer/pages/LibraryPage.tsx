@@ -3473,6 +3473,77 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
             <span>Tag</span>
           </Btn>
 
+          {/* Bulk Feature-less — toggles the suppression flag on every
+              selected item so recommendation rails skip them. */}
+          <Btn
+            tone="ghost"
+            title="Feature less / hide from recommendations"
+            aria-label="Feature less for all selected items"
+            disabled={!!bulkActionLoading}
+            onClick={async () => {
+              try {
+                setBulkActionLoading('featureLess')
+                let flipped = 0
+                for (const mid of selectedIds) {
+                  try {
+                    const cur = await window.api.tags.featureLess.get(mid)
+                    const nextVal = !(cur?.ok && cur.value)
+                    const r = await window.api.tags.featureLess.set({ mediaId: mid, value: nextVal })
+                    if (r?.ok) flipped++
+                  } catch { /* skip per-item failures */ }
+                }
+                showToast('success', `Updated feature-less on ${flipped}/${selectedIds.size} items`)
+                window.dispatchEvent(new CustomEvent('vault:featureLessChanged'))
+              } catch (err: any) {
+                showToast('error', err?.message ?? 'Bulk feature-less failed')
+              } finally {
+                setBulkActionLoading(null)
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+          >
+            {bulkActionLoading === 'featureLess' ? <RefreshCw size={12} className="animate-spin" /> : <EyeOff size={12} />}
+          </Btn>
+
+          {/* Bulk Deny — sets a denial cooldown on every selected item.
+              Prompts for a duration (minutes); 0 / empty cancels. */}
+          <Btn
+            tone="ghost"
+            title="Deny all selected items for N minutes"
+            aria-label="Deny all selected items"
+            disabled={!!bulkActionLoading}
+            onClick={async () => {
+              const input = window.prompt('Deny duration (e.g. 30m, 2h, 1d):', '60m')
+              if (!input) return
+              const m = /^\s*(\d+(?:\.\d+)?)\s*([mhdw]?)\s*$/i.exec(input)
+              if (!m) { showToast('error', 'Could not parse duration'); return }
+              const n = parseFloat(m[1])
+              const unit = (m[2] ?? 'm').toLowerCase()
+              const minutes = unit.startsWith('w') ? n * 7 * 1440
+                : unit.startsWith('d') ? n * 1440
+                : unit.startsWith('h') ? n * 60
+                : n
+              try {
+                setBulkActionLoading('deny')
+                let denied = 0
+                for (const mid of selectedIds) {
+                  try {
+                    const r = await window.api.tags.denial.set({ mediaId: mid, durationMin: Math.round(minutes) })
+                    if (r?.ok) denied++
+                  } catch { /* skip */ }
+                }
+                showToast('success', `Denied ${denied}/${selectedIds.size} items for ${Math.round(minutes)} min`)
+              } catch (err: any) {
+                showToast('error', err?.message ?? 'Bulk deny failed')
+              } finally {
+                setBulkActionLoading(null)
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+          >
+            {bulkActionLoading === 'deny' ? <RefreshCw size={12} className="animate-spin" /> : <Lock size={12} />}
+          </Btn>
+
           {/* Bulk Delete — soft-delete via media:delete which now writes
               to media_trash for 30-day recoverable retention (#144). */}
           <Btn
