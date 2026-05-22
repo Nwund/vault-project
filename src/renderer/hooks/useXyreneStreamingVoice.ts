@@ -106,25 +106,92 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
   const ctxRef = useRef<AudioContext | null>(null)
   const gainRef = useRef<GainNode | null>(null)
   const streamsRef = useRef<Map<string, StreamState>>(new Map())
+  // Reverb chain — a small-room impulse response convolved with the
+  // voice path adds spatial presence so her voice sounds like it's IN
+  // a real space, not floating in a dry studio mix. The dry path
+  // dominates (default ~85%) so intelligibility stays intact; the wet
+  // path adds a tail (~15%) that the ear reads as a room.
+  const convolverRef = useRef<ConvolverNode | null>(null)
+  const wetGainRef = useRef<GainNode | null>(null)
+  const dryGainRef = useRef<GainNode | null>(null)
+
+  // Generate a small-room impulse response: exponentially-decaying
+  // filtered noise. Larger rooms = longer decay, smaller = shorter.
+  // 380ms decay with bandpass filtering ≈ a bedroom-sized space.
+  const buildReverbIR = useCallback((ctx: AudioContext): AudioBuffer => {
+    const lengthMs = 380
+    const sampleCount = Math.floor((ctx.sampleRate * lengthMs) / 1000)
+    const buf = ctx.createBuffer(2, sampleCount, ctx.sampleRate)
+    for (let ch = 0; ch < 2; ch++) {
+      const data = buf.getChannelData(ch)
+      let prev = 0
+      for (let i = 0; i < sampleCount; i++) {
+        const t = i / sampleCount
+        // Exponential decay envelope.
+        const envelope = Math.pow(1 - t, 2.2)
+        // Low-pass filtered noise (simple one-pole IIR) — gives the
+        // reverb a softer, warmer character vs raw white noise.
+        const raw = (Math.random() * 2 - 1) * envelope
+        prev = prev * 0.85 + raw * 0.15
+        // Stereo decorrelation — channel 1 lags slightly + has its own
+        // filter state so left/right aren't identical.
+        if (ch === 1 && i > 12) {
+          data[i] = prev * 0.9 + buf.getChannelData(0)[i - 12] * 0.1
+        } else {
+          data[i] = prev
+        }
+      }
+    }
+    return buf
+  }, [])
 
   // Lazy-create the AudioContext so we don't trigger autoplay warnings
-  // before the user has interacted.
+  // before the user has interacted. Audio graph layout:
+  //
+  //   source → masterGain → destination
+  //   source → convolver(IR) → wetGain → masterGain → destination
+  //
+  // Sources connect to `gainRef.current` (master). When a source wants
+  // reverb (voice / breath), the caller ALSO connects through the
+  // convolver path. Mouth-click / wet-mouth / ambient room tone go to
+  // master directly so they don't get drowned in their own reverb.
   const getCtx = useCallback(() => {
     if (!ctxRef.current) {
       try {
         const Ctor = window.AudioContext || (window as any).webkitAudioContext
         const ctx: AudioContext = new Ctor({ sampleRate: 24000 })
-        const gain = ctx.createGain()
-        gain.gain.value = 1
-        gain.connect(ctx.destination)
+        const master = ctx.createGain()
+        master.gain.value = 1
+        master.connect(ctx.destination)
+        // Build the reverb chain — convolver + wet gain into master.
+        const convolver = ctx.createConvolver()
+        convolver.buffer = buildReverbIR(ctx)
+        const wetGain = ctx.createGain()
+        wetGain.gain.value = 0.16   // ~16% wet; subtle, room-like
+        const dryGain = ctx.createGain()
+        dryGain.gain.value = 0.92   // dry path slightly attenuated to make headroom
+        convolver.connect(wetGain).connect(master)
+        dryGain.connect(master)
         ctxRef.current = ctx
-        gainRef.current = gain
+        gainRef.current = master
+        convolverRef.current = convolver
+        wetGainRef.current = wetGain
+        dryGainRef.current = dryGain
       } catch (err) {
         console.warn('[useXyreneStreamingVoice] AudioContext create failed:', err)
         return null
       }
     }
     return ctxRef.current
+  }, [buildReverbIR])
+
+  // Helper to connect a per-utterance audio node to both the dry path
+  // AND the reverb path. Use for voice-relevant sources (TTS chunks,
+  // intake breath, vocal fry). Non-vocal artifacts that should stay
+  // dry (mouth click, ambient room tone) connect directly to gainRef.
+  const connectThroughReverb = useCallback((node: AudioNode) => {
+    if (dryGainRef.current) node.connect(dryGainRef.current)
+    if (convolverRef.current) node.connect(convolverRef.current)
   }, [])
 
   /**
@@ -191,11 +258,12 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     gain.gain.setValueAtTime(0.0001, now)
     gain.gain.exponentialRampToValueAtTime(peak, now + dur * 0.25)
     gain.gain.exponentialRampToValueAtTime(0.0001, now + dur)
-    src.connect(filter).connect(gain).connect(gainRef.current ?? ctx.destination)
+    src.connect(filter).connect(gain)
+    connectThroughReverb(gain)
     src.start(now)
     src.stop(now + dur + 0.01)
     return Math.round(dur * 1000)
-  }, [getCtx])
+  }, [getCtx, connectThroughReverb])
 
   /**
    * Synthesize a soft throat-clear — low-frequency rumble. Adds
@@ -225,11 +293,12 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     filter.Q.value = 0.8
     const gain = ctx.createGain()
     gain.gain.value = 0.045
-    src.connect(filter).connect(gain).connect(gainRef.current ?? ctx.destination)
+    src.connect(filter).connect(gain)
+    connectThroughReverb(gain)
     src.start(now)
     src.stop(now + dur + 0.01)
     return Math.round(dur * 1000)
-  }, [getCtx])
+  }, [getCtx, connectThroughReverb])
 
   /**
    * Synthesize a wet-mouth / tongue-lip sound. Real human speech
@@ -309,11 +378,12 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     filter.Q.value = 0.8
     const gain = ctx.createGain()
     gain.gain.value = 0.06
-    src.connect(filter).connect(gain).connect(gainRef.current ?? ctx.destination)
+    src.connect(filter).connect(gain)
+    connectThroughReverb(gain)
     src.start(now)
     src.stop(now + dur + 0.01)
     return Math.round(dur * 1000)
-  }, [getCtx])
+  }, [getCtx, connectThroughReverb])
 
   /**
    * Synthesize a short soft laugh — two quick exponentially-decaying
@@ -346,12 +416,13 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
       filter.Q.value = 1.8
       const gain = ctx.createGain()
       gain.gain.value = 0.08 - p * 0.02
-      src.connect(filter).connect(gain).connect(gainRef.current ?? ctx.destination)
+      src.connect(filter).connect(gain)
+      connectThroughReverb(gain)
       src.start(pulseStart)
       src.stop(pulseStart + pulseDur + 0.01)
     }
     return totalDur
-  }, [getCtx])
+  }, [getCtx, connectThroughReverb])
 
   /**
    * Synthesize a soft pre-speech intake breath using filtered white
@@ -402,11 +473,12 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     breathGain.gain.setValueAtTime(0.0001, now)
     breathGain.gain.exponentialRampToValueAtTime(peakVol, now + dur * 0.35)
     breathGain.gain.exponentialRampToValueAtTime(0.0001, now + dur)
-    src.connect(filter).connect(breathGain).connect(gainRef.current ?? ctx.destination)
+    src.connect(filter).connect(breathGain)
+    connectThroughReverb(breathGain)
     src.start(now)
     src.stop(now + dur + 0.02)
     return durationMs
-  }, [getCtx])
+  }, [getCtx, connectThroughReverb])
 
   // Subscribe to IPC events once. Dispatches each chunk to its stream's
   // scheduler. Cleanup on unmount tears down listeners + context.
@@ -425,7 +497,10 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
         audioBuf.copyToChannel(float as any, 0)
         const src = ctx.createBufferSource()
         src.buffer = audioBuf
-        src.connect(gainRef.current ?? ctx.destination)
+        // Voice chunks route through the reverb chain so her speech
+        // sounds spatial. Non-vocal artifacts (mouth click, room tone)
+        // connect directly to master via gainRef.
+        connectThroughReverb(src)
         // Schedule at the running playhead. First chunk starts ~now;
         // subsequent chunks chain off the previous end so playback is
         // gapless even if the IPC drip isn't perfectly even.
