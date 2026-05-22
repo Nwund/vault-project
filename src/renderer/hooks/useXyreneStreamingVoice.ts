@@ -117,6 +117,82 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
   }, [])
 
   /**
+   * Synthesize a soft mouth-click / lip-smack sound. Real human
+   * speech has small percussive mouth sounds at word boundaries
+   * (especially after silence). AI synthesis is sterile — adding
+   * these makes the voice path read as biological.
+   *
+   * Very short (15-30ms) bandpass-filtered impulse. Returns the
+   * duration scheduled so callers can offset their TTS start.
+   */
+  const playMouthClick = useCallback((): number => {
+    const ctx = getCtx()
+    if (!ctx) return 0
+    if (Math.random() < 0.55) return 0  // only ~45% of the time
+    const now = ctx.currentTime
+    const dur = (15 + Math.random() * 20) / 1000
+    const sampleCount = Math.floor(ctx.sampleRate * dur)
+    const buf = ctx.createBuffer(1, sampleCount, ctx.sampleRate)
+    const data = buf.getChannelData(0)
+    for (let i = 0; i < sampleCount; i++) {
+      // Sharp exponential decay impulse — sounds like a tongue click.
+      const t = i / sampleCount
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-t * 8)
+    }
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'bandpass'
+    // Mouth-click formants sit around 2-3kHz.
+    filter.frequency.value = 2200 + Math.random() * 800
+    filter.Q.value = 1.2
+    const gain = ctx.createGain()
+    gain.gain.value = 0.035 + Math.random() * 0.02  // very quiet, percussive
+    src.connect(filter).connect(gain).connect(gainRef.current ?? ctx.destination)
+    src.start(now)
+    src.stop(now + dur + 0.005)
+    return Math.round(dur * 1000)
+  }, [getCtx])
+
+  /**
+   * Synthesize a short soft laugh — two quick exponentially-decaying
+   * pulses with breath-formant filtering. Used when the LLM text
+   * contains laughter markers ("ha", "lol", "lmao"). Far better than
+   * having XTTS try to pronounce "ha ha" literally.
+   */
+  const playLaugh = useCallback((): number => {
+    const ctx = getCtx()
+    if (!ctx) return 0
+    const now = ctx.currentTime
+    const totalDur = 400  // ~400ms total
+    // Three short pulses: "ah ah ah"
+    for (let p = 0; p < 3; p++) {
+      const pulseStart = now + (p * 0.13)
+      const pulseDur = 0.09
+      const sampleCount = Math.floor(ctx.sampleRate * pulseDur)
+      const buf = ctx.createBuffer(1, sampleCount, ctx.sampleRate)
+      const data = buf.getChannelData(0)
+      for (let i = 0; i < sampleCount; i++) {
+        const t = i / sampleCount
+        const envelope = Math.sin(Math.PI * t) // arc-shaped pulse
+        data[i] = (Math.random() * 2 - 1) * envelope * 0.6
+      }
+      const src = ctx.createBufferSource()
+      src.buffer = buf
+      const filter = ctx.createBiquadFilter()
+      filter.type = 'bandpass'
+      filter.frequency.value = 700 - p * 100  // descending pitch
+      filter.Q.value = 1.8
+      const gain = ctx.createGain()
+      gain.gain.value = 0.08 - p * 0.02
+      src.connect(filter).connect(gain).connect(gainRef.current ?? ctx.destination)
+      src.start(pulseStart)
+      src.stop(pulseStart + pulseDur + 0.01)
+    }
+    return totalDur
+  }, [getCtx])
+
+  /**
    * Synthesize a soft pre-speech intake breath using filtered white
    * noise. Humans always breathe before speaking; AI doesn't — adding
    * a quick intake makes her sound startlingly more present.
@@ -286,6 +362,9 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     if (gainRef.current && typeof options.volume === 'number') {
       gainRef.current.gain.value = Math.max(0, Math.min(1, options.volume))
     }
+    // Pre-speech mouth click (~45% chance) — small percussive sound
+    // that real human speech has at word boundaries after silence.
+    const clickMs = playMouthClick()
     // Pre-speech intake breath — humans inhale before speaking. Use
     // expression hint to decide intensity (climax = gasp, breathy =
     // long intake). Variable per-call so two breaths never match.
@@ -297,11 +376,37 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     // After-breath: brief micro-pause (40-90ms) before the TTS audio
     // starts — that lip-close pause between intake and first syllable.
     const postBreathPad = breathMs > 0 ? 40 + Math.random() * 50 : 0
+    // Synthesized laughter — if the text starts with or contains a
+    // laughter marker (lol/lmao/ha ha/hehe), play a soft laugh INSTEAD
+    // of having XTTS try to pronounce "ha ha" literally. Strips the
+    // marker from the text passed to the server.
+    let cleanedText = text
+    let laughMs = 0
+    const laughMatch = text.match(/^\s*(lol|lmao|ha ha+|hehe|haha+|heh)\b[,\s]*/i)
+    if (laughMatch) {
+      laughMs = playLaugh()
+      cleanedText = text.slice(laughMatch[0].length).trim()
+      // If only the laugh marker was present, fire onStart/onEnd
+      // synthetically and return — no TTS needed.
+      if (!cleanedText) {
+        const id2 = `xs-${Date.now()}-${++streamIdSeq}`
+        try { options.onStart?.() } catch { /* ignore */ }
+        window.setTimeout(() => {
+          try { options.onEnd?.() } catch { /* ignore */ }
+        }, laughMs + 50)
+        return {
+          id: id2,
+          isActive: () => false,
+          cancel: () => { /* noop — laugh is fire-and-forget */ },
+        }
+      }
+    }
     const state: StreamState = {
       id,
       sampleRate: 24000,
-      // Reserve audio slot just after the breath so chunks line up.
-      nextStartTime: ctx.currentTime + (breathMs + postBreathPad) / 1000,
+      // Reserve audio slot just after all preamble sounds (click +
+      // breath + breath pad + laugh) so chunks line up cleanly.
+      nextStartTime: ctx.currentTime + (clickMs + breathMs + postBreathPad + laughMs) / 1000,
       done: false,
       sources: new Set(),
       liveChunks: 0,
@@ -314,7 +419,7 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
     // server produces them. speed/pitch/expression are forwarded only
     // when set so older XTTS servers don't choke on unknown fields.
     void window.api.ai.xyreneSpeakStream({
-      text,
+      text: cleanedText,
       streamId: id,
       voice: options.voice,
       language: options.language,
