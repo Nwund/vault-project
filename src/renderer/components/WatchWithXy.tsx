@@ -988,7 +988,23 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       lastMicroAtRef.current = now
       const personaPool = MICRO_BY_PERSONA[personaRef.current] ?? MICRO_BY_PERSONA.goonbud
       const pool = personaPool[enginePhase] || personaPool.body
-      const utterance = pool[Math.floor(Math.random() * pool.length)]
+      let utterance = pool[Math.floor(Math.random() * pool.length)]
+      // Direct address — 25% of micros get a persona-keyed name/term
+      // of endearment prefix. Real partners say his name constantly.
+      if (Math.random() < 0.25) {
+        const persona = personaRef.current
+        const NAMES_BY_PERSONA: Record<PersonaName, string[]> = {
+          goonbud:     ['noah', 'baby', 'babe', 'you'],
+          mistress:    ['good boy', 'boy', 'pet', 'noah'],
+          stepsister:  ['noah', 'bro', 'big boy', 'fuck'],
+          boss:        ['employee', 'noah', 'you'],
+          cheerleader: ['noah', 'babe', 'champ', 'baby'],
+        }
+        const nameList = NAMES_BY_PERSONA[persona] ?? NAMES_BY_PERSONA.goonbud
+        const name = nameList[Math.floor(Math.random() * nameList.length)]
+        // Either name-first ("noah fuck") or name-last ("fuck noah")
+        utterance = Math.random() < 0.5 ? `${name} ${utterance}` : `${utterance} ${name}`
+      }
       // Phase-keyed expression for the micro reaction.
       const expression = enginePhase === 'climax' ? 'moaned'
         : enginePhase === 'build' ? 'desperate'
