@@ -217,19 +217,42 @@ function splitForSpeech(text: string): Array<{ text: string; pauseMs: number }> 
   if (!matches) {
     return [{ text, pauseMs: 0 }]
   }
+  // For each sentence, further split LONG ones (>80 chars) at the
+  // first comma/semicolon past the midpoint. This forces a fresh
+  // streaming TTS call for the second half, which means a natural
+  // intake breath gets inserted at the clause boundary — closely
+  // mimicking how real humans breathe mid-sentence on long thoughts.
+  const splitLong = (sentence: string): string[] => {
+    if (sentence.length <= 80) return [sentence]
+    // Find first clause break (, or ;) past position floor(length/3).
+    const minSplitIdx = Math.floor(sentence.length / 3)
+    const idx = sentence.slice(minSplitIdx).search(/[,;]/)
+    if (idx < 0) return [sentence]
+    const realIdx = minSplitIdx + idx + 1   // include the comma in first half
+    return [sentence.slice(0, realIdx).trim(), sentence.slice(realIdx).trim()]
+  }
   for (let i = 0; i < matches.length; i++) {
     const piece = matches[i].trim()
     if (!piece) continue
-    const last = piece[piece.length - 1]
-    let pauseMs = 0
-    if (i < matches.length - 1) {
-      // Pause is for the break BEFORE the next sentence — not after the last.
-      pauseMs = last === '…' ? 600
-        : last === '!' || last === '?' ? 320
-        : last === '.' ? 240
-        : 180
+    const subSegments = splitLong(piece)
+    for (let j = 0; j < subSegments.length; j++) {
+      const seg = subSegments[j]
+      const isLastSubInPiece = j === subSegments.length - 1
+      const isLastPiece = i === matches.length - 1
+      const last = seg[seg.length - 1]
+      let pauseMs = 0
+      if (isLastSubInPiece && !isLastPiece) {
+        // Pause between SENTENCES — full punctuation-tagged.
+        pauseMs = last === '…' ? 600
+          : last === '!' || last === '?' ? 320
+          : last === '.' ? 240
+          : 180
+      } else if (!isLastSubInPiece) {
+        // Mid-sentence clause break — shorter inter-clause breath.
+        pauseMs = 140
+      }
+      out.push({ text: seg, pauseMs })
     }
-    out.push({ text: piece, pauseMs })
   }
   return out
 }
