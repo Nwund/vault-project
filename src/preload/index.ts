@@ -2815,6 +2815,15 @@ const api = {
        *  recall-style reference to a past memory of this media. Used
        *  for the first comment after re-enabling on a known video. */
       recallMoment?: boolean
+      /** Cheap visual intensity heuristics from a low-res sample of
+       *  the frame. Helps the prompt nuance her tone without waiting
+       *  for Venice's actual vision pass to complete. */
+      sceneMetrics?: {
+        brightness: number      // 0-1 avg luma
+        skinSaturation: number  // 0-1 skin-tone density
+        chaos: number           // 0-1 horizontal edge density
+        intensity: number       // 0-1 composite "how intense"
+      } | null
     }) => invoke<{
       text: string | null
       audioBase64: string | null

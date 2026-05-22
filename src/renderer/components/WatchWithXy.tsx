@@ -258,6 +258,87 @@ function splitForSpeech(text: string): Array<{ text: string; pauseMs: number }> 
 }
 
 /**
+ * Analyze the current video frame for visual intensity metrics.
+ * Cheap heuristics — runs in <5ms on a 160x90 sample, designed for
+ * per-tick use without burning CPU.
+ *
+ * Returns:
+ *   brightness    — avg luma 0-1 (dark = 0, blown out = 1)
+ *   skinSaturation — red-channel dominance avg, proxy for skin-tone
+ *                    content vs scene-with-color-palette
+ *   chaos         — edge density via Sobel-ish horizontal+vertical
+ *                    deltas, proxy for visual motion / detail
+ *   intensity     — composite 0-1 score for "how intense the frame is"
+ */
+interface SceneMetrics {
+  brightness: number
+  skinSaturation: number
+  chaos: number
+  intensity: number
+}
+
+function analyzeFrame(video: HTMLVideoElement): SceneMetrics | null {
+  if (video.readyState < 2) return null
+  const w = video.videoWidth || 0
+  const h = video.videoHeight || 0
+  if (w === 0 || h === 0) return null
+  // Sample at very low res — 160x90 = 14400 pixels, plenty for stats
+  // and ~5x faster than 320x180.
+  const sw = 160
+  const sh = Math.max(60, Math.floor((h / w) * sw))
+  const canvas = document.createElement('canvas')
+  canvas.width = sw
+  canvas.height = sh
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  try {
+    ctx.drawImage(video, 0, 0, sw, sh)
+    const data = ctx.getImageData(0, 0, sw, sh).data
+    let lumaSum = 0
+    let redDominanceSum = 0
+    let chaosSum = 0
+    let prevLuma = 0
+    const N = sw * sh
+    for (let i = 0; i < N; i++) {
+      const off = i * 4
+      const r = data[off]
+      const g = data[off + 1]
+      const b = data[off + 2]
+      const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+      lumaSum += luma
+      // Skin-tone proxy: R dominant over G/B AND not too saturated.
+      // Skin tones cluster around r > g > b with moderate saturation.
+      if (r > g && r > b) {
+        const sat = (r - Math.min(g, b)) / (r + 1)
+        if (sat > 0.1 && sat < 0.6 && luma > 0.2 && luma < 0.85) {
+          redDominanceSum += sat
+        }
+      }
+      // Horizontal-gradient luma delta = simple edge proxy. Skip the
+      // leftmost column.
+      if (i % sw !== 0) {
+        chaosSum += Math.abs(luma - prevLuma)
+      }
+      prevLuma = luma
+    }
+    const brightness = lumaSum / N
+    const skinSaturation = redDominanceSum / N
+    const chaos = chaosSum / N
+    // Composite: skin-heavy + chaotic + mid-bright = high intensity.
+    // Dark or static frames = low intensity.
+    const intensity = Math.max(0, Math.min(1,
+      skinSaturation * 3.0 +     // skin tones weighted heaviest
+      chaos * 6.0 +              // motion/detail
+      (brightness > 0.15 && brightness < 0.75 ? 0.15 : 0) // mid-bright bonus
+    ))
+    return { brightness, skinSaturation, chaos, intensity }
+  } catch {
+    // CORS-tainted canvas — same protection as captureFrame.
+    return null
+  }
+}
+
+/**
  * Capture the current frame of the video to a JPEG data URL. Lower the
  * resolution to ~720px wide before encoding so we don't pay the upload
  * cost of a 4K frame on every tick.
@@ -421,6 +502,10 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   // call (5-10s) doesn't queue a backlog of frames behind it.
   const tickerRef = useRef<NodeJS.Timeout | null>(null)
   const inFlightRef = useRef(false)
+  // Cached metrics from the most recent analyzeFrame() call. Surfaced
+  // to the prompt so the LLM knows what kind of scene she's seeing
+  // even before Venice processes the actual frame.
+  const lastSceneMetricsRef = useRef<SceneMetrics | null>(null)
 
   // ── Health probe (run once on mount + when toggle re-enabled) ─────────
   const probeHealth = useCallback(async () => {
@@ -989,6 +1074,33 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       }, delay)
     }
     armThinking()
+    // Sample the current frame for visual intensity BEFORE the heavy
+    // upload encode — used to nuance the prompt + boost micro-reactions
+    // on intense scenes.
+    const sceneMetrics = analyzeFrame(video)
+    if (sceneMetrics) {
+      lastSceneMetricsRef.current = sceneMetrics
+      // High-intensity scenes also trigger a quick micro-reaction
+      // surge — the user is watching something hot RIGHT NOW, she
+      // shouldn't wait 8s to react.
+      if (sceneMetrics.intensity > 0.55
+          && !audioMuted
+          && !queuePausedRef.current
+          && !isAudioPlayingRef.current
+          && audioQueueRef.current.length === 0) {
+        const personaPool = MICRO_BY_PERSONA[personaRef.current] ?? MICRO_BY_PERSONA.goonbud
+        const pool = personaPool[enginePhase ?? 'body'] || personaPool.body
+        const utterance = pool[Math.floor(Math.random() * pool.length)]
+        const expression = enginePhase === 'climax' ? 'moaned'
+          : enginePhase === 'build' ? 'desperate'
+          : 'sultry'
+        // 40% chance — don't fire on EVERY intense frame.
+        if (Math.random() < 0.4) {
+          audioQueueRef.current.push(`stream:${expression}|${utterance}`)
+          playNextInQueue()
+        }
+      }
+    }
     try {
       const frame = captureFrame(video)
       if (!frame) return
@@ -1046,6 +1158,15 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         // an explicit "this is a re-watch, OPEN with a recall" line
         // when this is true.
         recallMoment: isRecallMoment,
+        // Cheap visual intensity heuristics from analyzeFrame — gives
+        // the LLM signal about what kind of frame this is BEFORE
+        // Venice processes it.
+        sceneMetrics: lastSceneMetricsRef.current ? {
+          brightness: Number(lastSceneMetricsRef.current.brightness.toFixed(2)),
+          skinSaturation: Number(lastSceneMetricsRef.current.skinSaturation.toFixed(2)),
+          chaos: Number(lastSceneMetricsRef.current.chaos.toFixed(2)),
+          intensity: Number(lastSceneMetricsRef.current.intensity.toFixed(2)),
+        } : null,
       })
 
       if (!result?.text) return

@@ -5274,6 +5274,15 @@ RULES:
      *  LLM to OPEN with a continuity reference to past memories. Used
      *  for the first comment after re-enabling on a known video. */
     recallMoment?: boolean
+    /** Cheap renderer-side scene analysis (luma / skin density /
+     *  motion proxy). Surfaced to the prompt so her tone matches the
+     *  frame even before Venice vision-processes it. */
+    sceneMetrics?: {
+      brightness: number
+      skinSaturation: number
+      chaos: number
+      intensity: number
+    } | null
   }): Promise<{
     text: string | null
     audioBase64: string | null
@@ -5315,6 +5324,7 @@ RULES:
       phase: args.phase,
       persona: args.persona,
       recallMoment: args.recallMoment,
+      sceneMetrics: args.sceneMetrics ?? undefined,
     })
 
     // Generate the line via Venice

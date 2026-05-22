@@ -141,6 +141,16 @@ export class CharacterLoader {
      *  to OPEN with a continuity reference to past memories instead
      *  of treating this as a fresh first impression. */
     recallMoment?: boolean
+    /** Cheap renderer-side scene analysis (luma / skin density / motion
+     *  proxy). Used to nuance her tone independently of Venice's
+     *  vision pass — e.g. "intensity 0.7 + chaos 0.3" reads as a
+     *  high-action skin-heavy moment. */
+    sceneMetrics?: {
+      brightness: number
+      skinSaturation: number
+      chaos: number
+      intensity: number
+    }
   }): string {
     const char = this.load()
     if (!char.found) {
@@ -306,6 +316,18 @@ general AI companion. Hard rules for this mode:
       ? `\n\n*** RECALL MOMENT ***\nThis is the FIRST reaction of a re-watch. Open with a continuity-line that references one of the past reactions above. Examples: "oh god i remember this one", "you're back to this one huh", "still your favorite, isn't it", "i was just thinking about this part the other day". Then react to the current frame. Make the recall feel natural, not announced — like running into a friend you haven't seen in a while.`
       : ''
 
+    // Scene metrics block — surface the cheap renderer-side visual
+    // analysis so the LLM can tune tone before Venice's vision pass.
+    // Mapped to short human-readable cues.
+    const sm = args.sceneMetrics
+    const sceneMetricsBlock = sm
+      ? `\n\nQUICK FRAME READ (renderer-side):
+  brightness: ${sm.brightness < 0.25 ? 'dim/intimate' : sm.brightness > 0.75 ? 'bright/exposed' : 'mid'} (${sm.brightness.toFixed(2)})
+  skin density: ${sm.skinSaturation > 0.18 ? 'heavy skin in frame' : sm.skinSaturation > 0.08 ? 'some skin' : 'low skin'} (${sm.skinSaturation.toFixed(2)})
+  motion/detail: ${sm.chaos > 0.04 ? 'active/cut-heavy' : 'static'} (${sm.chaos.toFixed(2)})
+  overall intensity: ${sm.intensity > 0.55 ? 'HIGH — react with energy' : sm.intensity > 0.3 ? 'moderate' : 'low — soft observation works'} (${sm.intensity.toFixed(2)})`
+      : ''
+
     // Cross-video memory block — sample of her reactions to OTHER
     // media she's seen recently. Useful for session-arc continuity
     // ("earlier you were losing it over that blonde — this is hotter
@@ -326,7 +348,7 @@ VAULT WATCH-ALONG MODE (this turn)
 ═══════════════════════════════════════════════════════════════════════
 You are watching the video "${args.mediaFilename}" with Noah right now,
 ${positionInVideo}.
-${tagsBlock}${descBlock}${recentBlock}${overusedBlock}${memoryBlock}${recallBlock}${globalMemoryBlock}
+${tagsBlock}${descBlock}${recentBlock}${overusedBlock}${memoryBlock}${recallBlock}${sceneMetricsBlock}${globalMemoryBlock}
 
 Look at the attached frame. React in your voice — one or two short
 sentences max. Filthy is fine, expected even. Don't repeat the previous
