@@ -49,6 +49,44 @@ type HealthState =
   | { kind: 'error'; message: string }
 
 /**
+ * Split text into speakable chunks with natural breath/pause hints.
+ * Splits on sentence boundaries (.!?…) while preserving the punctuation.
+ *   - `?` and `!` → slightly longer pause (questions/exclaim land)
+ *   - `…` (ellipsis) → longest pause (hesitation, lingering)
+ *   - `.` → medium pause
+ *   - `,` and `;` → kept within the chunk; XTTS handles prosody
+ *
+ * Each chunk includes the trailing punctuation so the TTS engine
+ * naturally rolls into the breath without sounding cut off.
+ */
+function splitForSpeech(text: string): Array<{ text: string; pauseMs: number }> {
+  const out: Array<{ text: string; pauseMs: number }> = []
+  // Split on sentence terminators while keeping the terminator with the
+  // preceding sentence. Captures the punctuation in a separate group so
+  // we can size the pause after each segment.
+  const re = /([^.!?…]+[.!?…]+|[^.!?…]+$)/g
+  const matches = text.match(re)
+  if (!matches) {
+    return [{ text, pauseMs: 0 }]
+  }
+  for (let i = 0; i < matches.length; i++) {
+    const piece = matches[i].trim()
+    if (!piece) continue
+    const last = piece[piece.length - 1]
+    let pauseMs = 0
+    if (i < matches.length - 1) {
+      // Pause is for the break BEFORE the next sentence — not after the last.
+      pauseMs = last === '…' ? 600
+        : last === '!' || last === '?' ? 320
+        : last === '.' ? 240
+        : 180
+    }
+    out.push({ text: piece, pauseMs })
+  }
+  return out
+}
+
+/**
  * Capture the current frame of the video to a JPEG data URL. Lower the
  * resolution to ~720px wide before encoding so we don't pay the upload
  * cost of a 4K frame on every tick.
@@ -159,8 +197,9 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   // ── Audio queue runner ────────────────────────────────────────────────
   // Queue entries are either:
   //   - "stream:<expression>|<text>"  → play via streaming TTS (XTTS server)
+  //   - "pause:<ms>"                  → silent wait between sentences
   //   - any other string              → blob URL for legacy buffered <audio>
-  // Both paths converge on the same serialization logic so two lines never
+  // All three converge on the same serialization logic so two lines never
   // overlap.
   const playNextInQueue = useCallback(() => {
     if (isAudioPlayingRef.current) return
@@ -170,6 +209,19 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       return
     }
     isAudioPlayingRef.current = true
+
+    // Silent inter-sentence breath. setIsSpeaking(true) is kept so the
+    // ducking + pulse keep going during the pause — she's still "in"
+    // the line.
+    if (next.startsWith('pause:')) {
+      const ms = Math.max(0, parseInt(next.slice('pause:'.length), 10) || 0)
+      setIsSpeaking(true)
+      window.setTimeout(() => {
+        isAudioPlayingRef.current = false
+        playNextInQueue()
+      }, ms)
+      return
+    }
 
     // Streaming path — XTTS server streams PCM chunks; the hook
     // schedules them in Web Audio for sub-second start latency.
@@ -310,7 +362,18 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       const expression = cueMatch ? cueMatch[1].toLowerCase() : ''
       const spokenText = cueMatch ? text.slice(cueMatch[0].length).trim() : text
       if (spokenText) {
-        audioQueueRef.current.push(`stream:${expression}|${spokenText}`)
+        // Multi-sentence sequencing — split her reaction into sentences
+        // and queue each separately with a natural breath pause between.
+        // Splits on `. ! ? …` while preserving the punctuation. Ellipses
+        // get a longer pause because they signal hesitation/lingering.
+        const sentences = splitForSpeech(spokenText)
+        for (const seg of sentences) {
+          if (seg.text.trim().length === 0) continue
+          audioQueueRef.current.push(`stream:${expression}|${seg.text}`)
+          if (seg.pauseMs > 0) {
+            audioQueueRef.current.push(`pause:${seg.pauseMs}`)
+          }
+        }
         playNextInQueue()
       }
 
