@@ -2801,6 +2801,10 @@ const api = {
        *  values in the prompt so commentary intensity tracks session
        *  escalation. Defaults to a flat 7/8 when omitted. */
       phase?: 'intro' | 'body' | 'build' | 'climax' | 'cooldown'
+      /** Persona override — drives prompt framing (goonbud / mistress /
+       *  stepsister / boss / cheerleader). Defaults to settings value
+       *  or 'goonbud'. */
+      persona?: 'goonbud' | 'mistress' | 'stepsister' | 'boss' | 'cheerleader'
     }) => invoke<{
       text: string | null
       audioBase64: string | null

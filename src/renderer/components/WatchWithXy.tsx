@@ -538,6 +538,7 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         pastMemories: videoMemoryRef.current.slice(-3),
         speak: false,
         phase: enginePhase,
+        persona: personaRef.current,
       })
 
       if (!result?.text) return

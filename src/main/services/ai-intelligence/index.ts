@@ -5261,6 +5261,10 @@ RULES:
      *  {{arousal}}/{{engagement}} placeholder values so her commentary
      *  tracks intensity instead of always reading 7/8. */
     phase?: 'intro' | 'body' | 'build' | 'climax' | 'cooldown'
+    /** Persona override — drives prompt framing (mistress / stepsister
+     *  / boss / cheerleader). When omitted, the prompt builder picks
+     *  'goonbud' as the default. */
+    persona?: 'goonbud' | 'mistress' | 'stepsister' | 'boss' | 'cheerleader'
   }): Promise<{
     text: string | null
     audioBase64: string | null
@@ -5299,6 +5303,7 @@ RULES:
       recentXyComments: args.recentComments ?? [],
       pastMemories: args.pastMemories ?? [],
       phase: args.phase,
+      persona: args.persona,
     })
 
     // Generate the line via Venice
