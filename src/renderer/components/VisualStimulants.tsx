@@ -3214,50 +3214,83 @@ export const CumCountdownOverlay: React.FC<{
     }
   }, [active, config.duration])
 
-  // TTS Voice countdown
+  // TTS Voice countdown — prefers Xyrene's cloned XTTS voice when the
+  // user has a voiceSample picked + the XTTS server is online. Falls
+  // back to the browser's speechSynthesis (the original, robotic path)
+  // when XTTS is unreachable so the feature still works offline.
   const lastSpokenRef = useRef<number>(-1)
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null)
+  // Cache the chosen voice so we don't re-fetch settings every tick.
+  const voiceSampleRef = useRef<string | null>(null)
   useEffect(() => {
     if (!active || !config.playVoice) return
-    if (typeof window === 'undefined' || !window.speechSynthesis) return
+    void (async () => {
+      try {
+        const s: any = await window.api.settings.get()
+        voiceSampleRef.current = s?.xyrene?.voiceSample ?? null
+      } catch { voiceSampleRef.current = null }
+    })()
+  }, [active, config.playVoice])
 
-    // Speak countdown numbers in final 10 seconds
+  const speakViaXyrene = async (text: string, expression: string): Promise<boolean> => {
+    const voice = voiceSampleRef.current
+    if (!voice) return false
+    try {
+      const r: any = await window.api.ai.xyrenePreviewVoice({ voice, text, expression })
+      if (!r?.base64) return false
+      const url = `data:${r.mime};base64,${r.base64}`
+      if (!ttsAudioRef.current) ttsAudioRef.current = new Audio()
+      ttsAudioRef.current.pause()
+      ttsAudioRef.current.src = url
+      ttsAudioRef.current.currentTime = 0
+      await ttsAudioRef.current.play()
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const speakViaBrowser = (text: string, pitch: number, rate: number, volume = 1) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.rate = rate
+    utterance.pitch = pitch
+    utterance.volume = volume
+    const voices = window.speechSynthesis.getVoices()
+    const femaleVoice = voices.find(v =>
+      v.name.includes('female') ||
+      v.name.includes('Female') ||
+      v.name.includes('Samantha') ||
+      v.name.includes('Victoria') ||
+      v.name.includes('Karen') ||
+      v.name.includes('Zira')
+    )
+    if (femaleVoice) utterance.voice = femaleVoice
+    window.speechSynthesis.speak(utterance)
+  }
+
+  useEffect(() => {
+    if (!active || !config.playVoice) return
+
+    // Speak countdown numbers in final 10 seconds. Expression shifts
+    // from "breathy" early to "desperate" right before zero so her
+    // delivery escalates audibly.
     if (timeLeft <= 10 && timeLeft > 0 && timeLeft !== lastSpokenRef.current) {
       lastSpokenRef.current = timeLeft
-      const utterance = new SpeechSynthesisUtterance(timeLeft.toString())
-      utterance.rate = 0.9
-      utterance.pitch = 1.2
-      // Try to use a female voice if available
-      const voices = window.speechSynthesis.getVoices()
-      const femaleVoice = voices.find(v =>
-        v.name.includes('female') ||
-        v.name.includes('Female') ||
-        v.name.includes('Samantha') ||
-        v.name.includes('Victoria') ||
-        v.name.includes('Karen') ||
-        v.name.includes('Zira')
-      )
-      if (femaleVoice) utterance.voice = femaleVoice
-      window.speechSynthesis.speak(utterance)
+      const expression = timeLeft <= 3 ? 'desperate' : timeLeft <= 5 ? 'moaned' : 'breathy'
+      void (async () => {
+        const ok = await speakViaXyrene(timeLeft.toString(), expression)
+        if (!ok) speakViaBrowser(timeLeft.toString(), 1.2, 0.9)
+      })()
     }
 
-    // Speak "CUM!" on complete
+    // Speak "CUM!" on complete — peak moaned via Xyrene if available.
     if (timeLeft <= 0 && lastSpokenRef.current !== 0) {
       lastSpokenRef.current = 0
-      const utterance = new SpeechSynthesisUtterance('Cum now!')
-      utterance.rate = 0.8
-      utterance.pitch = 1.3
-      utterance.volume = 1
-      const voices = window.speechSynthesis.getVoices()
-      const femaleVoice = voices.find(v =>
-        v.name.includes('female') ||
-        v.name.includes('Female') ||
-        v.name.includes('Samantha') ||
-        v.name.includes('Victoria') ||
-        v.name.includes('Karen') ||
-        v.name.includes('Zira')
-      )
-      if (femaleVoice) utterance.voice = femaleVoice
-      window.speechSynthesis.speak(utterance)
+      void (async () => {
+        const ok = await speakViaXyrene('Cum now!', 'moaned')
+        if (!ok) speakViaBrowser('Cum now!', 1.3, 0.8, 1)
+      })()
     }
   }, [active, timeLeft, config.playVoice])
 
