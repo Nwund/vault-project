@@ -656,6 +656,33 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
             {audioMuted ? <MicOff size={14} className="text-white/60" /> : <Mic size={14} className="text-pink-300" />}
           </button>
         )}
+        {/* Phase / arousal indicator — surfaces what mode she's in
+            right now (intro / body / build / climax / cooldown) and
+            roughly how desperate her commentary will sound. Updates
+            live as the engine phase changes. */}
+        {enabled && enginePhase && (() => {
+          const phaseLabel = enginePhase[0].toUpperCase() + enginePhase.slice(1)
+          const arousalEmoji = enginePhase === 'climax' ? '🥵'
+            : enginePhase === 'build' ? '😤'
+            : enginePhase === 'body' ? '😏'
+            : enginePhase === 'intro' ? '🙂'
+            : '😌'
+          const cls = enginePhase === 'climax' ? 'bg-red-500/25 border-red-400/40 text-red-200'
+            : enginePhase === 'build' ? 'bg-amber-500/20 border-amber-400/40 text-amber-200'
+            : enginePhase === 'body' ? 'bg-pink-500/20 border-pink-400/40 text-pink-200'
+            : enginePhase === 'cooldown' ? 'bg-slate-500/20 border-slate-400/40 text-slate-200'
+            : 'bg-emerald-500/20 border-emerald-400/40 text-emerald-200'
+          return (
+            <div
+              className={`px-2 py-1 rounded-full text-[10px] font-medium border backdrop-blur-md flex items-center gap-1 pointer-events-auto ${cls}`}
+              title={`Engine phase: ${phaseLabel}. Drives her commentary tone + cadence.`}
+            >
+              <span>{arousalEmoji}</span>
+              <span className="uppercase tracking-wider text-[9px]">{phaseLabel}</span>
+            </div>
+          )
+        })()}
+
         {/* Memory chip — only shows when she has past reactions to
             this video. Click to peek at what she remembers. */}
         {enabled && memorySize > 0 && (
