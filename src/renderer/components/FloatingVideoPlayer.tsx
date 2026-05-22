@@ -1508,7 +1508,16 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     onSeekBack: (s) => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - s) },
     onVolumeUp: () => setVolume((v) => Math.min(1, v + 0.1)),
     onVolumeDown: () => setVolume((v) => Math.max(0, v - 0.1)),
-    onClimax: () => { /* engine reads phase from video position; nudge it forward */
+    onClimax: () => {
+      // Force the engine directly into climax phase — fires the voice
+      // burst + climax sound layers immediately, no need to scrub the
+      // video forward. Falls back to the legacy time-nudge if the
+      // forcePhase capability isn't exposed for some reason.
+      const force = xyreneEngine.forcePhase
+      if (typeof force === 'function') {
+        force('climax')
+        return
+      }
       if (videoRef.current && videoRef.current.duration) {
         videoRef.current.currentTime = Math.max(videoRef.current.currentTime, videoRef.current.duration * 0.9)
       }

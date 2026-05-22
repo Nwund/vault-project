@@ -29,7 +29,7 @@
 // Watch With Xy frames, scene-change detection, or audio-RMS analysis of
 // the video itself. For now: position-based, deterministic, debuggable.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { XyreneSoundEngine, type Phase, type XyreneSettingsState, type SoundCategoryName, type SoundMeta } from '../services/xyreneSoundEngine'
 
 interface UseEngineOptions {
@@ -45,6 +45,11 @@ interface UseEngineState {
   ready: boolean
   playing: boolean
   phase: Phase
+  /** Manually force the engine into a specific phase. Bypasses the
+   *  position-driven phase detection — used for voice command "climax"
+   *  or for explicit user-driven escalation. Returns to position-driven
+   *  detection on the next video timeupdate event. */
+  forcePhase?: (phase: Phase) => void
 }
 
 function phaseForProgress(p: number): Phase {
@@ -197,5 +202,17 @@ export function useXyreneSoundEngine(
     }
   }, [videoRef, options.enabled, state.playing])
 
-  return state
+  // forcePhase — exposed for voice commands / user-driven escalation.
+  // Wraps engine.setPhase + flips the internal climax latch when
+  // forcing climax so a second voice command can re-trigger.
+  const forcePhase = useCallback((phase: Phase) => {
+    const engine = engineRef.current
+    if (!engine) return
+    if (phase === 'climax') climaxFiredRef.current = true
+    if (phase !== 'climax') climaxFiredRef.current = false
+    engine.setPhase(phase)
+    setState((s) => ({ ...s, phase }))
+  }, [])
+
+  return { ...state, forcePhase }
 }
