@@ -95,9 +95,21 @@ const COMMAND_GRAMMAR: CommandPattern[] = [
   { patterns: [/\b(bookmark (this|that|it)|mark (it|this)|save (this )?spot)\b/i], action: 'onMarkBookmark',    label: 'bookmark' },
 ]
 
+export interface VoiceCommandOptions {
+  /** Optional wake-word(s). When set, only transcripts that contain
+   *  one of these phrases (case-insensitive) will be considered for
+   *  matching. Example: ['xyrene', 'hey xy']. Empty/undefined = no gate. */
+  wakeWords?: string[]
+  /** Min confidence (0-1) Chromium must report for the transcript to
+   *  count. Most STT errors come back at <0.6; setting this to e.g.
+   *  0.7 cuts noise. Undefined = no threshold. */
+  minConfidence?: number
+}
+
 export function useVoiceCommands(
   enabled: boolean,
   handlers: VoiceCommandHandlers,
+  options: VoiceCommandOptions = {},
 ): UseVoiceCommandsState {
   const [listening, setListening] = useState(false)
   const [lastCommand, setLastCommand] = useState<string | null>(null)
@@ -105,6 +117,10 @@ export function useVoiceCommands(
   const [error, setError] = useState<string | null>(null)
   const [log, setLog] = useState<VoiceLogEntry[]>([])
   const recognitionRef = useRef<any>(null)
+  // Stash options in a ref so callers can change wake-words /
+  // confidence threshold without us re-binding the recognizer.
+  const optionsRef = useRef(options)
+  optionsRef.current = options
   const appendLog = (entry: VoiceLogEntry) => {
     setLog((prev) => {
       const next = [entry, ...prev]
@@ -141,11 +157,36 @@ export function useVoiceCommands(
       const last = event.results[event.results.length - 1]
       if (!last?.isFinal) return
       const transcript = String(last[0]?.transcript ?? '').trim()
+      const confidence = typeof last[0]?.confidence === 'number' ? last[0].confidence : null
       if (!transcript) return
       setLastTranscript(transcript)
-      // Match the first command whose any pattern hits the transcript.
+      const opts = optionsRef.current
+      // Confidence gate — drops noisy/garbled transcripts before they
+      // can match. Chromium often returns ~0.85 for clean speech,
+      // ~0.5 for mumbles. We still log the discard so users can see
+      // why their command was ignored.
+      if (typeof opts.minConfidence === 'number' && confidence != null && confidence < opts.minConfidence) {
+        appendLog({ at: Date.now(), transcript: `${transcript} (low conf ${(confidence * 100).toFixed(0)}%)`, command: null })
+        return
+      }
+      // Wake-word gate — require at least one configured wake-word to
+      // appear in the transcript. Useful in shared spaces so the user
+      // doesn't accidentally trigger commands during conversation.
+      // Once gated through, the wake-word is stripped before matching.
+      let cleaned = transcript
+      if (opts.wakeWords && opts.wakeWords.length > 0) {
+        const lower = transcript.toLowerCase()
+        const found = opts.wakeWords.find((w) => lower.includes(w.toLowerCase()))
+        if (!found) {
+          appendLog({ at: Date.now(), transcript: `${transcript} (no wake-word)`, command: null })
+          return
+        }
+        cleaned = transcript.replace(new RegExp(found, 'gi'), '').trim()
+      }
+      // Match the first command whose any pattern hits the (possibly
+      // wake-word-stripped) transcript.
       for (const cmd of COMMAND_GRAMMAR) {
-        if (cmd.patterns.some((p) => p.test(transcript))) {
+        if (cmd.patterns.some((p) => p.test(cleaned))) {
           setLastCommand(cmd.label)
           appendLog({ at: Date.now(), transcript, command: cmd.label })
           const fn = handlersRef.current[cmd.action]
