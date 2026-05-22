@@ -481,6 +481,29 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     climax:   ['fuck fuck fuck', 'cumming', 'oh god yes', 'i\'m cumming', 'ahh fuck'],
     cooldown: ['mmm', 'good boy', 'so good', 'jesus christ', 'wow'],
   }
+  // Paused-state utterances — fire when the video is paused for >5s
+  // so she stays present in the silence instead of disappearing.
+  // Low-key, attentive, slightly impatient.
+  const PAUSE_PRESENCE_LINES = [
+    'mmm', 'you still there?', 'come on', 'don\'t leave me', 'jesus take a breath',
+    'i\'m waiting', 'hmm?', 'where\'d you go', 'still warm over here',
+  ]
+  const pausedSinceRef = useRef<number | null>(null)
+  // Track video play/pause state — when video pauses, start the timer;
+  // when it resumes, clear it so presence cues stop.
+  useEffect(() => {
+    if (!enabled) return
+    const video = videoRef.current
+    if (!video) return
+    const onPause = () => { pausedSinceRef.current = Date.now() }
+    const onPlay = () => { pausedSinceRef.current = null }
+    video.addEventListener('pause', onPause)
+    video.addEventListener('play', onPlay)
+    return () => {
+      video.removeEventListener('pause', onPause)
+      video.removeEventListener('play', onPlay)
+    }
+  }, [enabled, videoRef])
   const lastMicroAtRef = useRef<number>(Date.now())
   useEffect(() => {
     if (!enabled) return
@@ -488,9 +511,24 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       if (queuePausedRef.current) return                       // user is talking
       if (isAudioPlayingRef.current) return                    // she's mid-line
       if (audioQueueRef.current.length > 0) return             // queue has a line waiting
+      const now = Date.now()
+
+      // Paused-presence path — when the video has been paused for >5s,
+      // emit a low-key "still here" utterance every 6-9s instead of
+      // disappearing. Stops the moment video resumes.
+      const pausedSince = pausedSinceRef.current
+      if (pausedSince !== null && now - pausedSince > 5000) {
+        const pausedGap = 6000 + Math.random() * 3000
+        if (now - lastMicroAtRef.current < pausedGap) return
+        lastMicroAtRef.current = now
+        const utterance = PAUSE_PRESENCE_LINES[Math.floor(Math.random() * PAUSE_PRESENCE_LINES.length)]
+        audioQueueRef.current.push(`stream:breathy|${utterance}`)
+        playNextInQueue()
+        return
+      }
+
       if (!enginePhase) return                                  // no phase signal yet
       // Throttle — at least 8s between micro reactions, at most 15s.
-      const now = Date.now()
       const minGap = 8000 + Math.random() * 7000
       if (now - lastMicroAtRef.current < minGap) return
       // 35% chance each tick when eligible — keeps her from being
