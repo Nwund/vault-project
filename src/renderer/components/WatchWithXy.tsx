@@ -495,27 +495,67 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     'ahhh', 'oh god', 'fuck fuck', 'wait wait', 'oh oh oh',
     'i can\'t', 'so close', 'jesus', 'unh',
   ]
+  // Post-climax release sighs — fired in a slowing pattern (3s, 5s,
+  // 8s, 13s intervals) right after climax phase to simulate the
+  // descent from peak. Stops once she reaches cooldown phase.
+  const POSTCLIMAX_SIGH_CUES = [
+    'mmmm', 'fuck...', 'oh god', 'jesus', 'wow', 'i can\'t move',
+    'so good', 'fuck me', 'whew', 'still trembling', 'good boy',
+  ]
   // Tracks the previous phase so we can detect a fresh build→climax
   // transition and fire pre-climax breaths just before the transition.
   const prevPhaseRef = useRef<typeof enginePhase>(undefined)
+  // Tracks active post-climax sigh schedule timers so we can cancel
+  // them if the user scrubs out of climax/cooldown.
+  const postclimaxTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
   useEffect(() => {
     const prev = prevPhaseRef.current
     prevPhaseRef.current = enginePhase
-    // Only trigger anticipation when transitioning INTO build phase
-    // (the user just escalated). Climax burst fires within the next
-    // 10-25% of the video, so the breath telegraph lands shortly
-    // before that.
     if (!enabled) return
-    if (enginePhase !== 'build' || prev === 'build') return
-    if (audioMuted) return
-    if (queuePausedRef.current) return
-    // Fire a single breath cue at the moment of escalation so the
-    // user feels the gear shift audibly.
-    const cue = PRECLIMAX_BREATH_CUES[Math.floor(Math.random() * PRECLIMAX_BREATH_CUES.length)]
-    audioQueueRef.current.push(`stream:desperate|${cue}`)
-    playNextInQueue()
+    // BUILD entry — anticipatory breath
+    if (enginePhase === 'build' && prev !== 'build') {
+      if (!audioMuted && !queuePausedRef.current) {
+        const cue = PRECLIMAX_BREATH_CUES[Math.floor(Math.random() * PRECLIMAX_BREATH_CUES.length)]
+        audioQueueRef.current.push(`stream:desperate|${cue}`)
+        playNextInQueue()
+      }
+    }
+    // CLIMAX entry — schedule the post-climax release sigh pattern.
+    // Sighs fire at 3s, 8s, 16s, 29s — geometric slowing that mimics
+    // the descent from peak arousal. Each sigh uses "breathy" so it
+    // sounds intimate, not climactic.
+    if (enginePhase === 'climax' && prev !== 'climax') {
+      // Clear any leftover schedule from a previous climax (re-runs
+      // on scrub).
+      for (const t of postclimaxTimersRef.current) clearTimeout(t)
+      postclimaxTimersRef.current = []
+      const offsets = [3000, 8000, 16000, 29000]
+      for (const ms of offsets) {
+        const t = setTimeout(() => {
+          if (!enabled || audioMuted || queuePausedRef.current) return
+          if (isAudioPlayingRef.current && audioQueueRef.current.length > 1) return
+          const cue = POSTCLIMAX_SIGH_CUES[Math.floor(Math.random() * POSTCLIMAX_SIGH_CUES.length)]
+          audioQueueRef.current.push(`stream:breathy|${cue}`)
+          playNextInQueue()
+        }, ms)
+        postclimaxTimersRef.current.push(t)
+      }
+    }
+    // Cancel post-climax schedule if the user scrubs back before
+    // cooldown (e.g. into build or body).
+    if (enginePhase !== 'climax' && enginePhase !== 'cooldown' && postclimaxTimersRef.current.length > 0) {
+      for (const t of postclimaxTimersRef.current) clearTimeout(t)
+      postclimaxTimersRef.current = []
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enginePhase, enabled])
+  // Cleanup timers on unmount.
+  useEffect(() => {
+    return () => {
+      for (const t of postclimaxTimersRef.current) clearTimeout(t)
+      postclimaxTimersRef.current = []
+    }
+  }, [])
   const pausedSinceRef = useRef<number | null>(null)
   // Track video play/pause state — when video pauses, start the timer;
   // when it resumes, clear it so presence cues stop.
