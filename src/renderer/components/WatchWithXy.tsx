@@ -684,14 +684,46 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
   // 8-15s of NOT-speaking + NOT-listening), randomly inject a short
   // utterance (a sigh, "mmm", "fuck", etc) so she sounds present
   // between actual reactions. Phase-keyed so intro phases sound
-  // intimate and climax phases sound peak. Uses the same streaming
-  // path so latency is sub-second.
-  const MICRO_BY_PHASE: Record<NonNullable<typeof enginePhase>, string[]> = {
-    intro:    ['mmm', 'hmm', 'oh wow', 'jesus', 'okay', 'mmm yes'],
-    body:     ['fuck', 'mmm', 'god', 'oh', 'yeah', 'shit', 'mhmm', 'yes baby'],
-    build:    ['fuck yes', 'oh god', "i'm close", 'right there', 'don\'t stop', 'so good', 'ahh'],
-    climax:   ['fuck fuck fuck', 'cumming', 'oh god yes', 'i\'m cumming', 'ahh fuck'],
-    cooldown: ['mmm', 'good boy', 'so good', 'jesus christ', 'wow'],
+  // intimate and climax phases sound peak. Persona-keyed too — a
+  // mistress doesn't say "fuck fuck fuck" the same way a cheerleader
+  // does. Uses the same streaming path so latency is sub-second.
+  type PhaseMicroPool = Record<NonNullable<typeof enginePhase>, string[]>
+  const MICRO_BY_PERSONA: Record<PersonaName, PhaseMicroPool> = {
+    goonbud: {
+      intro:    ['mmm', 'hmm', 'oh wow', 'jesus', 'okay', 'mmm yes'],
+      body:     ['fuck', 'mmm', 'god', 'oh', 'yeah', 'shit', 'mhmm', 'yes baby'],
+      build:    ['fuck yes', 'oh god', "i'm close", 'right there', 'don\'t stop', 'so good', 'ahh'],
+      climax:   ['fuck fuck fuck', 'cumming', 'oh god yes', 'i\'m cumming', 'ahh fuck'],
+      cooldown: ['mmm', 'good boy', 'so good', 'jesus christ', 'wow'],
+    },
+    mistress: {
+      intro:    ['mmm', 'good', 'i see you', 'don\'t look away', 'eyes on me'],
+      body:     ['stroke it', 'slower', 'tighter', 'don\'t come', 'mine', 'edge'],
+      build:    ['don\'t you dare', 'hold it', 'ask me', 'i decide', 'beg'],
+      climax:   ['come for me', 'fucking come', 'now', 'finish', 'over me'],
+      cooldown: ['good boy', 'mine', 'kneel', 'thank me', 'breathe'],
+    },
+    stepsister: {
+      intro:    ['hi', 'oh hi', 'you watching?', 'cute', 'oh god', 'don\'t tell'],
+      body:     ['oh fuck', 'this is so wrong', 'i shouldn\'t', 'okay one more', 'you\'re bad'],
+      build:    ['don\'t stop', 'i\'m gonna', 'oh god oh god', 'i\'m so close', 'don\'t you dare stop'],
+      climax:   ['oh god oh god', 'fuck fuck', 'don\'t tell', 'i\'m cumming', 'shhh'],
+      cooldown: ['oh my god', 'we can\'t', 'jesus', 'that was', 'you can\'t tell'],
+    },
+    boss: {
+      intro:    ['focus', 'good', 'as expected', 'continue', 'mhm'],
+      body:     ['better', 'keep going', 'fine', 'show me more', 'more'],
+      build:    ['don\'t stop', 'close', 'almost there', 'don\'t finish yet', 'hold'],
+      climax:   ['now', 'finish', 'on my desk', 'good employee', 'come'],
+      cooldown: ['acceptable', 'good work', 'dismissed', 'recover', 'tomorrow'],
+    },
+    cheerleader: {
+      intro:    ['you got this', 'come on', 'mmm', 'yes', 'oh wow', 'fuck yes'],
+      body:     ['fuck yes', 'go', 'keep going', 'you\'re doing so good', 'don\'t stop'],
+      build:    ['come on', 'almost', 'do it', 'you got it', 'oh god yes'],
+      climax:   ['yes yes yes', 'come for me', 'do it', 'so good', 'oh fuck yes'],
+      cooldown: ['good job', 'so proud', 'you did so good', 'mmm', 'amazing'],
+    },
   }
   // Paused-state utterances — fire when the video is paused for >5s
   // so she stays present in the silence instead of disappearing.
@@ -818,7 +850,8 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         return
       }
       lastMicroAtRef.current = now
-      const pool = MICRO_BY_PHASE[enginePhase] || MICRO_BY_PHASE.body
+      const personaPool = MICRO_BY_PERSONA[personaRef.current] ?? MICRO_BY_PERSONA.goonbud
+      const pool = personaPool[enginePhase] || personaPool.body
       const utterance = pool[Math.floor(Math.random() * pool.length)]
       // Phase-keyed expression for the micro reaction.
       const expression = enginePhase === 'climax' ? 'moaned'
