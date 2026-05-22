@@ -414,22 +414,67 @@ export class XyreneSoundEngine {
     this.config.onEvent?.({ type: 'climax-fired' })
   }
 
+  // Rolling cache of the last N climax lines fired so we don't say the
+  // same thing twice in a row (or three times if a small pool). Kept
+  // tight at 4 entries — large enough to cover any 5-line pool.
+  private recentClimaxLines: string[] = []
+  private readonly RECENT_CLIMAX_CAP = 4
+
+  /**
+   * Pick the next climax line, biased away from anything recently said.
+   * If every remaining option has been used, fall back to a random pick
+   * over the full pool so we don't deadlock on a tiny line list.
+   */
+  private pickClimaxLine(pool: string[]): string {
+    const fresh = pool.filter((l) => !this.recentClimaxLines.includes(l))
+    const choices = fresh.length > 0 ? fresh : pool
+    const line = choices[Math.floor(Math.random() * choices.length)]
+    this.recentClimaxLines.push(line)
+    if (this.recentClimaxLines.length > this.RECENT_CLIMAX_CAP) {
+      this.recentClimaxLines.shift()
+    }
+    return line
+  }
+
   private async maybeSynthesizeClimaxVoice(): Promise<void> {
     const cv = this.config.settings.climaxVoice
     if (!cv?.enabled || !this.config.synthVoice) return
     const lines = cv.lines?.filter((l) => l && l.trim().length > 0) ?? []
     if (lines.length === 0) return
-    const line = lines[Math.floor(Math.random() * lines.length)]
+    const line = this.pickClimaxLine(lines)
     const voice = this.config.settings.voiceSample || 'xyrene.wav'
     try {
       const result = await this.config.synthVoice(line, voice)
       if (!result?.base64 || !this.running || this.paused) return
       const url = `data:${result.mime};base64,${result.base64}`
       const audio = new Audio(url)
-      // Slightly above sample volume so her voice cuts through the layered
-      // moans + climax + squirt without being mixed under.
+      // Phase-scaled climax volume — when fired during 'climax' phase
+      // (the normal case) it lands at full intensity; during earlier
+      // phases the engine triggers from manual climax commands and the
+      // voice rides lower so she doesn't blow out the mix. Multiplied
+      // by master volume on top of that.
       const master = this.config.masterVolume ?? 1
-      audio.volume = Math.max(0, Math.min(1, 0.95 * master))
+      const phaseGain = this.currentPhase === 'climax' ? 1.0
+        : this.currentPhase === 'build' ? 0.85
+        : this.currentPhase === 'body' ? 0.7
+        : 0.55
+      const target = Math.max(0, Math.min(1, 0.95 * master * phaseGain))
+      // Fade in from silence over ~280ms so her voice enters the burst
+      // smoothly instead of slamming on. The first frame is ~silent;
+      // subsequent frames ramp up linearly to the target.
+      audio.volume = 0
+      const FADE_MS = 280
+      const startedAt = performance.now()
+      const fade = () => {
+        if (!this.running || this.paused) return
+        const elapsed = performance.now() - startedAt
+        const t = Math.min(1, elapsed / FADE_MS)
+        // Ease-out for a softer attack
+        const eased = 1 - Math.pow(1 - t, 2)
+        audio.volume = Math.max(0, Math.min(1, target * eased))
+        if (t < 1) requestAnimationFrame(fade)
+      }
+      requestAnimationFrame(fade)
       audio.onended = () => {
         try { audio.removeAttribute('src'); audio.load() } catch { /* ignore */ }
         this.audios.delete(audio)
