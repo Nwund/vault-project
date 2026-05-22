@@ -460,11 +460,12 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       // (~50% gain), body baseline (~75%), build escalating (~90%),
       // climax full peak (100%). Mirrors the climax-burst voice volume
       // so commentary feels like a continuous arc, not a flat layer.
-      const phaseGain = enginePhase === 'climax' ? 1.0
+      // Multiplied by refractoryFactor so post-climax volume is softer.
+      const phaseGain = (enginePhase === 'climax' ? 1.0
         : enginePhase === 'build' ? 0.9
         : enginePhase === 'body' ? 0.75
         : enginePhase === 'intro' || enginePhase === 'cooldown' ? 0.55
-        : 0.85
+        : 0.85) * refractoryFactor
       // Persona baseline + phase overlay. Persona defines the character's
       // resting voice (mistress = lower / commanded, cheerleader =
       // higher / enthusiastic). Phase adds an additive shift on top.
@@ -1019,16 +1020,35 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
     }
   }, [enabled, comments, playNextInQueue])
 
+  // Track the last climax timestamp so we can apply a "refractory
+  // period" — after a real climax, real humans are spent. She gets
+  // less reactive (longer cadence, quieter volume, fewer micros) for
+  // the next ~90 seconds. Resets if user re-enables or new media.
+  const lastClimaxAtRef = useRef<number>(0)
+  useEffect(() => {
+    if (enginePhase === 'climax') lastClimaxAtRef.current = Date.now()
+  }, [enginePhase])
+  const refractoryFactor = (() => {
+    const sinceMs = Date.now() - lastClimaxAtRef.current
+    if (sinceMs > 90_000 || lastClimaxAtRef.current === 0) return 1.0
+    // Linearly recover over 90s post-climax. At 0s = 0.4× (1.4× cadence,
+    // ~30% softer); by 90s = 1.0×.
+    const recovery = Math.min(1, sinceMs / 90_000)
+    return 0.4 + 0.6 * recovery
+  })()
+
   // Phase-adaptive cadence — comments more often at climax (every 5s),
   // less often at cooldown (every 14s), default 8s in body/intro.
   // Scales the user-supplied intervalSec by a per-phase factor so the
   // override still works (e.g. interval=4 still gives 2.5s at climax).
+  // Multiplied by refractoryFactor (1.0 normally, smaller right after
+  // climax) so post-climax cadence lengthens proportionally.
   const effectiveIntervalSec = (() => {
     const factor = enginePhase === 'climax' ? 0.5
       : enginePhase === 'build' ? 0.75
       : enginePhase === 'cooldown' ? 1.75
       : 1.0
-    return Math.max(3, intervalSec * factor)
+    return Math.max(3, intervalSec * factor / refractoryFactor)
   })()
 
   // Start / stop the ticker when `enabled` flips. Session-tracking starts
