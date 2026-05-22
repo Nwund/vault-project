@@ -620,6 +620,13 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
       // last bit of natural variance, prevents "every line at exactly
       // the same loudness" robotic feel.
       const volumeJitter = 1 + (Math.random() - 0.5) * 0.1
+      // Phase-aware EQ — warm/intimate at intro+cooldown, brighter
+      // edge at climax. Subtle (≤3dB) so it doesn't distort her tone.
+      const lineEq = enginePhase === 'climax' ? { warmth: -1.5, brightness: 2.5 }
+        : enginePhase === 'build' ? { warmth: -0.5, brightness: 1.5 }
+        : enginePhase === 'body' ? { warmth: 0, brightness: 0 }
+        : enginePhase === 'intro' || enginePhase === 'cooldown' ? { warmth: 2, brightness: -1.5 }
+        : undefined
       // Contagion adds +3% speed / +0.4 semitone per stacked escalate
       // (capped at +9% / +1.2 semi). Decays linearly over 60s.
       const contagionSpeed = contagionBoost * 0.03
@@ -630,6 +637,7 @@ export function WatchWithXy({ videoRef, mediaId, durationSec, intervalSec = 8, t
         speed: personaProfile.speed + phaseSpeedShift + todSpeed + fatigueSpeed + contagionSpeed + driftRef.current.speed + speedJitter,
         pitch: personaProfile.pitch + phasePitchShift + todPitch + fatiguePitch + contagionPitch + driftRef.current.pitch + pitchJitter,
         expression: lineExpression,
+        eq: lineEq,
         volume: audioMuted ? 0 : Math.max(0, Math.min(1, phaseGain * volumeJitter * contagionVolume)),
         onStart: () => setIsSpeaking(true),
         onEnd: () => {

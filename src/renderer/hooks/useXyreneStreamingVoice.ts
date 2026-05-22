@@ -45,6 +45,8 @@ interface StreamState {
   // Cached expression so post-line audio effects (vocal fry tail)
   // can decide whether to fire when the stream ends.
   expression?: string
+  // Per-utterance EQ — applied to every chunk before reverb.
+  eq?: { warmth?: number; brightness?: number }
 }
 
 // Decode int16 PCM chunk into Float32 in [-1, 1].
@@ -75,6 +77,17 @@ export interface UseXyreneStreamingVoice {
       pitch?: number
       /** Expression hint forwarded to XTTS server. */
       expression?: string
+      /** Per-utterance EQ shaping applied AFTER TTS, BEFORE reverb.
+       *  Adjusts the frequency character of her voice based on context
+       *  (warm/intimate vs bright/peak). Optional — undefined = flat. */
+      eq?: {
+        /** Low-shelf boost/cut in dB. Negative = warmer, positive =
+         *  thinner. Operates at ~400Hz cutoff. */
+        warmth?: number
+        /** High-shelf boost/cut in dB at ~3kHz. Positive = brighter,
+         *  more "edge"; negative = softer. */
+        brightness?: number
+      }
       /** Called when the first chunk plays (i.e. she's audibly speaking). */
       onStart?: () => void
       /** Called when stream end has fired AND all queued chunks finished. */
@@ -526,8 +539,30 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
         src.buffer = audioBuf
         // Voice chunks route through the reverb chain so her speech
         // sounds spatial. Non-vocal artifacts (mouth click, room tone)
-        // connect directly to master via gainRef.
-        connectThroughReverb(src)
+        // connect directly to master via gainRef. When per-utterance
+        // EQ is set, insert low/high-shelf filters before reverb.
+        if (state.eq && (state.eq.warmth || state.eq.brightness)) {
+          let lastNode: AudioNode = src
+          if (typeof state.eq.warmth === 'number' && state.eq.warmth !== 0) {
+            const low = ctx.createBiquadFilter()
+            low.type = 'lowshelf'
+            low.frequency.value = 400
+            low.gain.value = state.eq.warmth
+            lastNode.connect(low)
+            lastNode = low
+          }
+          if (typeof state.eq.brightness === 'number' && state.eq.brightness !== 0) {
+            const high = ctx.createBiquadFilter()
+            high.type = 'highshelf'
+            high.frequency.value = 3000
+            high.gain.value = state.eq.brightness
+            lastNode.connect(high)
+            lastNode = high
+          }
+          connectThroughReverb(lastNode)
+        } else {
+          connectThroughReverb(src)
+        }
         // Schedule at the running playhead. First chunk starts ~now;
         // subsequent chunks chain off the previous end so playback is
         // gapless even if the IPC drip isn't perfectly even.
@@ -684,6 +719,7 @@ export function useXyreneStreamingVoice(): UseXyreneStreamingVoice {
       onEnd: options.onEnd,
       hasStarted: false,
       expression: options.expression,
+      eq: options.eq,
     }
     streamsRef.current.set(id, state)
     // Fire the IPC. The handler will start sending chunk events as the
