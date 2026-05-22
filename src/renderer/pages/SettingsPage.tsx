@@ -1548,6 +1548,174 @@ export function SettingsPage(props: {
               </div>
             </div>
 
+            {/* Hypno mode + Edge timer — wires the dormant settings
+                surfaced in v2.7.1 (HUD toggles exist but no config).
+                Lets the user actually configure subliminal text +
+                edge-timer behavior without editing JSON by hand. */}
+            <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5 mt-4">
+              <div className="text-sm font-semibold mb-4">Hypno mode + Edge timer</div>
+              <div className="space-y-5">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">✨ Hypno mode</div>
+                      <div className="text-xs text-[var(--muted)]">Flash subliminal phrases over the wall</div>
+                    </div>
+                    <ToggleSwitch
+                      checked={s?.goonwall?.hypnoMode?.enabled ?? false}
+                      onChange={async (v) => {
+                        await window.api.settings.goonwall?.update?.({ hypnoMode: { ...s?.goonwall?.hypnoMode, enabled: v } })
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">Frequency</div>
+                      <div className="text-xs text-[var(--muted)]">Flashes per minute (±25% jitter)</div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="range"
+                        min={1}
+                        max={30}
+                        step={1}
+                        value={s?.goonwall?.hypnoMode?.textFrequency ?? 5}
+                        onChange={async (e) => {
+                          await window.api.settings.goonwall?.update?.({ hypnoMode: { ...s?.goonwall?.hypnoMode, textFrequency: Number(e.target.value) } })
+                          const next = await window.api.settings.get()
+                          props.patchSettings(next)
+                        }}
+                        className="w-32 h-1 accent-fuchsia-400 cursor-pointer"
+                      />
+                      <span className="text-xs text-[var(--muted)] w-10 tabular-nums">{s?.goonwall?.hypnoMode?.textFrequency ?? 5}/min</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="text-xs text-[var(--muted)]">Phrases (comma-separated)</div>
+                      <button
+                        onClick={async () => {
+                          // Quick-reset to the canonical default list
+                          // so users who erased everything can recover.
+                          await window.api.settings.goonwall?.update?.({
+                            hypnoMode: {
+                              ...s?.goonwall?.hypnoMode,
+                              subliminalText: ['GOON', 'EDGE', 'DEEPER', 'STROKE', 'LEAK', 'OBEY', 'SUBMIT'],
+                            },
+                          })
+                          const next = await window.api.settings.get()
+                          props.patchSettings(next)
+                        }}
+                        className="text-[10px] text-fuchsia-300 hover:text-fuchsia-200 underline"
+                      >
+                        reset
+                      </button>
+                    </div>
+                    <textarea
+                      rows={2}
+                      value={(s?.goonwall?.hypnoMode?.subliminalText ?? []).join(', ')}
+                      onChange={async (e) => {
+                        const phrases = e.target.value.split(',').map((p) => p.trim()).filter(Boolean)
+                        await window.api.settings.goonwall?.update?.({ hypnoMode: { ...s?.goonwall?.hypnoMode, subliminalText: phrases } })
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                      }}
+                      placeholder="GOON, EDGE, DEEPER, OBEY..."
+                      className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs font-mono uppercase tracking-wider"
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t border-white/5 pt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">⏱ Edge timer</div>
+                      <div className="text-xs text-[var(--muted)]">Auto-pause / shuffle / cool-down at intervals</div>
+                    </div>
+                    <ToggleSwitch
+                      checked={s?.goonwall?.edgeTimer?.enabled ?? false}
+                      onChange={async (v) => {
+                        await window.api.settings.goonwall?.update?.({ edgeTimer: { ...s?.goonwall?.edgeTimer, enabled: v } })
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">Interval</div>
+                      <div className="text-xs text-[var(--muted)]">Seconds between fires</div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="range"
+                        min={30}
+                        max={600}
+                        step={15}
+                        value={s?.goonwall?.edgeTimer?.interval ?? 120}
+                        onChange={async (e) => {
+                          await window.api.settings.goonwall?.update?.({ edgeTimer: { ...s?.goonwall?.edgeTimer, interval: Number(e.target.value) } })
+                          const next = await window.api.settings.get()
+                          props.patchSettings(next)
+                        }}
+                        className="w-32 h-1 accent-amber-400 cursor-pointer"
+                      />
+                      <span className="text-xs text-[var(--muted)] w-12 tabular-nums">
+                        {(() => {
+                          const sec = s?.goonwall?.edgeTimer?.interval ?? 120
+                          return sec >= 60 ? `${Math.floor(sec / 60)}:${(sec % 60).toString().padStart(2, '0')}` : `${sec}s`
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">Warning</div>
+                      <div className="text-xs text-[var(--muted)]">Seconds before fire to flash a warning</div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="range"
+                        min={0}
+                        max={30}
+                        step={1}
+                        value={s?.goonwall?.edgeTimer?.warningTime ?? 10}
+                        onChange={async (e) => {
+                          await window.api.settings.goonwall?.update?.({ edgeTimer: { ...s?.goonwall?.edgeTimer, warningTime: Number(e.target.value) } })
+                          const next = await window.api.settings.get()
+                          props.patchSettings(next)
+                        }}
+                        className="w-32 h-1 accent-amber-400 cursor-pointer"
+                      />
+                      <span className="text-xs text-[var(--muted)] w-10 tabular-nums">{s?.goonwall?.edgeTimer?.warningTime ?? 10}s</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm">Action</div>
+                      <div className="text-xs text-[var(--muted)]">What fires when the timer hits zero</div>
+                    </div>
+                    <select
+                      value={s?.goonwall?.edgeTimer?.action ?? 'pause'}
+                      onChange={async (e) => {
+                        await window.api.settings.goonwall?.update?.({ edgeTimer: { ...s?.goonwall?.edgeTimer, action: e.target.value as any } })
+                        const next = await window.api.settings.get()
+                        props.patchSettings(next)
+                      }}
+                      className="px-2 py-1 rounded bg-black/40 border border-white/10 text-xs"
+                    >
+                      <option value="pause">Pause (mute)</option>
+                      <option value="shuffle">Shuffle tiles</option>
+                      <option value="minimize">Minimize (hide HUD)</option>
+                      <option value="cooldown">5s cool-down overlay</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* GoonWords Settings */}
             <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5 mt-4">
               <div className="text-sm font-semibold mb-4">GoonWords (Floating Text)</div>
