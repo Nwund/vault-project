@@ -243,8 +243,8 @@ export function SettingsPage(props: {
         await window.api.deovrStart?.(deovrPort)
       }
       await loadDeovrStatus()
-    } catch (e) {
-      showToast('error', 'Failed to toggle DeoVR server')
+    } catch (e: any) {
+      showToast('error', `DeoVR toggle failed: ${e?.message ?? String(e)}`)
     }
   }
 
@@ -272,8 +272,8 @@ export function SettingsPage(props: {
         await window.api.mobileSync?.start?.()
       }
       await loadMobileSyncStatus()
-    } catch (e) {
-      showToast('error', 'Failed to toggle mobile sync server')
+    } catch (e: any) {
+      showToast('error', `Mobile sync toggle failed: ${e?.message ?? String(e)}`)
     }
   }
 
@@ -285,10 +285,10 @@ export function SettingsPage(props: {
         // Code expires after 5 minutes
         setTimeout(() => setMobilePairingCode(null), 5 * 60 * 1000)
       } else {
-        showToast('error', 'Failed to generate pairing code')
+        showToast('error', `Pairing code: ${(result as any)?.error ?? 'no code in response'}`)
       }
-    } catch (e) {
-      showToast('error', 'Failed to generate pairing code')
+    } catch (e: any) {
+      showToast('error', `Pairing code generation failed: ${e?.message ?? String(e)}`)
     }
   }
 
@@ -297,8 +297,8 @@ export function SettingsPage(props: {
       await window.api.mobileSync?.unpairDevice?.(deviceId)
       await loadMobileSyncStatus()
       showToast('success', 'Device unpaired')
-    } catch (e) {
-      showToast('error', 'Failed to unpair device')
+    } catch (e: any) {
+      showToast('error', `Unpair failed: ${e?.message ?? String(e)}`)
     }
   }
 
@@ -538,10 +538,10 @@ export function SettingsPage(props: {
                           if (result?.success) {
                             showToast('success', `Cleared ${result.count} thumbnails (${formatBytes(result.freedBytes)} freed)`)
                           } else {
-                            showToast('error', 'Failed to clear cache')
+                            showToast('error', `Cache clear: ${(result as any)?.error ?? 'main process returned non-success'}`)
                           }
-                        } catch (err) {
-                          showToast('error', 'Failed to clear cache')
+                        } catch (err: any) {
+                          showToast('error', `Cache clear failed: ${err?.message ?? String(err)}`)
                         }
                       }}
                     >
@@ -2395,8 +2395,8 @@ export function SettingsPage(props: {
                         if (filePath) {
                           showToast('success', 'Settings exported successfully!')
                         }
-                      } catch (err) {
-                        showToast('error', 'Failed to export settings')
+                      } catch (err: any) {
+                        showToast('error', `Export failed: ${err?.message ?? String(err)}`)
                       }
                     }}
                   >
@@ -2410,8 +2410,8 @@ export function SettingsPage(props: {
                         if (result) {
                           showToast('success', 'Settings imported! Some changes may require restart.')
                         }
-                      } catch (err) {
-                        showToast('error', 'Failed to import settings')
+                      } catch (err: any) {
+                        showToast('error', `Import failed: ${err?.message ?? String(err)}`)
                       }
                     }}
                   >
@@ -2685,8 +2685,8 @@ export function SettingsPage(props: {
                         } else {
                           showToast('info', 'No logs to copy')
                         }
-                      } catch (err) {
-                        showToast('error', 'Failed to copy logs')
+                      } catch (err: any) {
+                        showToast('error', `Log copy failed: ${err?.message ?? String(err)}`)
                       }
                     }}
                   >
@@ -2706,8 +2706,8 @@ export function SettingsPage(props: {
                         } else {
                           showToast('info', 'No errors logged')
                         }
-                      } catch (err) {
-                        showToast('error', 'Failed to copy errors')
+                      } catch (err: any) {
+                        showToast('error', `Error copy failed: ${err?.message ?? String(err)}`)
                       }
                     }}
                   >
@@ -2722,8 +2722,8 @@ export function SettingsPage(props: {
                           await window.api.shell?.openPath?.(path.replace(/[^\\\/]+$/, ''))
                           showToast('success', 'Opened logs folder')
                         }
-                      } catch (err) {
-                        showToast('error', 'Failed to open logs folder')
+                      } catch (err: any) {
+                        showToast('error', `Open logs folder failed: ${err?.message ?? String(err)}`)
                       }
                     }}
                   >
@@ -2740,8 +2740,8 @@ export function SettingsPage(props: {
                         } else {
                           showToast('error', result?.error || 'Failed to clear logs')
                         }
-                      } catch (err) {
-                        showToast('error', 'Failed to clear logs')
+                      } catch (err: any) {
+                        showToast('error', `Clear logs failed: ${err?.message ?? String(err)}`)
                       }
                     }}
                   >

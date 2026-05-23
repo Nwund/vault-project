@@ -358,8 +358,8 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
           try {
             await window.api.invoke('watchLater:add', contextMenu.mediaId)
             showToast('success', 'Added to Watch Later')
-          } catch (e) {
-            showToast('error', 'Failed to add to Watch Later')
+          } catch (e: any) {
+            showToast('error', `Watch Later add failed: ${e?.message ?? String(e)}`)
           }
         }
         hideContextMenu()
@@ -435,8 +435,8 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
           try {
             await window.api.invoke('bookmarks:quickAdd', contextMenu.mediaId, 0)
             showToast('success', 'Bookmarked at start')
-          } catch (e) {
-            showToast('error', 'Failed to add bookmark')
+          } catch (e: any) {
+            showToast('error', `Bookmark add failed: ${e?.message ?? String(e)}`)
           }
         } else {
           showToast('info', 'Bookmarks are only available for videos')
@@ -454,8 +454,8 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
             try {
               await window.api.invoke('notes:add', contextMenu.mediaId, note.trim())
               showToast('success', 'Note added')
-            } catch (e) {
-              showToast('error', 'Failed to add note')
+            } catch (e: any) {
+              showToast('error', `Note add failed: ${e?.message ?? String(e)}`)
             }
           }
         }
@@ -781,8 +781,8 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
           try {
             await window.api.ai?.queueForAnalysis?.([contextMenu.mediaId])
             showToast('success', 'Added to AI analysis queue')
-          } catch (e) {
-            showToast('error', 'Failed to queue for analysis')
+          } catch (e: any) {
+            showToast('error', `AI queue add failed: ${e?.message ?? String(e)}`)
           }
         } else {
           showToast('info', 'AI analysis is only available for videos')
@@ -809,8 +809,8 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
             } else {
               showToast('info', 'Already in blacklist')
             }
-          } catch (e) {
-            showToast('error', 'Failed to add to blacklist')
+          } catch (e: any) {
+            showToast('error', `Blacklist add failed: ${e?.message ?? String(e)}`)
           }
         }
         hideContextMenu()

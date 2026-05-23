@@ -184,12 +184,19 @@ export class XyreneSoundEngine {
     this.buildFilenameToSlotMap()
 
     // Kick off the rhythm loop and accent layers. Each runs independently
-    // so they overlap naturally.
+    // so they overlap naturally. Layers cover ALL 18 SFX categories the
+    // user toggles in Settings; the per-slot soundsEnabled flag in
+    // `live()` skips slots with no picks or that the user turned off.
     this.loopPlapRhythm()
     this.loopAccent('long_moan', 5500, 11000, 0.6)
     this.loopAccent('wet', 6000, 12000, 0.5)
     this.loopAccent('heavy_breathing', 8000, 16000, 0.35)
-    this.loopAccent('build_up', 18000, 30000, 0.6)  // sparse during body, denser via setPhase('build')
+    this.loopAccent('build_up', 18000, 30000, 0.6)   // sparse during body, denser via setPhase('build')
+    this.loopAccent('gasp', 7000, 14000, 0.55)        // breath spike — common throughout
+    this.loopAccent('spank', 12000, 24000, 0.7)       // sharp accent, sparse so it stays a punctuation
+    this.loopAccent('kiss', 11000, 22000, 0.4)        // intimate, body/build phases mainly
+    this.loopAccent('giggle', 15000, 30000, 0.35)     // wild-card playful color, very sparse
+    this.loopAccent('extras', 22000, 45000, 0.5)      // user's custom catch-all bucket
 
     // If vibrator is enabled, start it.
     if ((this.config.settings.soundsEnabled?.vibrator ?? true)
@@ -237,8 +244,19 @@ export class XyreneSoundEngine {
 
     // Climax fires a one-shot burst (climax + squirt + long_moan layered).
     if (phase === 'climax') this.fireClimaxBurst()
-    // Cooldown stops the vibrator.
-    if (phase === 'cooldown' && this.vibratorActive) this.stopVibrator()
+    // Cooldown stops the vibrator and starts post-climax aftercare bed.
+    if (phase === 'cooldown') {
+      if (this.vibratorActive) this.stopVibrator()
+      if (prev !== 'cooldown') {
+        const t = this.accentTimers.get('post_climax')
+        if (t) clearTimeout(t)
+        this.loopAccent('post_climax', 4000, 9000, 0.5)
+      }
+    } else if (prev === 'cooldown') {
+      // Leaving cooldown — quiet the post-climax bed.
+      const t = this.accentTimers.get('post_climax')
+      if (t) { clearTimeout(t); this.accentTimers.delete('post_climax') }
+    }
     // Build phase wakes up build_up samples more often.
     if (phase === 'build' && prev !== 'build') {
       const t = this.accentTimers.get('build_up')
@@ -343,7 +361,7 @@ export class XyreneSoundEngine {
     void this.playSample(sample, slot, this.targetVolume(sample, phaseVolume), 0.9 + Math.random() * 0.2)
   }
 
-  // ── Accent layers (long_moan / wet / heavy_breathing / build_up) ──────
+  // ── Accent layers (long_moan / wet / heavy_breathing / build_up + more) ──
   private loopAccent(slot: SoundCategoryName, minMs: number, maxMs: number, baseVolume: number): void {
     if (!this.running) return
     const items = this.live(slot)
@@ -353,10 +371,24 @@ export class XyreneSoundEngine {
       return
     }
     const phase = this.currentPhase
-    const intensity = PHASE_INTENSITY[phase]
-    const sample = pickByIntensity(items, this.metaMap, intensity)
-    if (sample && !this.paused) {
-      void this.playSample(sample, slot, this.targetVolume(sample, baseVolume), 1)
+    // Phase gates — keep sounds feeling natural to the moment.
+    //   spank: rough body/build only; out of place in intro + cooldown
+    //   kiss: intimate phases only — body / build
+    //   giggle: playful early phases only (intro / body)
+    //   gasp: any phase except cooldown
+    //   extras: skip during climax to avoid stepping on the burst
+    const phaseSkip =
+      (slot === 'spank' && (phase === 'intro' || phase === 'cooldown')) ||
+      (slot === 'kiss' && (phase === 'climax' || phase === 'cooldown')) ||
+      (slot === 'giggle' && (phase === 'climax' || phase === 'cooldown')) ||
+      (slot === 'gasp' && phase === 'cooldown') ||
+      (slot === 'extras' && phase === 'climax')
+    if (!phaseSkip) {
+      const intensity = PHASE_INTENSITY[phase]
+      const sample = pickByIntensity(items, this.metaMap, intensity)
+      if (sample && !this.paused) {
+        void this.playSample(sample, slot, this.targetVolume(sample, baseVolume), 0.95 + Math.random() * 0.1)
+      }
     }
     const next = minMs + Math.random() * (maxMs - minMs)
     this.accentTimers.set(slot, setTimeout(() => this.loopAccent(slot, minMs, maxMs, baseVolume), next))

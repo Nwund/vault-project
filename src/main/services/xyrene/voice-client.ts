@@ -97,6 +97,70 @@ function getJson<T>(path: string, timeoutMs = 5000): Promise<T> {
   })
 }
 
+// Humanize text before it reaches XTTS so the synth doesn't deliver
+// the line flatly. The XTTS model respects ellipses, em-dashes, and
+// punctuation as pause cues, and it tends to flatten long uninterrupted
+// runs of words. We insert subtle breath markers and break run-on
+// sentences into clauses so the result lands closer to natural human
+// delivery instead of the slightly robotic monotone the user reported
+// ("inflections and how words are said is slightly strange and weird
+// and non human").
+//
+// Specifically:
+//   - run-on sentences (>14 words without a comma) get a comma inserted
+//     at a natural conjunction so XTTS takes a breath
+//   - sentence-final intensifiers ("so good", "deeper", "right there")
+//     get a trailing "..." so the inflection drops naturally
+//   - back-to-back exclamation marks collapse (XTTS over-shouts on !!!)
+//   - leading filler words ("oh", "mm", "ah") are spaced from the next
+//     token with an em-dash so they get the breathy attack they'd have
+//     in real speech instead of being slurred into the next word
+//
+// Pure string -> string; safe to wrap every synth call.
+export function humanizeSpokenText(input: string): string {
+  if (!input) return input
+  let s = input.trim()
+
+  // Collapse repeated punctuation that pushes XTTS into shouting mode.
+  s = s.replace(/!!+/g, '!')
+  s = s.replace(/\?\?+/g, '?')
+  // Normalize em-dash variants so the next pass can rely on em-dash.
+  s = s.replace(/\s+--\s+/g, ' — ')
+
+  // Breathy attack on the common filler openers — em-dash gives XTTS
+  // a longer pause + slightly more articulated next consonant than a
+  // bare space would.
+  s = s.replace(/^(oh|ah|mm+|mmm+|ahh+|hmm+|ohh+|nn+)\b\s*[,]?\s*/i, (m) => {
+    const opener = m.trim().replace(/[,]+$/, '')
+    return `${opener} — `
+  })
+
+  // Break run-on sentences. Find sentences (split on ., !, ?) and for
+  // any sentence > 14 words with no commas, inject a comma before the
+  // first conjunction we see after word 6 so XTTS gets a breath.
+  s = s.split(/(?<=[.!?])\s+/).map((sent) => {
+    if (!sent || sent.length < 50 || sent.includes(',')) return sent
+    const words = sent.split(/\s+/)
+    if (words.length <= 14) return sent
+    const conjunctions = new Set(['and', 'but', 'so', 'because', 'while', 'when', 'as', 'since'])
+    for (let i = 6; i < words.length - 2; i++) {
+      const w = words[i].toLowerCase().replace(/[^a-z]/g, '')
+      if (conjunctions.has(w)) {
+        words[i - 1] = words[i - 1].replace(/[^A-Za-z0-9]$/, '') + ','
+        break
+      }
+    }
+    return words.join(' ')
+  }).join(' ')
+
+  // Sultry-trail on common intimate intensifiers at sentence end so the
+  // inflection drops + lingers instead of clipping. Skip when the
+  // sentence already ends with "..." or em-dash to avoid stacking.
+  s = s.replace(/\b(so good|right there|deeper|don't stop|just like that|fuck yes|like that)([.!])(?!\.\.|—)/gi, '$1...')
+
+  return s
+}
+
 export class XyreneVoiceClient {
   /**
    * Fast probe — does the server respond? Used by the UI to show a connected/disconnected dot.
@@ -150,7 +214,7 @@ export class XyreneVoiceClient {
     if (!text || !text.trim()) return null
     try {
       const payload: Record<string, any> = {
-        text,
+        text: humanizeSpokenText(text),
         speaker_wav: options?.voice ?? DEFAULT_VOICE,
         language: options?.language ?? DEFAULT_LANG,
       }
@@ -212,7 +276,7 @@ export class XyreneVoiceClient {
     if (!text || !text.trim()) return null
     const timeoutMs = options.timeoutMs ?? 90000
     const payload: Record<string, any> = {
-      text,
+      text: humanizeSpokenText(text),
       speaker_wav: options.voice ?? DEFAULT_VOICE,
       language: options.language ?? DEFAULT_LANG,
     }
