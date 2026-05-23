@@ -48,7 +48,7 @@ export function AboutPage() {
   }, [])
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full w-full flex flex-col overflow-hidden">
       <div className="flex-1 overflow-y-auto p-8 pb-safe">
         <div className="max-w-2xl mx-auto space-y-6">
           {/* Hero */}

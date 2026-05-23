@@ -440,7 +440,7 @@ export function SettingsPage(props: {
         })}
       </div>
 
-      <div className="flex h-[calc(100vh-56px)]">
+      <div className="flex flex-1 min-h-0">
         {/* Settings Tabs - desktop sidebar */}
         <div className="hidden sm:block w-48 p-4 border-r border-[var(--border)]">
           {tabs.map((tab) => {

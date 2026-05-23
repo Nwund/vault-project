@@ -2379,11 +2379,17 @@ export default function App() {
           role="main"
           aria-label="Main content"
           className={cn(
-            // `relative` so any absolute children inside pages
-            // position against MAIN, not the outer flex container —
-            // without this, page content can render OVER the sidebar
-            // (the "bleeding" the user keeps reporting).
-            'relative flex-1 min-w-0 min-h-0 h-full overflow-hidden transition-all duration-300 ease-in-out',
+            // `relative` so any absolute children inside pages position
+            // against MAIN, not the outer flex container — without this,
+            // page content can render OVER the sidebar.
+            //
+            // transition-[transform,opacity] only — using transition-all
+            // here animated the derived width during sidebar toggles
+            // which left pages looking like they were "shifting between
+            // tabs" while in fact the layout was reflowing mid-frame.
+            // Layout properties now snap immediately; only the explicit
+            // page-transition animations (translateY + opacity) tween.
+            'relative flex-1 min-w-0 min-h-0 h-full overflow-hidden transition-[transform,opacity] duration-300 ease-in-out',
             pageTransition === 'enter' && 'page-transition-enter',
             pageTransition === 'exit' && 'page-transition-exit'
           )}

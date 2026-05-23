@@ -47,7 +47,7 @@ export default function SessionsPage() {
   const active = useMemo(() => SUB_TABS.find((t) => t.id === sub) ?? SUB_TABS[0], [sub])
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
+    <div className="h-full w-full flex flex-col overflow-hidden bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
       {/* Header */}
       <div className="px-6 pt-6 pb-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">

@@ -207,7 +207,7 @@ export function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof us
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full w-full flex flex-col overflow-hidden">
       <TopBar title="Stats" />
 
       <div className="flex-1 overflow-auto p-4 sm:p-6 pb-safe">

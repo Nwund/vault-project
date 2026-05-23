@@ -3124,38 +3124,14 @@ button:focus-visible,
    Fade + slide transitions with direction awareness
    ────────────────────────────────────────────────────────────────────────── */
 
-@keyframes pageEnter {
-  from {
-    opacity: 0;
-    transform: translateX(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes pageExit {
-  from {
-    opacity: 1;
-    transform: translateX(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateX(-16px);
-  }
-}
-
-@keyframes pageEnterLeft {
-  from {
-    opacity: 0;
-    transform: translateX(-16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
+/* DUPLICATE keyframes removed — earlier in this file (line ~2105)
+   pageEnter/pageExit were already declared as a subtle vertical
+   translateY(8px) fade. The horizontal translateX(16px) variants here
+   were overriding them due to CSS cascade order, so every page
+   navigation visibly shifted 16px right before settling, and the user
+   read this as "the page is in a different position every time I click
+   a tab". Keeping the vertical version. The pageEnterLeft variant was
+   defined but never referenced anywhere in the codebase. */
 
 @keyframes pageFadeIn {
   from {
