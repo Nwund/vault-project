@@ -3,7 +3,6 @@
 // Settings page. Tabs: library / appearance / effects / playback / sound /
 // data / services / xyrene. Receives all state through props from App so
 // effect toggles can stay coordinated with the App-level providers.
-// Extracted from App.tsx as part of #48 phase E.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {

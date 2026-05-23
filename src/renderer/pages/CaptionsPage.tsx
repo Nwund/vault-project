@@ -3,7 +3,6 @@
 // "Brainwash" — caption / filter editor. Lets the user add top+bottom
 // text overlays plus image filters to images and GIFs. Includes the
 // memoised CaptionedThumb child used by the captioned-media grid.
-// Extracted from App.tsx as part of #48.
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {

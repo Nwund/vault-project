@@ -18,7 +18,7 @@ import { useConfirm } from './components/ConfirmDialog'
 import { LoadingSpinner } from './components/LoadingSpinner'
 import { AboutPage } from './pages/AboutPage'
 import SessionsPage from './pages/SessionsPage'
-// v2.7 — lazy-load every non-essential page so initial bundle shrinks.
+// Lazy-load every non-essential page so initial bundle shrinks.
 // LibraryPage (the entry page) and SessionsPage (small) stay eager.
 const DownloadsPage = React.lazy(() => import('./pages/DownloadsPage').then((m) => ({ default: m.DownloadsPage })))
 const Rule34Page = React.lazy(() => import('./pages/Rule34Page'))
@@ -31,7 +31,7 @@ const StatsPage = React.lazy(() => import('./pages/StatsPage').then((m) => ({ de
 const AiTaggerPage = React.lazy(() => import('./pages/AiTaggerPage').then((m) => ({ default: m.AiTaggerPage })))
 import { PostNutLockoutOverlay } from './components/PostNutLockoutOverlay'
 import { LibraryPage } from './pages/LibraryPage'
-// v2.7 — defer GoonWallPage too; it's 1,586 lines and rarely visited first.
+// Defer GoonWallPage too; it's 1,586 lines and rarely visited first.
 // resetGoonSlots is dynamically imported in the cleanup path so the page's
 // module isn't pulled into the main bundle until needed.
 const GoonWallPage = React.lazy(() => import('./pages/GoonWallPage').then((m) => ({ default: m.GoonWallPage })))
@@ -1572,13 +1572,31 @@ export default function App() {
       const s = await window.api.settings.get()
       if (!alive) return
       setSettings(s)
+      // Propagate concurrency caps to the renderer-side limiters so the
+      // user's setting takes effect immediately.
+      try {
+        const n = s?.library?.maxConcurrentVideos
+        if (typeof n === 'number') {
+          const { setMaxWallVideos } = await import('./hooks/useVideoPreview')
+          setMaxWallVideos(n)
+        }
+      } catch { /* hook may not be present in older builds */ }
       // Auto-start session for streak tracking on app launch
       try { await window.api.goon.startSession() } catch {}
     })()
 
     // Subscribe to settings changes so UI updates when settings are modified
     const unsubSettings = window.api.events?.onSettingsChanged?.((newSettings: any) => {
-      if (alive) setSettings(newSettings)
+      if (alive) {
+        setSettings(newSettings)
+        // Re-apply concurrency cap if the user just changed it.
+        try {
+          const n = newSettings?.library?.maxConcurrentVideos
+          if (typeof n === 'number') {
+            void import('./hooks/useVideoPreview').then(m => m.setMaxWallVideos?.(n))
+          }
+        } catch { /* ignore */ }
+      }
     })
 
     return () => {

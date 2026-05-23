@@ -317,6 +317,8 @@ export type Toast = {
   duration?: number
   action?: ToastAction
   createdAt?: number
+  /** Number of times this toast was deduplicated. Renders as "msg ×N". */
+  dedupeCount?: number
 }
 
 // Context menu state

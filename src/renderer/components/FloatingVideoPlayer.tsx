@@ -111,6 +111,24 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
     })()
     return () => { alive = false }
   }, [])
+
+  // Explicit decoder release on unmount. React removes the <video>
+  // element from the DOM, but Chromium can hold the H.264/HEVC decoder
+  // thread + GPU surface for several seconds afterwards waiting on GC.
+  // Pause + clear src here drops both immediately — important when the
+  // user closes a window with several floating players + opens new
+  // ones, which would otherwise stack pressure on the media pipeline.
+  useEffect(() => {
+    return () => {
+      const v = videoRef.current
+      if (!v) return
+      try {
+        v.pause()
+        v.removeAttribute('src')
+        v.load()  // Tells Chromium to release decoder bound to old src.
+      } catch { /* element already torn down */ }
+    }
+  }, [])
   const [lowQualityIntensity, setLowQualityIntensity] = useState(5)
   // Scene markers state
   const [markers, setMarkers] = useState<Array<{ id: string; timeSec: number; title: string }>>([])
@@ -972,6 +990,18 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
           prevVolumeRef.current = volume
           setIsMuted(true)
         }
+      } else if (e.key === 'ArrowUp') {
+        // YouTube/NLE convention — ArrowUp raises volume by 5%.
+        e.preventDefault()
+        const nextVol = Math.min(1, (volume || 0) + 0.05)
+        setVolume(nextVol)
+        if (isMuted && nextVol > 0) setIsMuted(false)
+      } else if (e.key === 'ArrowDown') {
+        // ArrowDown lowers volume by 5%; muting at 0 to match the M key.
+        e.preventDefault()
+        const nextVol = Math.max(0, (volume || 0) - 0.05)
+        setVolume(nextVol)
+        if (nextVol === 0) setIsMuted(true)
       } else if (e.key === 'f' || e.key === 'F') {
         toggleFullscreen()
       } else if (e.key === 'l' || e.key === 'L') {

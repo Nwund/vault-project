@@ -14,10 +14,21 @@ interface UseVideoPreviewOptions {
   wallMode?: boolean // whether to use wall mode (continuous playback, no clip cycling)
 }
 
-// Global limiter for wall mode - only allow N videos to play simultaneously
+// Global limiter for wall mode — only allow N videos to play
+// simultaneously. The default is conservative (6) so weak hardware
+// doesn't drop frames; users on strong machines can raise it via
+// settings.library.maxConcurrentVideos. The override fires per-tile on
+// useVideoPreview() init, so changing the setting takes effect on the
+// next tile mount (no reload required).
 let activeWallVideos = 0
-const MAX_WALL_VIDEOS = 6
+let MAX_WALL_VIDEOS = 6
 const wallVideoQueue: Array<() => void> = []
+
+export function setMaxWallVideos(n: number): void {
+  if (Number.isFinite(n) && n >= 1 && n <= 24) {
+    MAX_WALL_VIDEOS = Math.floor(n)
+  }
+}
 
 function requestWallSlot(onSlotAvailable: () => void): () => void {
   if (activeWallVideos < MAX_WALL_VIDEOS) {

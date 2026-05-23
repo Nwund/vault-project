@@ -119,6 +119,22 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
 
   useEscapeClose(isOpen, onClose)
 
+  // Del / Backspace fires the bulk-delete with the standard confirm
+  // prompt. Power-user shortcut for the 400-dupes-at-once workflow.
+  useEffect(() => {
+    if (!isOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedForDeletion.size > 0) {
+        e.preventDefault()
+        void handleDeleteSelected()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, selectedForDeletion.size])
+
   const loadStats = useCallback(async () => {
     try {
       const s = await window.api.invoke('duplicates:getStats')

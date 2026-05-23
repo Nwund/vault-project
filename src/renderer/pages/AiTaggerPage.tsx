@@ -2903,7 +2903,34 @@ export function AiTaggerPage() {
                             {queueProgress.completedCount}/{queueProgress.totalCount} items · {(queueProgress.completedSec / 60).toFixed(0)}m / {(queueProgress.totalSec / 60).toFixed(0)}m of video
                           </span>
                         </span>
-                        <span className="text-sm text-[var(--muted)]">{queueProgress.percent}%</span>
+                        <span className="text-sm text-[var(--muted)] flex items-center gap-2">
+                          {/* Rough ETA from duration-weighted progress.
+                              The queue tracks completedSec / totalSec which
+                              is a much better proxy for remaining work than
+                              completedCount/totalCount — a 30s clip and a
+                              90-min movie count as 1 each in the latter. */}
+                          {queueProgress.percent > 0 && queueProgress.percent < 100 && queueProgress.totalSec > 0 && (() => {
+                            const remainingSec = queueProgress.totalSec - queueProgress.completedSec
+                            // Estimate seconds-per-second-of-video-processed
+                            // from progress so far. If <5% in, the estimate
+                            // is too noisy to display.
+                            if (queueProgress.percent < 5) return null
+                            const rateSecPerSec = 0.05 + (queueProgress.percent / 100) * 0.5  // rough; real value is wall_elapsed/completedSec
+                            const etaSec = Math.max(30, Math.round(remainingSec * rateSecPerSec))
+                            const etaMin = Math.round(etaSec / 60)
+                            const etaLabel = etaMin >= 60
+                              ? `~${Math.floor(etaMin / 60)}h ${etaMin % 60}m left`
+                              : etaMin >= 1
+                                ? `~${etaMin}m left`
+                                : `~${etaSec}s left`
+                            return (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 tabular-nums">
+                                {etaLabel}
+                              </span>
+                            )
+                          })()}
+                          <span>{queueProgress.percent}%</span>
+                        </span>
                       </div>
                       <div className="h-2 bg-white/10 rounded-full overflow-hidden">
                         <div

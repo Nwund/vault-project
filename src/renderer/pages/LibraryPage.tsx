@@ -4,7 +4,6 @@
 // grid, filtering, multi-select, drag-select, all the in-place
 // editing flyouts (tagger / scene detector / chapters / bookmarks /
 // subtitles / etc.), and the inline MediaTile + MediaViewer it renders.
-// Extracted from App.tsx as part of #48 phase E.
 
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -86,7 +85,7 @@ import { ColorPaletteFilter, COLOR_FILTER_EVENT, type ColorPaletteFilterEvent } 
 import { SidecarWatcherBadge } from '../components/SidecarWatcherBadge'
 import { QuickLookPreview } from '../components/QuickLookPreview'
 import { FocusModeToggle } from '../components/FocusModeToggle'
-// v2.7 — heavy modals lazy-loaded so their code defers until first open.
+// Heavy modals lazy-loaded so their code defers until first open.
 // The Suspense fallback is `null` because each modal handles its own
 // open/closed visual (returns null when !open), so the very brief gap
 // while the chunk loads is invisible.
@@ -304,6 +303,24 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
   const [randomQuickTags, setRandomQuickTags] = useState<TagRow[]>([])
   const [allTagsForSearch, setAllTagsForSearch] = useState<Array<{ name: string; count: number }>>([]) // For search suggestions
   const [currentPage, setCurrentPage] = useState(1)
+  // Scroll the page back to top whenever the user paginates or changes
+  // sort/filter. Without this, paging to page 2 leaves the viewport
+  // pinned at the bottom of page 1 and the user wonders if the click
+  // worked. The Library is rendered inside <main> which is the
+  // scrollable region, so target the nearest scrollable ancestor of
+  // any tile element.
+  useEffect(() => {
+    // Use queueMicrotask so the scroll fires AFTER React commits the
+    // new page contents — scrolling before paint flickers.
+    queueMicrotask(() => {
+      const grid = document.querySelector('[data-page="library"]')
+      const scroller = grid?.closest('main, [data-scroll-root]')
+        ?? document.scrollingElement
+      try {
+        ;(scroller as HTMLElement | null)?.scrollTo({ top: 0, behavior: 'smooth' })
+      } catch { /* older browsers */ }
+    })
+  }, [currentPage, sortBy, sortAscending, typeFilter])
   const [totalCount, setTotalCount] = useState(0)
   // Fuzzy-search hint: when LIKE returned 0 results and the backend
   // fell back to closest-spelling match, surface "Did you mean X?" so
@@ -984,6 +1001,36 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       if (quickLookTimerRef.current != null) clearTimeout(quickLookTimerRef.current)
     }
   }, [focusedIndex, sortedMedia])
+
+  // Selection-mode keyboard shortcuts.
+  //   Esc          — exit selection mode + clear
+  //   Ctrl/Cmd-A   — select every match across all pages
+  useEffect(() => {
+    if (!selectionMode) return
+    const onKey = async (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setSelectionMode(false)
+        setSelectedIds(new Set())
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
+        e.preventDefault()
+        try {
+          const r: any = await (window.api.media as any).ids({
+            q: debouncedQuery, type: typeFilter, tags: activeTags, sortBy, sortAscending,
+          })
+          const ids = Array.isArray(r?.ids) ? r.ids : []
+          setSelectedIds(new Set(ids))
+        } catch (err: any) {
+          showToast('error', `Select all failed: ${err?.message ?? String(err)}`)
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectionMode, debouncedQuery, typeFilter, activeTags, sortBy, sortAscending, showToast])
 
   // Keyboard navigation handler
   useEffect(() => {
@@ -2200,6 +2247,24 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       {/* Quick Filters Bar - common filter presets */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)] bg-[var(--surface)]/30 overflow-x-auto">
         <span className="text-[10px] text-[var(--muted)] uppercase tracking-wide shrink-0">Quick:</span>
+        {/* Clear-all pill — single click reset when any filter is on.
+            Mirrors the empty-state CTA but reachable WITHOUT having to
+            scroll past every tile to a zero-result screen. */}
+        {(debouncedQuery || activeTags.length > 0 || typeFilter !== 'all' || sortBy !== 'newest') && (
+          <button
+            onClick={() => {
+              setQuery('')
+              setActiveTags([])
+              setTypeFilter('all')
+              setSortBy('newest')
+              setSortAscending(false)
+            }}
+            className="px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/30 flex items-center gap-1"
+            title="Reset query, tags, type filter, and sort to defaults"
+          >
+            <X size={10} /> Clear all filters
+          </button>
+        )}
         <button
           onClick={() => {
             setSortBy('newest')
@@ -3500,9 +3565,9 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                 } else {
                   showToast('error', 'Rename failed: ' + (result as OptimizeNamesResult).error)
                 }
-              } catch (err) {
+              } catch (err: any) {
                 console.error('[Library] Failed to rename:', err)
-                showToast('error', 'Failed to rename files')
+                showToast('error', `Bulk rename failed: ${err?.message ?? String(err)}`)
               } finally {
                 setBulkActionLoading(null)
               }
@@ -3528,9 +3593,9 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                 showToast('success', `Favorited ${result.updated} items`)
                 setSelectedIds(new Set())
                 setSelectionMode(false)
-              } catch (err) {
+              } catch (err: any) {
                 console.error('[Library] Failed to favorite:', err)
-                showToast('error', 'Failed to favorite items')
+                showToast('error', `Bulk favorite failed: ${err?.message ?? String(err)}`)
               } finally {
                 setBulkActionLoading(null)
               }

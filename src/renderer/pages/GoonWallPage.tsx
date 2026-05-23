@@ -68,7 +68,23 @@ export function GoonWallPage(props: {
   const [preloadProgress, setPreloadProgress] = useState(0)
   const [preloadTotal, setPreloadTotal] = useState(0)
   const [showPreloadOption, setShowPreloadOption] = useState(true) // Show preload screen initially
-  const [preloadCount, setPreloadCount] = useState(50) // Configurable number of videos to preload
+  // Configurable number of videos to preload. Persists to localStorage
+  // so the user's tuned value (50 on a strong PC, 10 on a weak one)
+  // survives across sessions instead of always resetting to the default.
+  const [preloadCount, setPreloadCountRaw] = useState<number>(() => {
+    try {
+      const v = parseInt(localStorage.getItem('vault.goonwall.preloadCount') || '', 10)
+      if (Number.isFinite(v) && v >= 1 && v <= 500) return v
+    } catch { /* ignore */ }
+    return 50
+  })
+  const setPreloadCount = useCallback((next: number | ((p: number) => number)) => {
+    setPreloadCountRaw((prev) => {
+      const v = typeof next === 'function' ? (next as (p: number) => number)(prev) : next
+      try { localStorage.setItem('vault.goonwall.preloadCount', String(v)) } catch { /* ignore */ }
+      return v
+    })
+  }, [])
   const [backgroundPreloading, setBackgroundPreloading] = useState(false) // Continue preloading after starting
   const preloadedUrlsRef = useRef<Map<string, string>>(new Map()) // Cache preloaded URLs
   const preloadAbortRef = useRef(false) // For cancelling preload

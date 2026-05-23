@@ -1,9 +1,8 @@
 // File: src/renderer/pages/StatsPage.tsx
 //
 // Goon stats + collection stats + achievements + daily challenges page.
-// Extracted from App.tsx as part of #48 phase B. Confetti / anime hooks
-// passed in by App because they're owned at app level (shared across
-// many pages for celebratory effects).
+// Confetti / anime hooks are passed in by App because they're owned at
+// app level (shared across many pages for celebratory effects).
 
 import { useEffect, useState } from 'react'
 import { CheckCircle2, Clock, Lock, Star } from 'lucide-react'

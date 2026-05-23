@@ -33,17 +33,47 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     duration: number = 4000,
     options?: ShowToastOptions
   ) => {
-    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`
     const createdAt = Date.now()
-    setToasts(prev => [...prev, { id, type, message, duration, createdAt, action: options?.action }])
-    // Auto-dismiss with tracked timer
-    if (duration > 0) {
-      const timer = setTimeout(() => {
-        toastTimersRef.current.delete(id)
-        setToasts(prev => prev.filter(t => t.id !== id))
-      }, duration)
-      toastTimersRef.current.set(id, timer)
-    }
+    setToasts(prev => {
+      // Dedupe: if an identical toast (same type + message) fired in
+      // the last 1.5s and is still visible, just increment a count
+      // badge on it instead of stacking a duplicate. Catches the case
+      // where a bulk loop fires 4800 "X failed" toasts in tight series.
+      const dedupeWindow = 1500
+      const existingIdx = prev.findIndex(
+        (t) => t.type === type && t.message === message && (createdAt - (t.createdAt ?? 0)) < dedupeWindow,
+      )
+      if (existingIdx !== -1) {
+        const cur = prev[existingIdx]
+        const next = [...prev]
+        next[existingIdx] = { ...cur, dedupeCount: (cur.dedupeCount ?? 1) + 1, createdAt }
+        // Reset the auto-dismiss timer so the badge stays visible.
+        const oldTimer = toastTimersRef.current.get(cur.id)
+        if (oldTimer) clearTimeout(oldTimer)
+        if (duration > 0) {
+          const newTimer = setTimeout(() => {
+            toastTimersRef.current.delete(cur.id)
+            setToasts(p => p.filter(t => t.id !== cur.id))
+          }, duration)
+          toastTimersRef.current.set(cur.id, newTimer)
+        }
+        return next
+      }
+      // New toast — also enforce a hard cap of 50 in the queue so a
+      // runaway producer can't blow renderer memory.
+      const id = `toast-${createdAt}-${Math.random().toString(36).slice(2)}`
+      const appended = [...prev, { id, type, message, duration, createdAt, action: options?.action }]
+      const HARD_CAP = 50
+      const trimmed = appended.length > HARD_CAP ? appended.slice(appended.length - HARD_CAP) : appended
+      if (duration > 0) {
+        const timer = setTimeout(() => {
+          toastTimersRef.current.delete(id)
+          setToasts(p => p.filter(t => t.id !== id))
+        }, duration)
+        toastTimersRef.current.set(id, timer)
+      }
+      return trimmed
+    })
   }, [])
 
   const dismissToast = useCallback((id: string) => {
@@ -127,7 +157,12 @@ const ToastItem: React.FC<{
       }}
     >
       {getToastIcon(toast.type)}
-      <span className="flex-1">{toast.message}</span>
+      <span className="flex-1">
+        {toast.message}
+        {typeof toast.dedupeCount === 'number' && toast.dedupeCount > 1 && (
+          <span className="ml-2 px-1.5 py-0.5 rounded bg-white/20 text-[10px] tabular-nums">×{toast.dedupeCount}</span>
+        )}
+      </span>
 
       {/* Action button */}
       {toast.action && (
