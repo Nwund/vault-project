@@ -165,6 +165,10 @@ const api = {
   media: {
     search: (opts: any) => invoke('media:search', opts),
     list: (opts?: any) => invoke('media:list', opts),
+    // Lightweight "ids only" search — used by Library's Select All
+    // Matches so we don't ship 4,827 row payloads over IPC just to
+    // pull out the id strings.
+    ids: (opts: any) => invoke<{ ids: string[]; total: number }>('media:ids', opts),
     getById: (id: string) => invoke('media:getById', id),
     // Alias - several components (HomeDashboard, Detached, RelatedMediaPanel)
     // were calling media.get(id) before getById was the canonical name. Keep

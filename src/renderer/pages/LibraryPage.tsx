@@ -1703,6 +1703,28 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                   <button onClick={() => setShowUrlDownloaderPanel(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Download size={14} />URL Downloader</button>
                   <button onClick={() => setShowTrashPanel(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Trash2 size={14} />Trash</button>
                   <button onClick={() => setShowLibraryHealth(true)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-pink-500/15 rounded-md text-[13px] text-left text-white"><Activity size={14} />Library Health</button>
+                  {/* Single-click "tag the whole library" so the user
+                      doesn't have to leave their browse context to
+                      kick off the AI queue. ai:queue-untagged honors
+                      already-tagged items and only enqueues media
+                      missing canonical tags. */}
+                  <button
+                    onClick={async () => {
+                      try {
+                        const r: any = await (window.api as any).ai?.queueUntagged?.()
+                        if (r?.ok || typeof r?.queued === 'number') {
+                          showToast('success', `Queued ${r.queued ?? '?'} untagged items for AI analysis`)
+                        } else {
+                          showToast('info', 'Queued untagged items for AI analysis')
+                        }
+                      } catch (err: any) {
+                        showToast('error', `AI queue failed: ${err?.message ?? String(err)}`)
+                      }
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-blue-500/15 rounded-md text-[13px] text-left text-white"
+                  >
+                    <Brain size={14} />Queue untagged for AI
+                  </button>
                 </div>
                 <div className="p-2 border-t border-b border-white/10 bg-gradient-to-r from-fuchsia-500/5 to-transparent">
                   <span className="text-xs text-fuchsia-300 font-medium flex items-center gap-1.5"><Sparkles size={11} />v2.7 — Integration tools</span>
@@ -3283,20 +3305,16 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
             onClick={async () => {
               try {
                 setBulkActionLoading('selectAll')
-                // Pull every matching id from the server in one shot —
-                // re-runs the current filter without pagination so the
-                // selection covers the whole filtered set, not just the
-                // visible 60.
-                const r: any = await window.api.media.search({
+                // Lightweight ids-only fetch — drops the full row
+                // payload that a media.search(limit=-1) would carry.
+                const r: any = await (window.api.media as any).ids({
                   q: debouncedQuery,
                   type: typeFilter,
                   tags: activeTags,
                   sortBy,
                   sortAscending,
-                  limit: -1,
-                  offset: 0,
                 })
-                const ids = ((r?.items ?? r) as any[]).map((m) => m.id).filter(Boolean)
+                const ids = Array.isArray(r?.ids) ? r.ids : []
                 setSelectedIds(new Set(ids))
               } catch (err: any) {
                 showToast('error', `Select all failed: ${err?.message ?? String(err)}`)

@@ -942,6 +942,35 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return { items, total }
   })
 
+  // Lightweight "give me just the ids matching this filter" — used by
+  // Library's Select All Matches button. Returning the full row payload
+  // for 4827 items via media:search is ~5MB over IPC; this one returns
+  // string[] only (~50KB) and skips per-item LEFT JOINs in the query.
+  ipcMain.handle('media:ids', async (_ev, opts: any) => {
+    const q = opts?.q ?? opts?.query ?? ''
+    const type = opts?.type ?? ''
+    const tag = opts?.tags?.[0] ?? opts?.tag ?? ''
+    const sortBy = opts?.sortBy ?? 'newest'
+    const blacklist = getSettings().blacklist
+    const blacklistActive = !!blacklist?.enabled
+      && ((blacklist?.tags?.length ?? 0) > 0 || (blacklist?.mediaIds?.length ?? 0) > 0)
+    if (!blacklistActive) {
+      const result = db.listMedia({ q, type, tag, limit: 1_000_000, offset: 0, sortBy })
+      return { ids: result.items.map((m: any) => m.id), total: result.total }
+    }
+    const blacklistedTags = new Set(blacklist?.tags ?? [])
+    const blacklistedIds = new Set(blacklist?.mediaIds ?? [])
+    const unpaginated = db.listMedia({ q, type, tag, limit: 1_000_000, offset: 0, sortBy })
+    const ids = unpaginated.items
+      .filter((m: any) => {
+        if (blacklistedIds.has(m.id)) return false
+        if (m.tags && Array.isArray(m.tags) && m.tags.some((t: string) => blacklistedTags.has(t))) return false
+        return true
+      })
+      .map((m: any) => m.id)
+    return { ids, total: ids.length }
+  })
+
   ipcMain.handle('media:list', async (_ev, opts: any) => {
     const q = opts?.q ?? opts?.query ?? ''
     const type = opts?.type ?? ''

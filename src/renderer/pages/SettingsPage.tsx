@@ -302,15 +302,18 @@ export function SettingsPage(props: {
     }
   }
 
-  // Define searchable settings for filtering
+  // Define searchable settings for filtering. Heavy keyword list so a
+  // user typing "venice" or "deepfake" or "hypno" lands on the right
+  // tab without scanning eight tabs manually.
   const settingsIndex = useMemo(() => [
-    { tab: 'library', keywords: ['media', 'folder', 'directory', 'path', 'cache', 'storage', 'scan'] },
-    { tab: 'appearance', keywords: ['theme', 'color', 'dark', 'light', 'accent', 'font', 'size', 'compact', 'animation', 'thumbnail'] },
-    { tab: 'effects', keywords: ['visual', 'sparkle', 'bokeh', 'starfield', 'grain', 'haze', 'crt', 'heat', 'goon', 'word'] },
-    { tab: 'playback', keywords: ['video', 'autoplay', 'mute', 'loop', 'volume', 'speed'] },
-    { tab: 'sound', keywords: ['audio', 'voice', 'sound', 'mute', 'volume', 'greeting', 'sfx'] },
-    { tab: 'data', keywords: ['export', 'import', 'backup', 'restore', 'reset', 'privacy', 'blacklist', 'tag'] },
-    { tab: 'services', keywords: ['mobile', 'sync', 'phone', 'device', 'pair', 'privacy', 'panic', 'incognito', 'blacklist'] },
+    { tab: 'library', keywords: ['media', 'folder', 'directory', 'path', 'cache', 'storage', 'scan', 'pagination', 'page size', 'memory cache', 'preload', 'thumbnail quality', 'hover preview'] },
+    { tab: 'appearance', keywords: ['theme', 'color', 'dark', 'light', 'accent', 'font', 'size', 'compact', 'animation', 'thumbnail', 'orb', 'aurora', 'neon rain', 'lightning', 'color blind', 'reduce motion'] },
+    { tab: 'effects', keywords: ['visual', 'sparkle', 'bokeh', 'starfield', 'grain', 'haze', 'crt', 'heat', 'goon', 'word', 'hypno', 'subliminal', 'edge timer', 'pip boy', 'tv border', 'climax', 'overlay', 'glitch', 'bubbles', 'matrix', 'confetti', 'hearts', 'rain'] },
+    { tab: 'playback', keywords: ['video', 'autoplay', 'mute', 'loop', 'volume', 'speed', 'resolution', 'low quality', 'transcode', 'subtitle', 'caption', 'aspect'] },
+    { tab: 'sound', keywords: ['audio', 'voice', 'sound', 'mute', 'volume', 'greeting', 'sfx', 'ambience', 'ui sound'] },
+    { tab: 'xyrene', keywords: ['xyrene', 'voice', 'tts', 'xtts', 'f5tts', 'whisper', 'whisperx', 'character', 'persona', 'voice clone', 'climax voice', 'sound engine', 'plap', 'wet', 'spank', 'kiss', 'gasp', 'giggle', 'moan'] },
+    { tab: 'data', keywords: ['export', 'import', 'backup', 'restore', 'reset', 'privacy', 'blacklist', 'tag', 'logs', 'error', 'trash', 'duplicate', 'venice', 'tpdb', 'api key', 'profile', 'rapidapi', 'e621', 'rule34', 'danbooru', 'bluesky', 'huggingface', 'hf token'] },
+    { tab: 'services', keywords: ['mobile', 'sync', 'phone', 'device', 'pair', 'privacy', 'panic', 'incognito', 'blacklist', 'cloudflared', 'tunnel', 'veilid', 'tailscale', 'deovr', 'syncthing', 'cross device', 'webhook', 'imap'] },
   ] as const, [])
 
   // Find matching tabs based on search
