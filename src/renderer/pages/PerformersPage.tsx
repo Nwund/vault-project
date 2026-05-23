@@ -107,22 +107,29 @@ export default function PerformersPage() {
 
   useEffect(() => { refresh() }, [refresh])
 
-  // F2 = rename the currently-hovered cluster (#254). Bypasses the
-  // mouse-only "Name" hover button so the user can rename a row of
-  // clusters without leaving the keyboard. Skips when the user is
-  // already editing or typing in another input.
+  // Cluster keyboard shortcuts (#254 + #276):
+  //   F2     — rename hovered cluster
+  //   Del    — delete hovered cluster (with confirm)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = async (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      if (e.key !== 'F2') return
-      if (!hoveredClusterId || editingId) return
-      e.preventDefault()
-      const target = clusters.find((c) => c.id === hoveredClusterId)
-      setEditingId(hoveredClusterId)
-      setEditValue(target?.name ?? '')
+      if (!hoveredClusterId) return
+      if (e.key === 'F2' && !editingId) {
+        e.preventDefault()
+        const target = clusters.find((c) => c.id === hoveredClusterId)
+        setEditingId(hoveredClusterId)
+        setEditValue(target?.name ?? '')
+        return
+      }
+      if (e.key === 'Delete' && !editingId) {
+        e.preventDefault()
+        await handleDelete(hoveredClusterId)
+        return
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hoveredClusterId, editingId, clusters])
 
   // Resolve representative thumbnails for visible clusters.

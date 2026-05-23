@@ -63,7 +63,19 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0, posX: 0, posY: 0 })
   const [isMuted, setIsMuted] = useState(false)
-  const [volume, setVolume] = useState(0.5) // Volume 0-1
+  const [volume, setVolume] = useState<number>(() => {
+    // Persist the user's last chosen volume across sessions. Cap range
+    // [0, 1]. Falls back to 0.5 when the entry is missing/malformed.
+    try {
+      const v = parseFloat(localStorage.getItem('vault.floatingPlayer.volume') ?? '')
+      if (Number.isFinite(v) && v >= 0 && v <= 1) return v
+    } catch { /* ignore */ }
+    return 0.5
+  })
+  // Persist on every change. Debounced indirectly via React batching.
+  useEffect(() => {
+    try { localStorage.setItem('vault.floatingPlayer.volume', String(volume)) } catch { /* ignore */ }
+  }, [volume])
   const prevVolumeRef = useRef(0.5) // Remember volume before muting/zeroing
   const [isPaused, setIsPaused] = useState(false)
   const [showControls, setShowControls] = useState(true)
@@ -1002,6 +1014,33 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         const nextVol = Math.max(0, (volume || 0) - 0.05)
         setVolume(nextVol)
         if (nextVol === 0) setIsMuted(true)
+      } else if (e.key === ',' && !e.shiftKey) {
+        // NLE convention — comma steps back 1 frame (~1/30s). Lets the
+        // user nudge to an exact moment for bookmarking / capture.
+        if (videoRef.current && media.type === 'video') {
+          e.preventDefault()
+          if (!videoRef.current.paused) videoRef.current.pause()
+          videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 1 / 30)
+        }
+      } else if (e.key === '.' && !e.shiftKey) {
+        if (videoRef.current && media.type === 'video') {
+          e.preventDefault()
+          if (!videoRef.current.paused) videoRef.current.pause()
+          videoRef.current.currentTime = videoRef.current.currentTime + 1 / 30
+        }
+      } else if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // YouTube convention — number keys seek to that percentage.
+        if (videoRef.current && media.type === 'video' && Number.isFinite(videoRef.current.duration)) {
+          e.preventDefault()
+          const pct = parseInt(e.key, 10) / 10
+          videoRef.current.currentTime = videoRef.current.duration * pct
+        }
+      } else if (e.key === 'H' && e.shiftKey) {
+        // Shift+H hides ALL chrome for a clean viewing experience.
+        // Tied to Shift to avoid stealing the lowercase 'h' which
+        // some users might expect for other actions later.
+        e.preventDefault()
+        try { window.dispatchEvent(new CustomEvent('vault:toggle-hud-floating', { detail: { mediaId: media.id } })) } catch { /* ignore */ }
       } else if (e.key === 'f' || e.key === 'F') {
         toggleFullscreen()
       } else if (e.key === 'l' || e.key === 'L') {

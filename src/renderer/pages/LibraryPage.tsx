@@ -285,20 +285,71 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
   // Search input ref so Ctrl/Cmd+F can focus it from anywhere on the
   // Library page.
   const searchInputRef = useRef<HTMLInputElement>(null)
+  // Track 'g' for the vim-style 'gg' (scroll-to-top) double-tap.
+  const gKeyTimerRef = useRef<number>(0)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Don't hijack keys inside other text inputs / textareas — user
+      // might be typing in a tag editor and expect normal text input.
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+      // Ctrl/Cmd+F or bare '/' focuses the search bar. vim convention.
       if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
-        // Don't hijack Ctrl+F inside other text inputs / textareas —
-        // user might be typing in a tag editor and expect the
-        // browser's find-in-text behavior in that local field.
-        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
         e.preventDefault()
         searchInputRef.current?.focus()
         searchInputRef.current?.select()
+        return
+      }
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+        return
+      }
+      // 'r' refreshes the library. Bare keypress (no modifier so
+      // browser Ctrl+R reload still works).
+      if (e.key === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        void refresh()
+        return
+      }
+      // 'gg' (two consecutive 'g' within 500ms) = scroll to top.
+      // 'G' alone = scroll to bottom. vim convention.
+      if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        const now = Date.now()
+        if (now - gKeyTimerRef.current < 500) {
+          gKeyTimerRef.current = 0
+          const grid = document.querySelector('[data-page="library"]')
+          const scroller = grid?.closest('main, [data-scroll-root]') ?? document.scrollingElement
+          ;(scroller as HTMLElement | null)?.scrollTo({ top: 0, behavior: 'smooth' })
+        } else {
+          gKeyTimerRef.current = now
+        }
+        return
+      }
+      if (e.key === 'G' && e.shiftKey) {
+        e.preventDefault()
+        const grid = document.querySelector('[data-page="library"]')
+        const scroller = grid?.closest('main, [data-scroll-root]') ?? document.scrollingElement
+        const h = (scroller as HTMLElement | null)?.scrollHeight ?? 0
+        ;(scroller as HTMLElement | null)?.scrollTo({ top: h, behavior: 'smooth' })
+        return
+      }
+      // 'n' / 'p' for next / previous page when pagination is active.
+      if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        setCurrentPage((p) => p + 1)
+        return
+      }
+      if (e.key === 'p' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        setCurrentPage((p) => Math.max(1, p - 1))
+        return
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const [activeTags, setActiveTags] = useState<string[]>(persisted?.activeTags ?? [])
   const [typeFilter, setTypeFilter] = useState<MediaType | 'all'>(persisted?.typeFilter ?? 'all')

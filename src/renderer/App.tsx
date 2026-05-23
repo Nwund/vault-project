@@ -135,6 +135,7 @@ import {
   Loader2,
   Timer,
   HardDrive,
+  Hash,
   Bookmark,
   GripVertical,
   Copy,
@@ -377,6 +378,53 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
         if (contextMenu.mediaId) {
           try { sessionStorage.setItem('vault_brainwash_open_media', contextMenu.mediaId) } catch { /* ignore */ }
           window.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'captions' }))
+        }
+        hideContextMenu()
+      }
+    },
+    // OS-level "show in file manager" (Explorer / Finder / Files).
+    // Useful when the user wants to do something to the underlying
+    // file outside Vault (move, archive, edit, share).
+    {
+      label: 'Open containing folder',
+      icon: <FolderOpen size={14} />,
+      action: () => {
+        if (contextMenu.mediaData?.path) {
+          window.api?.shell?.showItemInFolder?.(contextMenu.mediaData.path)
+        }
+        hideContextMenu()
+      }
+    },
+    // Copy the absolute file path to clipboard for pasting into
+    // external tools (ffmpeg one-offs, file dialogs, scripts).
+    {
+      label: 'Copy file path',
+      icon: <Copy size={14} />,
+      action: async () => {
+        if (contextMenu.mediaData?.path) {
+          try {
+            await navigator.clipboard.writeText(contextMenu.mediaData.path)
+            showToast('success', 'Path copied to clipboard')
+          } catch (e: any) {
+            showToast('error', `Clipboard write failed: ${e?.message ?? String(e)}`)
+          }
+        }
+        hideContextMenu()
+      }
+    },
+    // Copy the internal media id — handy for sharing a specific item
+    // with another vault instance (sync / debugging / triage).
+    {
+      label: 'Copy media id',
+      icon: <Hash size={14} />,
+      action: async () => {
+        if (contextMenu.mediaId) {
+          try {
+            await navigator.clipboard.writeText(contextMenu.mediaId)
+            showToast('success', 'Media id copied')
+          } catch (e: any) {
+            showToast('error', `Clipboard write failed: ${e?.message ?? String(e)}`)
+          }
         }
         hideContextMenu()
       }

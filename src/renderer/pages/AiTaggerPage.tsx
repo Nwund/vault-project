@@ -388,6 +388,19 @@ export function AiTaggerPage() {
     if (activeTab !== 'review') return
     const onKey = async (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      // vim-style next/prev navigation across pending review items.
+      // Bare 'j' / 'k' (no modifier); arrows still work in other UIs.
+      if ((e.key === 'j' || e.key === 'k') && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        const cur = selectedReviewItem
+        const idx = cur ? reviewItems.findIndex((r) => r.mediaId === cur.mediaId) : -1
+        const delta = e.key === 'j' ? 1 : -1
+        const nextIdx = Math.max(0, Math.min(reviewItems.length - 1, idx + delta))
+        if (reviewItems[nextIdx]) {
+          e.preventDefault()
+          setSelectedReviewItem(reviewItems[nextIdx])
+        }
+        return
+      }
       if (!e.shiftKey || e.key !== 'Enter') return
       const cur = selectedReviewItem
       if (!cur) return
