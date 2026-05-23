@@ -51,13 +51,22 @@ export function HostsBlocklistCard(): React.JSX.Element {
     setBusy('refresh'); setError(null); setInfo(null)
     try {
       const api: any = (window as any).api
+      if (typeof api?.hostsBlocklistRefresh !== 'function') {
+        setError('IPC unavailable — restart Vault so the main process picks up the latest handlers.')
+        return
+      }
+      console.log('[HostsBlocklist] Fetching StevenBlack list…')
       const r = await api.hostsBlocklistRefresh()
+      console.log('[HostsBlocklist] refresh result:', r)
       if (r?.ok && r.meta) {
         setInfo(`Cached ${r.meta.domainCount.toLocaleString()} domains (${formatBytes(r.meta.bytes)})`)
         await refreshStatus()
       } else {
-        setError(r?.error ?? 'Refresh failed')
+        setError(r?.error ?? 'Refresh failed (empty response from main process)')
       }
+    } catch (err: any) {
+      console.error('[HostsBlocklist] refresh threw:', err)
+      setError(`Refresh threw: ${err?.message ?? String(err)}`)
     } finally {
       setBusy(null)
     }

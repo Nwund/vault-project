@@ -989,6 +989,21 @@ export default function App() {
   // grid sits flush against the main sidebar — the previous default-true
   // looked like a "big gap between library and sidebar" to the user
   // when the bar was empty / unused. Preference persists across reboots.
+  // App version string for the sidebar header. Reads from the main
+  // process getVersion IPC so it matches package.json instead of the
+  // hardcoded "2.1.5" the user kept seeing in the bottom-left.
+  const [appVersionLabel, setAppVersionLabel] = useState<string>('…')
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const v = await (window.api as any).app?.getVersion?.()
+        if (alive && typeof v === 'string' && v) setAppVersionLabel(v)
+      } catch { if (alive) setAppVersionLabel('2.7.1') }
+    })()
+    return () => { alive = false }
+  }, [])
+
   const [tagBarOpen, setTagBarOpenRaw] = useState<boolean>(() => {
     try {
       const v = localStorage.getItem('vault_tagbar_open')
@@ -2147,13 +2162,13 @@ export default function App() {
                 <img src={vaultLogo} alt="Vault logo" className="w-full h-full object-cover" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold">Vault</div>
-                <div className="text-xs text-[var(--muted)]" aria-label="Version 2.1.5">2.1.5</div>
+                <div className="text-sm font-semibold truncate">Vault</div>
+                <div className="text-xs text-[var(--muted)] truncate" aria-label={`Version ${appVersionLabel}`}>{appVersionLabel}</div>
               </div>
               {/* #113 — Subscriptions inbox bell */}
-              <SubscriptionsBellButton />
+              <div className="shrink-0"><SubscriptionsBellButton /></div>
               {/* #195 — Active profile switcher */}
-              <ProfileSwitcher />
+              <div className="shrink-0"><ProfileSwitcher /></div>
             </div>
           </div>
 
