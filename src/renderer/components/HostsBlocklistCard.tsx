@@ -45,7 +45,36 @@ export function HostsBlocklistCard(): React.JSX.Element {
     }
   }, [])
 
-  useEffect(() => { void refreshStatus() }, [refreshStatus])
+  useEffect(() => {
+    void (async () => {
+      await refreshStatus()
+      // Auto-fetch the StevenBlack list once on first visit so panic
+      // mode + auto-NSFW tagging are ready to use without the user
+      // having to find the Refresh button. Flag prevents re-firing on
+      // every mount. Matches the model-downloader auto-trigger pattern.
+      try {
+        const flag = localStorage.getItem('vault.hostsBlocklist.autoFetched')
+        if (flag === '1') return
+        const api: any = (window as any).api
+        const status = await api?.hostsBlocklistStatus?.()
+        if (status?.ok && status.cached) {
+          localStorage.setItem('vault.hostsBlocklist.autoFetched', '1')
+          return
+        }
+        setBusy('refresh')
+        try {
+          const r = await api?.hostsBlocklistRefresh?.()
+          if (r?.ok && r.meta) {
+            localStorage.setItem('vault.hostsBlocklist.autoFetched', '1')
+            setInfo(`Auto-fetched: ${r.meta.domainCount.toLocaleString()} domains (${formatBytes(r.meta.bytes)})`)
+            await refreshStatus()
+          }
+        } finally {
+          setBusy(null)
+        }
+      } catch { /* swallow — user can still click manually */ }
+    })()
+  }, [refreshStatus])
 
   const onRefresh = useCallback(async () => {
     setBusy('refresh'); setError(null); setInfo(null)
