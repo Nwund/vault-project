@@ -3253,6 +3253,75 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
         </>
       )}
 
+      {/* Bulk selection helper bar — only shows in selection mode with
+          nothing yet selected. Gives the user fast ways to bootstrap a
+          selection over a big library without click-tapping every tile. */}
+      {selectionMode && selectedIds.size === 0 && (
+        <div
+          role="toolbar"
+          aria-label="Bulk selection helpers"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[90] flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-black/90 border border-white/10 backdrop-blur-sm shadow-2xl"
+        >
+          <span className="text-sm text-white/70 mr-1">Selection mode</span>
+          <Btn
+            tone="ghost"
+            onClick={() => {
+              // Select every media id currently rendered on this page.
+              const pageSlice = pageSize === -1
+                ? sortedMedia.slice((currentPage - 1) * effectivePageSize, currentPage * effectivePageSize)
+                : sortedMedia
+              setSelectedIds(new Set(pageSlice.map((m: any) => m.id)))
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+            title="Select every tile on the current page"
+          >
+            <LayoutGrid size={12} />
+            <span>Select page ({pageSize === -1 ? sortedMedia.length : Math.min(effectivePageSize, sortedMedia.length - (currentPage - 1) * effectivePageSize)})</span>
+          </Btn>
+          <Btn
+            tone="ghost"
+            onClick={async () => {
+              try {
+                setBulkActionLoading('selectAll')
+                // Pull every matching id from the server in one shot —
+                // re-runs the current filter without pagination so the
+                // selection covers the whole filtered set, not just the
+                // visible 60.
+                const r: any = await window.api.media.search({
+                  q: debouncedQuery,
+                  type: typeFilter,
+                  tags: activeTags,
+                  sortBy,
+                  sortAscending,
+                  limit: -1,
+                  offset: 0,
+                })
+                const ids = ((r?.items ?? r) as any[]).map((m) => m.id).filter(Boolean)
+                setSelectedIds(new Set(ids))
+              } catch (err: any) {
+                showToast('error', `Select all failed: ${err?.message ?? String(err)}`)
+              } finally {
+                setBulkActionLoading(null)
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+            title="Select every item matching current filters across all pages"
+            disabled={bulkActionLoading === 'selectAll'}
+          >
+            {bulkActionLoading === 'selectAll' ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+            <span>Select all matches ({sortedMedia.length.toLocaleString()})</span>
+          </Btn>
+          <Btn
+            tone="ghost"
+            onClick={() => { setSelectionMode(false); setSelectedIds(new Set()) }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+          >
+            <X size={12} />
+            <span>Exit</span>
+          </Btn>
+        </div>
+      )}
+
       {/* Bulk selection floating action bar */}
       {selectionMode && selectedIds.size > 0 && (
         <div
@@ -3261,6 +3330,14 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
           className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[90] flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-black/90 border border-[var(--primary)]/30 backdrop-blur-sm shadow-2xl"
         >
           <span className="text-sm text-white/80 mr-1" aria-live="polite">{selectedIds.size} selected</span>
+          <Btn
+            tone="ghost"
+            onClick={() => setSelectedIds(new Set())}
+            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-white/60 hover:text-white/90"
+            title="Clear selection"
+          >
+            <X size={12} />
+          </Btn>
 
           {/* Add to existing Playlist */}
           <Btn
