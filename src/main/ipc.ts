@@ -942,6 +942,76 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return { items, total }
   })
 
+  // Histogram of aesthetic / deepfake / aiImage probabilities across
+  // the library (#279). Buckets each into 10 equal bins. Used by the
+  // Stats page for at-a-glance distribution. Returns null counts for
+  // a column when nothing has been scored yet so the renderer can
+  // collapse those rows.
+  ipcMain.handle('media:scoreHistograms', async () => {
+    try {
+      const buckets = (column: string) => {
+        const rows = db.raw.prepare(`
+          SELECT CAST(MIN(9, FLOOR(${column} * 10)) AS INTEGER) AS bin, COUNT(*) AS n
+          FROM media_stats
+          WHERE ${column} IS NOT NULL
+          GROUP BY bin
+          ORDER BY bin
+        `).all() as Array<{ bin: number; n: number }>
+        if (rows.length === 0) return null
+        const out = new Array(10).fill(0)
+        for (const r of rows) {
+          if (r.bin >= 0 && r.bin < 10) out[r.bin] = r.n
+        }
+        return out
+      }
+      // aestheticScore is 0-10, normalize to 0-1 by dividing by 10
+      const aesthetic = (() => {
+        const rows = db.raw.prepare(`
+          SELECT CAST(MIN(9, FLOOR(aestheticScore)) AS INTEGER) AS bin, COUNT(*) AS n
+          FROM media_stats
+          WHERE aestheticScore IS NOT NULL
+          GROUP BY bin
+          ORDER BY bin
+        `).all() as Array<{ bin: number; n: number }>
+        if (rows.length === 0) return null
+        const out = new Array(10).fill(0)
+        for (const r of rows) {
+          if (r.bin >= 0 && r.bin < 10) out[r.bin] = r.n
+        }
+        return out
+      })()
+      return {
+        ok: true,
+        aesthetic,
+        deepfake: buckets('deepfakeProb'),
+        aiImage: buckets('aiImageProb'),
+      }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  // Top-N by aesthetic score (#278). Joins media + media_stats and
+  // returns the N highest-scored items + their thumb paths so the
+  // Stats page can render a 'best looking' showcase row without
+  // re-querying per item.
+  ipcMain.handle('media:topByAesthetic', async (_ev, args?: { limit?: number }) => {
+    const limit = Math.max(1, Math.min(200, args?.limit ?? 20))
+    try {
+      const rows = db.raw.prepare(`
+        SELECT m.id, m.filename, m.thumbPath, m.type, ms.aestheticScore
+        FROM media m
+        JOIN media_stats ms ON ms.mediaId = m.id
+        WHERE ms.aestheticScore IS NOT NULL
+        ORDER BY ms.aestheticScore DESC
+        LIMIT ?
+      `).all(limit) as Array<{ id: string; filename: string; thumbPath: string | null; type: string; aestheticScore: number }>
+      return { ok: true, items: rows }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), items: [] }
+    }
+  })
+
   // Lightweight "give me just the ids matching this filter" — used by
   // Library's Select All Matches button. Returning the full row payload
   // for 4827 items via media:search is ~5MB over IPC; this one returns
@@ -1572,11 +1642,13 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return db.statsGet(mediaId)
   })
 
-  // Batch fetch stats for multiple media items - major performance optimization
+  // Batch fetch stats for multiple media items - major performance optimization.
+  // Now also includes aestheticScore / deepfakeProb / aiImageProb so the
+  // Library MediaTile can render AI badges + sort-by-aesthetic without
+  // a separate per-tile fetch.
   ipcMain.handle('media:getStatsBatch', async (_ev, mediaIds: string[]) => {
     const statsMap = db.statsGetBatch(mediaIds)
-    // Convert Map to object for IPC serialization
-    const result: Record<string, { rating: number; viewCount: number; oCount: number }> = {}
+    const result: Record<string, { rating: number; viewCount: number; oCount: number; aestheticScore?: number | null; deepfakeProb?: number | null; aiImageProb?: number | null }> = {}
     statsMap.forEach((value, key) => {
       result[key] = value
     })

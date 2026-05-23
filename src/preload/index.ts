@@ -475,6 +475,20 @@ const api = {
     // "Mark all selected as watched" — bulk-record-view in one txn.
     bulkRecordView: (mediaIds: string[]) =>
       invoke<{ ok: boolean; processed: number; error?: string }>('media:bulk-record-view', { mediaIds }),
+    topByAesthetic: (limit?: number) =>
+      invoke<{
+        ok: boolean
+        items: Array<{ id: string; filename: string; thumbPath: string | null; type: string; aestheticScore: number }>
+        error?: string
+      }>('media:topByAesthetic', { limit }),
+    scoreHistograms: () =>
+      invoke<{
+        ok: boolean
+        aesthetic: number[] | null
+        deepfake: number[] | null
+        aiImage: number[] | null
+        error?: string
+      }>('media:scoreHistograms'),
     // Render the same proportional frame from a video (default 50%) —
     // used by the Duplicates panel so the user can visually verify that
     // two videos are actually duplicates instead of trusting their

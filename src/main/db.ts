@@ -677,23 +677,29 @@ export function createDb() {
   }
 
   // Batch fetch stats for multiple media items at once - major performance optimization
-  function statsGetBatch(mediaIds: string[]): Map<string, { rating: number; viewCount: number; oCount: number }> {
-    const result = new Map<string, { rating: number; viewCount: number; oCount: number }>()
+  function statsGetBatch(mediaIds: string[]): Map<string, { rating: number; viewCount: number; oCount: number; aestheticScore?: number | null; deepfakeProb?: number | null; aiImageProb?: number | null }> {
+    const result = new Map<string, { rating: number; viewCount: number; oCount: number; aestheticScore?: number | null; deepfakeProb?: number | null; aiImageProb?: number | null }>()
     if (mediaIds.length === 0) return result
 
-    // SQLite has a limit on placeholders, process in chunks of 500
+    // SQLite has a limit on placeholders, process in chunks of 500.
+    // Now also returns aestheticScore / deepfakeProb / aiImageProb so
+    // MediaTile can render the new "AI" / "best looking" affordances
+    // without a separate per-tile fetch.
     const chunkSize = 500
     for (let i = 0; i < mediaIds.length; i += chunkSize) {
       const chunk = mediaIds.slice(i, i + chunkSize)
       const placeholders = chunk.map(() => '?').join(',')
-      const query = `SELECT mediaId, views, rating, oCount FROM media_stats WHERE mediaId IN (${placeholders})`
-      const rows = db.prepare(query).all(...chunk) as Array<{ mediaId: string; views: number; rating: number; oCount: number }>
+      const query = `SELECT mediaId, views, rating, oCount, aestheticScore, deepfakeProb, aiImageProb FROM media_stats WHERE mediaId IN (${placeholders})`
+      const rows = db.prepare(query).all(...chunk) as Array<{ mediaId: string; views: number; rating: number; oCount: number; aestheticScore: number | null; deepfakeProb: number | null; aiImageProb: number | null }>
 
       for (const row of rows) {
         result.set(row.mediaId, {
           rating: row.rating ?? 0,
           viewCount: row.views ?? 0,
-          oCount: row.oCount ?? 0
+          oCount: row.oCount ?? 0,
+          aestheticScore: row.aestheticScore,
+          deepfakeProb: row.deepfakeProb,
+          aiImageProb: row.aiImageProb,
         })
       }
     }

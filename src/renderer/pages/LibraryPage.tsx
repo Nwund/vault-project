@@ -377,10 +377,21 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
   const [openIds, setOpenIds] = useState<string[]>([]) // Support up to 10 floating players
   const [playerBounds, setPlayerBounds] = useState<Map<string, { x: number; y: number; width: number; height: number }>>(new Map())
   const [isLoading, setIsLoading] = useState(false)
-  const [mediaStats, setMediaStats] = useState<Map<string, { rating: number; viewCount: number; oCount: number }>>(new Map())
+  const [mediaStats, setMediaStats] = useState<Map<string, { rating: number; viewCount: number; oCount: number; aestheticScore?: number | null; deepfakeProb?: number | null; aiImageProb?: number | null }>>(new Map())
   const [randomQuickTags, setRandomQuickTags] = useState<TagRow[]>([])
   const [allTagsForSearch, setAllTagsForSearch] = useState<Array<{ name: string; count: number }>>([]) // For search suggestions
   const [currentPage, setCurrentPage] = useState(1)
+  // 'Hide AI-generated' filter — when on, excludes any media with
+  // aiImageProb ≥ 0.75 from the visible grid. Persisted across
+  // restarts. Implemented client-side via a sortedMedia filter step
+  // (the server doesn't know which stats threshold to apply, and the
+  // batch stats fetch already runs once per page).
+  const [hideAiGen, setHideAiGen] = useState<boolean>(() => {
+    try { return localStorage.getItem('vault.library.hideAiGen') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('vault.library.hideAiGen', hideAiGen ? '1' : '0') } catch { /* ignore */ }
+  }, [hideAiGen])
   // Scroll the page back to top whenever the user paginates or changes
   // sort/filter. Without this, paging to page 2 leaves the viewport
   // pinned at the bottom of page 1 and the user wonders if the click
@@ -1031,6 +1042,19 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       filtered = filtered.filter((m: MediaRow) => !featureLessSet.has(m.id))
     }
 
+    // 'Hide AI-generated' filter (#265) — uses the aiImageProb from
+    // media_stats fetched into mediaStats. Threshold matches the badge
+    // (0.75) so what the user sees on a tile lines up with what gets
+    // hidden when they flip the filter on.
+    if (hideAiGen) {
+      filtered = filtered.filter((m: MediaRow) => {
+        const s = mediaStats.get(m.id)
+        const ai = s?.aiImageProb ?? 0
+        const df = s?.deepfakeProb ?? 0
+        return Math.max(ai, df) < 0.75
+      })
+    }
+
     // Database handles: newest, oldest, name, views, duration, size, random
     // Only 'type' needs local sorting
     if (sortBy === 'type') {
@@ -1045,7 +1069,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
     }
     // For all other sorts, database already sorted the data
     return filtered
-  }, [media, sortBy, debouncedQuery, colorFilterIds, showFeatureLess, featureLessSet])
+  }, [media, sortBy, debouncedQuery, colorFilterIds, showFeatureLess, featureLessSet, hideAiGen, mediaStats])
 
   // Effective page size: -1 means show all
   const effectivePageSize = pageSize === -1 ? sortedMedia.length : pageSize
@@ -2379,6 +2403,21 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
           )}
         >
           <Play size={10} className="fill-current" /> Videos
+        </button>
+        {/* Hide AI-generated toggle — excludes anything with aiImage
+            or deepfake probability ≥ 0.75 from the grid. State
+            persists across restarts. */}
+        <button
+          onClick={() => setHideAiGen((v) => !v)}
+          className={cn(
+            'px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 flex items-center gap-1',
+            hideAiGen
+              ? 'bg-fuchsia-600/40 border border-fuchsia-400/60 text-fuchsia-100'
+              : 'bg-white/5 border border-transparent text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
+          )}
+          title={hideAiGen ? 'AI-generated items are hidden. Click to show.' : 'Hide items flagged as AI-generated (≥75% probability)'}
+        >
+          🤖 {hideAiGen ? 'AI hidden' : 'Hide AI'}
         </button>
         {/* Best looking — sorts by aesthetic-predictor score DESC.
             Requires aesthetic-linear.json to be installed; unscored
@@ -4688,7 +4727,7 @@ const MediaTile = memo(function MediaTile(props: {
   layout?: LayoutOption
   disabled?: boolean
   showStats?: boolean
-  stats?: { rating: number; viewCount: number; oCount: number }
+  stats?: { rating: number; viewCount: number; oCount: number; aestheticScore?: number | null; deepfakeProb?: number | null; aiImageProb?: number | null }
   previewMuted?: boolean
   liked?: boolean
   onToggleLike?: () => void
@@ -4988,6 +5027,45 @@ const MediaTile = memo(function MediaTile(props: {
           {media.type === 'image' && <Eye size={compact ? 8 : 10} />}
         </div>
 
+        {/* AI-generated / deepfake badge (#264). Renders when either
+            ai-image probability OR deepfake probability is at or
+            above 0.75. Stays visible even when the HUD is hidden so
+            users can spot AI content at a glance without opening it. */}
+        {(() => {
+          const aiP = props.stats?.aiImageProb ?? 0
+          const dfP = props.stats?.deepfakeProb ?? 0
+          const maxP = Math.max(aiP ?? 0, dfP ?? 0)
+          if (maxP < 0.75) return null
+          return (
+            <div
+              className={cn(
+                'absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded backdrop-blur-sm',
+                'bg-fuchsia-600/80 border border-fuchsia-300/40 text-white shadow-lg tabular-nums',
+                compact ? 'text-[8px]' : 'text-[10px]'
+              )}
+              title={`AI: ${(aiP * 100).toFixed(0)}% · Deepfake: ${(dfP * 100).toFixed(0)}%`}
+            >
+              🤖 AI
+            </div>
+          )
+        })()}
+
+        {/* Aesthetic score badge — only when score is high enough to
+            be a positive signal (≥ 7/10). Bottom-left so it doesn't
+            collide with the AI badge above. */}
+        {typeof props.stats?.aestheticScore === 'number' && props.stats.aestheticScore >= 7 && (
+          <div
+            className={cn(
+              'absolute bottom-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded backdrop-blur-sm',
+              'bg-amber-500/80 border border-amber-300/40 text-white shadow-lg tabular-nums',
+              compact ? 'text-[8px]' : 'text-[10px]'
+            )}
+            title={`Aesthetic score: ${props.stats.aestheticScore.toFixed(1)} / 10`}
+          >
+            ✨ {props.stats.aestheticScore.toFixed(1)}
+          </div>
+        )}
+
         {/* Denial badge — shown when the media has an active denial
             cooldown. Positioned below the type badge with a hot red
             tone + lock icon. Stays visible even when the rest of the
@@ -5250,7 +5328,14 @@ const MediaTile = memo(function MediaTile(props: {
   // stats is a plain object — compare the fields we actually render.
   const ps = prev.stats, ns = next.stats
   if (!!ps !== !!ns) return false
-  if (ps && ns && (ps.rating !== ns.rating || ps.viewCount !== ns.viewCount || ps.oCount !== ns.oCount)) return false
+  if (ps && ns && (
+    ps.rating !== ns.rating ||
+    ps.viewCount !== ns.viewCount ||
+    ps.oCount !== ns.oCount ||
+    ps.aestheticScore !== ns.aestheticScore ||
+    ps.deepfakeProb !== ns.deepfakeProb ||
+    ps.aiImageProb !== ns.aiImageProb
+  )) return false
   return true
 })
 

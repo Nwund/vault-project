@@ -11,6 +11,8 @@ import { useConfetti } from '../hooks/useConfetti'
 import { useAnime } from '../hooks/useAnime'
 import type { GoonStats, SessionAnalytics } from '../types'
 import { TopBar, AnimatedCounter, DurationDisplay } from '../components/ui'
+import { TopByAestheticCard } from '../components/TopByAestheticCard'
+import { ScoreHistogramsCard } from '../components/ScoreHistogramsCard'
 import { cn } from '../utils/cn'
 import { formatBytes } from '../utils/formatters'
 
@@ -385,6 +387,16 @@ export function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof us
             <div className="text-[10px] text-[var(--muted)]">Shuffles</div>
           </div>
         </div>
+
+        {/* Top by aesthetic (#278) — surfaces the user's highest-scored
+            media using the new media_stats.aestheticScore column. Only
+            renders when at least one item has been scored. */}
+        <TopByAestheticCard />
+
+        {/* Distribution histograms (#279) for the three score columns
+            populated by the AI processing queue. Sparkbars only;
+            hidden when nothing has been scored yet. */}
+        <ScoreHistogramsCard />
 
         {/* Session Analytics — scoped to the selected range */}
         {sessionAnalytics && (
