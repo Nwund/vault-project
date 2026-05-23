@@ -282,6 +282,24 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
   // Restore persisted filter state on mount
   const persisted = useMemo(() => getPersistedFilters(), [])
   const [query, setQuery] = useState<string>(persisted?.query ?? '')
+  // Search input ref so Ctrl/Cmd+F can focus it from anywhere on the
+  // Library page.
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+        // Don't hijack Ctrl+F inside other text inputs / textareas —
+        // user might be typing in a tag editor and expect the
+        // browser's find-in-text behavior in that local field.
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   const [activeTags, setActiveTags] = useState<string[]>(persisted?.activeTags ?? [])
   const [typeFilter, setTypeFilter] = useState<MediaType | 'all'>(persisted?.typeFilter ?? 'all')
   const [sortBy, setSortBy] = useState<SortOption>(persisted?.sortBy ?? 'newest')
@@ -1882,6 +1900,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
           <div className="relative flex-1">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" aria-hidden="true" />
             <input
+              ref={searchInputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onFocus={() => setSearchFocused(true)}
@@ -1891,7 +1910,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                   addToSearchHistory(query.trim())
                 }
               }}
-              placeholder="Search..."
+              placeholder="Search... (Ctrl+F)"
               aria-label="Search media library"
               aria-describedby="search-tips"
               role="searchbox"

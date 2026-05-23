@@ -55,6 +55,9 @@ export default function PerformersPage() {
   const [search, setSearch] = useState('')
   const [minSamples, setMinSamples] = useState(2)
   const [editingId, setEditingId] = useState<string | null>(null)
+  // F2 = rename hovered cluster. Tracks the most-recently-hovered tile
+  // so the keyboard shortcut knows which one to act on.
+  const [hoveredClusterId, setHoveredClusterId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   // Cluster thumb URLs — resolved async via toFileUrlCached.
   const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({})
@@ -103,6 +106,24 @@ export default function PerformersPage() {
   }, [minSamples, showToast])
 
   useEffect(() => { refresh() }, [refresh])
+
+  // F2 = rename the currently-hovered cluster (#254). Bypasses the
+  // mouse-only "Name" hover button so the user can rename a row of
+  // clusters without leaving the keyboard. Skips when the user is
+  // already editing or typing in another input.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.key !== 'F2') return
+      if (!hoveredClusterId || editingId) return
+      e.preventDefault()
+      const target = clusters.find((c) => c.id === hoveredClusterId)
+      setEditingId(hoveredClusterId)
+      setEditValue(target?.name ?? '')
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [hoveredClusterId, editingId, clusters])
 
   // Resolve representative thumbnails for visible clusters.
   useEffect(() => {
@@ -386,6 +407,8 @@ export default function PerformersPage() {
             return (
               <div
                 key={c.id}
+                onMouseEnter={() => setHoveredClusterId(c.id)}
+                onMouseLeave={() => setHoveredClusterId((prev) => (prev === c.id ? null : prev))}
                 className={cn(
                   'rounded-lg overflow-hidden border bg-[var(--panel)] transition group relative',
                   isMergeSource

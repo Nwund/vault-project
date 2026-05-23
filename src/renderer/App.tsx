@@ -365,6 +365,22 @@ function ContextMenuOverlay({ onAddToPlaylist, onViewInfo }: { onAddToPlaylist?:
         hideContextMenu()
       }
     },
+    // Cross-page link to Brainwash (CaptionsPage). User selected media
+    // they want to caption — currently they'd have to navigate to
+    // Brainwash + find the file again. This jumps straight there
+    // with the media id pre-staged via sessionStorage so the page can
+    // auto-pick it on mount.
+    {
+      label: 'Open in Brainwash',
+      icon: <Type size={14} />,
+      action: () => {
+        if (contextMenu.mediaId) {
+          try { sessionStorage.setItem('vault_brainwash_open_media', contextMenu.mediaId) } catch { /* ignore */ }
+          window.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'captions' }))
+        }
+        hideContextMenu()
+      }
+    },
     {
       label: 'Cast to TV',
       icon: <Tv size={14} />,

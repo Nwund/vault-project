@@ -449,7 +449,45 @@ export default function Rule34Page() {
   // Failed sources that should be excluded from the next "All sources"
   // fan-out. Populated automatically after 3 consecutive failures and
   // user-mutable via the per-source error retry/mute buttons.
-  const [mutedSources, setMutedSources] = useState<Set<string>>(new Set())
+  const [mutedSources, setMutedSources] = useState<Set<string>>(() => {
+    // Restore the last mute set from localStorage so the user doesn't
+    // re-mute the same 12 sources on every launch.
+    try {
+      const raw = localStorage.getItem('vault.browse.mutedSources')
+      if (raw) return new Set(JSON.parse(raw) as string[])
+    } catch { /* ignore */ }
+    return new Set()
+  })
+  // Source presets (#256) — named saved mute-sets so the user can
+  // flip between "all sources / boorus only / tubes only / my mix"
+  // without re-toggling 27 chips. Stored in localStorage.
+  const [sourcePresets, setSourcePresets] = useState<Array<{ name: string; muted: string[] }>>(() => {
+    try {
+      const raw = localStorage.getItem('vault.browse.sourcePresets')
+      if (raw) return JSON.parse(raw)
+    } catch { /* ignore */ }
+    return []
+  })
+  useEffect(() => {
+    try { localStorage.setItem('vault.browse.mutedSources', JSON.stringify(Array.from(mutedSources))) } catch { /* ignore */ }
+  }, [mutedSources])
+  useEffect(() => {
+    try { localStorage.setItem('vault.browse.sourcePresets', JSON.stringify(sourcePresets)) } catch { /* ignore */ }
+  }, [sourcePresets])
+  const saveCurrentAsPreset = useCallback((name: string) => {
+    if (!name.trim()) return
+    setSourcePresets((prev) => {
+      const filtered = prev.filter((p) => p.name !== name.trim())
+      return [...filtered, { name: name.trim(), muted: Array.from(mutedSources) }]
+    })
+  }, [mutedSources])
+  const loadPreset = useCallback((name: string) => {
+    const p = sourcePresets.find((x) => x.name === name)
+    if (p) setMutedSources(new Set(p.muted))
+  }, [sourcePresets])
+  const deletePreset = useCallback((name: string) => {
+    setSourcePresets((prev) => prev.filter((p) => p.name !== name))
+  }, [])
   // Tile-hover preview state. Tracks the post id that's currently
   // hovered + a delay-timer ref so a fast cursor sweep doesn't fire
   // a video load on every tile. Only direct-MP4 URLs preview;
@@ -1457,6 +1495,47 @@ export default function Rule34Page() {
               </button>
             )
           })}
+        </div>
+
+        {/* Source presets — save/load named mute-sets. Lets the user
+            keep "boorus only", "tubes only", "my mix" etc. and flip
+            between them without re-toggling 27 chips each time. */}
+        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+          <span className="text-[11px] text-[var(--muted)] mr-1">Presets:</span>
+          {sourcePresets.length === 0 && (
+            <span className="text-[11px] text-[var(--muted)] italic">None saved yet</span>
+          )}
+          {sourcePresets.map((p) => (
+            <div
+              key={p.name}
+              className="inline-flex items-center gap-0.5 rounded border border-white/10 bg-white/5 hover:border-[var(--primary)]/40 transition group"
+            >
+              <button
+                onClick={() => loadPreset(p.name)}
+                className="px-2 py-1 text-[11px] text-white/80 hover:text-white"
+                title={`Load preset "${p.name}" (mutes ${p.muted.length} sources)`}
+              >
+                {p.name}
+              </button>
+              <button
+                onClick={() => deletePreset(p.name)}
+                className="px-1.5 py-1 text-[10px] text-red-300/60 hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Delete preset"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={() => {
+              const name = window.prompt('Name for this source mix:', `Mix ${sourcePresets.length + 1}`)
+              if (name?.trim()) saveCurrentAsPreset(name.trim())
+            }}
+            className="px-2 py-1 text-[11px] rounded border border-dashed border-white/15 bg-transparent hover:border-[var(--primary)]/50 hover:bg-[var(--primary)]/10 text-[var(--muted)] hover:text-white"
+            title="Save the current mute set as a named preset"
+          >
+            + Save current
+          </button>
         </div>
 
         {/* Source picker — capped at ~2 rows in narrow windows; scrolls

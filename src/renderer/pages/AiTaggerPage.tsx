@@ -377,6 +377,36 @@ export function AiTaggerPage() {
 
   // UI state
   const [activeTab, setActiveTab] = useState<'setup' | 'queue' | 'review' | 'tools'>('setup')
+  // Power-user keyboard flow for the review tab (#253). Shift+Enter
+  // approves the currently-selected item AND advances to the next
+  // pending one. Skips when typing in an input / textarea so editing
+  // a suggested title still works. Defined here AFTER activeTab so
+  // the closure captures it.
+  useEffect(() => {
+    if (activeTab !== 'review') return
+    const onKey = async (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (!e.shiftKey || e.key !== 'Enter') return
+      const cur = selectedReviewItem
+      if (!cur) return
+      e.preventDefault()
+      const idx = reviewItems.findIndex((r) => r.mediaId === cur.mediaId)
+      try {
+        await window.api.ai.approve(cur.mediaId)
+      } catch (err: any) {
+        showToast('error', err?.message ?? 'Approve failed')
+        return
+      }
+      const next = idx >= 0 && idx + 1 < reviewItems.length ? reviewItems[idx + 1] : null
+      setSelectedReviewItem(next)
+      loadReviewItems()
+      refreshQueueStatus()
+      refreshUndoStatus()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, selectedReviewItem, reviewItems])
   const [tier2Enabled, setTier2Enabled] = useState(false)
   // 0 disables auto-categorize. Default ON at 0.6 so freshly-queued items
   // actually pick up tags without the user having to discover the slider.
