@@ -3084,9 +3084,12 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
             </div>
           </div>
 
-          {/* Bottom Pagination */}
+          {/* Bottom Pagination — sticky so it stays in view while
+              scrolling a 200/page library, but only when there's more
+              than one page to paginate. flex-wrap so the controls still
+              fold gracefully on narrow widths. */}
           {showPagination && (
-            <div className="mt-6 flex justify-center items-center gap-2 flex-wrap">
+            <div className="sticky bottom-0 mt-6 -mx-2 px-2 py-3 z-10 flex justify-center items-center gap-2 flex-wrap bg-[var(--surface)]/85 backdrop-blur-md border-t border-[var(--border)]">
               {/* First page */}
               <button
                 onClick={() => setCurrentPage(1)}

@@ -38,7 +38,42 @@ export function BulkModelDownloaderCard(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    void refresh()
+    void (async () => {
+      await refresh()
+      // User explicit ask: "make sure to add and download all models for
+      // me". On the user's first arrival at AI Tools where missing>=3
+      // and they haven't been auto-prompted before, kick off the bulk
+      // install automatically. The flag is renderer-local so toggling
+      // visits later doesn't re-fire. They can always click Download
+      // all missing again afterwards.
+      try {
+        const flag = localStorage.getItem('vault.ai.autoBulkModelDownload.fired')
+        if (flag === '1') return
+        const list = await (window.api as any).ai.extraDownloadsList?.()
+        const missing = Array.isArray(list) ? list.filter((x: any) => !x.installed).length : 0
+        if (missing < 3) return
+        localStorage.setItem('vault.ai.autoBulkModelDownload.fired', '1')
+        // Inline the bulk install to avoid TDZ ref on installAll.
+        setBusy('all')
+        setProgress({ index: 0, total: missing, kind: '', label: 'Auto-installing missing models…' })
+        try {
+          const r = await (window.api as any).ai.extraDownloadAll?.()
+          if (r?.ok) {
+            const ok = r.results.filter((x: any) => x.ok).length
+            const failed = r.results.filter((x: any) => !x.ok)
+            setLastResult(failed.length === 0
+              ? `Auto-installed ${ok} model(s).`
+              : `${ok} ok, ${failed.length} failed: ${failed.map((f: any) => `${f.kind}: ${f.error}`).join('; ')}`)
+          }
+        } catch (err: any) {
+          setLastResult(`Auto-install failed: ${err?.message ?? String(err)}`)
+        } finally {
+          setBusy(null)
+          setProgress(null)
+          await refresh()
+        }
+      } catch { /* swallow — the user can still click manually */ }
+    })()
     const unsub = (window.api as any).ai.onExtraDownloadProgress?.((data: { index: number; total: number; kind: string; label: string }) => {
       setProgress(data)
     })
