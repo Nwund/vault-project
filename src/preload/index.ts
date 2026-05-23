@@ -92,6 +92,15 @@ const api = {
     visualEffects: {
       update: (patch: any) => invoke('settings:visualEffects:update', patch),
     },
+    sound: {
+      update: (patch: any) => invoke('settings:sound:update', patch),
+    },
+    xyrene: {
+      update: (patch: any) => invoke('settings:xyrene:update', patch),
+    },
+    performance: {
+      update: (patch: any) => invoke('settings:performance:update', patch),
+    },
 
     // Theme
     setTheme: (themeId: string) => invoke('settings:setTheme', themeId),
@@ -445,6 +454,18 @@ const api = {
     deleteDuplicates: (options?: { dryRun?: boolean }) => invoke<{ deletedCount: number; freedBytes: number; deleted: string[]; dryRun: boolean }>('media:deleteDuplicates', options),
     // Delete from library (soft delete - removes from DB, file stays on disk)
     delete: (mediaId: string) => invoke<{ success: boolean; deletedMedia?: any; error?: string }>('media:delete', mediaId),
+    // Bulk operations — Library's "select all + tag / feature-less /
+    // deny / delete" used to issue one IPC per id (4,800+ round trips on
+    // the user's collection). These collapse it into a single call with
+    // a SQL transaction on the main side.
+    bulkAddTag: (mediaIds: string[], tag: string) =>
+      invoke<{ ok: boolean; processed: number; errors: string[]; tag?: string }>('media:bulk-add-tag', { mediaIds, tag }),
+    bulkFeatureLess: (mediaIds: string[], value: boolean) =>
+      invoke<{ ok: boolean; processed: number; errors: string[]; value?: boolean }>('media:bulk-feature-less', { mediaIds, value }),
+    bulkDenial: (mediaIds: string[], durationMin: number) =>
+      invoke<{ ok: boolean; processed: number; errors: string[]; durationMin?: number }>('media:bulk-denial', { mediaIds, durationMin }),
+    bulkDelete: (mediaIds: string[]) =>
+      invoke<{ ok: boolean; processed: number; errors: string[] }>('media:bulk-delete', { mediaIds }),
     // Undo last delete (restores media to library if file still exists)
     undoDelete: () => invoke<{ success: boolean; restoredId?: string; error?: string }>('media:undoDelete'),
     // Persistent trash (30-day retention) — separate from the in-memory
@@ -2291,6 +2312,38 @@ const api = {
       backend: 'xtts' | 'f5tts'
       port: number
     }>('ai:f5tts-status'),
+    // Detector status probes the renderer needs but didn't have a bridge
+    // for. Without these, ExtraDetectorsCard treats them as "IPC
+    // unavailable" even though the handlers exist.
+    beatsStatus: () => invoke<{ installed: boolean; expectedPath: string; sizeBytes?: number }>('ai:beats-status'),
+    pannsStatus: () => invoke<{ installed: boolean; expectedPath: string; sizeBytes?: number }>('ai:panns-status'),
+    scaffoldStatuses: () => invoke<Record<string, { installed: boolean; expectedPath: string }>>('ai:scaffold-statuses'),
+    // Curated one-click ONNX downloader. Lists everything we know how to
+    // fetch from permissively-licensed sources; downloadAll iterates and
+    // emits per-model progress over ai:extra-download-progress.
+    extraDownloadsList: () => invoke<Array<{
+      kind: string
+      label: string
+      filename: string
+      expectedPath: string
+      installed: boolean
+      sizeBytes: number
+      expectedBytes: number | null
+    }>>('ai:extra-downloads-list'),
+    extraDownload: (kind: string) => invoke<{
+      ok: boolean
+      alreadyPresent?: boolean
+      sizeBytes?: number
+      path?: string
+      kind?: string
+      error?: string
+    }>('ai:extra-download', { kind }),
+    extraDownloadAll: () => invoke<{
+      ok: boolean
+      results: Array<{ kind: string; ok: boolean; alreadyPresent?: boolean; sizeBytes?: number; error?: string }>
+    }>('ai:extra-download-all'),
+    onExtraDownloadProgress: (cb: (data: { index: number; total: number; kind: string; label: string }) => void) =>
+      on('ai:extra-download-progress', cb),
     extraModelStatus: (kind?: string) => invoke<Array<{
       kind: string
       label: string

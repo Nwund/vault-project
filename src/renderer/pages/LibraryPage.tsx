@@ -3456,16 +3456,15 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
               if (!tagName || !tagName.trim()) return
               try {
                 setBulkActionLoading('tag')
-                let added = 0
-                for (const mid of selectedIds) {
-                  try {
-                    await window.api.invoke('media:addTag', mid, tagName.trim())
-                    added++
-                  } catch { /* skip per-item failures */ }
+                const r = await (window.api.media as any).bulkAddTag(Array.from(selectedIds), tagName.trim())
+                if (r?.ok) {
+                  showToast('success', `Tagged ${r.processed}/${selectedIds.size} items with "${r.tag ?? tagName.trim()}"`)
+                  window.dispatchEvent(new CustomEvent('vault:tagsChanged'))
+                } else {
+                  showToast('error', `Bulk tag failed: ${(r?.errors?.[0] ?? 'unknown error')}`)
                 }
-                showToast('success', `Tagged ${added}/${selectedIds.size} items with "${tagName.trim()}"`)
               } catch (err: any) {
-                showToast('error', err?.message ?? 'Failed to tag items')
+                showToast('error', `Bulk tag failed: ${err?.message ?? String(err)}`)
               } finally {
                 setBulkActionLoading(null)
               }
@@ -3486,19 +3485,18 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
             onClick={async () => {
               try {
                 setBulkActionLoading('featureLess')
-                let flipped = 0
-                for (const mid of selectedIds) {
-                  try {
-                    const cur = await window.api.tags.featureLess.get(mid)
-                    const nextVal = !(cur?.ok && cur.value)
-                    const r = await window.api.tags.featureLess.set({ mediaId: mid, value: nextVal })
-                    if (r?.ok) flipped++
-                  } catch { /* skip per-item failures */ }
+                // Single bulk write — value is true for all selected items
+                // since toggle semantics get muddled with a mixed set.
+                // (Users can always re-click to unflag a smaller subset.)
+                const r = await (window.api.media as any).bulkFeatureLess(Array.from(selectedIds), true)
+                if (r?.ok) {
+                  showToast('success', `Feature-less applied to ${r.processed}/${selectedIds.size} items`)
+                  window.dispatchEvent(new CustomEvent('vault:featureLessChanged'))
+                } else {
+                  showToast('error', `Bulk feature-less failed: ${(r?.errors?.[0] ?? 'unknown')}`)
                 }
-                showToast('success', `Updated feature-less on ${flipped}/${selectedIds.size} items`)
-                window.dispatchEvent(new CustomEvent('vault:featureLessChanged'))
               } catch (err: any) {
-                showToast('error', err?.message ?? 'Bulk feature-less failed')
+                showToast('error', `Bulk feature-less failed: ${err?.message ?? String(err)}`)
               } finally {
                 setBulkActionLoading(null)
               }
@@ -3528,16 +3526,14 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
                 : n
               try {
                 setBulkActionLoading('deny')
-                let denied = 0
-                for (const mid of selectedIds) {
-                  try {
-                    const r = await window.api.tags.denial.set({ mediaId: mid, durationMin: Math.round(minutes) })
-                    if (r?.ok) denied++
-                  } catch { /* skip */ }
+                const r = await (window.api.media as any).bulkDenial(Array.from(selectedIds), Math.round(minutes))
+                if (r?.ok) {
+                  showToast('success', `Denied ${r.processed}/${selectedIds.size} items for ${Math.round(minutes)} min`)
+                } else {
+                  showToast('error', `Bulk deny failed: ${(r?.errors?.[0] ?? 'unknown')}`)
                 }
-                showToast('success', `Denied ${denied}/${selectedIds.size} items for ${Math.round(minutes)} min`)
               } catch (err: any) {
-                showToast('error', err?.message ?? 'Bulk deny failed')
+                showToast('error', `Bulk deny failed: ${err?.message ?? String(err)}`)
               } finally {
                 setBulkActionLoading(null)
               }
@@ -3558,18 +3554,16 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
               if (!window.confirm(`Move ${selectedIds.size} item${selectedIds.size === 1 ? '' : 's'} to Trash?\n\nRecoverable for 30 days from Library Tools → Trash.`)) return
               try {
                 setBulkActionLoading('delete')
-                let deleted = 0
-                for (const mid of selectedIds) {
-                  try {
-                    const r = await window.api.media.delete(mid)
-                    if (r?.success) deleted++
-                  } catch { /* skip per-item failures */ }
+                const r = await (window.api.media as any).bulkDelete(Array.from(selectedIds))
+                if (r?.ok) {
+                  showToast('success', `Moved ${r.processed}/${selectedIds.size} item${selectedIds.size === 1 ? '' : 's'} to Trash`)
+                  setSelectedIds(new Set())
+                  setSelectionMode(false)
+                } else {
+                  showToast('error', `Bulk delete failed: ${(r?.errors?.[0] ?? 'unknown')}`)
                 }
-                showToast('success', `Moved ${deleted}/${selectedIds.size} item${selectedIds.size === 1 ? '' : 's'} to Trash`)
-                setSelectedIds(new Set())
-                setSelectionMode(false)
               } catch (err: any) {
-                showToast('error', err?.message ?? 'Bulk delete failed')
+                showToast('error', `Bulk delete failed: ${err?.message ?? String(err)}`)
               } finally {
                 setBulkActionLoading(null)
               }

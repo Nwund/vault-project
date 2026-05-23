@@ -78,6 +78,9 @@ import {
   updateDataSettings,
   updateVisualEffectsSettings,
   updateMobileSyncSettings,
+  updateSoundSettings,
+  updateXyreneSettings,
+  updatePerformanceSettings,
   getMobileSyncSettings,
   addMediaDir,
   removeMediaDir,
@@ -645,6 +648,27 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('settings:appearance:update', async (_ev, patch: any) => {
     const next = updateAppearanceSettings(patch)
+    broadcast('settings:changed', next)
+    return next
+  })
+
+  // Sound / Xyrene / Performance — these were previously going through
+  // the generic settings:update path, which deep-merges blindly and can
+  // corrupt nested state. Typed handlers match the rest of the family.
+  ipcMain.handle('settings:sound:update', async (_ev, patch: any) => {
+    const next = updateSoundSettings(patch)
+    broadcast('settings:changed', next)
+    return next
+  })
+
+  ipcMain.handle('settings:xyrene:update', async (_ev, patch: any) => {
+    const next = updateXyreneSettings(patch)
+    broadcast('settings:changed', next)
+    return next
+  })
+
+  ipcMain.handle('settings:performance:update', async (_ev, patch: any) => {
+    const next = updatePerformanceSettings(patch)
     broadcast('settings:changed', next)
     return next
   })
@@ -1998,6 +2022,156 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       errorLogger.error('IPC', 'media:delete error', err)
       return { success: false, error: err?.message }
     }
+  })
+
+  // Bulk operations — single IPC handles N media ids, swapping out the
+  // per-item loops in LibraryPage that were issuing ~4,800 round trips
+  // for a "select-all + tag" on the user's library. Each one returns
+  // a count of successes + an error array so the renderer can show
+  // partial-success feedback.
+
+  ipcMain.handle('media:bulk-add-tag', async (_ev, args: { mediaIds: string[]; tag: string }) => {
+    const ids = Array.isArray(args?.mediaIds) ? args.mediaIds : []
+    const tag = String(args?.tag ?? '').trim()
+    if (!tag || ids.length === 0) return { ok: false, processed: 0, errors: [] as string[] }
+    // Canonicalize once — every id gets the same effective tag.
+    let effectiveTag = tag
+    try {
+      const { canonicalize } = await import('./services/tag-siblings')
+      effectiveTag = canonicalize(tag)
+    } catch { /* fall through with raw tag */ }
+    let processed = 0
+    const errors: string[] = []
+    // Better-sqlite3 is synchronous; wrap in a transaction for ~10x speedup
+    // on bulk writes vs. one statement-per-row.
+    try {
+      const txn = db.raw.transaction((mediaIds: string[]) => {
+        for (const mid of mediaIds) {
+          try {
+            db.addTagToMedia(mid, effectiveTag)
+            processed++
+          } catch (err: any) {
+            errors.push(`${mid}: ${err?.message ?? 'unknown'}`)
+          }
+        }
+      })
+      txn(ids)
+      broadcast('vault:changed')
+    } catch (err: any) {
+      return { ok: false, processed, errors: [...errors, err?.message ?? String(err)] }
+    }
+    return { ok: true, processed, errors, tag: effectiveTag }
+  })
+
+  ipcMain.handle('media:bulk-feature-less', async (_ev, args: { mediaIds: string[]; value: boolean }) => {
+    const ids = Array.isArray(args?.mediaIds) ? args.mediaIds : []
+    if (ids.length === 0) return { ok: false, processed: 0, errors: [] as string[] }
+    const value = !!args.value
+    const now = Date.now()
+    let processed = 0
+    const errors: string[] = []
+    try {
+      const stmt = db.raw.prepare(`
+        INSERT INTO media_stats (mediaId, views, lastViewedAt, rating, oCount, updatedAt, featureLess)
+        VALUES (?, 0, NULL, 0, 0, ?, ?)
+        ON CONFLICT(mediaId) DO UPDATE SET featureLess = excluded.featureLess, updatedAt = excluded.updatedAt
+      `)
+      const txn = db.raw.transaction((mediaIds: string[]) => {
+        for (const mid of mediaIds) {
+          try {
+            stmt.run(mid, now, value ? 1 : 0)
+            processed++
+          } catch (err: any) {
+            errors.push(`${mid}: ${err?.message ?? 'unknown'}`)
+          }
+        }
+      })
+      txn(ids)
+    } catch (err: any) {
+      return { ok: false, processed, errors: [...errors, err?.message ?? String(err)] }
+    }
+    return { ok: true, processed, errors, value }
+  })
+
+  ipcMain.handle('media:bulk-denial', async (_ev, args: { mediaIds: string[]; durationMin: number }) => {
+    const ids = Array.isArray(args?.mediaIds) ? args.mediaIds : []
+    const minutes = Math.max(0, Math.round(Number(args?.durationMin) || 0))
+    if (ids.length === 0) return { ok: false, processed: 0, errors: [] as string[] }
+    let processed = 0
+    const errors: string[] = []
+    try {
+      const { setDenialCooldown } = await import('./services/edging-tracker')
+      const txn = db.raw.transaction((mediaIds: string[]) => {
+        for (const mid of mediaIds) {
+          try {
+            setDenialCooldown(db.raw as any, mid, minutes)
+            processed++
+          } catch (err: any) {
+            errors.push(`${mid}: ${err?.message ?? 'unknown'}`)
+          }
+        }
+      })
+      txn(ids)
+    } catch (err: any) {
+      return { ok: false, processed, errors: [...errors, err?.message ?? String(err)] }
+    }
+    return { ok: true, processed, errors, durationMin: minutes }
+  })
+
+  ipcMain.handle('media:bulk-delete', async (_ev, args: { mediaIds: string[] }) => {
+    const ids = Array.isArray(args?.mediaIds) ? args.mediaIds : []
+    if (ids.length === 0) return { ok: false, processed: 0, errors: [] as string[] }
+    let processed = 0
+    const errors: string[] = []
+    const nowSec = Math.floor(Date.now() / 1000)
+    try {
+      const insertTrash = db.raw.prepare(`
+        INSERT OR REPLACE INTO media_trash
+          (id, original_path, filename, type, size_bytes, duration_sec,
+           thumb_path, deleted_at, purge_at, restoration_data)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      const txn = db.raw.transaction((mediaIds: string[]) => {
+        for (const mid of mediaIds) {
+          try {
+            const media = db.getMedia(mid)
+            if (!media) { errors.push(`${mid}: not found`); continue }
+            const tags = db.listMediaTags(mid).map((t: any) => t.name)
+            deletedMediaStack.push({
+              id: media.id, path: media.path, filename: media.filename,
+              ext: media.ext, type: media.type, size: media.size,
+              mtimeMs: media.mtimeMs, durationSec: media.durationSec,
+              thumbPath: media.thumbPath, width: media.width, height: media.height,
+              hashSha256: media.hashSha256, phash: media.phash, tags,
+              deletedAt: Date.now(),
+            })
+            insertTrash.run(
+              media.id, media.path, media.filename, media.type,
+              media.size ?? null, media.durationSec ?? null, media.thumbPath ?? null,
+              nowSec, nowSec + TRASH_RETENTION_SECONDS,
+              JSON.stringify({
+                id: media.id, path: media.path, filename: media.filename,
+                ext: media.ext, type: media.type, size: media.size,
+                mtimeMs: media.mtimeMs, durationSec: media.durationSec,
+                thumbPath: media.thumbPath, width: media.width, height: media.height,
+                hashSha256: media.hashSha256, phash: media.phash, tags,
+              }),
+            )
+            db.deleteMediaById(mid)
+            processed++
+          } catch (err: any) {
+            errors.push(`${mid}: ${err?.message ?? 'unknown'}`)
+          }
+        }
+        // Keep the undo stack bounded after a bulk delete.
+        while (deletedMediaStack.length > MAX_UNDO_STACK) deletedMediaStack.shift()
+      })
+      txn(ids)
+      broadcast('vault:changed')
+    } catch (err: any) {
+      return { ok: false, processed, errors: [...errors, err?.message ?? String(err)] }
+    }
+    return { ok: true, processed, errors }
   })
 
   // List trash entries newest-first. Used by Settings → Trash panel.

@@ -1476,6 +1476,18 @@ export function updateVisualEffectsSettings(patch: Partial<VisualEffectsSettings
   return updateSettings({ visualEffects: { ...getSettings().visualEffects, ...patch } })
 }
 
+export function updateSoundSettings(patch: Partial<SoundSettings>): VaultSettings {
+  return updateSettings({ sound: { ...getSettings().sound, ...patch } })
+}
+
+export function updateXyreneSettings(patch: Partial<XyreneSettings>): VaultSettings {
+  return updateSettings({ xyrene: { ...getSettings().xyrene, ...patch } })
+}
+
+export function updatePerformanceSettings(patch: Partial<PerformanceSettings>): VaultSettings {
+  return updateSettings({ performance: { ...getSettings().performance, ...patch } })
+}
+
 export function updateMobileSyncSettings(patch: Partial<MobileSyncSettings>): VaultSettings {
   return updateSettings({ mobileSync: { ...getSettings().mobileSync, ...patch } })
 }

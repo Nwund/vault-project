@@ -78,13 +78,39 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [isLikeLoading, setIsLikeLoading] = useState(false)
   const [transcodeRetried, setTranscodeRetried] = useState(false)
   const [showQualityMenu, setShowQualityMenu] = useState(false)
+  // Resolution + low-quality preference. Source of truth is the
+  // electron-store playback settings. localStorage is read once as a
+  // legacy fallback so users upgrading from <2.7 don't lose their
+  // setting; writes go through window.api.settings.playback.update
+  // so the value actually survives reinstalls + roaming via the
+  // settings.json that lives in userData.
   const [currentResolution, setCurrentResolution] = useState<string>(() => {
-    // Load persisted resolution from localStorage
-    return localStorage.getItem('vault-video-resolution') || 'original'
+    try {
+      const legacy = localStorage.getItem('vault-video-resolution')
+      return legacy || 'original'
+    } catch { return 'original' }
   })
   const [lowQualityMode, setLowQualityMode] = useState(() => {
-    return localStorage.getItem('vault-low-quality-mode') === 'true'
+    try { return localStorage.getItem('vault-low-quality-mode') === 'true' } catch { return false }
   })
+  // Hydrate from electron-store once on mount, overriding the legacy
+  // localStorage snapshot if a real persisted value exists.
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const s: any = await (window.api as any).settings.get()
+        if (!alive || !s?.playback) return
+        if (typeof s.playback.defaultResolution === 'string') {
+          setCurrentResolution(s.playback.defaultResolution)
+        }
+        if (typeof s.playback.lowQualityMode === 'boolean') {
+          setLowQualityMode(s.playback.lowQualityMode)
+        }
+      } catch { /* leave localStorage value in place */ }
+    })()
+    return () => { alive = false }
+  }, [])
   const [lowQualityIntensity, setLowQualityIntensity] = useState(5)
   // Scene markers state
   const [markers, setMarkers] = useState<Array<{ id: string; timeSec: number; title: string }>>([])
@@ -1546,7 +1572,11 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   // Handle resolution change - persists across all videos
   const handleResolutionChange = useCallback(async (resolution: string) => {
     setCurrentResolution(resolution)
-    localStorage.setItem('vault-video-resolution', resolution)
+    // Persist via electron-store; localStorage write is kept as a
+    // belt-and-braces legacy fallback so the resolution still loads if
+    // electron-store fails (e.g. fs error).
+    try { localStorage.setItem('vault-video-resolution', resolution) } catch { /* ignore */ }
+    try { void (window.api as any).settings.playback?.update?.({ defaultResolution: resolution }) } catch { /* ignore */ }
     setShowQualityMenu(false)
     setIsLoading(true)
     setHasError(false)
@@ -1590,7 +1620,8 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const toggleLowQualityMode = useCallback(() => {
     const newValue = !lowQualityMode
     setLowQualityMode(newValue)
-    localStorage.setItem('vault-low-quality-mode', String(newValue))
+    try { localStorage.setItem('vault-low-quality-mode', String(newValue)) } catch { /* ignore */ }
+    try { void (window.api as any).settings.playback?.update?.({ lowQualityMode: newValue }) } catch { /* ignore */ }
   }, [lowQualityMode])
 
   const handleRevealInFolder = async () => {

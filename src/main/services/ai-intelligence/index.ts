@@ -5033,6 +5033,161 @@ RULES:
     }
   })
 
+  // ── One-click model registry ─────────────────────────────────────
+  // Each entry has a canonical permissive-licensed ONNX URL that we
+  // verified at the time the registry was assembled. The registry is
+  // intentionally inline (not a separate config file) so a stale repo
+  // can be patched with a single PR.
+  //
+  // Conversion-required models (PyTorch / safetensors / non-permissive
+  // licenses like CC-BY-NC) are NOT in this registry — they require
+  // user intervention. Cards that need them point the user at their
+  // own source instructions instead of pretending we can fetch them.
+  type ExtraDownload = {
+    kind: string
+    label: string
+    filename: string
+    url: string
+    /** Bytes; reject if downloaded body is smaller (catches login redirects). */
+    minBytes: number
+    /** Expected size for progress display; not enforced. */
+    expectedBytes?: number
+  }
+  const EXTRA_MODEL_DOWNLOADS: ExtraDownload[] = [
+    {
+      kind: 'deepfake',
+      label: 'Deepfake / synthetic face detector',
+      filename: 'deepfake-detector.onnx',
+      url: 'https://huggingface.co/onnx-community/Deep-Fake-Detector-v2-Model-ONNX/resolve/main/onnx/model_quantized.onnx',
+      minBytes: 1_000_000,
+      expectedBytes: 91_000_000,
+    },
+    {
+      kind: 'transnet-v2',
+      label: 'TransNet V2 (shot boundaries)',
+      filename: 'transnet-v2.onnx',
+      url: 'https://huggingface.co/elya5/transnetv2/resolve/main/transnetv2.onnx',
+      minBytes: 1_000_000,
+      expectedBytes: 32_000_000,
+    },
+    {
+      kind: 'wav2vec2-emotion',
+      label: 'Wav2Vec2 emotion classifier',
+      filename: 'wav2vec2-emotion.onnx',
+      url: 'https://huggingface.co/onnx-community/wav2vec2-base-Speech_Emotion_Recognition-ONNX/resolve/main/onnx/model.onnx',
+      minBytes: 5_000_000,
+      expectedBytes: 380_000_000,
+    },
+    {
+      kind: 'clap-audio',
+      label: 'LAION CLAP audio (zero-shot)',
+      filename: 'laion-clap-audio.onnx',
+      url: 'https://huggingface.co/Xenova/clap-htsat-unfused/resolve/main/onnx/audio_model_quantized.onnx',
+      minBytes: 5_000_000,
+      expectedBytes: 35_000_000,
+    },
+    {
+      kind: 'yamnet-classmap',
+      label: 'YAMNet AudioSet class map',
+      filename: 'yamnet-class-map.csv',
+      url: 'https://raw.githubusercontent.com/tensorflow/models/master/research/audioset/yamnet/yamnet_class_map.csv',
+      minBytes: 5_000,
+      expectedBytes: 15_000,
+    },
+  ]
+
+  // List + per-kind download. Returns the registry so the renderer can
+  // render rows with progress + skip cards we can't auto-fetch.
+  ipcMain.handle('ai:extra-downloads-list', async () => {
+    const modelsDir = path.join(app.getPath('userData'), 'models')
+    return EXTRA_MODEL_DOWNLOADS.map((e) => {
+      const target = path.join(modelsDir, e.filename)
+      let installed = false
+      let sizeBytes = 0
+      try {
+        const stat = fs.statSync(target)
+        installed = stat.isFile()
+        sizeBytes = stat.size
+      } catch { /* not installed */ }
+      return {
+        kind: e.kind,
+        label: e.label,
+        filename: e.filename,
+        expectedPath: target,
+        installed,
+        sizeBytes,
+        expectedBytes: e.expectedBytes ?? null,
+      }
+    })
+  })
+
+  ipcMain.handle('ai:extra-download', async (_ev, args: { kind: string }) => {
+    const entry = EXTRA_MODEL_DOWNLOADS.find((e) => e.kind === args?.kind)
+    if (!entry) return { ok: false, error: `Unknown model kind: ${args?.kind}` }
+    const modelsDir = path.join(app.getPath('userData'), 'models')
+    const target = path.join(modelsDir, entry.filename)
+    try {
+      await fsp.mkdir(modelsDir, { recursive: true })
+      if (fs.existsSync(target)) {
+        const stat = await fsp.stat(target)
+        if (stat.size >= entry.minBytes) {
+          return { ok: true, alreadyPresent: true, sizeBytes: stat.size, path: target, kind: entry.kind }
+        }
+      }
+      const res = await fetch(entry.url)
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status} from ${entry.url}`, kind: entry.kind }
+      const buf = Buffer.from(await res.arrayBuffer())
+      if (buf.length < entry.minBytes) {
+        return { ok: false, error: `download too small: ${buf.length} bytes (likely a redirect / 404 page)`, kind: entry.kind }
+      }
+      await fsp.writeFile(target, buf)
+      return { ok: true, alreadyPresent: false, sizeBytes: buf.length, path: target, kind: entry.kind }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), kind: entry.kind }
+    }
+  })
+
+  ipcMain.handle('ai:extra-download-all', async (event) => {
+    const modelsDir = path.join(app.getPath('userData'), 'models')
+    await fsp.mkdir(modelsDir, { recursive: true })
+    const results: Array<{ kind: string; ok: boolean; alreadyPresent?: boolean; sizeBytes?: number; error?: string }> = []
+    for (let i = 0; i < EXTRA_MODEL_DOWNLOADS.length; i++) {
+      const entry = EXTRA_MODEL_DOWNLOADS[i]
+      // Emit per-model progress so the UI can show "downloading X of Y".
+      try {
+        event.sender.send('ai:extra-download-progress', { index: i, total: EXTRA_MODEL_DOWNLOADS.length, kind: entry.kind, label: entry.label })
+      } catch { /* renderer may be gone */ }
+      const target = path.join(modelsDir, entry.filename)
+      try {
+        if (fs.existsSync(target)) {
+          const stat = await fsp.stat(target)
+          if (stat.size >= entry.minBytes) {
+            results.push({ kind: entry.kind, ok: true, alreadyPresent: true, sizeBytes: stat.size })
+            continue
+          }
+        }
+        const res = await fetch(entry.url)
+        if (!res.ok) {
+          results.push({ kind: entry.kind, ok: false, error: `HTTP ${res.status}` })
+          continue
+        }
+        const buf = Buffer.from(await res.arrayBuffer())
+        if (buf.length < entry.minBytes) {
+          results.push({ kind: entry.kind, ok: false, error: `download too small: ${buf.length} bytes` })
+          continue
+        }
+        await fsp.writeFile(target, buf)
+        results.push({ kind: entry.kind, ok: true, alreadyPresent: false, sizeBytes: buf.length })
+      } catch (err: any) {
+        results.push({ kind: entry.kind, ok: false, error: err?.message ?? String(err) })
+      }
+    }
+    try {
+      event.sender.send('ai:extra-download-progress', { index: EXTRA_MODEL_DOWNLOADS.length, total: EXTRA_MODEL_DOWNLOADS.length, kind: 'done', label: 'Complete' })
+    } catch { /* ignore */ }
+    return { ok: true, results }
+  })
+
   // YuNet face detector status. Bundled in the standard downloader
   // (it's tiny — ~340KB), so the UI just shows presence + size.
   ipcMain.handle('ai:face-detector-status', async () => {

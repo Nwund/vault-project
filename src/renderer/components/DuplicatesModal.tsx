@@ -244,6 +244,42 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
     setSelectedForDeletion(newSelected)
   }
 
+  // Global "select every duplicate across every group" — for the 400+
+  // dupe case the user hit. We pick a keeper per group via the
+  // suggestKeep IPC (highest-rated / most-viewed / oldest), then mark
+  // every other member of every group as to-delete.
+  const selectAllGroupsDupes = async () => {
+    if (!scanResult) return
+    const newKeeps = new Map(keepSelected)
+    const newSelected = new Set(selectedForDeletion)
+    // Resolve keepers in parallel for speed on big result sets.
+    const suggestions = await Promise.all(scanResult.groups.map(async (g) => {
+      const existing = keepSelected.get(g.hash)
+      if (existing) return { hash: g.hash, keepId: existing }
+      try {
+        const s: any = await window.api.invoke('duplicates:suggestKeep', g.mediaIds)
+        return { hash: g.hash, keepId: s?.keepId ?? g.mediaIds[0] }
+      } catch {
+        return { hash: g.hash, keepId: g.mediaIds[0] }
+      }
+    }))
+    const byHash = new Map(suggestions.map(s => [s.hash, s.keepId]))
+    for (const g of scanResult.groups) {
+      const keepId = byHash.get(g.hash) ?? g.mediaIds[0]
+      newKeeps.set(g.hash, keepId)
+      for (const id of g.mediaIds) {
+        if (id !== keepId) newSelected.add(id)
+      }
+    }
+    setKeepSelected(newKeeps)
+    setSelectedForDeletion(newSelected)
+  }
+
+  const clearAllSelection = () => {
+    setSelectedForDeletion(new Set())
+    setKeepSelected(new Map())
+  }
+
   const setKeep = (groupHash: string, mediaId: string) => {
     const newKeeps = new Map(keepSelected)
     newKeeps.set(groupHash, mediaId)
@@ -441,8 +477,17 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
                   Found <span className="text-orange-400 font-bold">{scanResult.totalDuplicates}</span> duplicates in{' '}
                   <span className="font-bold">{scanResult.groups.length}</span> groups
                 </div>
-                <div className="text-sm">
-                  Potential savings: <span className="text-green-400 font-bold">{formatBytes(scanResult.potentialSavings)}</span>
+                <div className="flex items-center gap-3">
+                  <div className="text-sm">
+                    Potential savings: <span className="text-green-400 font-bold">{formatBytes(scanResult.potentialSavings)}</span>
+                  </div>
+                  <button
+                    onClick={selectAllGroupsDupes}
+                    className="px-3 py-1.5 text-xs bg-red-900/50 hover:bg-red-900 text-red-200 border border-red-700/40 rounded-lg font-medium"
+                    title="Mark every duplicate across every group for deletion, keeping the best-rated / most-viewed / oldest copy in each"
+                  >
+                    Select all duplicates
+                  </button>
                 </div>
               </div>
 
@@ -601,8 +646,8 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setSelectedForDeletion(new Set())}
-                disabled={selectedForDeletion.size === 0}
+                onClick={clearAllSelection}
+                disabled={selectedForDeletion.size === 0 && keepSelected.size === 0}
                 className="px-4 py-2 text-zinc-400 hover:bg-zinc-700 disabled:opacity-50 rounded-lg text-sm"
               >
                 Clear Selection

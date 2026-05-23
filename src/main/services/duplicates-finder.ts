@@ -213,52 +213,76 @@ export class DuplicatesFinderService {
   /**
    * Resolve duplicates (keep one, handle others)
    */
-  resolveDuplicates(resolution: DuplicateResolution): { success: boolean; error?: string; removedCount: number } {
+  resolveDuplicates(resolution: DuplicateResolution): { success: boolean; error?: string; removedCount: number; errors?: string[] } {
     let removedCount = 0
+    const errors: string[] = []
+
+    // First pass: resolve disk operations (fs.unlinkSync / renameSync) one
+    // at a time since each is a syscall and can't be batched. We collect
+    // the corresponding DB writes for a single transaction at the end so
+    // 400 dupes don't trigger 400 separate write transactions.
+    const selectPath = this.db.raw.prepare('SELECT path FROM media WHERE id = ?')
+    const deleteRow = this.db.raw.prepare('DELETE FROM media WHERE id = ?')
+    const updatePath = this.db.raw.prepare('UPDATE media SET path = ? WHERE id = ?')
+    const insertTag = this.db.raw.prepare('INSERT OR IGNORE INTO media_tags (mediaId, tagId) VALUES (?, ?)')
+    const dupTag = this.db.raw.prepare('SELECT id FROM tags WHERE name = ?').get('duplicate') as { id: string } | undefined
+
+    type Op =
+      | { kind: 'delete'; mediaId: string }
+      | { kind: 'move'; mediaId: string; newPath: string }
+      | { kind: 'mark'; mediaId: string }
+    const ops: Op[] = []
 
     for (const mediaId of resolution.remove) {
       try {
-        const media = this.db.raw.prepare('SELECT path FROM media WHERE id = ?').get(mediaId) as { path: string } | undefined
+        const media = selectPath.get(mediaId) as { path: string } | undefined
         if (!media) continue
 
         if (resolution.action === 'delete') {
-          // Delete the file
           if (fs.existsSync(media.path)) {
             fs.unlinkSync(media.path)
           }
-          // Remove from database
-          this.db.raw.prepare('DELETE FROM media WHERE id = ?').run(mediaId)
-          removedCount++
+          ops.push({ kind: 'delete', mediaId })
         } else if (resolution.action === 'move') {
-          // Move to a duplicates folder (create if needed)
           const dupFolder = path.join(path.dirname(media.path), '_duplicates')
           if (!fs.existsSync(dupFolder)) {
             fs.mkdirSync(dupFolder, { recursive: true })
           }
           const newPath = path.join(dupFolder, path.basename(media.path))
           fs.renameSync(media.path, newPath)
-          // Update path in database
-          this.db.raw.prepare('UPDATE media SET path = ? WHERE id = ?').run(newPath, mediaId)
-          removedCount++
+          ops.push({ kind: 'move', mediaId, newPath })
         } else if (resolution.action === 'mark') {
-          // Just mark as duplicate (using relationships service if available)
-          // For now, add a tag
-          const dupTag = this.db.raw.prepare('SELECT id FROM tags WHERE name = ?').get('duplicate') as { id: string } | undefined
-          if (dupTag) {
-            try {
-              this.db.raw.prepare('INSERT OR IGNORE INTO media_tags (mediaId, tagId) VALUES (?, ?)').run(mediaId, dupTag.id)
-            } catch {
-              // Ignore if already tagged
+          ops.push({ kind: 'mark', mediaId })
+        }
+      } catch (e: any) {
+        errors.push(`${mediaId}: ${e?.message ?? String(e)}`)
+      }
+    }
+
+    try {
+      const txn = this.db.raw.transaction((batch: Op[]) => {
+        for (const op of batch) {
+          if (op.kind === 'delete') {
+            deleteRow.run(op.mediaId)
+          } else if (op.kind === 'move') {
+            updatePath.run(op.newPath, op.mediaId)
+          } else if (op.kind === 'mark') {
+            if (dupTag) {
+              try { insertTag.run(op.mediaId, dupTag.id) } catch { /* already tagged */ }
             }
           }
           removedCount++
         }
-      } catch (e: any) {
-        return { success: false, error: e.message, removedCount }
-      }
+      })
+      txn(ops)
+    } catch (e: any) {
+      errors.push(`db txn: ${e?.message ?? String(e)}`)
+      return { success: false, error: e?.message ?? String(e), removedCount, errors }
     }
 
-    return { success: true, removedCount }
+    return errors.length === 0
+      ? { success: true, removedCount }
+      : { success: true, removedCount, errors }
   }
 
   /**

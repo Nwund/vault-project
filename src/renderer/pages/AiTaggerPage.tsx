@@ -38,6 +38,7 @@ import { cn } from '../utils/cn'
 import { ReviewHoverPreview } from '../components/ReviewHoverPreview'
 import { TaggerQualityCard } from '../components/AdminCards'
 import { ModelFileCard } from '../components/ModelFileCard'
+import { BulkModelDownloaderCard } from '../components/BulkModelDownloaderCard'
 import { QualityAuditCard } from '../components/QualityAuditCard'
 import { ClipSimilarityCard } from '../components/ClipSimilarityCard'
 import { toFileUrlCached } from '../hooks/usePerformance'
@@ -2608,6 +2609,11 @@ export function AiTaggerPage() {
                 </p>
               )}
             </div>
+
+            {/* One-click model bundle — every detector with a permissive
+                ONNX URL we've verified gets installed in one go. Cards
+                below still let users drop their own files. */}
+            <BulkModelDownloaderCard />
 
             {/* More optional detectors — compact grid of model-file cards.
                 Each probe is null-safe + returns whether the .onnx is on
