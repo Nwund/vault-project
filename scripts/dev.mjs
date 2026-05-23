@@ -1,11 +1,48 @@
 // File: scripts/dev.mjs
-import { spawn } from 'node:child_process'
+import { spawn, execSync } from 'node:child_process'
+import net from 'node:net'
 import process from 'node:process'
 
 const DEFAULT_DEV_URL = 'http://localhost:5173/'
+const DEV_PORT = 5173
 
 function withTrailingSlash(url) {
   return url.endsWith('/') ? url : `${url}/`
+}
+
+// Probe whether the dev port is held by something else (a previous vault
+// instance that didn't clean up, or an unrelated tool). When strictPort
+// is true in the vite config, leaving a holder in place makes
+// electron-vite throw on startup — the user-visible failure mode for a
+// long time was "every tab is blank", which is opaque. Free the port up
+// front so the run is deterministic.
+async function ensurePortFree(port) {
+  const inUse = await new Promise((resolve) => {
+    const tester = net.createServer()
+      .once('error', (err) => resolve(err.code === 'EADDRINUSE'))
+      .once('listening', () => tester.close(() => resolve(false)))
+      .listen(port, '127.0.0.1')
+  })
+  if (!inUse) return
+  console.warn(`[dev] Port ${port} is in use; attempting to free it.`)
+  if (process.platform === 'win32') {
+    try {
+      const out = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8' })
+      const pids = new Set()
+      for (const line of out.split(/\r?\n/)) {
+        const m = line.match(/\s+LISTENING\s+(\d+)\s*$/)
+        if (m) pids.add(m[1])
+      }
+      for (const pid of pids) {
+        try {
+          execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore' })
+          console.warn(`[dev] Killed pid ${pid} holding port ${port}.`)
+        } catch { /* may already be gone */ }
+      }
+    } catch (err) {
+      console.warn(`[dev] Could not locate holder of port ${port}: ${err.message}`)
+    }
+  }
 }
 
 function spawnNpmRun(scriptName, extraEnv = {}) {
@@ -30,6 +67,7 @@ function killChild(child) {
 }
 
 async function main() {
+  await ensurePortFree(DEV_PORT)
   const devUrl = withTrailingSlash(process.env.VITE_DEV_SERVER_URL?.trim() || DEFAULT_DEV_URL)
   const child = spawnNpmRun('dev:raw', { VITE_DEV_SERVER_URL: devUrl })
 

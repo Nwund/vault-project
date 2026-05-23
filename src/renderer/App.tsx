@@ -985,7 +985,25 @@ export default function App() {
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
   const [leftSidebarHover, setLeftSidebarHover] = useState(false)
   const [leftSidebarMouseY, setLeftSidebarMouseY] = useState(0)
-  const [tagBarOpen, setTagBarOpen] = useState(true) // Lifted to App for coordination
+  // Tag sidebar (inside LibraryPage). Defaults closed so the library
+  // grid sits flush against the main sidebar — the previous default-true
+  // looked like a "big gap between library and sidebar" to the user
+  // when the bar was empty / unused. Preference persists across reboots.
+  const [tagBarOpen, setTagBarOpenRaw] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('vault_tagbar_open')
+      if (v === 'true') return true
+      if (v === 'false') return false
+    } catch { /* localStorage may be unavailable */ }
+    return false
+  })
+  const setTagBarOpen = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
+    setTagBarOpenRaw((prev) => {
+      const resolved = typeof next === 'function' ? next(prev) : next
+      try { localStorage.setItem('vault_tagbar_open', String(resolved)) } catch { /* ignore */ }
+      return resolved
+    })
+  }, [])
   const [visualEffectsEnabled, setVisualEffectsEnabled] = useState(true)
   const [ambientHeatLevel, setAmbientHeatLevel] = useState(3) // Manual heat level for ambient effects
   const [goonModeEnabled, setGoonModeEnabled] = useState(false) // Floating text mode

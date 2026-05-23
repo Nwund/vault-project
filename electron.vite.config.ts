@@ -55,7 +55,12 @@ export default defineConfig({
     },
     server: {
       port: 5173,
-      strictPort: false // Auto-find next available port if 5173 is busy
+      // strictPort: true — fail loudly if 5173 is busy instead of silently
+      // falling back to 5174. The main process hardcodes 5173 (via
+      // DEFAULT_DEV_SERVER_URL + dev.mjs preset), so a port mismatch leaves
+      // electron pointed at a dead URL — symptom: blank tabs across the
+      // whole app, no obvious error in the console.
+      strictPort: true
     },
     build: {
       rollupOptions: {

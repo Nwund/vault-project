@@ -611,7 +611,7 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToFa
         <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-[var(--primary)]/20 to-purple-600/10 rounded-full blur-3xl" />
         <div className="absolute bottom-0 left-0 w-64 h-64 bg-gradient-to-tr from-blue-600/10 to-cyan-400/5 rounded-full blur-3xl" />
 
-        <div className="relative p-8 pb-6">
+        <div className="relative p-4 sm:p-6 lg:p-8 pb-6">
           {/* Greeting with time-based icon */}
           <div className="mb-6">
             <div className="flex items-center gap-3 mb-2">
@@ -672,7 +672,7 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToFa
                 <BarChart3 size={18} className="text-[var(--primary)]" />
                 <span className="font-semibold text-[var(--text)]">Your Collection</span>
               </div>
-              <div className="grid grid-cols-5 gap-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6">
                 <div className="text-center group cursor-default">
                   <div className="w-14 h-14 mx-auto mb-2 rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-600/10 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <Film size={24} className="text-blue-400" />
@@ -715,7 +715,7 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToFa
       </div>
 
       {/* Content Sections */}
-      <div className="p-6 space-y-2">
+      <div className="p-3 sm:p-4 lg:p-6 space-y-2">
 
       {/* Continue Watching Section */}
       {continueWatching.length > 0 && (
