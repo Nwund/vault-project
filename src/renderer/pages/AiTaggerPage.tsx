@@ -1329,6 +1329,13 @@ export function AiTaggerPage() {
       <div className="flex-1 overflow-y-auto p-6 pb-safe">
         {activeTab === 'setup' && (
           <div className="max-w-2xl mx-auto space-y-6">
+            {/* One-click bundle install at the TOP — every permissive-
+                licensed ONNX Vault knows how to fetch. Auto-fires on
+                first visit when 3+ are missing. Keeping it as the very
+                first card so the user sees it before the more granular
+                per-model cards below. */}
+            <BulkModelDownloaderCard />
+
             {/* Models Section */}
             <div className="bg-[var(--panel)] rounded-xl border border-[var(--border)] p-6">
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -2609,11 +2616,6 @@ export function AiTaggerPage() {
                 </p>
               )}
             </div>
-
-            {/* One-click model bundle — every detector with a permissive
-                ONNX URL we've verified gets installed in one go. Cards
-                below still let users drop their own files. */}
-            <BulkModelDownloaderCard />
 
             {/* More optional detectors — compact grid of model-file cards.
                 Each probe is null-safe + returns whether the .onnx is on
