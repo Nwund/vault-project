@@ -1322,25 +1322,19 @@ export default function App() {
   const mainContentRef = useRef<HTMLElement>(null)
   const prevPageRef = useRef<string>(page)
 
-  // Page transition animation - Opera-style slide + fade
+  // Page transition: was a JS-driven slide + fade running translateX
+  // ±30px on every navigation, which left the page visibly shifted
+  // horizontally on every tab change — and a different X offset
+  // depending on whether the user went forward or back through nav
+  // order, which produced the "different position per page" symptom.
+  // The CSS .page-transition-enter/exit fade handled by the main
+  // element's class binding is sufficient; the inline anime() call is
+  // redundant + bypasses the CSS to inject a hardcoded translateX.
   useEffect(() => {
-    if (prevPageRef.current !== page && mainContentRef.current) {
-      // Determine slide direction based on nav order
-      const navOrder = ['library', 'goonwall', 'feed', 'playlists', 'sessions', 'stats', 'settings', 'about']
-      const prevIndex = navOrder.indexOf(prevPageRef.current)
-      const currentIndex = navOrder.indexOf(page)
-      const slideDirection = currentIndex > prevIndex ? 'left' : 'right'
-
-      // Smooth slide + fade transition
-      anime.animate(mainContentRef.current, {
-        opacity: [0, 1],
-        translateX: [slideDirection === 'left' ? 30 : -30, 0],
-        duration: 280,
-        ease: 'outQuart'
-      })
+    if (prevPageRef.current !== page) {
       prevPageRef.current = page
     }
-  }, [page, anime])
+  }, [page])
 
   // Activate session when on GoonWall (for automatic heat level tracking)
   useEffect(() => {
