@@ -5,7 +5,7 @@
 // effect toggles can stay coordinated with the App-level providers.
 // Extracted from App.tsx as part of #48 phase E.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertCircle,
   ArrowUp,
@@ -150,7 +150,22 @@ export function SettingsPage(props: {
   const { showToast } = useToast()
   const confirm = useConfirm()
   type SettingsTab = 'library' | 'appearance' | 'effects' | 'playback' | 'sound' | 'data' | 'services' | 'xyrene'
-  const [activeTab, setActiveTab] = useState<SettingsTab>('library')
+  // Persist which Settings tab is selected — without this the user lands
+  // back on 'library' every time they reopen the app even if they were
+  // mid-task in another section. Matches the user-visible 'settings not
+  // staying selected when it restarts' complaint.
+  const VALID_TABS: ReadonlyArray<SettingsTab> = ['library', 'appearance', 'effects', 'playback', 'sound', 'data', 'services', 'xyrene']
+  const [activeTab, setActiveTabRaw] = useState<SettingsTab>(() => {
+    try {
+      const stored = localStorage.getItem('vault.settings.activeTab')
+      if (stored && (VALID_TABS as readonly string[]).includes(stored)) return stored as SettingsTab
+    } catch { /* localStorage unavailable */ }
+    return 'library'
+  })
+  const setActiveTab = useCallback((next: SettingsTab) => {
+    setActiveTabRaw(next)
+    try { localStorage.setItem('vault.settings.activeTab', next) } catch { /* ignore */ }
+  }, [])
   const [isPremium, setIsPremium] = useState(false)
   const [allTags, setAllTags] = useState<string[]>([])
   const [settingsSearch, setSettingsSearch] = useState('')
@@ -828,8 +843,8 @@ export function SettingsPage(props: {
                     onClick={async () => {
                       const next = !(s?.appearance?.backgroundOrbs ?? true)
                       await window.api.settings.appearance?.update?.({ backgroundOrbs: next })
-                      const fresh = await window.api.settings.get()
-                      props.patchSettings(fresh)
+                      // No need to re-fetch — settings:changed broadcast
+                      // updates App-level state automatically.
                     }}
                     className={cn(
                       'relative w-11 h-6 rounded-full transition',
@@ -856,8 +871,8 @@ export function SettingsPage(props: {
                     onClick={async () => {
                       const next = !(s?.appearance?.auroraBands ?? false)
                       await window.api.settings.appearance?.update?.({ auroraBands: next })
-                      const fresh = await window.api.settings.get()
-                      props.patchSettings(fresh)
+                      // No need to re-fetch — settings:changed broadcast
+                      // updates App-level state automatically.
                     }}
                     className={cn(
                       'relative w-11 h-6 rounded-full transition',
@@ -884,8 +899,8 @@ export function SettingsPage(props: {
                     onClick={async () => {
                       const next = !(s?.appearance?.neonRain ?? false)
                       await window.api.settings.appearance?.update?.({ neonRain: next })
-                      const fresh = await window.api.settings.get()
-                      props.patchSettings(fresh)
+                      // No need to re-fetch — settings:changed broadcast
+                      // updates App-level state automatically.
                     }}
                     className={cn(
                       'relative w-11 h-6 rounded-full transition',
@@ -912,8 +927,8 @@ export function SettingsPage(props: {
                     onClick={async () => {
                       const next = !(s?.appearance?.lightningVeil ?? false)
                       await window.api.settings.appearance?.update?.({ lightningVeil: next })
-                      const fresh = await window.api.settings.get()
-                      props.patchSettings(fresh)
+                      // No need to re-fetch — settings:changed broadcast
+                      // updates App-level state automatically.
                     }}
                     className={cn(
                       'relative w-11 h-6 rounded-full transition',
