@@ -3019,13 +3019,18 @@ export function AiTaggerPage() {
                     </button>
                     <button
                       onClick={async () => {
-                        const result = await window.api.ai.clearFailed()
-                        console.log(`[AI] Cleared ${result.cleared} failed items`)
-                        refreshQueueStatus()
+                        try {
+                          const result = await window.api.ai.clearFailed()
+                          showToast('success', `Cleared ${result.cleared} failed item${result.cleared === 1 ? '' : 's'} from the queue`)
+                          refreshQueueStatus()
+                        } catch (err: any) {
+                          showToast('error', `Clear failed: ${err?.message ?? String(err)}`)
+                        }
                       }}
                       className="px-4 py-2 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 transition text-sm"
+                      title={`Remove all ${queueStatus?.failed ?? 0} failed items from the queue without retrying`}
                     >
-                      Clear Failed
+                      Clear Failed ({queueStatus?.failed ?? 0})
                     </button>
                   </>
                 )}

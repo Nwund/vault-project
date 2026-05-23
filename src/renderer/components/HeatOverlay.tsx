@@ -8,7 +8,7 @@ interface HeatOverlayProps {
   enabled?: boolean
 }
 
-export const HeatOverlay: React.FC<HeatOverlayProps> = ({ level, enabled = true }) => {
+export function HeatOverlay({ level, enabled = true }: HeatOverlayProps) {
   if (!enabled || level <= 0) return null
 
   // Calculate effect intensities based on heat level
@@ -74,7 +74,7 @@ export const HeatOverlay: React.FC<HeatOverlayProps> = ({ level, enabled = true 
 }
 
 // Floating particles component
-const FloatingParticles: React.FC<{ count: number }> = ({ count }) => {
+function FloatingParticles({ count }: { count: number }) {
   const [particles, setParticles] = useState<Array<{
     id: number
     x: number

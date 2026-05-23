@@ -11,12 +11,13 @@ import React, { useEffect, useRef } from 'react'
 // Smooth flowing gradient ribbons that drift across the screen. Reads the
 // active theme's `--primary` and `--secondary` so it auto-restyles per theme.
 // ─────────────────────────────────────────────────────────────────────────────
-export const AuroraBands: React.FC<{
+interface AuroraBandsProps {
   enabled?: boolean
   intensity?: number  // 0-1, default 0.5
   bandCount?: number  // default 4
   speed?: number      // 0-2, default 1
-}> = ({ enabled = true, intensity = 0.5, bandCount = 4, speed = 1 }) => {
+}
+export function AuroraBands({ enabled = true, intensity = 0.5, bandCount = 4, speed = 1 }: AuroraBandsProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number | null>(null)
   const tRef = useRef(0)
@@ -124,11 +125,12 @@ type RainStreak = {
   alpha: number
 }
 
-export const NeonRain: React.FC<{
+interface NeonRainProps {
   enabled?: boolean
   intensity?: number  // 0-1, default 0.5 — controls density
   speed?: number      // 0-2, default 1
-}> = ({ enabled = true, intensity = 0.5, speed = 1 }) => {
+}
+export function NeonRain({ enabled = true, intensity = 0.5, speed = 1 }: NeonRainProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number | null>(null)
   const streaksRef = useRef<RainStreak[]>([])
@@ -228,10 +230,11 @@ export const NeonRain: React.FC<{
 // Random low-frequency screen-wide flashes with branching paths. Subtle by
 // default — a flash every ~6-12s. Pairs well with stormy themes.
 // ─────────────────────────────────────────────────────────────────────────────
-export const LightningVeil: React.FC<{
+interface LightningVeilProps {
   enabled?: boolean
   intensity?: number  // 0-1 — affects flash brightness + frequency
-}> = ({ enabled = true, intensity = 0.5 }) => {
+}
+export function LightningVeil({ enabled = true, intensity = 0.5 }: LightningVeilProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number | null>(null)
   const nextFlashRef = useRef(0)

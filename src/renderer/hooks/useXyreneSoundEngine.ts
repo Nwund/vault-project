@@ -176,7 +176,20 @@ export function useXyreneSoundEngine(
       engineRef.current = null
       setState({ ready: false, playing: false, phase: 'intro' })
     }
-  }, [options.enabled, resolvedSettings, options.masterVolume])
+    // masterVolume intentionally NOT in deps — recreating the entire
+    // engine on every volume change would kill rhythm continuity and
+    // reset phase. The separate effect below propagates volume via
+    // setMasterVolume() on the existing engine instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options.enabled, resolvedSettings])
+
+  // Live volume passthrough — keeps the engine instance stable across
+  // user-driven volume adjustments.
+  useEffect(() => {
+    const engine = engineRef.current
+    if (!engine) return
+    engine.setMasterVolume(options.masterVolume ?? 1)
+  }, [options.masterVolume])
 
   // Wire to video element events.
   useEffect(() => {

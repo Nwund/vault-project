@@ -168,6 +168,23 @@ export function SettingsPage(props: {
   const [isPremium, setIsPremium] = useState(false)
   const [allTags, setAllTags] = useState<string[]>([])
   const [settingsSearch, setSettingsSearch] = useState('')
+  // 'Saved ✓' pill that briefly shows in the TopBar each time the
+  // settings:changed broadcast fires. Gives the user visible
+  // confirmation that a toggle persisted — the silent toggles read
+  // as 'did it save?' otherwise.
+  const [recentlySaved, setRecentlySaved] = useState(false)
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const unsub = (window.api as any).events?.onSettingsChanged?.(() => {
+      setRecentlySaved(true)
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => setRecentlySaved(false), 1200)
+    })
+    return () => {
+      if (timer) clearTimeout(timer)
+      try { unsub?.() } catch { /* ignore */ }
+    }
+  }, [])
   // v2.7 — Dismissable intro banner state. Persists to localStorage so
   // users who close it once don't see it again.
   const [v27BannerDismissedStr, setV27BannerDismissedStr] = useLocalStorage<string>('vault.v27ServicesBannerDismissed', '0')
@@ -350,6 +367,20 @@ export function SettingsPage(props: {
   return (
     <div className="h-full w-full flex flex-col overflow-x-hidden">
       <TopBar title="Settings">
+        {/* Recently-saved pill — fades in/out every time the
+            settings:changed broadcast fires. Quiet confirmation that
+            a toggle actually persisted. */}
+        <span
+          className={cn(
+            'flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all duration-300',
+            recentlySaved
+              ? 'opacity-100 bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+              : 'opacity-0 pointer-events-none bg-transparent border-transparent text-transparent'
+          )}
+          aria-live="polite"
+        >
+          <Check size={10} /> Saved
+        </span>
         {/* Settings search */}
         <div className="relative flex-1 max-w-xs">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" />

@@ -2295,6 +2295,25 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
         >
           <Play size={10} className="fill-current" /> Videos
         </button>
+        {/* Recently watched — pivots the grid to recently-viewed sort.
+            Quick way to resume what the user was watching last. */}
+        <button
+          onClick={() => {
+            setSortBy('recentlyViewed')
+            setSortAscending(false)
+            setTypeFilter('all')
+            setActiveTags([])
+          }}
+          className={cn(
+            'px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 flex items-center gap-1',
+            sortBy === 'recentlyViewed'
+              ? 'bg-amber-500 text-white'
+              : 'bg-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
+          )}
+          title="Sort by most-recently-watched"
+        >
+          <Clock size={10} /> Recently watched
+        </button>
         <button
           onClick={() => {
             setTypeFilter('image')

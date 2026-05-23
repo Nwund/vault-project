@@ -2,7 +2,7 @@
 // Home dashboard with Continue Watching, Recommendations, Recently Added, Favorites, and Most Watched
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Play, Clock, Sparkles, Plus, ChevronRight, RefreshCw, Film, Image, Heart, TrendingUp, Shuffle, Zap, ListVideo, BarChart3, Eye, Timer, Star, Flame, Crown, Gamepad2 } from 'lucide-react'
+import { Play, Clock, Sparkles, Plus, ChevronRight, RefreshCw, Film, Image, Heart, TrendingUp, Shuffle, Zap, ListVideo, BarChart3, Eye, Timer, Star, Flame, Crown, Gamepad2, Library } from 'lucide-react'
 import { formatDuration } from '../utils/formatters'
 import { toFileUrlCached } from '../hooks/usePerformance'
 
@@ -664,6 +664,38 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToFa
               <span>Challenges</span>
             </button>
           </div>
+
+          {/* First-launch empty state — no media imported yet. Replaces
+              the awkward all-zero stats grid with actionable guidance. */}
+          {quickStats && quickStats.totalMedia === 0 && (
+            <div className="p-6 bg-gradient-to-br from-[var(--primary)]/10 via-zinc-800/40 to-pink-500/5 backdrop-blur-sm rounded-2xl border border-[var(--primary)]/30 shadow-xl">
+              <div className="flex items-start gap-4">
+                <div className="p-3 rounded-2xl bg-[var(--primary)]/20 shrink-0">
+                  <Film size={28} className="text-[var(--primary)]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-base font-semibold mb-1">Your vault is empty</div>
+                  <div className="text-sm text-[var(--text-muted)] mb-3">
+                    Add a folder of videos or images and Vault will scan + index them. AI tagging, deduplication, and Watch With Xyrene all unlock once media is in.
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={onNavigateToLibrary}
+                      className="px-3 py-1.5 rounded-lg bg-[var(--primary)] hover:opacity-90 text-white text-xs font-medium transition flex items-center gap-1.5"
+                    >
+                      <Library size={12} /> Open Library
+                    </button>
+                    <button
+                      onClick={() => window.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'settings' }))}
+                      className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[var(--text)] text-xs font-medium transition flex items-center gap-1.5"
+                    >
+                      Settings → Library
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Quick Stats Card - Enhanced */}
           {quickStats && quickStats.totalMedia > 0 && (

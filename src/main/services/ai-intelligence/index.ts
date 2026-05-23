@@ -5201,8 +5201,29 @@ RULES:
           return { ok: true, alreadyPresent: true, sizeBytes: stat.size, path: target, kind: entry.kind }
         }
       }
-      const res = await fetch(entry.url)
-      if (!res.ok) return { ok: false, error: `HTTP ${res.status} from ${entry.url}`, kind: entry.kind }
+      // One-shot retry on transient network failures. HuggingFace
+      // sometimes returns 503 during model rollouts and ECONNRESET is
+      // common on flaky networks — a single retry after a short
+      // backoff converts most into successes.
+      let res: Response | null = null
+      let lastErr: any = null
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          res = await fetch(entry.url)
+          if (res.ok) break
+          const transient = res.status >= 500 || res.status === 429
+          if (!transient || attempt === 1) break
+          await new Promise((r) => setTimeout(r, 2000))
+        } catch (err: any) {
+          lastErr = err
+          const transient = /ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed/i.test(String(err?.message ?? err))
+          if (!transient || attempt === 1) break
+          await new Promise((r) => setTimeout(r, 2000))
+        }
+      }
+      if (!res || !res.ok) {
+        return { ok: false, error: res ? `HTTP ${res.status} from ${entry.url}` : (lastErr?.message ?? 'fetch failed'), kind: entry.kind }
+      }
       const buf = Buffer.from(await res.arrayBuffer())
       if (buf.length < entry.minBytes) {
         return { ok: false, error: `download too small: ${buf.length} bytes (likely a redirect / 404 page)`, kind: entry.kind }
