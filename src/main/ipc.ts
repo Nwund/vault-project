@@ -1643,14 +1643,28 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   // Bulk set rating for multiple media items
   ipcMain.handle('media:bulkSetRating', async (_ev, mediaIds: string[], rating: number) => {
+    if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
+      return { updated: 0, total: 0 }
+    }
     let updated = 0
-    for (const mediaId of mediaIds) {
-      try {
-        db.statsSetRating(mediaId, rating)
-        updated++
-      } catch (err) {
-        errorLogger.error('Media', `Failed to set rating for ${mediaId}`, err)
-      }
+    // Single sqlite transaction across N rows — same pattern as the
+    // other bulk* IPCs. Per-id loop with implicit auto-commit was
+    // costing the user ~1ms per item; the txn collapses 4,800 commits
+    // into one.
+    try {
+      const txn = db.raw.transaction((ids: string[]) => {
+        for (const mediaId of ids) {
+          try {
+            db.statsSetRating(mediaId, rating)
+            updated++
+          } catch (err) {
+            errorLogger.error('Media', `Failed to set rating for ${mediaId}`, err)
+          }
+        }
+      })
+      txn(mediaIds)
+    } catch (err: any) {
+      errorLogger.error('Media', 'bulkSetRating transaction failed', err)
     }
     if (updated > 0) {
       recordRatingGiven()
