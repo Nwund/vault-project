@@ -448,6 +448,8 @@ const api = {
     moveBroken: (mediaId: string, reason?: string) => invoke('media:moveBroken', mediaId, reason),
     // Transcode & playback
     getPlayableUrl: (mediaId: string, forceTranscode?: boolean) => invoke<string | null>('media:getPlayableUrl', mediaId, forceTranscode),
+    getPlayableUrlBatch: (mediaIds: string[], forceTranscode?: boolean) =>
+      invoke<Record<string, string | null>>('media:getPlayableUrlBatch', mediaIds, forceTranscode),
     getLowResUrl: (mediaId: string, maxHeight: number) => invoke<string | null>('media:getLowResUrl', mediaId, maxHeight),
     getLoudnessPeak: (mediaId: string) => invoke<number | null>('media:getLoudnessPeak', mediaId),
     // On-demand thumbnail generation

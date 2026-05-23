@@ -1236,6 +1236,32 @@ export function createDb() {
     addTagToMedia,
     removeTagFromMedia: (mediaId: string, tagName: string) => stmts.unlinkTag.run(mediaId, tagName.trim()),
     listMediaTags: (mediaId: string) => stmts.listMediaTags.all(mediaId) as TagRow[],
+    // Batch variant — chunks of 500 to stay under sqlite's IN-list limit.
+    // Returns Map keyed by mediaId for O(1) per-item lookup. Used by
+    // anywhere in ipc.ts that filters media by tag-emptiness or builds
+    // a per-media tag fan-out (the audit found 13 such N+1 callsites).
+    listMediaTagsBatch: (mediaIds: string[]): Map<string, TagRow[]> => {
+      const out = new Map<string, TagRow[]>()
+      if (mediaIds.length === 0) return out
+      for (const id of mediaIds) out.set(id, [])
+      const CHUNK = 500
+      for (let i = 0; i < mediaIds.length; i += CHUNK) {
+        const chunk = mediaIds.slice(i, i + CHUNK)
+        const placeholders = chunk.map(() => '?').join(',')
+        const rows = db.prepare(`
+          SELECT mt.mediaId AS mediaId, t.*
+          FROM media_tags mt JOIN tags t ON mt.tagId = t.id
+          WHERE mt.mediaId IN (${placeholders})
+          ORDER BY t.name ASC
+        `).all(...chunk) as Array<TagRow & { mediaId: string }>
+        for (const r of rows) {
+          const { mediaId, ...tag } = r
+          const arr = out.get(mediaId)
+          if (arr) arr.push(tag as TagRow)
+        }
+      }
+      return out
+    },
 
     listMarkers: (mediaId: string) => stmts.listMarkers.all(mediaId) as MarkerRow[],
     addMarker: (mediaId: string, timeSec: number, title: string) => {

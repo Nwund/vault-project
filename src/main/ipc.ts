@@ -1815,6 +1815,37 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return toVaultUrl(media.path)
   })
 
+  // Batch variant — resolves N playable URLs in parallel. Used by
+  // PerformersPage multi-angle viewer + anywhere that opens several
+  // videos at once. Items that need transcode still pay the transcode
+  // cost, but the IPC roundtrip per id drops to a single call.
+  ipcMain.handle('media:getPlayableUrlBatch', async (_ev, mediaIds: string[], forceTranscode?: boolean) => {
+    if (!Array.isArray(mediaIds) || mediaIds.length === 0) return {}
+    const out: Record<string, string | null> = {}
+    await Promise.all(mediaIds.map(async (mediaId) => {
+      try {
+        const media = db.getMedia(mediaId)
+        if (!media) { out[mediaId] = null; return }
+        const ext = path.extname(media.path).toLowerCase()
+        const shouldTranscode = forceTranscode || needsTranscode(ext)
+        if (shouldTranscode) {
+          let tp = getTranscodedPath(mediaId)
+          if (!tp) {
+            tp = await transcodeToMp4(media.path, mediaId)
+            db.setTranscodedPath(mediaId, tp)
+          }
+          out[mediaId] = toVaultUrl(tp)
+        } else {
+          out[mediaId] = toVaultUrl(media.path)
+        }
+      } catch (err) {
+        console.warn('[media:getPlayableUrlBatch] failed for', mediaId, err)
+        out[mediaId] = null
+      }
+    }))
+    return out
+  })
+
   ipcMain.handle('media:getLowResUrl', async (_ev, mediaId: string, maxHeight: number) => {
     const media = db.getMedia(mediaId)
     if (!media) return null
@@ -5560,11 +5591,10 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       console.log(`[HybridTag] Found ${toProcess.length} media items total`)
 
       if (onlyUntagged) {
-        // Filter to only items with no tags
-        toProcess = toProcess.filter(m => {
-          const tags = db.listMediaTags(m.id)
-          return tags.length === 0
-        })
+        // Filter to only items with no tags. Batch the tag fetch so a
+        // 10k-item library doesn't issue 10k SELECTs here.
+        const tagMap = db.listMediaTagsBatch(toProcess.map(m => m.id))
+        toProcess = toProcess.filter(m => (tagMap.get(m.id) ?? []).length === 0)
         console.log(`[HybridTag] ${toProcess.length} videos have no tags`)
       }
 
@@ -6210,10 +6240,8 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
       let allMedia = db.listMedia({ limit: maxItems * 2 }).items
 
       if (onlyUntagged) {
-        allMedia = allMedia.filter(m => {
-          const tags = db.listMediaTags(m.id)
-          return tags.length === 0
-        })
+        const tagMap = db.listMediaTagsBatch(allMedia.map(m => m.id))
+        allMedia = allMedia.filter(m => (tagMap.get(m.id) ?? []).length === 0)
       }
 
       allMedia = allMedia.slice(0, maxItems)

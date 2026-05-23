@@ -75,14 +75,17 @@ export default function PerformersPage() {
     if (!angleSession || angleSession.length === 0) return
     let cancelled = false
     void (async () => {
-      const urlMap: Record<string, string> = {}
-      for (const m of angleSession) {
-        try {
-          const u = await window.api.media.getPlayableUrl(m.mediaId)
-          if (u) urlMap[m.mediaId] = u
-        } catch { /* skip — angle will render with no source */ }
-      }
-      if (!cancelled) setAngleUrls(urlMap)
+      try {
+        const ids = angleSession.map((m) => m.mediaId)
+        const result = await (window.api.media as any).getPlayableUrlBatch?.(ids)
+        if (cancelled) return
+        // result is { id: url|null }; strip nulls into the angle-url map.
+        const urlMap: Record<string, string> = {}
+        for (const [id, u] of Object.entries(result ?? {})) {
+          if (typeof u === 'string' && u) urlMap[id] = u
+        }
+        setAngleUrls(urlMap)
+      } catch { /* skip — angle viewer falls back to no-source state */ }
     })()
     return () => { cancelled = true }
   }, [angleSession])
