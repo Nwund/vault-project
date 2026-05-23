@@ -41,6 +41,7 @@ import { ModelFileCard } from '../components/ModelFileCard'
 import { BulkModelDownloaderCard } from '../components/BulkModelDownloaderCard'
 import { SoundpackDedupCard } from '../components/SoundpackDedupCard'
 import { QueueDashboardCard } from '../components/QueueDashboardCard'
+import { DetectorTogglesCard } from '../components/DetectorTogglesCard'
 import { QualityAuditCard } from '../components/QualityAuditCard'
 import { ClipSimilarityCard } from '../components/ClipSimilarityCard'
 import { toFileUrlCached } from '../hooks/usePerformance'
@@ -1380,6 +1381,13 @@ export function AiTaggerPage() {
                 first card so the user sees it before the more granular
                 per-model cards below. */}
             <BulkModelDownloaderCard />
+
+            {/* Per-detector enable / disable toggles. The processing
+                queue already gates several detectors on per-setting
+                flags (useTransNet, useDbCrnnOcr, whisperEnabled);
+                surfacing them here lets users opt out of slow ones
+                without hunting through Settings. */}
+            <DetectorTogglesCard />
 
             {/* Models Section */}
             <div className="bg-[var(--panel)] rounded-xl border border-[var(--border)] p-6">

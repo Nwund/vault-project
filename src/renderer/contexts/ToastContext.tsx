@@ -174,6 +174,22 @@ const ToastItem: React.FC<{
         </button>
       )}
 
+      {/* Quick 'copy error' action — only on error toasts, so the user
+          can grab the full message for a bug report without selecting
+          + copying from a transient toast. Bypasses the dismiss timer. */}
+      {toast.type === 'error' && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            try { navigator.clipboard.writeText(toast.message) } catch { /* ignore */ }
+          }}
+          className="px-1.5 py-0.5 text-[10px] rounded bg-white/15 hover:bg-white/25 transition"
+          title="Copy this error to clipboard"
+        >
+          Copy
+        </button>
+      )}
+
       <button
         onClick={(e) => { e.stopPropagation(); handleDismiss() }}
         className="p-1 hover:bg-white/20 rounded transition btn-press"

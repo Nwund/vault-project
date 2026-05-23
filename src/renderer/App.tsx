@@ -77,6 +77,7 @@ import { useAmbienceAudio } from './hooks/useAmbienceAudio'
 import { FloatingVideoPlayer } from './components/FloatingVideoPlayer'
 import { MediaInfoModal } from './components/MediaInfoModal'
 const WhatsNewModal = React.lazy(() => import('./components/WhatsNewModal').then((m) => ({ default: m.WhatsNewModal })))
+const WelcomeModal = React.lazy(() => import('./components/WelcomeModal').then((m) => ({ default: m.WelcomeModal })))
 import { DuplicatesModal } from './components/DuplicatesModal'
 import { HomeDashboard } from './components/HomeDashboard'
 // PMV editor is ~4000 lines + carries timeline/audio/canvas helpers.
@@ -2045,6 +2046,7 @@ export default function App() {
           or summons it via CommandPalette. */}
       <React.Suspense fallback={null}>
         <WhatsNewModal />
+        <WelcomeModal />
       </React.Suspense>
       {/* Media Info Modal */}
       {infoModalMedia && (
