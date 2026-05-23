@@ -305,10 +305,25 @@ export class FrameExtractor {
       // precision on gradual fades / slow zooms. Falls through to
       // ffmpeg scdet on any failure so this never regresses the
       // baseline detection.
+      // Default: use TransNet when the model file is present. Falls
+      // through to ffmpeg scdet when the model is missing OR when the
+      // user explicitly disabled it via settings.ai.useTransNet=false.
+      // (Task #244 — TransNet was already implemented behind an opt-in;
+      // flipping the default to "use it if available" so the user
+      // doesn't have to know about the setting.)
       let useTransNet = false
       try {
         const { getAISettings } = await import('../../settings')
-        useTransNet = !!(getAISettings() as any)?.useTransNet
+        const aiSettings = getAISettings() as any
+        if (typeof aiSettings?.useTransNet === 'boolean') {
+          useTransNet = aiSettings.useTransNet
+        } else {
+          const { app } = await import('electron')
+          const path = await import('node:path')
+          const fs = await import('node:fs')
+          const modelPath = path.join(app.getPath('userData'), 'models', 'transnet-v2.onnx')
+          useTransNet = fs.existsSync(modelPath)
+        }
       } catch { /* ignore */ }
       if (useTransNet) {
         try {

@@ -591,6 +591,77 @@ export class ProcessingQueue {
         } catch (err) {
           console.warn('[ProcessingQueue] clip embedding persist failed:', err)
         }
+
+        // Aesthetic score (#241) — the LAION sac+logos+ava1 predictor is
+        // a thin linear head on this same CLIP embedding, so it's
+        // near-free to score here. predictAesthetic returns null when
+        // weights aren't installed; we just skip the column update in
+        // that case. Score persists to media_stats.aestheticScore
+        // (migration v44) so the recommender + 'best 100' view + sort
+        // can read it without re-running the model.
+        try {
+          const { predictAesthetic } = await import('./aesthetic-predictor')
+          const score = predictAesthetic(lastEmb)
+          if (typeof score === 'number') {
+            this.rawDb.prepare(`
+              INSERT INTO media_stats (mediaId, views, lastViewedAt, rating, oCount, updatedAt, aestheticScore)
+              VALUES (?, 0, NULL, 0, 0, ?, ?)
+              ON CONFLICT(mediaId) DO UPDATE SET aestheticScore = excluded.aestheticScore, updatedAt = excluded.updatedAt
+            `).run(item.mediaId, Date.now(), score)
+          }
+        } catch (err) {
+          console.warn('[ProcessingQueue] aesthetic prediction failed:', err)
+        }
+      }
+
+      // PaddleOCR text extraction (#247). Opt-in via
+      // settings.ai.useDbCrnnOcr. Runs on the first 2 frames only so
+      // the cost is bounded — OCR is expensive and most porn frames
+      // don't have text. Detected strings get added as a single tag
+      // 'has-text' + persisted into the description field for search.
+      try {
+        const aiSettings: any = (await import('../../settings')).getAISettings?.() ?? {}
+        if (aiSettings.useDbCrnnOcr) {
+          const { isDbCrnnOcrAvailable, runDbCrnnOcr } = await import('./paddle-ocr')
+          if (isDbCrnnOcrAvailable()) {
+            const samples = frames.slice(0, 2)
+            const textsAcrossFrames: string[] = []
+            for (const f of samples) {
+              try {
+                const texts = await runDbCrnnOcr(f.path)
+                for (const t of texts) {
+                  const clean = t.trim()
+                  if (clean.length > 1 && !textsAcrossFrames.includes(clean)) textsAcrossFrames.push(clean)
+                }
+              } catch { /* skip frame */ }
+            }
+            if (textsAcrossFrames.length > 0) {
+              // Cache for later use in Tier 2 prompt + tag prior loop.
+              ;(tier1Result as any).ocrTexts = textsAcrossFrames
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[ProcessingQueue] PaddleOCR failed:', err)
+      }
+
+      // AI-image full-frame detector (#243). Runs on the first frame
+      // (representative of the still) — full per-frame averaging would
+      // double the cost. Null when no model is installed.
+      try {
+        const { scoreFrame: scoreAiImageFrame } = await import('./ai-image-detector')
+        if (frames[0]?.path) {
+          const aiScore = await scoreAiImageFrame(frames[0].path)
+          if (aiScore) {
+            this.rawDb.prepare(`
+              INSERT INTO media_stats (mediaId, views, lastViewedAt, rating, oCount, updatedAt, aiImageProb)
+              VALUES (?, 0, NULL, 0, 0, ?, ?)
+              ON CONFLICT(mediaId) DO UPDATE SET aiImageProb = excluded.aiImageProb, updatedAt = excluded.updatedAt
+            `).run(item.mediaId, Date.now(), aiScore.ai)
+          }
+        }
+      } catch (err) {
+        console.warn('[ProcessingQueue] ai-image score failed:', err)
       }
 
       // Store Tier 1 results
@@ -1114,6 +1185,46 @@ export class ProcessingQueue {
                 console.warn('[ProcessingQueue] Face detection failed:', err)
               }
 
+              // Step -1.782 (#242): Deepfake / synthetic-face detector.
+              // For each frame where YuNet found ≥1 face, score the
+              // face crops with the binary classifier and write the
+              // max P(fake) per item. Skipped silently when the
+              // model isn't installed. Also emits 'deepfake' /
+              // 'ai-generated' tag priors that fold into richTags.
+              try {
+                const { isDeepfakeDetectorAvailable, deepfakeTagPriorsForFrame } = await import('./deepfake-detector')
+                if (isDeepfakeDetectorAvailable() && perFrameFaces.length > 0) {
+                  let maxFakeAcrossFrames = 0
+                  for (const { framePath, faces } of perFrameFaces) {
+                    if (faces.length === 0) continue
+                    const priors = await deepfakeTagPriorsForFrame(framePath, faces)
+                    for (const p of priors) {
+                      if (p.confidence > maxFakeAcrossFrames) maxFakeAcrossFrames = p.confidence
+                      const lower = p.name.toLowerCase()
+                      const existing = tier2Result.richTags.find((t) => t.name.toLowerCase() === lower)
+                      if (!existing) {
+                        tier2Result.richTags.push({
+                          name: p.name,
+                          confidence: p.confidence,
+                          source: 'deepfake' as any,
+                          frameCount: 1,
+                          totalFrames: 1,
+                        })
+                      }
+                    }
+                  }
+                  if (maxFakeAcrossFrames > 0) {
+                    this.rawDb.prepare(`
+                      INSERT INTO media_stats (mediaId, views, lastViewedAt, rating, oCount, updatedAt, deepfakeProb)
+                      VALUES (?, 0, NULL, 0, 0, ?, ?)
+                      ON CONFLICT(mediaId) DO UPDATE SET deepfakeProb = excluded.deepfakeProb, updatedAt = excluded.updatedAt
+                    `).run(item.mediaId, Date.now(), maxFakeAcrossFrames)
+                  }
+                }
+              } catch (err) {
+                console.warn('[ProcessingQueue] Deepfake detection failed:', err)
+              }
+
               // Step -1.785: SFace face recognition. For each face
               // YuNet detected, extract a 128-D embedding and assign
               // to a cluster. If a face matches a named cluster (one
@@ -1410,11 +1521,31 @@ export class ProcessingQueue {
                       && audioFingerprint.contentType !== 'music-only'
                       && audioFingerprint.channels > 0)
                 if (whisperEnabled && audioWorthwhile && findWhisperInstall()) {
-                  const transcript = await transcribeAudio(
-                    media.path,
-                    this.frameExtractor.getFfmpegPath(),
-                    { maxAudioSec: 90, timeoutMs: 120_000 }
-                  )
+                  // (#249) Prefer WhisperX sidecar when it's running —
+                  // word-level + speaker-diarized transcript instead of
+                  // whisper.cpp's flat text. Falls through to whisper.cpp
+                  // when WhisperX isn't reachable, so this is purely an
+                  // upgrade path with no regression risk.
+                  let transcript: { text: string; durationMs: number } | null = null
+                  try {
+                    const { isWhisperXReady, whisperxTranscribe } = await import('./whisperx-launcher')
+                    if (isWhisperXReady()) {
+                      const segments = await whisperxTranscribe(media.path)
+                      if (segments && segments.length > 0) {
+                        const joined = segments.map((s: any) => s.text).filter(Boolean).join(' ').trim()
+                        if (joined) transcript = { text: joined, durationMs: 0 }
+                      }
+                    }
+                  } catch (err) {
+                    console.warn('[ProcessingQueue] WhisperX failed, falling back to whisper.cpp:', err)
+                  }
+                  if (!transcript) {
+                    transcript = await transcribeAudio(
+                      media.path,
+                      this.frameExtractor.getFfmpegPath(),
+                      { maxAudioSec: 90, timeoutMs: 120_000 }
+                    )
+                  }
                   if (transcript?.text) {
                     console.log(`[ProcessingQueue] Whisper (${transcript.durationMs}ms): "${transcript.text.slice(0, 80)}…"`)
                     // Persist transcript for full-text search (FTS5).

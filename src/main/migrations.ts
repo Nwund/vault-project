@@ -1212,6 +1212,29 @@ const migrations: Migration[] = [
         console.warn('[Migration v43] trigram tokenizer unavailable (SQLite version too old?):', err)
       }
     }
+  },
+  {
+    // Drop-in detector outputs: aesthetic score (0-10), deepfake P(fake),
+    // ai-image P(ai-gen). All persisted on media_stats so the recommender
+    // / Library "best 100" view / filters can read them with one JOIN.
+    // Index aestheticScore so "ORDER BY aestheticScore DESC LIMIT 100"
+    // doesn't full-scan.
+    id: 44,
+    up: (db) => {
+      const cols = db.prepare(`PRAGMA table_info(media_stats)`).all() as Array<{ name: string }>
+      const have = new Set(cols.map((c) => c.name))
+      if (!have.has('aestheticScore')) {
+        db.exec(`ALTER TABLE media_stats ADD COLUMN aestheticScore REAL;`)
+      }
+      if (!have.has('deepfakeProb')) {
+        db.exec(`ALTER TABLE media_stats ADD COLUMN deepfakeProb REAL;`)
+      }
+      if (!have.has('aiImageProb')) {
+        db.exec(`ALTER TABLE media_stats ADD COLUMN aiImageProb REAL;`)
+      }
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_media_stats_aesthetic ON media_stats(aestheticScore) WHERE aestheticScore IS NOT NULL;`)
+      console.log('[Migration v44] media_stats: added aestheticScore + deepfakeProb + aiImageProb')
+    }
   }
 ]
 
