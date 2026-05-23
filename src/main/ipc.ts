@@ -10626,8 +10626,28 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
     try {
       const { spawn } = await import('node:child_process')
-      // Try cloudflared on PATH first; user installs it themselves
-      // (one-line winget install Cloudflare.cloudflared).
+      // Probe PATH first so we can surface a clean "install via winget"
+      // hint instead of a cryptic spawn error. Cleaner UX than letting
+      // the spawn fail with ENOENT.
+      const probe = spawn(process.platform === 'win32' ? 'where' : 'which', ['cloudflared'], { windowsHide: true })
+      const onPath = await new Promise<boolean>((resolve) => {
+        let resolved = false
+        probe.on('exit', (code) => { if (!resolved) { resolved = true; resolve(code === 0) } })
+        probe.on('error', () => { if (!resolved) { resolved = true; resolve(false) } })
+        setTimeout(() => { if (!resolved) { resolved = true; try { probe.kill() } catch {} ; resolve(false) } }, 2000)
+      })
+      if (!onPath) {
+        return {
+          ok: false,
+          notInstalled: true,
+          installCommand: process.platform === 'win32'
+            ? 'winget install Cloudflare.cloudflared'
+            : process.platform === 'darwin'
+              ? 'brew install cloudflared'
+              : 'sudo apt install cloudflared  (or follow https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)',
+          error: 'cloudflared binary not found on PATH. Install it, restart Vault, then try again.',
+        }
+      }
       cloudflaredProc = spawn('cloudflared', [
         'tunnel', '--no-autoupdate', '--url', `http://127.0.0.1:${port}`,
       ], { windowsHide: true })
@@ -10652,12 +10672,18 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
         })
         // 30s timeout — if no URL appears, the binary is missing or
         // the user's network is blocked.
-        setTimeout(() => { if (!resolved) { resolved = true; resolve(null) } }, 30_000)
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true
+            try { cloudflaredProc?.kill() } catch { /* noop */ }
+            resolve(null)
+          }
+        }, 30_000)
       })
       if (!url) {
         try { cloudflaredProc?.kill() } catch { /* noop */ }
         cloudflaredProc = null
-        return { ok: false, error: 'cloudflared did not report a tunnel URL within 30s. Is the binary installed (winget install Cloudflare.cloudflared)?' }
+        return { ok: false, error: 'cloudflared did not report a tunnel URL within 30s. Check your network/firewall — cloudflared needs outbound HTTPS to trycloudflare.com.' }
       }
       return { ok: true, url, port }
     } catch (err: any) {

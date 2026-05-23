@@ -293,6 +293,11 @@ interface SceneMetrics {
   intensity: number
 }
 
+// Cached analysis canvas — avoid allocating a fresh 160x90 canvas + 2D
+// context every tick (audit perf finding). Reused across calls.
+let _analysisCanvas: HTMLCanvasElement | null = null
+let _analysisCtx: CanvasRenderingContext2D | null = null
+
 function analyzeFrame(video: HTMLVideoElement): SceneMetrics | null {
   if (video.readyState < 2) return null
   const w = video.videoWidth || 0
@@ -302,10 +307,14 @@ function analyzeFrame(video: HTMLVideoElement): SceneMetrics | null {
   // and ~5x faster than 320x180.
   const sw = 160
   const sh = Math.max(60, Math.floor((h / w) * sw))
-  const canvas = document.createElement('canvas')
-  canvas.width = sw
-  canvas.height = sh
-  const ctx = canvas.getContext('2d')
+  if (!_analysisCanvas) {
+    _analysisCanvas = document.createElement('canvas')
+    _analysisCtx = _analysisCanvas.getContext('2d')
+  }
+  const canvas = _analysisCanvas
+  if (canvas.width !== sw) canvas.width = sw
+  if (canvas.height !== sh) canvas.height = sh
+  const ctx = _analysisCtx
   if (!ctx) return null
   try {
     ctx.drawImage(video, 0, 0, sw, sh)

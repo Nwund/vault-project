@@ -43,8 +43,8 @@ export function AboutPage() {
               <div className="w-24 h-24 mx-auto mb-5 rounded-3xl bg-gradient-to-br from-[var(--primary)] to-pink-600 flex items-center justify-center shadow-2xl shadow-[var(--primary)]/40 transform hover:scale-105 transition-transform">
                 <Sparkles size={44} className="text-white" />
               </div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-white to-zinc-300 bg-clip-text text-transparent">Vault</h1>
-              <p className="text-zinc-400 mt-2 text-lg">Personal Media Experience</p>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-[var(--text)] to-[var(--text-muted)] bg-clip-text text-transparent">Vault</h1>
+              <p className="text-[var(--text-muted)] mt-2 text-lg">Personal Media Experience</p>
               <div className="mt-5 flex items-center justify-center gap-3">
                 <span className="px-4 py-1.5 rounded-full text-sm font-medium bg-zinc-800/80 text-zinc-300 border border-[var(--border)]">
                   v{appVersion}
@@ -74,15 +74,15 @@ export function AboutPage() {
 
           {/* Quick Stats */}
           {vaultStats && (
-            <div className="rounded-2xl border border-[var(--border)] bg-zinc-900/50 p-6">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--panel)]/50 p-6">
               <div className="text-sm font-semibold mb-4 flex items-center gap-2">
                 <BarChart3 size={16} className="text-[var(--primary)]" />
                 Your Collection
               </div>
               <div className="grid grid-cols-4 gap-4">
                 <div className="text-center p-3 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 transition-colors">
-                  <div className="text-3xl font-bold text-white">{vaultStats.totalMedia?.toLocaleString() || 0}</div>
-                  <div className="text-xs text-zinc-500 mt-1">Total</div>
+                  <div className="text-3xl font-bold text-[var(--text)]">{vaultStats.totalMedia?.toLocaleString() || 0}</div>
+                  <div className="text-xs text-[var(--text-muted)] mt-1">Total</div>
                 </div>
                 <div className="text-center p-3 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 transition-colors">
                   <div className="text-3xl font-bold text-green-400">{vaultStats.videoCount?.toLocaleString() || 0}</div>

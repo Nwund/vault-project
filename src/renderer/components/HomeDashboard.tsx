@@ -670,42 +670,42 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToFa
             <div className="p-5 bg-zinc-800/40 backdrop-blur-sm rounded-2xl border border-[var(--border)]/50 shadow-xl card-shine">
               <div className="flex items-center gap-2 mb-4">
                 <BarChart3 size={18} className="text-[var(--primary)]" />
-                <span className="font-semibold text-white">Your Collection</span>
+                <span className="font-semibold text-[var(--text)]">Your Collection</span>
               </div>
               <div className="grid grid-cols-5 gap-6">
                 <div className="text-center group cursor-default">
                   <div className="w-14 h-14 mx-auto mb-2 rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-600/10 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <Film size={24} className="text-blue-400" />
                   </div>
-                  <div className="text-2xl font-bold text-white">{quickStats.totalMedia.toLocaleString()}</div>
+                  <div className="text-2xl font-bold text-[var(--text)]">{quickStats.totalMedia.toLocaleString()}</div>
                   <div className="text-[11px] text-zinc-500 uppercase tracking-wider font-medium">Total</div>
                 </div>
                 <div className="text-center group cursor-default">
                   <div className="w-14 h-14 mx-auto mb-2 rounded-xl bg-gradient-to-br from-green-500/20 to-green-600/10 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <Play size={24} className="text-green-400" />
                   </div>
-                  <div className="text-2xl font-bold text-white">{quickStats.totalVideos.toLocaleString()}</div>
+                  <div className="text-2xl font-bold text-[var(--text)]">{quickStats.totalVideos.toLocaleString()}</div>
                   <div className="text-[11px] text-zinc-500 uppercase tracking-wider font-medium">Videos</div>
                 </div>
                 <div className="text-center group cursor-default">
                   <div className="w-14 h-14 mx-auto mb-2 rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-600/10 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <Image size={24} className="text-purple-400" />
                   </div>
-                  <div className="text-2xl font-bold text-white">{quickStats.totalImages.toLocaleString()}</div>
+                  <div className="text-2xl font-bold text-[var(--text)]">{quickStats.totalImages.toLocaleString()}</div>
                   <div className="text-[11px] text-zinc-500 uppercase tracking-wider font-medium">Images</div>
                 </div>
                 <div className="text-center group cursor-default">
                   <div className="w-14 h-14 mx-auto mb-2 rounded-xl bg-gradient-to-br from-red-500/20 to-red-600/10 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <Heart size={24} className="text-red-400" />
                   </div>
-                  <div className="text-2xl font-bold text-white">{quickStats.totalFavorites.toLocaleString()}</div>
+                  <div className="text-2xl font-bold text-[var(--text)]">{quickStats.totalFavorites.toLocaleString()}</div>
                   <div className="text-[11px] text-zinc-500 uppercase tracking-wider font-medium">Favorites</div>
                 </div>
                 <div className="text-center group cursor-default">
                   <div className="w-14 h-14 mx-auto mb-2 rounded-xl bg-gradient-to-br from-orange-500/20 to-orange-600/10 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <Timer size={24} className="text-orange-400" />
                   </div>
-                  <div className="text-2xl font-bold text-white">{formatWatchTime(quickStats.totalWatchTime)}</div>
+                  <div className="text-2xl font-bold text-[var(--text)]">{formatWatchTime(quickStats.totalWatchTime)}</div>
                   <div className="text-[11px] text-zinc-500 uppercase tracking-wider font-medium">Watched</div>
                 </div>
               </div>

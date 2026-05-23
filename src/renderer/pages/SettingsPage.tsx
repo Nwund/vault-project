@@ -331,7 +331,7 @@ export function SettingsPage(props: {
   ] as const
 
   return (
-    <>
+    <div className="h-full w-full flex flex-col overflow-x-hidden">
       <TopBar title="Settings">
         {/* Settings search */}
         <div className="relative flex-1 max-w-xs">
@@ -448,8 +448,6 @@ export function SettingsPage(props: {
                       try {
                         const nextDir = await window.api.settings.chooseMediaDir()
                         if (!nextDir) return
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       } catch (err) {
                         console.error('[Settings] Failed to add media dir:', err)
                       }
@@ -470,8 +468,6 @@ export function SettingsPage(props: {
                       try {
                         const nextDir = await window.api.settings.chooseCacheDir()
                         if (!nextDir) return
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       } catch (err) {
                         console.error('[Settings] Failed to set cache dir:', err)
                       }
@@ -495,8 +491,6 @@ export function SettingsPage(props: {
                       onChange={async (e) => {
                         try {
                           await window.api.settings.library?.update?.({ thumbnailQuality: e.target.value as 'low' | 'medium' | 'high' })
-                          const next = await window.api.settings.get()
-                          props.patchSettings(next)
                         } catch (err) {
                           console.error('[Settings] Failed to update thumbnail quality:', err)
                         }
@@ -556,8 +550,6 @@ export function SettingsPage(props: {
                       value={s?.library?.previewQuality ?? 'medium'}
                       onChange={async (e) => {
                         await window.api.settings.library?.update?.({ previewQuality: e.target.value as 'low' | 'medium' | 'high' })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                       className="px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm"
                     >
@@ -577,8 +569,6 @@ export function SettingsPage(props: {
                       checked={s?.library?.disableHoverPreviews ?? false}
                       onChange={async (v) => {
                         await window.api.settings.library?.update?.({ disableHoverPreviews: v })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                     />
                   </div>
@@ -593,8 +583,6 @@ export function SettingsPage(props: {
                       checked={s?.appearance?.reduceAnimations ?? false}
                       onChange={async (v) => {
                         await window.api.settings.appearance?.update?.({ reduceAnimations: v })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                         // Apply immediately
                         document.documentElement.setAttribute('data-reduce-motion', v ? 'true' : 'false')
                       }}
@@ -611,8 +599,6 @@ export function SettingsPage(props: {
                       value={s?.library?.maxConcurrentVideos ?? 9}
                       onChange={async (e) => {
                         await window.api.settings.library?.update?.({ maxConcurrentVideos: Number(e.target.value) })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                       className="px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm"
                     >
@@ -634,8 +620,6 @@ export function SettingsPage(props: {
                       value={s?.library?.memoryCacheSize ?? 2000}
                       onChange={async (e) => {
                         await window.api.settings.library?.update?.({ memoryCacheSize: Number(e.target.value) })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                       className="px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm"
                     >
@@ -656,8 +640,6 @@ export function SettingsPage(props: {
                       value={s?.library?.preloadMargin ?? 600}
                       onChange={async (e) => {
                         await window.api.settings.library?.update?.({ preloadMargin: Number(e.target.value) })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                       className="px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm"
                     >
@@ -778,8 +760,6 @@ export function SettingsPage(props: {
                     value={s?.appearance?.animationSpeed ?? 'full'}
                     onChange={async (e) => {
                       await window.api.settings.appearance?.update?.({ animationSpeed: e.target.value as 'none' | 'reduced' | 'full' })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                     className="bg-black/40 border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm"
                   >
@@ -799,8 +779,6 @@ export function SettingsPage(props: {
                     value={s?.appearance?.fontSize ?? 'medium'}
                     onChange={async (e) => {
                       await window.api.settings.appearance?.update?.({ fontSize: e.target.value as 'small' | 'medium' | 'large' })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                     className="bg-black/40 border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm"
                   >
@@ -821,8 +799,6 @@ export function SettingsPage(props: {
                     onChange={async (e) => {
                       const style = e.target.value
                       await window.api.settings.appearance?.update?.({ fontStyle: style })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                       // Apply font style to document
                       document.documentElement.setAttribute('data-font-style', style)
                     }}
@@ -964,8 +940,6 @@ export function SettingsPage(props: {
                     value={s?.appearance?.colorBlindMode ?? 'none'}
                     onChange={async (e) => {
                       await window.api.settings.appearance?.update?.({ colorBlindMode: e.target.value as 'none' | 'protanopia' | 'deuteranopia' | 'tritanopia' | 'high-contrast' })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                     className="bg-black/40 border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm"
                   >
@@ -987,8 +961,6 @@ export function SettingsPage(props: {
                     value={s?.appearance?.thumbnailSize ?? 'medium'}
                     onChange={async (e) => {
                       await window.api.settings.appearance?.update?.({ thumbnailSize: e.target.value as 'small' | 'medium' | 'large' })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                     className="bg-black/40 border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm"
                   >
@@ -1009,8 +981,6 @@ export function SettingsPage(props: {
                     value={s?.appearance?.accentColor ?? '#ff6b9d'}
                     onChange={async (e) => {
                       await window.api.settings.appearance?.update?.({ accentColor: e.target.value })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                     className="w-10 h-8 rounded cursor-pointer border border-[var(--border)]"
                   />
@@ -1026,8 +996,6 @@ export function SettingsPage(props: {
                     checked={s?.appearance?.compactMode ?? false}
                     onChange={async (v) => {
                       await window.api.settings.appearance?.update?.({ compactMode: v })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                   />
                 </div>
@@ -1444,8 +1412,6 @@ export function SettingsPage(props: {
                     checked={s?.goonwall?.visualEffects?.heatOverlay ?? true}
                     onChange={async (v) => {
                       await window.api.settings.goonwall?.update?.({ visualEffects: { ...s?.goonwall?.visualEffects, heatOverlay: v } })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                   />
                 </div>
@@ -1465,8 +1431,6 @@ export function SettingsPage(props: {
                       value={s?.goonwall?.visualEffects?.vignetteIntensity ?? 0.3}
                       onChange={async (e) => {
                         await window.api.settings.goonwall?.update?.({ visualEffects: { ...s?.goonwall?.visualEffects, vignetteIntensity: Number(e.target.value) } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                       className="w-20 h-1 accent-[var(--primary)] cursor-pointer"
                     />
@@ -1489,8 +1453,6 @@ export function SettingsPage(props: {
                       value={s?.goonwall?.visualEffects?.bloomIntensity ?? 0.1}
                       onChange={async (e) => {
                         await window.api.settings.goonwall?.update?.({ visualEffects: { ...s?.goonwall?.visualEffects, bloomIntensity: Number(e.target.value) } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                       className="w-20 h-1 accent-[var(--primary)] cursor-pointer"
                     />
@@ -1513,8 +1475,6 @@ export function SettingsPage(props: {
                       value={s?.goonwall?.visualEffects?.saturationBoost ?? 1.1}
                       onChange={async (e) => {
                         await window.api.settings.goonwall?.update?.({ visualEffects: { ...s?.goonwall?.visualEffects, saturationBoost: Number(e.target.value) } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                       className="w-20 h-1 accent-[var(--primary)] cursor-pointer"
                     />
@@ -1537,8 +1497,6 @@ export function SettingsPage(props: {
                       value={s?.goonwall?.visualEffects?.contrastBoost ?? 1.0}
                       onChange={async (e) => {
                         await window.api.settings.goonwall?.update?.({ visualEffects: { ...s?.goonwall?.visualEffects, contrastBoost: Number(e.target.value) } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                       className="w-20 h-1 accent-[var(--primary)] cursor-pointer"
                     />
@@ -1565,8 +1523,6 @@ export function SettingsPage(props: {
                       checked={s?.goonwall?.hypnoMode?.enabled ?? false}
                       onChange={async (v) => {
                         await window.api.settings.goonwall?.update?.({ hypnoMode: { ...s?.goonwall?.hypnoMode, enabled: v } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                     />
                   </div>
@@ -1584,8 +1540,6 @@ export function SettingsPage(props: {
                         value={s?.goonwall?.hypnoMode?.textFrequency ?? 5}
                         onChange={async (e) => {
                           await window.api.settings.goonwall?.update?.({ hypnoMode: { ...s?.goonwall?.hypnoMode, textFrequency: Number(e.target.value) } })
-                          const next = await window.api.settings.get()
-                          props.patchSettings(next)
                         }}
                         className="w-32 h-1 accent-fuchsia-400 cursor-pointer"
                       />
@@ -1605,8 +1559,6 @@ export function SettingsPage(props: {
                               subliminalText: ['GOON', 'EDGE', 'DEEPER', 'STROKE', 'LEAK', 'OBEY', 'SUBMIT'],
                             },
                           })
-                          const next = await window.api.settings.get()
-                          props.patchSettings(next)
                         }}
                         className="text-[10px] text-fuchsia-300 hover:text-fuchsia-200 underline"
                       >
@@ -1619,8 +1571,6 @@ export function SettingsPage(props: {
                       onChange={async (e) => {
                         const phrases = e.target.value.split(',').map((p) => p.trim()).filter(Boolean)
                         await window.api.settings.goonwall?.update?.({ hypnoMode: { ...s?.goonwall?.hypnoMode, subliminalText: phrases } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                       placeholder="GOON, EDGE, DEEPER, OBEY..."
                       className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs font-mono uppercase tracking-wider"
@@ -1638,8 +1588,6 @@ export function SettingsPage(props: {
                       checked={s?.goonwall?.edgeTimer?.enabled ?? false}
                       onChange={async (v) => {
                         await window.api.settings.goonwall?.update?.({ edgeTimer: { ...s?.goonwall?.edgeTimer, enabled: v } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                     />
                   </div>
@@ -1657,8 +1605,6 @@ export function SettingsPage(props: {
                         value={s?.goonwall?.edgeTimer?.interval ?? 120}
                         onChange={async (e) => {
                           await window.api.settings.goonwall?.update?.({ edgeTimer: { ...s?.goonwall?.edgeTimer, interval: Number(e.target.value) } })
-                          const next = await window.api.settings.get()
-                          props.patchSettings(next)
                         }}
                         className="w-32 h-1 accent-amber-400 cursor-pointer"
                       />
@@ -1684,8 +1630,6 @@ export function SettingsPage(props: {
                         value={s?.goonwall?.edgeTimer?.warningTime ?? 10}
                         onChange={async (e) => {
                           await window.api.settings.goonwall?.update?.({ edgeTimer: { ...s?.goonwall?.edgeTimer, warningTime: Number(e.target.value) } })
-                          const next = await window.api.settings.get()
-                          props.patchSettings(next)
                         }}
                         className="w-32 h-1 accent-amber-400 cursor-pointer"
                       />
@@ -1701,8 +1645,6 @@ export function SettingsPage(props: {
                       value={s?.goonwall?.edgeTimer?.action ?? 'pause'}
                       onChange={async (e) => {
                         await window.api.settings.goonwall?.update?.({ edgeTimer: { ...s?.goonwall?.edgeTimer, action: e.target.value as any } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                       className="px-2 py-1 rounded bg-black/40 border border-white/10 text-xs"
                     >
@@ -1731,8 +1673,6 @@ export function SettingsPage(props: {
                     onChange={async (v) => {
                       const current = s?.visualEffects?.goonWords ?? {}
                       await window.api.settings.visualEffects?.update?.({ goonWords: { ...current, enabled: v } })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                   />
                 </div>
@@ -1770,8 +1710,6 @@ export function SettingsPage(props: {
                                   ? enabledPacks.filter((p: string) => p !== packId)
                                   : [...enabledPacks, packId]
                                 await window.api.settings.visualEffects?.update?.({ goonWords: { ...current, enabledPacks: newPacks } })
-                                const next = await window.api.settings.get()
-                                props.patchSettings(next)
                               }}
                               className={`px-3 py-1.5 rounded-lg text-xs transition-all ${
                                 isEnabled
@@ -1802,8 +1740,6 @@ export function SettingsPage(props: {
                           onChange={async (e) => {
                             const current = s?.visualEffects?.goonWords ?? {}
                             await window.api.settings.visualEffects?.update?.({ goonWords: { ...current, intensity: Number(e.target.value) } })
-                            const next = await window.api.settings.get()
-                            props.patchSettings(next)
                           }}
                           className="w-20 h-1 accent-[var(--primary)] cursor-pointer"
                         />
@@ -1826,8 +1762,6 @@ export function SettingsPage(props: {
                           onChange={async (e) => {
                             const current = s?.visualEffects?.goonWords ?? {}
                             await window.api.settings.visualEffects?.update?.({ goonWords: { ...current, fontSize: Number(e.target.value) } })
-                            const next = await window.api.settings.get()
-                            props.patchSettings(next)
                           }}
                           className="w-20 h-1 accent-[var(--primary)] cursor-pointer"
                         />
@@ -1846,8 +1780,6 @@ export function SettingsPage(props: {
                         onChange={async (e) => {
                           const current = s?.visualEffects?.goonWords ?? {}
                           await window.api.settings.visualEffects?.update?.({ goonWords: { ...current, fontFamily: e.target.value } })
-                          const next = await window.api.settings.get()
-                          props.patchSettings(next)
                         }}
                         className="bg-black/30 border border-[var(--border)] rounded-lg px-2 py-1 text-sm"
                       >
@@ -1895,8 +1827,6 @@ export function SettingsPage(props: {
                               await window.api.settings.visualEffects?.update?.({
                                 goonWords: { ...current, fontColor: preset.text, glowColor: preset.glow }
                               })
-                              const next = await window.api.settings.get()
-                              props.patchSettings(next)
                             }}
                             className="px-2 py-1 rounded text-xs transition hover:scale-105"
                             style={{
@@ -1925,8 +1855,6 @@ export function SettingsPage(props: {
                           onChange={async (e) => {
                             const current = s?.visualEffects?.goonWords ?? {}
                             await window.api.settings.visualEffects?.update?.({ goonWords: { ...current, fontColor: e.target.value } })
-                            const next = await window.api.settings.get()
-                            props.patchSettings(next)
                           }}
                           className="w-8 h-8 rounded cursor-pointer border-0"
                           title="Text Color"
@@ -1937,8 +1865,6 @@ export function SettingsPage(props: {
                           onChange={async (e) => {
                             const current = s?.visualEffects?.goonWords ?? {}
                             await window.api.settings.visualEffects?.update?.({ goonWords: { ...current, glowColor: e.target.value } })
-                            const next = await window.api.settings.get()
-                            props.patchSettings(next)
                           }}
                           className="w-8 h-8 rounded cursor-pointer border-0"
                           title="Glow Color"
@@ -1962,8 +1888,6 @@ export function SettingsPage(props: {
                           onChange={async (e) => {
                             const current = s?.visualEffects?.goonWords ?? {}
                             await window.api.settings.visualEffects?.update?.({ goonWords: { ...current, frequency: Number(e.target.value) } })
-                            const next = await window.api.settings.get()
-                            props.patchSettings(next)
                           }}
                           className="w-20 h-1 accent-[var(--primary)] cursor-pointer"
                         />
@@ -1987,8 +1911,6 @@ export function SettingsPage(props: {
                           onChange={async (e) => {
                             const current = s?.visualEffects?.goonWords ?? {}
                             await window.api.settings.visualEffects?.update?.({ goonWords: { ...current, duration: Number(e.target.value) } })
-                            const next = await window.api.settings.get()
-                            props.patchSettings(next)
                           }}
                           className="w-20 h-1 accent-[var(--primary)] cursor-pointer"
                         />
@@ -2007,8 +1929,6 @@ export function SettingsPage(props: {
                         onChange={async (v) => {
                           const current = s?.visualEffects?.goonWords ?? {}
                           await window.api.settings.visualEffects?.update?.({ goonWords: { ...current, randomRotation: v } })
-                          const next = await window.api.settings.get()
-                          props.patchSettings(next)
                         }}
                       />
                     </div>
@@ -2022,8 +1942,6 @@ export function SettingsPage(props: {
                           const current = s?.visualEffects?.goonWords ?? {}
                           const customWords = e.target.value.split('\n').filter(w => w.trim())
                           await window.api.settings.visualEffects?.update?.({ goonWords: { ...current, customWords } })
-                          const next = await window.api.settings.get()
-                          props.patchSettings(next)
                         }}
                         placeholder="Add custom words (one per line)..."
                         className="w-full h-20 px-3 py-2 rounded-lg bg-black/30 border border-[var(--border)] text-sm resize-none"
@@ -2044,8 +1962,6 @@ export function SettingsPage(props: {
                                 if (!customWords.includes(word)) {
                                   customWords.push(word)
                                   await window.api.settings.visualEffects?.update?.({ goonWords: { ...goonWords, customWords } })
-                                  const next = await window.api.settings.get()
-                                  props.patchSettings(next)
                                 }
                               }}
                               className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 hover:bg-white/10 text-[var(--muted)] hover:text-white transition"
@@ -2126,8 +2042,6 @@ export function SettingsPage(props: {
                     checked={playbackSettings.autoplayNext ?? false}
                     onChange={async (v) => {
                       await window.api.settings.playback?.update?.({ autoplayNext: v })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                   />
                 </div>
@@ -2141,8 +2055,6 @@ export function SettingsPage(props: {
                     checked={playbackSettings.loopSingle ?? false}
                     onChange={async (v) => {
                       await window.api.settings.playback?.update?.({ loopSingle: v })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                   />
                 </div>
@@ -2156,8 +2068,6 @@ export function SettingsPage(props: {
                     checked={playbackSettings.muteByDefault ?? false}
                     onChange={async (v) => {
                       await window.api.settings.playback?.update?.({ muteByDefault: v })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                   />
                 </div>
@@ -2178,8 +2088,6 @@ export function SettingsPage(props: {
                     checked={playbackSettings.lowQualityMode ?? false}
                     onChange={async (v) => {
                       await window.api.settings.playback?.update?.({ lowQualityMode: v })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                   />
                 </div>
@@ -2194,8 +2102,6 @@ export function SettingsPage(props: {
                     value={playbackSettings.defaultResolution ?? 'original'}
                     onChange={async (e) => {
                       await window.api.settings.playback?.update?.({ defaultResolution: e.target.value })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                     className="bg-black/40 border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm"
                   >
@@ -2224,8 +2130,6 @@ export function SettingsPage(props: {
                         value={playbackSettings.lowQualityIntensity ?? 5}
                         onChange={async (e) => {
                           await window.api.settings.playback?.update?.({ lowQualityIntensity: Number(e.target.value) })
-                          const next = await window.api.settings.get()
-                          props.patchSettings(next)
                         }}
                         className="w-24 h-1 accent-[var(--primary)] cursor-pointer"
                       />
@@ -2286,8 +2190,6 @@ export function SettingsPage(props: {
                       checked={s?.sound?.enabled ?? true}
                       onChange={async (v) => {
                         await window.api.settings.update?.({ sound: { ...s?.sound, enabled: v } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                     />
                   </div>
@@ -2301,8 +2203,6 @@ export function SettingsPage(props: {
                       checked={s?.sound?.uiSoundsEnabled ?? true}
                       onChange={async (v) => {
                         await window.api.settings.update?.({ sound: { ...s?.sound, uiSoundsEnabled: v } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                     />
                   </div>
@@ -2316,8 +2216,6 @@ export function SettingsPage(props: {
                       checked={s?.sound?.voiceSoundsEnabled ?? true}
                       onChange={async (v) => {
                         await window.api.settings.update?.({ sound: { ...s?.sound, voiceSoundsEnabled: v } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                     />
                   </div>
@@ -2336,8 +2234,6 @@ export function SettingsPage(props: {
                         value={s?.sound?.volume ?? 0.5}
                         onChange={async (e) => {
                           await window.api.settings.update?.({ sound: { ...s?.sound, volume: Number(e.target.value) } })
-                          const next = await window.api.settings.get()
-                          props.patchSettings(next)
                         }}
                         className="w-24 h-1 accent-[var(--primary)] cursor-pointer"
                       />
@@ -2360,8 +2256,6 @@ export function SettingsPage(props: {
                       checked={s?.sound?.ambienceEnabled ?? false}
                       onChange={async (v) => {
                         await window.api.settings.update?.({ sound: { ...s?.sound, ambienceEnabled: v } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                     />
                   </div>
@@ -2377,8 +2271,6 @@ export function SettingsPage(props: {
                           value={s?.sound?.ambienceTrack ?? 'none'}
                           onChange={async (e) => {
                             await window.api.settings.update?.({ sound: { ...s?.sound, ambienceTrack: e.target.value } })
-                            const next = await window.api.settings.get()
-                            props.patchSettings(next)
                           }}
                           className="bg-black/40 border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm"
                         >
@@ -2404,8 +2296,6 @@ export function SettingsPage(props: {
                             value={s?.sound?.ambienceVolume ?? 0.3}
                             onChange={async (e) => {
                               await window.api.settings.update?.({ sound: { ...s?.sound, ambienceVolume: Number(e.target.value) } })
-                              const next = await window.api.settings.get()
-                              props.patchSettings(next)
                             }}
                             className="w-24 h-1 accent-[var(--primary)] cursor-pointer"
                           />
@@ -2439,8 +2329,6 @@ export function SettingsPage(props: {
                       checked={s?.data?.autoBackupEnabled ?? false}
                       onChange={async (v) => {
                         await window.api.settings.data?.update?.({ autoBackupEnabled: v })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                     />
                   </div>
@@ -2455,8 +2343,6 @@ export function SettingsPage(props: {
                         value={s?.data?.autoBackupIntervalDays ?? 7}
                         onChange={async (e) => {
                           await window.api.settings.data?.update?.({ autoBackupIntervalDays: Number(e.target.value) })
-                          const next = await window.api.settings.get()
-                          props.patchSettings(next)
                         }}
                         className="bg-black/40 border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm"
                       >
@@ -2501,8 +2387,6 @@ export function SettingsPage(props: {
                       try {
                         const result = await window.api.data?.importSettings?.()
                         if (result) {
-                          const next = await window.api.settings.get()
-                          props.patchSettings(next)
                           showToast('success', 'Settings imported! Some changes may require restart.')
                         }
                       } catch (err) {
@@ -2604,8 +2488,6 @@ export function SettingsPage(props: {
                               onClick={async () => {
                                 try {
                                   await window.api.profiles?.load?.(profile.id)
-                                  const next = await window.api.settings.get()
-                                  props.patchSettings(next)
                                   setActiveProfileId(profile.id)
                                   showToast('success', `Loaded profile "${profile.name}"`)
                                 } catch (err: any) {
@@ -2861,8 +2743,6 @@ export function SettingsPage(props: {
                       value={s?.performance?.maxMemoryMB ?? 2048}
                       onChange={async (e) => {
                         await window.api.settings.update?.({ performance: { ...s?.performance, maxMemoryMB: Number(e.target.value) } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                       className="bg-black/40 border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm"
                     >
@@ -2883,8 +2763,6 @@ export function SettingsPage(props: {
                       value={s?.performance?.thumbnailCacheSize ?? 2000}
                       onChange={async (e) => {
                         await window.api.settings.update?.({ performance: { ...s?.performance, thumbnailCacheSize: Number(e.target.value) } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                       className="bg-black/40 border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm"
                     >
@@ -2905,8 +2783,6 @@ export function SettingsPage(props: {
                       value={s?.performance?.videoConcurrency ?? 4}
                       onChange={async (e) => {
                         await window.api.settings.update?.({ performance: { ...s?.performance, videoConcurrency: Number(e.target.value) } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                       className="bg-black/40 border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm"
                     >
@@ -2927,8 +2803,6 @@ export function SettingsPage(props: {
                       checked={s?.performance?.lowMemoryMode ?? false}
                       onChange={async (v) => {
                         await window.api.settings.update?.({ performance: { ...s?.performance, lowMemoryMode: v } })
-                        const next = await window.api.settings.get()
-                        props.patchSettings(next)
                       }}
                     />
                   </div>
@@ -2954,8 +2828,6 @@ export function SettingsPage(props: {
                     checked={privacySettings.panicKeyEnabled ?? true}
                     onChange={async (v) => {
                       await window.api.settings.privacy?.update?.({ panicKeyEnabled: v })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                   />
                 </div>
@@ -2969,8 +2841,6 @@ export function SettingsPage(props: {
                     checked={privacySettings.clearOnExit ?? false}
                     onChange={async (v) => {
                       await window.api.settings.privacy?.update?.({ clearOnExit: v })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                   />
                 </div>
@@ -2984,8 +2854,6 @@ export function SettingsPage(props: {
                     checked={privacySettings.incognitoMode ?? false}
                     onChange={async (v) => {
                       await window.api.settings.privacy?.update?.({ incognitoMode: v })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                   />
                 </div>
@@ -3008,8 +2876,6 @@ export function SettingsPage(props: {
                     checked={s?.blacklist?.enabled ?? true}
                     onChange={async (v) => {
                       await window.api.settings.blacklist?.update?.({ enabled: v })
-                      const next = await window.api.settings.get()
-                      props.patchSettings(next)
                     }}
                   />
                 </div>
@@ -3031,8 +2897,6 @@ export function SettingsPage(props: {
                               key={tag}
                               onClick={async () => {
                                 await window.api.settings.blacklist?.removeTag?.(tag)
-                                const next = await window.api.settings.get()
-                                props.patchSettings(next)
                               }}
                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 text-xs hover:bg-red-500/30 transition"
                             >
@@ -3051,8 +2915,6 @@ export function SettingsPage(props: {
                             const tag = e.target.value
                             if (tag && !(s?.blacklist?.tags ?? []).includes(tag)) {
                               await window.api.settings.blacklist?.addTag?.(tag)
-                              const next = await window.api.settings.get()
-                              props.patchSettings(next)
                             }
                             e.target.value = ''
                           }}
@@ -3496,6 +3358,6 @@ export function SettingsPage(props: {
 
         </div>
       </div>
-    </>
+    </div>
   )
 }

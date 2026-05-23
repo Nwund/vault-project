@@ -47,11 +47,23 @@ export interface VeilidStatus {
   localNetworkReady: boolean
   nodeId?: string
   error?: string
+  /** Install hint surfaced to the UI when the binary isn't reachable.
+   *  Helps the user resolve the "veilid: error" toast without hunting
+   *  for docs. */
+  installHint?: string
 }
 
 export async function status(): Promise<VeilidStatus> {
   const r = await rpc<any>('get_state')
-  if (!r.ok || !r.data) return { reachable: false, publicInternetReady: false, localNetworkReady: false, error: r.error }
+  if (!r.ok || !r.data) {
+    return {
+      reachable: false,
+      publicInternetReady: false,
+      localNetworkReady: false,
+      error: r.error,
+      installHint: 'Veilid private routing requires an external veilid-server binary running on port 5959. Download from https://veilid.com/install/ and start the server; Vault will auto-connect on next status probe.',
+    }
+  }
   return {
     reachable: true,
     publicInternetReady: !!r.data.attachment?.public_internet_ready,

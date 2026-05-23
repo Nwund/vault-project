@@ -159,7 +159,10 @@ const PAGE_SIZE_OPTIONS = [
 type LayoutOption = 'mosaic' | 'grid' | 'wall' | 'list'
 
 const MAX_FLOATING_PLAYERS = 10
-const DEFAULT_PAGE_SIZE = 60
+// Bumped from 60 → 200 (commit fixing #174). The pagination dropdown
+// in the toolbar still lets users pick 20/40/60/100/200/All; this just
+// makes the default less surprising on first load.
+const DEFAULT_PAGE_SIZE = 200
 
 // Helper to get persisted filter state from sessionStorage
 function getPersistedFilters() {

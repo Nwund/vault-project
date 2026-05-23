@@ -4961,19 +4961,35 @@ RULES:
 
   // NudeNet v3 detector status — manual install (same pattern as
   // miles-deep, no auto-download since mirrors are unreliable).
+  // Accepts any of: nudenet-detector.onnx (canonical),
+  // nudenet-v3-320n.onnx (nano variant), nudenet-v3-640m.onnx (medium).
   ipcMain.handle('ai:nudenet-status', async () => {
     const fs = await import('node:fs')
     const path = await import('node:path')
     const { app } = await import('electron')
-    const expectedPath = path.join(app.getPath('userData'), 'models', 'nudenet-detector.onnx')
+    const modelsDir = path.join(app.getPath('userData'), 'models')
+    const candidates = [
+      'nudenet-detector.onnx',
+      'nudenet-v3-320n.onnx',
+      'nudenet-v3-640m.onnx',
+    ]
+    const canonical = path.join(modelsDir, candidates[0])
     let installed = false
     let sizeBytes = 0
-    try {
-      const stat = fs.statSync(expectedPath)
-      installed = stat.isFile()
-      sizeBytes = stat.size
-    } catch { /* not installed */ }
-    return { installed, expectedPath, sizeBytes }
+    let foundPath = canonical
+    for (const name of candidates) {
+      const p = path.join(modelsDir, name)
+      try {
+        const stat = fs.statSync(p)
+        if (stat.isFile() && stat.size > 100_000) {
+          installed = true
+          sizeBytes = stat.size
+          foundPath = p
+          break
+        }
+      } catch { /* keep looking */ }
+    }
+    return { installed, expectedPath: foundPath, sizeBytes }
   })
 
   // One-click NudeNet installer. 'nano' = 320n.onnx (~12 MB),
