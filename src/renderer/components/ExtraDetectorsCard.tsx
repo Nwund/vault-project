@@ -25,7 +25,14 @@ interface DetectorRow {
   label: string
   description: string
   ipc: string
-  status?: { installed: boolean; expectedPath: string; sizeBytes?: number }
+  status?: {
+    installed: boolean
+    expectedPath: string
+    sizeBytes?: number
+    /** Set by deepfake / ai-image detector when a PyTorch / safetensors
+     *  variant is on disk but the loader is ONNX-only. */
+    incompatibleFound?: string
+  }
 }
 
 const DETECTORS: Omit<DetectorRow, 'status'>[] = [
@@ -218,6 +225,11 @@ export function ExtraDetectorsCard(): React.JSX.Element {
                 {r.status?.expectedPath && (
                   <div className="text-[10px] text-zinc-600 mt-1 font-mono truncate">
                     {r.status.expectedPath}
+                  </div>
+                )}
+                {r.status?.incompatibleFound && (
+                  <div className="text-[10px] text-amber-400 mt-1 truncate" title={r.status.incompatibleFound}>
+                    Found incompatible format: <span className="font-mono">{r.status.incompatibleFound.split(/[\\/]/).pop()}</span> — convert to ONNX to activate.
                   </div>
                 )}
               </div>

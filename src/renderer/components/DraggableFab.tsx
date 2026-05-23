@@ -189,16 +189,30 @@ const DraggableFab: React.FC<DraggableFabProps> = ({ open, onClick, children, fa
   }
 
   // Open menu position: above the FAB by default, but flip below if FAB is near
-  // the top of the screen so the menu doesn't go off-viewport.
+  // the top of the screen so the menu doesn't go off-viewport. The container
+  // is sized to the FAB width so each menu item centers on the FAB axis;
+  // align-items: center handles the menu-item (44px) inside the FAB column
+  // (56px). `right: auto` overrides the `.fab-menu { right: 24px }` rule from
+  // index.css that would otherwise stretch the container.
   const menuBelow = pos.y < 220
   const menuStyle: React.CSSProperties = menuBelow
-    ? { left: pos.x + FAB_SIZE / 2, top: pos.y + FAB_SIZE + 12, transform: 'translateX(-50%)' }
-    : { left: pos.x + FAB_SIZE / 2, bottom: window.innerHeight - pos.y + 12, transform: 'translateX(-50%)' }
+    ? { left: pos.x, top: pos.y + FAB_SIZE + 12 }
+    : { left: pos.x, bottom: window.innerHeight - pos.y + 12 }
 
   return (
     <>
       {open && (
-        <div className="fab-menu" style={{ position: 'fixed', ...menuStyle, zIndex: 999 }}>
+        <div
+          className="fab-menu"
+          style={{
+            position: 'fixed',
+            ...menuStyle,
+            right: 'auto',
+            width: FAB_SIZE,
+            alignItems: 'center',
+            zIndex: 999,
+          }}
+        >
           {children}
         </div>
       )}

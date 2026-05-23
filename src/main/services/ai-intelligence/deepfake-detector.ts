@@ -44,8 +44,45 @@ let session: any = null
 let initialized = false
 let modelPath: string | null = null
 
+// Canonical filename + alternates the user may have. ONNX-only variants
+// are accepted as live; non-ONNX variants are surfaced in the status so
+// the Setup card can tell the user *why* a file they dropped isn't being
+// used (e.g. PyTorch checkpoint needs converting to ONNX first).
+const ONNX_CANDIDATES = [
+  'deepfake-detector.onnx',
+  'deepfake-detector-v2.onnx',
+  'openfake.onnx',
+]
+const INCOMPATIBLE_CANDIDATES = [
+  'deepfake-detector.safetensors',
+  'deepfake-detector-v2.safetensors',
+  'deepfake-detector.bin',
+  'deepfake-detector.pth',
+  'deepfake-detector.ckpt',
+]
+
+function getModelsDir(): string {
+  return path.join(app.getPath('userData'), 'models')
+}
+
 function getModelPath(): string {
-  return path.join(app.getPath('userData'), 'models', 'deepfake-detector.onnx')
+  // Returns the first ONNX candidate that exists, else the canonical
+  // path so error messages point to the expected drop location.
+  const dir = getModelsDir()
+  for (const name of ONNX_CANDIDATES) {
+    const p = path.join(dir, name)
+    try { if (fs.statSync(p).isFile()) return p } catch { /* try next */ }
+  }
+  return path.join(dir, ONNX_CANDIDATES[0])
+}
+
+function findIncompatibleVariant(): string | null {
+  const dir = getModelsDir()
+  for (const name of INCOMPATIBLE_CANDIDATES) {
+    const p = path.join(dir, name)
+    try { if (fs.statSync(p).isFile()) return p } catch { /* try next */ }
+  }
+  return null
 }
 
 export function isDeepfakeDetectorAvailable(): boolean {
@@ -223,6 +260,7 @@ export function getDeepfakeDetectorStatus(): {
   sizeBytes: number
   inputSize: number
   outputShape: 'softmax-2' | 'sigmoid-1' | 'unknown'
+  incompatibleFound?: string
 } {
   const expectedPath = getModelPath()
   let installed = false
@@ -232,6 +270,7 @@ export function getDeepfakeDetectorStatus(): {
     installed = stat.isFile()
     sizeBytes = stat.size
   } catch { /* not installed */ }
+  const incompatible = installed ? null : findIncompatibleVariant()
   return {
     installed,
     expectedPath,
@@ -240,5 +279,6 @@ export function getDeepfakeDetectorStatus(): {
     outputShape: installed
       ? (initialized ? (outputIsSigmoid ? 'sigmoid-1' : 'softmax-2') : 'unknown')
       : 'unknown',
+    ...(incompatible ? { incompatibleFound: incompatible } : {}),
   }
 }

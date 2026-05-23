@@ -41,8 +41,40 @@ let session: any = null
 let initialized = false
 let modelPath: string | null = null
 
+const ONNX_CANDIDATES = [
+  'ai-image-detector.onnx',
+  'ai-image-detector-v2.onnx',
+  'siglip-ai-detector.onnx',
+  'dinov2-ai-detector.onnx',
+]
+const INCOMPATIBLE_CANDIDATES = [
+  'ai-image-detector.safetensors',
+  'ai-image-detector-v2.safetensors',
+  'ai-image-detector.bin',
+  'siglip-ai-detector.safetensors',
+  'dinov2-ai-detector.safetensors',
+]
+
+function getModelsDir(): string {
+  return path.join(app.getPath('userData'), 'models')
+}
+
 function getModelPath(): string {
-  return path.join(app.getPath('userData'), 'models', 'ai-image-detector.onnx')
+  const dir = getModelsDir()
+  for (const name of ONNX_CANDIDATES) {
+    const p = path.join(dir, name)
+    try { if (fs.statSync(p).isFile()) return p } catch { /* try next */ }
+  }
+  return path.join(dir, ONNX_CANDIDATES[0])
+}
+
+function findIncompatibleVariant(): string | null {
+  const dir = getModelsDir()
+  for (const name of INCOMPATIBLE_CANDIDATES) {
+    const p = path.join(dir, name)
+    try { if (fs.statSync(p).isFile()) return p } catch { /* try next */ }
+  }
+  return null
 }
 
 export function isAiImageDetectorAvailable(): boolean {
@@ -198,6 +230,7 @@ export function getAiImageDetectorStatus(): {
   sizeBytes: number
   inputSize: number
   outputShape: 'softmax-2' | 'sigmoid-1' | 'unknown'
+  incompatibleFound?: string
 } {
   const expectedPath = getModelPath()
   let installed = false
@@ -207,6 +240,7 @@ export function getAiImageDetectorStatus(): {
     installed = stat.isFile()
     sizeBytes = stat.size
   } catch { /* not installed */ }
+  const incompatible = installed ? null : findIncompatibleVariant()
   return {
     installed,
     expectedPath,
@@ -215,5 +249,6 @@ export function getAiImageDetectorStatus(): {
     outputShape: installed
       ? (initialized ? (outputIsSigmoid ? 'sigmoid-1' : 'softmax-2') : 'unknown')
       : 'unknown',
+    ...(incompatible ? { incompatibleFound: incompatible } : {}),
   }
 }
