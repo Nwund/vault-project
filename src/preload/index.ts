@@ -1500,6 +1500,11 @@ const api = {
     rename: (id: string, name: string) => invoke('playlists:rename', id, name),
     delete: (id: string) => invoke('playlists:delete', id),
     getItems: (id: string) => invoke('playlists:getItems', id),
+    getAllStats: () => invoke<{
+      ok: boolean
+      error?: string
+      stats: Array<{ id: string; count: number; durationSec: number; thumbPath?: string }>
+    }>('playlists:getAllStats'),
     addItems: (id: string, mediaIds: string[]) => invoke('playlists:addItems', id, mediaIds),
     removeItem: (id: string, mediaId: string) => invoke('playlists:removeItem', id, mediaId),
     // New enhanced features

@@ -2328,7 +2328,11 @@ export default function App() {
           role="main"
           aria-label="Main content"
           className={cn(
-            'flex-1 min-w-0 min-h-0 h-full overflow-hidden transition-all duration-300 ease-in-out',
+            // `relative` so any absolute children inside pages
+            // position against MAIN, not the outer flex container —
+            // without this, page content can render OVER the sidebar
+            // (the "bleeding" the user keeps reporting).
+            'relative flex-1 min-w-0 min-h-0 h-full overflow-hidden transition-all duration-300 ease-in-out',
             pageTransition === 'enter' && 'page-transition-enter',
             pageTransition === 'exit' && 'page-transition-exit'
           )}

@@ -3402,6 +3402,33 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return db.playlistItems(playlistId)
   })
 
+  // Aggregate stats for ALL playlists in one round-trip — count,
+  // total duration, and the first thumbnail per playlist. Replaces
+  // the renderer-side pattern of calling playlists:getItems for every
+  // playlist on every vault:changed broadcast (was 50 IPCs + DB
+  // round-trips on a 50-playlist library).
+  ipcMain.handle('playlists:getAllStats', async () => {
+    try {
+      const lists = db.playlistList() as Array<{ id: string }>
+      const stats: Array<{ id: string; count: number; durationSec: number; thumbPath?: string }> = []
+      for (const pl of lists) {
+        const items: any[] = db.playlistItems(pl.id) as any[]
+        const count = items.length
+        let durationSec = 0
+        let thumbPath: string | undefined
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i] as any
+          durationSec += Number(it?.media?.durationSec ?? it?.durationSec ?? 0)
+          if (!thumbPath) thumbPath = it?.media?.thumbPath ?? it?.thumbPath
+        }
+        stats.push({ id: pl.id, count, durationSec, thumbPath })
+      }
+      return { ok: true, stats }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err), stats: [] }
+    }
+  })
+
   ipcMain.handle('playlists:addItems', async (_ev, playlistId: string, mediaIds: string[]) => {
     db.playlistAddItems(playlistId, mediaIds)
     broadcast('vault:changed')

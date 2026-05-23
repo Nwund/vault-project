@@ -137,22 +137,19 @@ export function PlaylistsPage() {
   }
 
   // Load statistics for all playlists (count, duration, thumbnail)
-  const loadPlaylistStats = async (playlistList: PlaylistRow[]) => {
+  // ONE IPC fetches stats for the whole list — previously this was
+  // N parallel playlists:getItems calls (50 IPCs on a 50-playlist
+  // library on every vault:changed broadcast).
+  const loadPlaylistStats = async (_playlistList: PlaylistRow[]) => {
     const stats = new Map<string, { count: number; durationSec: number; thumbPath?: string }>()
-    await Promise.all(playlistList.map(async (pl) => {
-      try {
-        const its = await window.api.playlists.getItems(pl.id)
-        const count = its.length
-        const durationSec = its.reduce((sum: number, item: any) => {
-          return sum + (item.media?.durationSec ?? item.durationSec ?? 0)
-        }, 0)
-        const firstItem = its[0]
-        const thumbPath = firstItem?.media?.thumbPath ?? firstItem?.thumbPath
-        stats.set(pl.id, { count, durationSec, thumbPath })
-      } catch {
-        stats.set(pl.id, { count: 0, durationSec: 0 })
+    try {
+      const r: any = await (window.api.playlists as any).getAllStats?.()
+      if (r?.ok && Array.isArray(r.stats)) {
+        for (const s of r.stats) {
+          stats.set(s.id, { count: s.count, durationSec: s.durationSec, thumbPath: s.thumbPath })
+        }
       }
-    }))
+    } catch { /* leave empty on error */ }
     setPlaylistStats(stats)
   }
 

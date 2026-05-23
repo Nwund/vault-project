@@ -24,11 +24,27 @@ export function AboutPage() {
   const [appVersion, setAppVersion] = useState('2.7.1')
 
   useEffect(() => {
+    // Fallback timeout so the UI doesn't sit on "…" forever if the
+    // IPC hangs for any reason (renderer subscribed before main
+    // registered the handler, etc).
+    let resolved = false
+    const fallbackTimer = window.setTimeout(() => {
+      if (!resolved) setTier('free')
+    }, 3000)
     window.api.license?.getTier?.()
-      .then((t: any) => setTier(typeof t === 'string' && t ? t : 'free'))
-      .catch(() => setTier('free'))
+      .then((t: any) => {
+        resolved = true
+        clearTimeout(fallbackTimer)
+        setTier(typeof t === 'string' && t ? t : 'free')
+      })
+      .catch(() => {
+        resolved = true
+        clearTimeout(fallbackTimer)
+        setTier('free')
+      })
     window.api.vault?.getStats?.().then((s: any) => setVaultStats(s))
     window.api.app?.getVersion?.().then((v: any) => v && setAppVersion(v))
+    return () => clearTimeout(fallbackTimer)
   }, [])
 
   return (
