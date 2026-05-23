@@ -39,6 +39,8 @@ import { ReviewHoverPreview } from '../components/ReviewHoverPreview'
 import { TaggerQualityCard } from '../components/AdminCards'
 import { ModelFileCard } from '../components/ModelFileCard'
 import { BulkModelDownloaderCard } from '../components/BulkModelDownloaderCard'
+import { SoundpackDedupCard } from '../components/SoundpackDedupCard'
+import { QueueDashboardCard } from '../components/QueueDashboardCard'
 import { QualityAuditCard } from '../components/QualityAuditCard'
 import { ClipSimilarityCard } from '../components/ClipSimilarityCard'
 import { toFileUrlCached } from '../hooks/usePerformance'
@@ -4357,6 +4359,17 @@ export function AiTaggerPage() {
                 agreement (#78). Tells the user how confident the existing
                 analyses are + offers a "re-analyze low-agreement" action. */}
             <TaggerQualityCard />
+
+            {/* Unified queue dashboard (#259) — AI + URL downloader at
+                a glance, polled every 2s. */}
+            <QueueDashboardCard />
+
+            {/* Soundpack dedup (#262) — uses chromaprint to find identical
+                clips across the user's 32k+ OpenNSFW SFX library. Returns
+                groups of duplicates; user can review + delete from the
+                results. */}
+            <SoundpackDedupCard />
+
 
             {/* Porn-domains blocklist — augments the bundled ~50-domain
                 set used to auto-emit platform tags from filenames.

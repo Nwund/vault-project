@@ -2793,6 +2793,18 @@ const api = {
       soundsEnabled: Record<string, boolean>
     }>('xyrene:getSettings'),
     xyreneSetSettings: (patch: any) => invoke<{ success: boolean; settings: any }>('xyrene:setSettings', patch),
+    // Soundpack dedup via chromaprint (#262). Scans the soundpack
+    // roots, fingerprints each clip, clusters duplicates. Returns
+    // groups of identical clips so the user can pick which copy to
+    // keep / delete.
+    soundpackDedup: (opts?: { soundpackRoots?: string[] }) =>
+      invoke<{
+        ok: boolean
+        groups: Array<{ representative: string; duplicates: string[] }>
+        totalScanned: number
+        totalDuplicates: number
+        error?: string
+      }>('soundpack:chromaprint-dedup', opts ?? {}),
     // Copy a soundpack file into Xyrene's curated folder under a renamed
     // canonical filename like `xyreneplap1.wav`. Returns the new path.
     xyreneCurateSound: (args: { sourcePath: string; category: string }) =>

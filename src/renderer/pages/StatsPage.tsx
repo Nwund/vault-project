@@ -54,6 +54,21 @@ export function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof us
   const [achievementTab, setAchievementTab] = useState<string>('all')
   const [dailyChallenges, setDailyChallenges] = useState<DailyChallengeStateUI | null>(null)
   const [sessionAnalytics, setSessionAnalytics] = useState<SessionAnalytics | null>(null)
+  // Date-range scope for the Session Insights card. Defaults to 30
+  // days to match the previous lifetime-ish behavior. Quick chips
+  // cover the common ranges; 365 functions as 'all-ish' for most
+  // user libraries without needing a full date-picker UI.
+  const [analyticsDays, setAnalyticsDays] = useState<number>(30)
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const sa = await window.api.invoke('sessionHistory:getAnalytics', analyticsDays)
+        if (!cancelled && sa) setSessionAnalytics(sa as SessionAnalytics)
+      } catch { /* ignore — keep prior view */ }
+    })()
+    return () => { cancelled = true }
+  }, [analyticsDays])
 
   useEffect(() => {
     loadAllStats()
@@ -371,13 +386,36 @@ export function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof us
           </div>
         </div>
 
-        {/* Session Analytics - 30 day insights */}
+        {/* Session Analytics — scoped to the selected range */}
         {sessionAnalytics && (
           <div className="mb-6 p-4 bg-gradient-to-br from-violet-500/10 to-purple-600/10 rounded-2xl border border-violet-500/20">
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center gap-2 mb-4 flex-wrap">
               <Clock size={16} className="text-violet-400" />
               <span className="text-sm font-semibold text-violet-300">Session Insights</span>
-              <span className="text-[10px] text-[var(--muted)]">last 30 days</span>
+              {/* Quick range chips — single click swaps the scope and
+                  triggers a re-fetch via the useEffect dep on
+                  analyticsDays. */}
+              <div className="flex items-center gap-1 ml-auto">
+                {[
+                  { label: '7d', days: 7 },
+                  { label: '30d', days: 30 },
+                  { label: '90d', days: 90 },
+                  { label: '1y', days: 365 },
+                ].map((opt) => (
+                  <button
+                    key={opt.days}
+                    onClick={() => setAnalyticsDays(opt.days)}
+                    className={cn(
+                      'px-2 py-0.5 text-[10px] rounded-full border transition tabular-nums',
+                      analyticsDays === opt.days
+                        ? 'bg-violet-500/30 border-violet-400/60 text-violet-100'
+                        : 'bg-transparent border-white/10 text-[var(--muted)] hover:text-white hover:border-white/30'
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div>
