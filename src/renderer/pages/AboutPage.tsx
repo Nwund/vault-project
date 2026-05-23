@@ -24,13 +24,13 @@ export function AboutPage() {
   const [appVersion, setAppVersion] = useState('2.7.1')
 
   useEffect(() => {
-    // Fallback timeout so the UI doesn't sit on "…" forever if the
-    // IPC hangs for any reason (renderer subscribed before main
-    // registered the handler, etc).
+    // Long timeout — only fires if the IPC truly hangs. 3s was racing
+    // legitimate IPC latency on slow boots and showing Free even
+    // when Owner was correct.
     let resolved = false
     const fallbackTimer = window.setTimeout(() => {
       if (!resolved) setTier('free')
-    }, 3000)
+    }, 15000)
     window.api.license?.getTier?.()
       .then((t: any) => {
         resolved = true
