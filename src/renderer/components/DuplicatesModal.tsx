@@ -26,6 +26,13 @@ interface DuplicateGroup {
   count: number
   totalSize: number
   savingsIfReduced: number
+  /** Per-group confidence (1-100). Surfaced as a badge so the user can
+   *  glance and tell exact byte matches (100) from cross-encoded
+   *  fingerprint matches (~85) from same-name-different-content
+   *  guesses (~60). Filled in by the renderer after a scan. */
+  confidence?: number
+  /** Which scan method produced this group. */
+  method?: 'exact' | 'visual-mf' | 'audio-fp' | 'visual' | 'size+name' | 'name' | 'size'
 }
 
 interface DuplicateScanResult {
@@ -41,12 +48,27 @@ interface DuplicatesModalProps {
   onViewMedia: (mediaId: string) => void
 }
 
-type ScanType = 'exact' | 'size' | 'name' | 'visual' | 'visual-mf' | 'audio-fp'
+type ScanType = 'all' | 'exact' | 'size' | 'name' | 'visual' | 'visual-mf' | 'audio-fp'
+
+// Confidence + method assignment for each scan type. Higher confidence
+// = stronger signal that the matched items are actually duplicates.
+// 'all' merges every method, dedupes by mediaId-set, and sorts by
+// confidence descending — the user's requested behavior of "exact
+// copies first, then progressively lower confidence".
+const METHOD_CONFIDENCE: Record<NonNullable<DuplicateGroup['method']>, number> = {
+  'exact': 100,
+  'visual-mf': 92,
+  'audio-fp': 88,
+  'visual': 82,
+  'size+name': 75,
+  'name': 60,
+  'size': 50,
+}
 
 export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModalProps) {
   const { showToast } = useToast()
   const confirm = useConfirm()
-  const [scanType, setScanType] = useState<ScanType>('size')
+  const [scanType, setScanType] = useState<ScanType>('all')
   const [isScanning, setIsScanning] = useState(false)
   const [scanResult, setScanResult] = useState<DuplicateScanResult | null>(null)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -123,14 +145,104 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
     try {
       let result: DuplicateScanResult
       switch (scanType) {
+        case 'all': {
+          // Run every detection method, tag each group with its method +
+          // confidence, then merge by mediaId-set so a group that's both
+          // an exact match AND a name match doesn't show up twice. Higher-
+          // confidence method wins. Sort final result confidence desc.
+          const t0 = Date.now()
+          type Tagged = DuplicateGroup
+          const collected: Tagged[] = []
+          const runs = await Promise.allSettled([
+            window.api.invoke('duplicates:findExact').then((r: DuplicateScanResult) => r.groups.map((g): Tagged => ({ ...g, method: 'exact', confidence: METHOD_CONFIDENCE.exact }))),
+            (async () => {
+              try {
+                const coverage: any = await (window as any).api?.similar?.mfCoverage?.()
+                if (coverage && coverage.hashed < coverage.total) {
+                  await (window as any).api?.similar?.mfComputeAll?.({ onlyUnhashed: true })
+                }
+                const mf: any = await (window as any).api?.similar?.mfFindGroups?.({ maxDistance: 5, minMatches: 3 })
+                return ((mf?.groups ?? []) as any[]).map((g): Tagged => ({
+                  hash: `mfphash-${g.representativeId}`,
+                  type: 'similar', method: 'visual-mf',
+                  confidence: METHOD_CONFIDENCE['visual-mf'],
+                  count: g.members.length, totalSize: 0, savingsIfReduced: 0,
+                  mediaIds: g.members.map((m: any) => m.mediaId),
+                }))
+              } catch { return [] }
+            })(),
+            (async () => {
+              try {
+                const coverage: any = await (window as any).api?.similar?.cpCoverage?.()
+                if (coverage && coverage.hashed < coverage.total) {
+                  await (window as any).api?.similar?.cpComputeAll?.({ onlyUnhashed: true })
+                }
+                const cp: any = await (window as any).api?.similar?.cpFindGroups?.({ threshold: 0.85 })
+                return ((cp?.groups ?? []) as any[]).map((g): Tagged => ({
+                  hash: `cphash-${g.representativeId}`,
+                  type: 'similar', method: 'audio-fp',
+                  confidence: METHOD_CONFIDENCE['audio-fp'],
+                  count: g.members.length, totalSize: 0, savingsIfReduced: 0,
+                  mediaIds: g.members.map((m: any) => m.mediaId),
+                }))
+              } catch { return [] }
+            })(),
+            window.api.invoke('duplicates:findByName').then((r: DuplicateScanResult) => r.groups.map((g): Tagged => ({ ...g, method: 'name', confidence: METHOD_CONFIDENCE.name }))),
+          ])
+          for (const r of runs) {
+            if (r.status === 'fulfilled') collected.push(...r.value)
+          }
+          // Merge: groups overlap if they share any mediaId. Keep the
+          // highest-confidence method as the survivor; union member sets.
+          const merged: Tagged[] = []
+          const seenIds = new Map<string, number>()  // mediaId → merged-index
+          for (const g of collected) {
+            // Find any existing merged group that already contains one of these ids
+            let target = -1
+            for (const id of g.mediaIds) {
+              if (seenIds.has(id)) { target = seenIds.get(id)!; break }
+            }
+            if (target === -1) {
+              const idx = merged.length
+              merged.push({ ...g, mediaIds: [...new Set(g.mediaIds)] })
+              for (const id of merged[idx].mediaIds) seenIds.set(id, idx)
+            } else {
+              const t = merged[target]
+              // Union mediaIds
+              const setIds = new Set([...t.mediaIds, ...g.mediaIds])
+              t.mediaIds = [...setIds]
+              t.count = t.mediaIds.length
+              for (const id of t.mediaIds) seenIds.set(id, target)
+              // Prefer the higher-confidence method label
+              if ((g.confidence ?? 0) > (t.confidence ?? 0)) {
+                t.method = g.method
+                t.confidence = g.confidence
+                t.type = g.type
+              }
+            }
+          }
+          // Drop groups with only one member (single id, no actual dupe pair)
+          const filtered = merged.filter((g) => g.mediaIds.length >= 2)
+          filtered.sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
+          result = {
+            groups: filtered,
+            totalDuplicates: filtered.reduce((s, g) => s + g.mediaIds.length, 0),
+            potentialSavings: filtered.reduce((s, g) => s + (g.savingsIfReduced || 0), 0),
+            scanTime: Date.now() - t0,
+          } as DuplicateScanResult
+          break
+        }
         case 'exact':
           result = await window.api.invoke('duplicates:findExact')
+          result.groups = result.groups.map((g) => ({ ...g, method: 'exact', confidence: METHOD_CONFIDENCE.exact }))
           break
         case 'size':
           result = await window.api.invoke('duplicates:findBySize')
+          result.groups = result.groups.map((g) => ({ ...g, method: 'size', confidence: METHOD_CONFIDENCE.size }))
           break
         case 'name':
           result = await window.api.invoke('duplicates:findByName')
+          result.groups = result.groups.map((g) => ({ ...g, method: 'name', confidence: METHOD_CONFIDENCE.name }))
           break
         case 'visual': {
           // Visual (perceptual) duplicates — content_analyzer-style aHash on
@@ -142,11 +254,14 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
           }
           const visual = await (window as any).api?.similar?.findVisualGroups?.({ maxDistance: 5 })
           // Normalize to the DuplicateScanResult shape the existing UI expects.
-          const groups = (visual?.groups ?? []).map((g: any) => ({
+          const groups = (visual?.groups ?? []).map((g: any): DuplicateGroup => ({
             hash: `phash-${g.representativeId}`,
             type: 'similar' as const,
             count: g.members.length,
             totalSize: 0,
+            savingsIfReduced: 0,
+            method: 'visual',
+            confidence: METHOD_CONFIDENCE['visual'],
             mediaIds: g.members.map((m: any) => m.mediaId)
           }))
           result = {
@@ -168,11 +283,14 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
             await (window as any).api?.similar?.mfComputeAll?.({ onlyUnhashed: true })
           }
           const mf = await (window as any).api?.similar?.mfFindGroups?.({ maxDistance: 5, minMatches: 3 })
-          const groups = (mf?.groups ?? []).map((g: any) => ({
+          const groups = (mf?.groups ?? []).map((g: any): DuplicateGroup => ({
             hash: `mfphash-${g.representativeId}`,
             type: 'similar' as const,
             count: g.members.length,
             totalSize: 0,
+            savingsIfReduced: 0,
+            method: 'visual-mf',
+            confidence: METHOD_CONFIDENCE['visual-mf'],
             mediaIds: g.members.map((m: any) => m.mediaId)
           }))
           result = {
@@ -194,11 +312,14 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
             await (window as any).api?.similar?.cpComputeAll?.({ onlyUnhashed: true })
           }
           const cp = await (window as any).api?.similar?.cpFindGroups?.({ threshold: 0.85 })
-          const groups = (cp?.groups ?? []).map((g: any) => ({
+          const groups = (cp?.groups ?? []).map((g: any): DuplicateGroup => ({
             hash: `cphash-${g.representativeId}`,
             type: 'similar' as const,
             count: g.members.length,
             totalSize: 0,
+            savingsIfReduced: 0,
+            method: 'audio-fp',
+            confidence: METHOD_CONFIDENCE['audio-fp'],
             mediaIds: g.members.map((m: any) => m.mediaId)
           }))
           result = {
@@ -402,9 +523,19 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
         )}
 
         {/* Scan Options */}
-        <div className="flex items-center gap-4 p-4 border-b border-zinc-800">
+        <div className="flex items-center gap-4 p-4 border-b border-zinc-800 flex-wrap">
           <span className="text-sm text-zinc-400">Scan by:</span>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => setScanType('all')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${
+                scanType === 'all' ? 'bg-gradient-to-r from-orange-500 to-fuchsia-600' : 'bg-zinc-700 hover:bg-zinc-600'
+              }`}
+              title="Run every method (exact + visual-mf + audio-fp + name) and rank groups by confidence — exact byte-identical first, cross-encoded last."
+            >
+              <Hash className="w-4 h-4" />
+              All methods
+            </button>
             <button
               onClick={() => setScanType('size')}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${
@@ -558,8 +689,20 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
                       <span className="flex-1 text-sm font-medium">
                         {group.count} files • {formatBytes(group.totalSize)}
                       </span>
+                      {typeof group.confidence === 'number' && (
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded font-semibold tabular-nums ${
+                            group.confidence >= 95 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                            group.confidence >= 80 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                            'bg-zinc-700 text-zinc-300 border border-zinc-600'
+                          }`}
+                          title={`${group.confidence}% confidence — ${group.method ?? group.type}`}
+                        >
+                          {group.confidence}%
+                        </span>
+                      )}
                       <span className="text-xs text-zinc-500 px-2 py-0.5 bg-zinc-700 rounded">
-                        {group.type}
+                        {group.method ?? group.type}
                       </span>
                       <span className="text-xs text-green-400">
                         Save {formatBytes(group.savingsIfReduced)}
