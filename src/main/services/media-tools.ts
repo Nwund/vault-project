@@ -69,6 +69,43 @@ export async function extractFrames(
   return { ok: true, frames: limited }
 }
 
+// Extract a single frame at a specific timestamp. Used by the
+// Duplicates viewer to surface "show me the SAME frame from both
+// videos so I can eyeball that they're really duplicates" — the user's
+// existing thumbs can land on different points in the video and look
+// totally unrelated even when the underlying content matches.
+//
+// Returns the absolute file path of the JPEG written to outputDir.
+export async function extractSingleFrame(
+  ffmpegPath: string,
+  srcPath: string,
+  timestampSec: number,
+  outputDir: string,
+  opts?: { width?: number; quality?: 'high' | 'medium' | 'low'; filename?: string },
+): Promise<{ ok: boolean; error?: string; path?: string }> {
+  if (!fs.existsSync(srcPath)) return { ok: false, error: 'source file missing' }
+  try { fs.mkdirSync(outputDir, { recursive: true }) } catch { /* ignore */ }
+  const width = opts?.width ?? 480
+  const q = opts?.quality === 'high' ? 2 : opts?.quality === 'low' ? 6 : 4
+  const name = opts?.filename ?? `frame-${Date.now()}-${Math.floor(Math.random() * 1e6).toString(36)}.jpg`
+  const outPath = path.join(outputDir, name)
+  // -ss BEFORE -i for fast seeking (keyframe seek is OK for visual
+  // verification; we don't need frame-exact accuracy here).
+  const args = [
+    '-ss', String(Math.max(0, timestampSec)),
+    '-i', srcPath,
+    '-frames:v', '1',
+    '-vf', `scale=${width}:-2`,
+    '-q:v', String(q),
+    '-y', outPath,
+  ]
+  const result = await runFfmpeg(ffmpegPath, args)
+  if (!result.ok || !fs.existsSync(outPath)) {
+    return { ok: false, error: `ffmpeg failed (${result.code}): ${result.stderr.split('\n').filter(Boolean).pop() ?? 'no output'}` }
+  }
+  return { ok: true, path: outPath }
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // EXPORT — format / quality / resolution / fps / trim / strip audio
 // ──────────────────────────────────────────────────────────────────────

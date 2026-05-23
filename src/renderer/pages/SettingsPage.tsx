@@ -1521,18 +1521,24 @@ export function SettingsPage(props: {
               </div>
             </div>
 
-            {/* Hypno mode + Edge timer — wires the dormant settings
-                surfaced in v2.7.1 (HUD toggles exist but no config).
-                Lets the user actually configure subliminal text +
-                edge-timer behavior without editing JSON by hand. */}
+            {/* GoonWall-specific subliminal flash + edge timer. NOT the
+                same as the global Visual Effects → Goon Words system —
+                that one floats words across every page; this one flashes
+                them on GoonWall tiles only. Title made explicit + cross-
+                linked so the two features stop reading as redundant. */}
             <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5 mt-4">
-              <div className="text-sm font-semibold mb-4">Hypno mode + Edge timer</div>
+              <div className="text-sm font-semibold mb-1">GoonWall focus mode</div>
+              <div className="text-[11px] text-[var(--muted)] mb-3">
+                Subliminal flash overlay on GoonWall tiles + an edge timer.
+                Want floating words across every page instead? Use
+                <span className="text-[var(--primary)] font-medium"> Visual Effects → Goon Words</span>.
+              </div>
               <div className="space-y-5">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-sm">✨ Hypno mode</div>
-                      <div className="text-xs text-[var(--muted)]">Flash subliminal phrases over the wall</div>
+                      <div className="text-sm">✨ Subliminal flash (GoonWall-only)</div>
+                      <div className="text-xs text-[var(--muted)]">Flash short phrases over wall tiles at a hypnotic cadence</div>
                     </div>
                     <ToggleSwitch
                       checked={s?.goonwall?.hypnoMode?.enabled ?? false}

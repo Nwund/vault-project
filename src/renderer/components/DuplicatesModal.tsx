@@ -55,6 +55,45 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
   const [keepSelected, setKeepSelected] = useState<Map<string, string>>(new Map()) // groupHash -> mediaId to keep
   const [stats, setStats] = useState<any>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  // Per-group ratio slider position for the "show matching frame" view
+  // and the resulting per-media frame URLs. Both are keyed by groupHash
+  // so different groups can be on different timestamps simultaneously.
+  const [frameRatioByGroup, setFrameRatioByGroup] = useState<Map<string, number>>(new Map())
+  const [frameUrlByMedia, setFrameUrlByMedia] = useState<Map<string, string>>(new Map())
+  const [frameLoading, setFrameLoading] = useState<Set<string>>(new Set())
+
+  const loadMatchedFrames = useCallback(async (group: DuplicateGroup, ratio: number, details: DuplicateMedia[]) => {
+    // Only meaningful for videos; skip images (their thumbnail IS the
+    // content already so the regular thumbPath is a fine comparison).
+    const targets = details.filter((d) => /\.(mp4|mkv|webm|mov|avi|flv|wmv|m4v)$/i.test(d.filename))
+    if (targets.length === 0) return
+    setFrameLoading((prev) => {
+      const n = new Set(prev)
+      for (const t of targets) n.add(t.id)
+      return n
+    })
+    try {
+      const results = await Promise.all(targets.map(async (t) => {
+        try {
+          const r: any = await (window.api.media as any).extractFrameAt({ mediaId: t.id, ratio, width: 320 })
+          return { id: t.id, path: r?.ok ? r.path : null }
+        } catch { return { id: t.id, path: null } }
+      }))
+      setFrameUrlByMedia((prev) => {
+        const next = new Map(prev)
+        for (const r of results) {
+          if (r.path) next.set(r.id, r.path)
+        }
+        return next
+      })
+    } finally {
+      setFrameLoading((prev) => {
+        const n = new Set(prev)
+        for (const t of targets) n.delete(t.id)
+        return n
+      })
+    }
+  }, [])
 
   useEscapeClose(isOpen, onClose)
 
@@ -208,13 +247,20 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
     } else {
       newExpanded.add(group.hash)
       // Load details if not already loaded
-      if (!groupDetails.has(group.hash)) {
+      let details = groupDetails.get(group.hash)
+      if (!details) {
         try {
-          const details = await window.api.invoke('duplicates:getGroupDetails', group.mediaIds)
+          details = await window.api.invoke('duplicates:getGroupDetails', group.mediaIds) as DuplicateMedia[]
           setGroupDetails(new Map(groupDetails).set(group.hash, details))
         } catch (e) {
           console.error('Failed to load group details:', e)
         }
+      }
+      // Kick off matched-frame extraction at the default ratio so the
+      // first thing the user sees is the same point in both videos.
+      if (details && details.length > 0) {
+        const ratio = frameRatioByGroup.get(group.hash) ?? 0.5
+        void loadMatchedFrames(group, ratio, details)
       }
     }
     setExpandedGroups(newExpanded)
@@ -529,9 +575,41 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
                     {/* Group Details */}
                     {isExpanded && details.length > 0 && (
                       <div className="border-t border-[var(--border)] p-2 space-y-1 bg-zinc-800/30">
+                        {/* Matching-frame slider — picks the same proportional
+                            timestamp from every video in the group so the
+                            user can eyeball them side-by-side. Off for
+                            image-only groups. */}
+                        {details.some((d) => /\.(mp4|mkv|webm|mov|avi|flv|wmv|m4v)$/i.test(d.filename)) && (
+                          <div className="flex items-center gap-2 px-2 py-1 mb-1 rounded bg-zinc-900/50">
+                            <span className="text-[10px] text-zinc-400 whitespace-nowrap">Match frame:</span>
+                            <input
+                              type="range"
+                              min={5}
+                              max={95}
+                              step={5}
+                              value={Math.round((frameRatioByGroup.get(group.hash) ?? 0.5) * 100)}
+                              onChange={(e) => {
+                                const ratio = Number(e.target.value) / 100
+                                setFrameRatioByGroup((prev) => new Map(prev).set(group.hash, ratio))
+                              }}
+                              onMouseUp={() => {
+                                const ratio = frameRatioByGroup.get(group.hash) ?? 0.5
+                                void loadMatchedFrames(group, ratio, details)
+                              }}
+                              onTouchEnd={() => {
+                                const ratio = frameRatioByGroup.get(group.hash) ?? 0.5
+                                void loadMatchedFrames(group, ratio, details)
+                              }}
+                              className="flex-1 h-1 accent-orange-400 cursor-pointer"
+                            />
+                            <span className="text-[10px] text-zinc-400 tabular-nums w-9">{Math.round((frameRatioByGroup.get(group.hash) ?? 0.5) * 100)}%</span>
+                          </div>
+                        )}
                         {details.map((media) => {
                           const isKeep = media.id === keepId
                           const isSelected = selectedForDeletion.has(media.id)
+                          const matchedFramePath = frameUrlByMedia.get(media.id)
+                          const isFrameLoading = frameLoading.has(media.id)
 
                           return (
                             <div
@@ -556,21 +634,34 @@ export function DuplicatesModal({ isOpen, onClose, onViewMedia }: DuplicatesModa
                                 {(isKeep || isSelected) && <Check className="w-3 h-3" />}
                               </button>
 
-                              {/* Thumbnail */}
-                              <div className="w-20 h-14 bg-zinc-700 rounded overflow-hidden flex-shrink-0">
-                                {media.thumbPath ? (
+                              {/* Thumbnail — show the matched-frame
+                                  capture when we have one (so the user
+                                  can see the SAME moment from both
+                                  videos); fall back to the stored thumb
+                                  while the frame is being extracted. */}
+                              <div className="w-20 h-14 bg-zinc-700 rounded overflow-hidden flex-shrink-0 relative">
+                                {matchedFramePath ? (
+                                  <img
+                                    src={`vault://${matchedFramePath}`}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                                  />
+                                ) : media.thumbPath ? (
                                   <img
                                     src={`vault://${media.thumbPath}`}
                                     alt=""
                                     className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                      // Hide broken image and show fallback
-                                      (e.target as HTMLImageElement).style.display = 'none'
-                                    }}
+                                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                                   />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-zinc-500">
                                     <FileText className="w-5 h-5" />
+                                  </div>
+                                )}
+                                {isFrameLoading && (
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                                    <Loader2 className="w-4 h-4 animate-spin text-zinc-300" />
                                   </div>
                                 )}
                               </div>

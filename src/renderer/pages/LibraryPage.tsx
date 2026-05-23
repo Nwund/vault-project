@@ -4914,6 +4914,28 @@ const MediaTile = memo(function MediaTile(props: {
       `}</style>
     </div>
   )
+}, (prev, next) => {
+  // Custom equality check — MediaTile is rendered ~60×/page and the
+  // parent passes brand-new arrow callbacks every render. Default
+  // shallow equality treats those as "changed" and re-renders every
+  // tile on every parent state update (e.g. keystroke in search bar).
+  // Skip the callback props — they're closures, identity-unstable by
+  // design — and compare only the data props that actually drive paint.
+  if (prev.media !== next.media) return false
+  if (prev.selected !== next.selected) return false
+  if (prev.compact !== next.compact) return false
+  if (prev.layout !== next.layout) return false
+  if (prev.disabled !== next.disabled) return false
+  if (prev.showStats !== next.showStats) return false
+  if (prev.previewMuted !== next.previewMuted) return false
+  if (prev.liked !== next.liked) return false
+  if (prev.selectionMode !== next.selectionMode) return false
+  if (prev.denialUntil !== next.denialUntil) return false
+  // stats is a plain object — compare the fields we actually render.
+  const ps = prev.stats, ns = next.stats
+  if (!!ps !== !!ns) return false
+  if (ps && ns && (ps.rating !== ns.rating || ps.viewCount !== ns.viewCount || ps.oCount !== ns.oCount)) return false
+  return true
 })
 
 function MediaViewer(props: {

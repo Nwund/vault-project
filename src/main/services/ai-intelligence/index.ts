@@ -5054,6 +5054,23 @@ RULES:
     expectedBytes?: number
   }
   const EXTRA_MODEL_DOWNLOADS: ExtraDownload[] = [
+    // ── Vision ────────────────────────────────────────────────────
+    {
+      kind: 'yunet-face',
+      label: 'YuNet face detector',
+      filename: 'face-detection-yunet.onnx',
+      url: 'https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx',
+      minBytes: 100_000,
+      expectedBytes: 340_000,
+    },
+    {
+      kind: 'sface',
+      label: 'SFace face recognition',
+      filename: 'face-recognition-sface.onnx',
+      url: 'https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx',
+      minBytes: 5_000_000,
+      expectedBytes: 36_000_000,
+    },
     {
       kind: 'deepfake',
       label: 'Deepfake / synthetic face detector',
@@ -5063,6 +5080,46 @@ RULES:
       expectedBytes: 91_000_000,
     },
     {
+      kind: 'nudenet-nano',
+      label: 'NudeNet v3 nano (NSFW region detector)',
+      filename: 'nudenet-v3-320n.onnx',
+      url: 'https://github.com/notAI-tech/NudeNet/releases/download/v3.4-weights/320n.onnx',
+      minBytes: 5_000_000,
+      expectedBytes: 12_000_000,
+    },
+    {
+      kind: 'movenet-pose',
+      label: 'MoveNet multipose (Lightning)',
+      filename: 'movenet-multipose-lightning.onnx',
+      url: 'https://huggingface.co/qualcomm/MoveNet/resolve/main/MoveNet.onnx',
+      minBytes: 5_000_000,
+      expectedBytes: 19_000_000,
+    },
+    {
+      kind: 'person-reid',
+      label: 'Person re-identification (body embeddings)',
+      filename: 'person-reid.onnx',
+      url: 'https://github.com/opencv/opencv_zoo/raw/main/models/person_reid_youtureid/person_reid_youtu_2021nov.onnx',
+      minBytes: 5_000_000,
+      expectedBytes: 24_000_000,
+    },
+    {
+      kind: 'text-detection-db',
+      label: 'PaddleOCR text detection (DB)',
+      filename: 'text-detection-db.onnx',
+      url: 'https://github.com/opencv/opencv_zoo/raw/main/models/text_detection_db/text_detection_DB_TD500_resnet18_2021sep.onnx',
+      minBytes: 100_000,
+      expectedBytes: 855_000,
+    },
+    {
+      kind: 'text-recognition-crnn',
+      label: 'PaddleOCR text recognition (CRNN)',
+      filename: 'text-recognition-crnn.onnx',
+      url: 'https://github.com/opencv/opencv_zoo/raw/main/models/text_recognition_crnn/text_recognition_CRNN_EN_2021sep.onnx',
+      minBytes: 1_000_000,
+      expectedBytes: 33_000_000,
+    },
+    {
       kind: 'transnet-v2',
       label: 'TransNet V2 (shot boundaries)',
       filename: 'transnet-v2.onnx',
@@ -5070,6 +5127,7 @@ RULES:
       minBytes: 1_000_000,
       expectedBytes: 32_000_000,
     },
+    // ── Audio ─────────────────────────────────────────────────────
     {
       kind: 'wav2vec2-emotion',
       label: 'Wav2Vec2 emotion classifier',
@@ -5093,6 +5151,15 @@ RULES:
       url: 'https://raw.githubusercontent.com/tensorflow/models/master/research/audioset/yamnet/yamnet_class_map.csv',
       minBytes: 5_000,
       expectedBytes: 15_000,
+    },
+    // ── CLIP vocab (text encoder) ─────────────────────────────────
+    {
+      kind: 'clip-bpe-vocab',
+      label: 'CLIP BPE tokenizer vocab',
+      filename: 'clip-vocab.txt.gz',
+      url: 'https://raw.githubusercontent.com/openai/CLIP/main/clip/bpe_simple_vocab_16e6.txt.gz',
+      minBytes: 100_000,
+      expectedBytes: 1_400_000,
     },
   ]
 

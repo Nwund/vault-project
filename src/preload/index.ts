@@ -466,6 +466,12 @@ const api = {
       invoke<{ ok: boolean; processed: number; errors: string[]; durationMin?: number }>('media:bulk-denial', { mediaIds, durationMin }),
     bulkDelete: (mediaIds: string[]) =>
       invoke<{ ok: boolean; processed: number; errors: string[] }>('media:bulk-delete', { mediaIds }),
+    // Render the same proportional frame from a video (default 50%) —
+    // used by the Duplicates panel so the user can visually verify that
+    // two videos are actually duplicates instead of trusting their
+    // (often very different) auto-generated thumbnails.
+    extractFrameAt: (args: { mediaId: string; ratio?: number; timestampSec?: number; width?: number }) =>
+      invoke<{ ok: boolean; path?: string; timestampSec?: number; error?: string }>('media:extractFrameAt', args),
     // Undo last delete (restores media to library if file still exists)
     undoDelete: () => invoke<{ success: boolean; restoredId?: string; error?: string }>('media:undoDelete'),
     // Persistent trash (30-day retention) — separate from the in-memory

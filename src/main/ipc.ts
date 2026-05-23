@@ -13884,6 +13884,33 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // Pull a single frame from a video by media id at a proportional
+  // timestamp (0..1). Used by the Duplicates viewer to show the SAME
+  // frame from both videos side-by-side — the stored thumb_path on each
+  // landed on whatever ffmpeg picked at scan time and may differ
+  // between dupes, which is the opposite of helpful when verifying.
+  ipcMain.handle('media:extractFrameAt', async (_ev, args: { mediaId: string; ratio?: number; timestampSec?: number; width?: number }) => {
+    try {
+      const { extractSingleFrame } = await import('./services/media-tools')
+      const { ffmpegBin } = await import('./ffpaths')
+      if (!ffmpegBin) return { ok: false, error: 'ffmpeg not found' }
+      const media = db.getMedia(args.mediaId)
+      if (!media || media.type !== 'video') return { ok: false, error: 'not a video' }
+      const dur = Math.max(0.1, Number(media.durationSec ?? 0))
+      let ts = typeof args.timestampSec === 'number' ? args.timestampSec : null
+      if (ts === null) {
+        const ratio = Math.min(0.95, Math.max(0, args.ratio ?? 0.5))
+        ts = dur * ratio
+      }
+      const cacheDir = path.join(app.getPath('userData'), 'cache', 'duplicate-frames')
+      const r = await extractSingleFrame(ffmpegBin, media.path, ts, cacheDir, { width: args.width ?? 480 })
+      if (!r.ok) return r
+      return { ok: true, path: r.path, timestampSec: ts }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
   // #237 — silence + black-frame auto-trim. Analyze gives a dry-run
   // report (silences/blacks/recommendation), apply does the actual
   // ffmpeg stream-copy with the chosen [start, end].
