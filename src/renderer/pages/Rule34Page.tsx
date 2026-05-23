@@ -846,10 +846,11 @@ export default function Rule34Page() {
       }
       const idx = posts.findIndex((p) => p.id === lightbox.id && p.source === lightbox.source)
       if (idx < 0) return
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      // Arrow keys + vim-style j/k/l/h for next/prev.
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'j' || e.key === 'l') {
         e.preventDefault()
         if (idx < posts.length - 1) setLightbox(posts[idx + 1])
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'k' || e.key === 'h') {
         e.preventDefault()
         if (idx > 0) setLightbox(posts[idx - 1])
       }

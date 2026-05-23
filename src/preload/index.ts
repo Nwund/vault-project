@@ -472,6 +472,9 @@ const api = {
       invoke<{ ok: boolean; processed: number; errors: string[]; durationMin?: number }>('media:bulk-denial', { mediaIds, durationMin }),
     bulkDelete: (mediaIds: string[]) =>
       invoke<{ ok: boolean; processed: number; errors: string[] }>('media:bulk-delete', { mediaIds }),
+    // "Mark all selected as watched" — bulk-record-view in one txn.
+    bulkRecordView: (mediaIds: string[]) =>
+      invoke<{ ok: boolean; processed: number; error?: string }>('media:bulk-record-view', { mediaIds }),
     // Render the same proportional frame from a video (default 50%) —
     // used by the Duplicates panel so the user can visually verify that
     // two videos are actually duplicates instead of trusting their

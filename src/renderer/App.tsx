@@ -79,7 +79,10 @@ import { MediaInfoModal } from './components/MediaInfoModal'
 const WhatsNewModal = React.lazy(() => import('./components/WhatsNewModal').then((m) => ({ default: m.WhatsNewModal })))
 import { DuplicatesModal } from './components/DuplicatesModal'
 import { HomeDashboard } from './components/HomeDashboard'
-import { PmvEditorPage } from './components/PmvEditor'
+// PMV editor is ~4000 lines + carries timeline/audio/canvas helpers.
+// Defer the entire module until the user actually opens the PMV tab
+// so the initial Library paint doesn't pay for it.
+const PmvEditorPage = React.lazy(() => import('./components/PmvEditor').then((m) => ({ default: m.PmvEditorPage })))
 // Library tool components - Professional video editing and media management
 import {
   Library,

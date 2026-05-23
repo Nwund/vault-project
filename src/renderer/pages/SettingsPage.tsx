@@ -753,6 +753,11 @@ export function SettingsPage(props: {
                         <button
                           key={t.id}
                           onClick={() => props.onThemeChange(t.id)}
+                          // Tooltip surfaces the theme's vibe / description
+                          // + the primary accent color on hover. Users
+                          // previously had to click to find out what each
+                          // theme looked like.
+                          title={`${t.name}${t.subtitle ? ' — ' + t.subtitle : ''}${primary ? `\nAccent: ${primary}` : ''}`}
                           className="group relative rounded-xl overflow-hidden transition-transform hover:scale-105"
                           style={{
                             border: active ? `2px solid ${primary}` : '2px solid rgba(255,255,255,0.08)',

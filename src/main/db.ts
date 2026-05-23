@@ -396,7 +396,7 @@ export function createDb() {
     tag?: string
     limit?: number
     offset?: number
-    sortBy?: 'newest' | 'oldest' | 'name' | 'name_desc' | 'views' | 'views_asc' | 'rating' | 'random' | 'size' | 'size_asc' | 'duration' | 'duration_asc'
+    sortBy?: 'newest' | 'oldest' | 'name' | 'name_desc' | 'views' | 'views_asc' | 'rating' | 'random' | 'size' | 'size_asc' | 'duration' | 'duration_asc' | 'aesthetic' | 'aesthetic_asc'
     liked?: boolean
   }) {
     const q = args.q ?? ''
@@ -431,6 +431,16 @@ export function createDb() {
         break
       case 'rating':
         orderClause = 'ORDER BY COALESCE(ms.rating, 0) DESC, m.addedAt DESC'
+        needsStatsJoin = true
+        break
+      case 'aesthetic':
+        // Sort by aesthetic predictor score DESC; NULL goes last so
+        // unscored items don't crowd the top.
+        orderClause = 'ORDER BY ms.aestheticScore IS NULL, ms.aestheticScore DESC, m.addedAt DESC'
+        needsStatsJoin = true
+        break
+      case 'aesthetic_asc':
+        orderClause = 'ORDER BY ms.aestheticScore IS NULL, ms.aestheticScore ASC, m.addedAt DESC'
         needsStatsJoin = true
         break
       case 'random':

@@ -415,6 +415,36 @@ export function StatsPage({ confetti, anime }: { confetti?: ReturnType<typeof us
                     {opt.label}
                   </button>
                 ))}
+                <button
+                  onClick={() => {
+                    // Serialize the current scoped analytics into a CSV
+                    // blob and trigger a download. Single-row CSV with
+                    // human-readable headers so the user can paste it
+                    // into a spreadsheet for trend analysis.
+                    if (!sessionAnalytics) return
+                    const rows = [
+                      ['Metric', 'Value'],
+                      ['Range (days)', String(analyticsDays)],
+                      ['Total sessions', String(sessionAnalytics.totalSessions)],
+                      ['Total duration (sec)', String(sessionAnalytics.totalDuration)],
+                      ['Avg session (sec)', String(sessionAnalytics.avgSessionDuration)],
+                      ['Avg media/session', String(sessionAnalytics.avgMediaPerSession)],
+                      ['Most active hour', String(sessionAnalytics.mostActiveHour)],
+                    ]
+                    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `vault-session-stats-${analyticsDays}d.csv`
+                    a.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                  className="px-2 py-0.5 text-[10px] rounded-full border border-white/10 text-[var(--muted)] hover:text-white hover:border-white/30 transition"
+                  title="Export the current range as CSV"
+                >
+                  ↓ CSV
+                </button>
               </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">

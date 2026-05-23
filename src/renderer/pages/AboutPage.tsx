@@ -144,6 +144,16 @@ export function AboutPage() {
             </button>
           </div>
 
+          {/* Re-open the in-app changelog any time, not just on
+              first-launch-after-upgrade. */}
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('vault:openWhatsNew'))}
+            className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-[var(--primary)]/30 bg-[var(--primary)]/10 hover:bg-[var(--primary)]/20 transition-all text-[var(--primary)] text-sm font-medium"
+          >
+            <Sparkles size={14} />
+            What's new in v{appVersion}
+          </button>
+
           {/* Built With */}
           <div className="rounded-2xl border border-[var(--border)] bg-zinc-900/50 p-6">
             <div className="text-sm font-semibold mb-4 flex items-center gap-2">

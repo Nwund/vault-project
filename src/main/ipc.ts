@@ -1587,6 +1587,28 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return db.statsRecordView(mediaId)
   })
 
+  // Bulk record-view for "mark all selected as watched". Single sqlite
+  // transaction so 4,800 items doesn't trigger 4,800 commits. Used by
+  // LibraryPage when the user marks an imported library as already-seen
+  // (lowers recommender weight on these items).
+  ipcMain.handle('media:bulk-record-view', async (_ev, args: { mediaIds: string[] }) => {
+    const ids = Array.isArray(args?.mediaIds) ? args.mediaIds : []
+    if (ids.length === 0) return { ok: false, processed: 0 }
+    let processed = 0
+    try {
+      const txn = db.raw.transaction((batch: string[]) => {
+        for (const id of batch) {
+          try { db.statsRecordView(id); processed++ } catch { /* skip */ }
+        }
+      })
+      txn(ids)
+      broadcast('vault:changed')
+    } catch (err: any) {
+      return { ok: false, processed, error: err?.message ?? String(err) }
+    }
+    return { ok: true, processed }
+  })
+
   ipcMain.handle('media:setRating', async (_ev, mediaId: string, rating: number) => {
     const result = db.statsSetRating(mediaId, rating)
     recordRatingGiven()  // Track for achievements

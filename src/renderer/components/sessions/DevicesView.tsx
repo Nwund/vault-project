@@ -22,11 +22,34 @@ import { connectHeartRateBand, type HrHandle, type HrReading } from '../../utils
 
 export function DevicesView() {
   return (
-    <div className="px-6 py-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <Esp32Tile />
-      <AppleWatchTile />
-      <ArduinoTile />
-      <HeartRateDeviceTile />
+    <div className="px-6 py-5 space-y-4">
+      {/* First-run hint — explains what this tab is for. New users hit
+          Sessions and see empty device tiles with no context; this
+          card tells them everything is opt-in + how each device pairs. */}
+      <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+        <div className="flex items-start gap-3">
+          <div className="text-2xl shrink-0">🔗</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-cyan-200 mb-1">Pair an external device to enrich session analytics</div>
+            <div className="text-xs text-[var(--muted)] leading-relaxed">
+              Every tile below is opt-in and works on its own. ESP32 +
+              Arduino pair over USB serial; Apple Watch broadcasts heart
+              rate over Bluetooth LE; the HR Device tile picks up any
+              standard Heart Rate Profile sensor (chest strap, Wahoo,
+              Polar, etc). Vault doesn't transmit any data off your
+              machine — readings stay local and feed the climax-verify
+              + intensity-aware sound engine.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Esp32Tile />
+        <AppleWatchTile />
+        <ArduinoTile />
+        <HeartRateDeviceTile />
+      </div>
     </div>
   )
 }

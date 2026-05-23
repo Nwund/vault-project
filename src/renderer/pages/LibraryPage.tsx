@@ -129,7 +129,7 @@ import { WatermarkAdder } from '../components/WatermarkAdder'
 import { MediaQueue } from '../components/MediaQueue'
 import { TVRemotePanel } from '../components/TVRemotePanel'
 
-type SortOption = 'newest' | 'oldest' | 'name' | 'views' | 'duration' | 'type' | 'size' | 'random' | 'recentlyViewed' | 'rating'
+type SortOption = 'newest' | 'oldest' | 'name' | 'views' | 'duration' | 'type' | 'size' | 'random' | 'recentlyViewed' | 'rating' | 'aesthetic'
 
 type MarkerRow = {
   id: string
@@ -163,11 +163,20 @@ const MAX_FLOATING_PLAYERS = 10
 // in the toolbar still lets users pick 20/40/60/100/200/All.
 const DEFAULT_PAGE_SIZE = 60
 
-// Helper to get persisted filter state from sessionStorage
+// Persisted filter state. Layout + pageSize survive app restarts
+// (localStorage); query/tags/typeFilter/sort live for the session
+// only (sessionStorage). User explicitly asked for layout to stick.
 function getPersistedFilters() {
   try {
-    const saved = sessionStorage.getItem('vault_library_filters')
-    if (saved) return JSON.parse(saved)
+    // Pull session-level filters first.
+    const sessRaw = sessionStorage.getItem('vault_library_filters')
+    const sess = sessRaw ? JSON.parse(sessRaw) : null
+    // Overlay durable prefs (layout / pageSize). Session values win when
+    // both exist so changing layout mid-session works as expected.
+    const durableRaw = localStorage.getItem('vault.library.durable')
+    const durable = durableRaw ? JSON.parse(durableRaw) : null
+    if (!sess && !durable) return null
+    return { ...durable, ...sess }
   } catch {}
   return null
 }
@@ -586,12 +595,16 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
     return () => window.removeEventListener('vault-open-tool', handleToolEvent as EventListener)
   }, [])
 
-  // Persist filter state to sessionStorage when filters change
+  // Persist filter state. Two stores:
+  //  - sessionStorage: query / tags / type / sort — should NOT survive
+  //    restart so the user gets a clean slate when reopening Vault.
+  //  - localStorage:   layout + pageSize — these are durable preferences
+  //    (mosaic vs grid vs wall, 60 vs All) and absolutely should
+  //    survive across sessions per user feedback.
   useEffect(() => {
-    const filters = { query, activeTags, typeFilter, sortBy, sortAscending, pageSize, layout }
-    try {
-      sessionStorage.setItem('vault_library_filters', JSON.stringify(filters))
-    } catch {}
+    const sess = { query, activeTags, typeFilter, sortBy, sortAscending, pageSize, layout }
+    try { sessionStorage.setItem('vault_library_filters', JSON.stringify(sess)) } catch {}
+    try { localStorage.setItem('vault.library.durable', JSON.stringify({ pageSize, layout })) } catch {}
   }, [query, activeTags, typeFilter, sortBy, sortAscending, pageSize, layout])
 
   // Save search to history (debounced to avoid saving every keystroke)
@@ -1383,6 +1396,8 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
         dbSortBy = sortAscending ? 'lastViewed_asc' : 'lastViewed'
       } else if (sortBy === 'rating') {
         dbSortBy = sortAscending ? 'rating_asc' : 'rating'
+      } else if (sortBy === 'aesthetic') {
+        dbSortBy = sortAscending ? 'aesthetic_asc' : 'aesthetic'
       }
       // Server-side pagination — only fetch the visible window when the
       // user has paginated browsing on. "Show All" (pageSize === -1) still
@@ -2364,6 +2379,26 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
           )}
         >
           <Play size={10} className="fill-current" /> Videos
+        </button>
+        {/* Best looking — sorts by aesthetic-predictor score DESC.
+            Requires aesthetic-linear.json to be installed; unscored
+            items sink to the bottom. */}
+        <button
+          onClick={() => {
+            setSortBy('aesthetic')
+            setSortAscending(false)
+            setTypeFilter('all')
+            setActiveTags([])
+          }}
+          className={cn(
+            'px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 flex items-center gap-1',
+            sortBy === 'aesthetic'
+              ? 'bg-gradient-to-r from-fuchsia-500 to-pink-500 text-white'
+              : 'bg-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
+          )}
+          title="Sort by aesthetic-predictor score (best looking first)"
+        >
+          <Sparkles size={10} /> Best looking
         </button>
         {/* Recently watched — pivots the grid to recently-viewed sort.
             Quick way to resume what the user was watching last. */}
@@ -3692,6 +3727,35 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-pink-400 hover:text-pink-300"
           >
             {bulkActionLoading === 'favorite' ? <RefreshCw size={12} className="animate-spin" /> : <Heart size={12} />}
+          </Btn>
+
+          {/* Bulk Mark Watched (#285) — records one view per selected
+              item. Useful when the user imports a library they've
+              already watched and wants the recommender to weight
+              these down. */}
+          <Btn
+            tone="ghost"
+            title="Mark all selected as watched (records one view each)"
+            aria-label="Mark all selected as watched"
+            disabled={!!bulkActionLoading}
+            onClick={async () => {
+              try {
+                setBulkActionLoading('markWatched')
+                const r = await (window.api.media as any).bulkRecordView(Array.from(selectedIds))
+                if (r?.ok) {
+                  showToast('success', `Marked ${r.processed}/${selectedIds.size} as watched`)
+                } else {
+                  showToast('error', `Mark-watched failed: ${r?.error ?? 'unknown'}`)
+                }
+              } catch (err: any) {
+                showToast('error', `Mark-watched failed: ${err?.message ?? String(err)}`)
+              } finally {
+                setBulkActionLoading(null)
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+          >
+            {bulkActionLoading === 'markWatched' ? <RefreshCw size={12} className="animate-spin" /> : <Eye size={12} />}
           </Btn>
 
           {/* Bulk Add Tag — opens an inline prompt that adds the typed
