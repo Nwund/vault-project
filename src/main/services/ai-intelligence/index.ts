@@ -608,9 +608,15 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
     const savedSettings = getSettings() as VaultSettings
     const stored = savedSettings?.ai?.veniceApiKey || ''
     const plain = decryptString(stored)
-    const configured = !!plain && (tier2Vision?.isEnabled() || false)
+    // `configured` reflects "is a key saved" — UI uses it to decide whether
+    // to show the masked preview chip vs the "Enter key" input. The
+    // previous version AND-ed this with tier2Vision.isEnabled(), which
+    // meant a saved key showed as missing whenever Tier 2 itself was
+    // toggled off — that's how the user kept seeing "all my keys are not
+    // in ai tools" even after they'd entered them. `tier2Enabled` is
+    // surfaced separately for the actual enable toggle.
     return {
-      configured,
+      configured: !!plain,
       preview: plain ? maskedPreview(plain) : '',
       encrypted: isCipherText(stored),
       tier2Enabled: !!savedSettings?.ai?.tier2Enabled,
