@@ -719,7 +719,7 @@ export function PlaylistsPage() {
   }
 
   return (
-    <>
+    <div className="h-full w-full flex flex-col overflow-x-hidden">
       <TopBar
         title="Sessions"
         right={
@@ -1679,6 +1679,6 @@ export function PlaylistsPage() {
           </div>
         </div>
       )}
-    </>
+    </div>
   )
 }
