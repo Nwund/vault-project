@@ -17,12 +17,18 @@ function withTrailingSlash(url) {
 // long time was "every tab is blank", which is opaque. Free the port up
 // front so the run is deterministic.
 async function ensurePortFree(port) {
-  const inUse = await new Promise((resolve) => {
-    const tester = net.createServer()
-      .once('error', (err) => resolve(err.code === 'EADDRINUSE'))
-      .once('listening', () => tester.close(() => resolve(false)))
-      .listen(port, '127.0.0.1')
-  })
+  // Probe both IPv4 and IPv6 loopback. Vite binds to ::1 by default on
+  // Windows, so probing 127.0.0.1 alone misses the holder and lets the
+  // strictPort vite startup fail downstream.
+  async function isHeld(host) {
+    return new Promise((resolve) => {
+      const tester = net.createServer()
+        .once('error', (err) => resolve(err.code === 'EADDRINUSE'))
+        .once('listening', () => tester.close(() => resolve(false)))
+        .listen(port, host)
+    })
+  }
+  const inUse = (await isHeld('127.0.0.1')) || (await isHeld('::1'))
   if (!inUse) return
   console.warn(`[dev] Port ${port} is in use; attempting to free it.`)
   if (process.platform === 'win32') {
@@ -39,6 +45,10 @@ async function ensurePortFree(port) {
           console.warn(`[dev] Killed pid ${pid} holding port ${port}.`)
         } catch { /* may already be gone */ }
       }
+      // Brief settle so the OS actually releases the socket before vite
+      // tries to bind. Without this, taskkill returns instantly but the
+      // TCP listener can linger for a moment.
+      await new Promise((r) => setTimeout(r, 400))
     } catch (err) {
       console.warn(`[dev] Could not locate holder of port ${port}: ${err.message}`)
     }
