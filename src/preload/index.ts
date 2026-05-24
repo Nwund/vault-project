@@ -930,6 +930,19 @@ const api = {
       upscaleImage: (args: { srcPath: string; dstPath?: string; tileSize?: number; format?: 'png' | 'jpg' | 'webp'; quality?: number }) =>
         invoke<{ ok: boolean; dstPath?: string; error?: string }>('upscaler:upscaleImage', args),
     },
+    // One-click optional model installer — JoyTag, Real-ESRGAN, etc.
+    // See main/services/ai-intelligence/model-installer.ts for the
+    // full manifest. Progress streams via window.api.events.onModelInstallProgress.
+    models: {
+      install: (id: string) =>
+        invoke<{ ok: boolean; alreadyPresent?: boolean; sizeBytes?: number; path?: string; error?: string }>(
+          'models:install', { id },
+        ),
+      installGroup: (ids: string[]) =>
+        invoke<{ ok: boolean; alreadyPresent?: boolean; sizeBytes?: number; path?: string; error?: string }>(
+          'models:installGroup', { ids },
+        ),
+    },
     // #324 — auto FFmpeg quality auditor
     quality: {
       audit: (args: { videoPath: string; deep?: boolean; sizeBytes?: number | null }) =>
@@ -1903,6 +1916,10 @@ const api = {
     // Xyrene voice intake pipeline
     onXyreneIntakeProcessed: (cb: (payload: { srcPath: string; result: any }) => void) =>
       on('xyrene:intakeProcessed', cb),
+    // Optional-model installer progress (JoyTag / Real-ESRGAN / etc.).
+    // `total` is null when the server didn't send Content-Length.
+    onModelInstallProgress: (cb: (payload: { id: string; downloaded: number; total: number | null }) => void) =>
+      on('models:install-progress', cb),
     // Goon events
     onGoonStatsChanged: (cb: (stats: any) => void) => on('goon:statsChanged', cb),
     onAchievementUnlocked: (cb: (achievements: string[]) => void) => on('goon:achievementUnlocked', cb),

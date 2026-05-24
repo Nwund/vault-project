@@ -46,7 +46,6 @@ import { HostsBlocklistCard } from '../components/HostsBlocklistCard'
 import { HomeAssistantCard } from '../components/HomeAssistantCard'
 import { SelfControlCard } from '../components/SelfControlCard'
 import { AgeBackupCard } from '../components/AgeBackupCard'
-import { ExtraDetectorsCard } from '../components/ExtraDetectorsCard'
 import { WindowsHelloCard } from '../components/WindowsHelloCard'
 import { IntifaceCard } from '../components/IntifaceCard'
 import {
@@ -3111,10 +3110,8 @@ export function SettingsPage(props: {
             <AgeBackupCard />
           )}
 
-          {/* #134 / #135 / others — Extra detectors install status */}
-          {activeTab === 'services' && (
-            <ExtraDetectorsCard />
-          )}
+          {/* Extra detector model statuses moved to AI Tools → Setup
+              under the unified "Optional models & sidecars" card. */}
 
           {/* v2.7 banner — one-time intro above the new card sections.
               Dismissable to localStorage so it doesn't permanently take

@@ -7,6 +7,61 @@ For per-session work logs (the live ground truth), see **[SESSION_NOTES.md](SESS
 
 ---
 
+## v2.8.2 — 2026-05-24 — Unified optional-models UI + one-click installers
+
+Consolidates the old two-card optional-models split (ModelFileCard grid in AiTaggerPage Setup + ExtraDetectorsCard in SettingsPage Services) into one panel under AI Tools → Setup, organized by capability rather than file format. Same models, same probes, same install paths — better navigation + one-click install where we know the URL.
+
+### Problems with the old split
+
+- `ai-image` and `deepfake` appeared in BOTH cards with different framings → confusing.
+- Two different status payload shapes (`{installed, expectedPath}` vs `{available, ready, loaded}`) → inconsistent row UX.
+- Two different install-hint formats.
+- The big ExtraDetectorsCard rendered 70% scaffold-only rows (BEATs / PANNs / Wav2Vec2 / X-CLIP / VideoMAE-v2 / InternVideo2 / SOLIDER / NeuralFP / MERT / LongCLIP) inline, drowning the actually-useful ones.
+
+### New `OptionalModelsCard.tsx`
+
+One file under `src/renderer/components/OptionalModelsCard.tsx`. Replaces both `ExtraDetectorsCard.tsx` and `ModelFileCard.tsx` (both deleted). Categories:
+
+- **Vision** — Tier 1 ensemble (bundled), NudeNet, JoyTag, AI-image, Deepfake, LAION aesthetic, Real-ESRGAN
+- **Faces & people** — YuNet (bundled), SFace, AdaFace, Person-ReID
+- **Text** — PaddleOCR (DB + CRNN)
+- **Audio** — whisper.cpp (bundled), WhisperX, Chromaprint, BEATs, PANNs
+- **Voice** — F5-TTS sidecar
+- **Scaffold (collapsed by default)** — Wav2Vec2 emotion, X-CLIP, VideoMAE-v2, InternVideo2, SOLIDER, NeuralFP, MERT, LongCLIP
+
+Per-row affordances:
+
+- `Install` button — when we know the canonical URL. Streams progress via the new `models:install-progress` event.
+- `Setup guide` tag — for Python sidecars (WhisperX, F5-TTS) that need `pip install` + a start.bat.
+- `Manual` tag + install hint — when no canonical ONNX exists (e.g. ai-image-detector needs the user to convert a SigLIP HuggingFace fine-tune).
+- `BUNDLED` chip — for models that ship with Vault.
+
+Status normalization: a single `normalize(raw)` helper collapses all the legacy payload shapes (`installed | available | ready | loaded`) into one boolean + path/size, so future detectors only need to return one of those shapes.
+
+### New `model-installer.ts` service
+
+New `src/main/services/ai-intelligence/model-installer.ts`. Streaming HTTP download to a `.partial` file, atomic rename on completion, broadcasts `models:install-progress` every ~250ms. Manifest currently covers:
+
+- `joytag` → `joytag.onnx` from `fancyfeast/joytag` on HuggingFace
+- `joytag-tags` → `joytag-top-tags.txt` from the same repo
+- `realesrgan-x4plus` → `real_esrgan_x4plus.onnx` from a stable mirror
+
+Adding a new auto-installable model is one MANIFEST entry plus a row in `OptionalModelsCard`. No new IPCs needed — both `models:install` and `models:installGroup` (for multi-file installs like JoyTag's onnx + tags) dispatch off the id.
+
+### Deletions
+
+- `src/renderer/components/ModelFileCard.tsx` — 154 lines.
+- `src/renderer/components/ExtraDetectorsCard.tsx` — 258 lines.
+- `SettingsPage.tsx` no longer imports / renders ExtraDetectorsCard; everything lives in AI Tools now.
+
+### Not done (intentionally deferred)
+
+- **LAION aesthetic-linear.json** installer — needs PyTorch `.pth` → JSON conversion. Will land once we host a pre-converted JSON on a GitHub Release asset.
+- **ai-image-detector.onnx** auto-install — no canonical community ONNX export of a SigLIP fine-tune for AI-image detection exists at a stable URL. Row carries detailed hint pointing at `Organika/sdxl-detector` on HF + the conversion path.
+- **Deepfake / AdaFace / Person-ReID / PaddleOCR / BEATs / PANNs** — same reason; community ONNX exports are scattered. Rows carry the recommended filename + format + source.
+
+---
+
 ## v2.8.1 — 2026-05-24 — Build-fix + AI-review freeze perf patch
 
 Followup to v2.8.0 with three targeted fixes. No new features.

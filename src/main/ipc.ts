@@ -13858,6 +13858,26 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
   })
 
+  // One-click model installers (JoyTag / Real-ESRGAN / etc.) — see
+  // services/ai-intelligence/model-installer.ts for the manifest.
+  // Streams progress via 'models:install-progress' events.
+  ipcMain.handle('models:install', async (_ev, args: { id: string }) => {
+    try {
+      const { installModel } = await import('./services/ai-intelligence/model-installer')
+      return await installModel(args.id as any)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+  ipcMain.handle('models:installGroup', async (_ev, args: { ids: string[] }) => {
+    try {
+      const { installModelGroup } = await import('./services/ai-intelligence/model-installer')
+      return await installModelGroup(args.ids as any)
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
   // #324 — auto FFmpeg quality auditor. Fast probe + heuristic
   // findings by default; deep:true adds a full decode pass.
   ipcMain.handle('quality:audit', async (_ev, args: { videoPath: string; deep?: boolean; sizeBytes?: number | null }) => {

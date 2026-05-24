@@ -38,7 +38,7 @@ import { formatBytes } from '../utils/formatters'
 import { cn } from '../utils/cn'
 import { ReviewHoverPreview } from '../components/ReviewHoverPreview'
 import { TaggerQualityCard } from '../components/AdminCards'
-import { ModelFileCard } from '../components/ModelFileCard'
+import { OptionalModelsCard } from '../components/OptionalModelsCard'
 import { BulkModelDownloaderCard } from '../components/BulkModelDownloaderCard'
 import { SoundpackDedupCard } from '../components/SoundpackDedupCard'
 import { QueueDashboardCard } from '../components/QueueDashboardCard'
@@ -2733,110 +2733,12 @@ export function AiTaggerPage() {
               )}
             </div>
 
-            {/* More optional detectors — compact grid of model-file cards.
-                Each probe is null-safe + returns whether the .onnx is on
-                disk; the user drops the file and re-checks. The pattern
-                is identical to the JoyCaption / NudeNet / CLIP BPE cards
-                above, just dense to avoid scroll fatigue. */}
-            <div className="bg-[var(--panel)] rounded-xl border border-[var(--border)] p-6">
-              <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
-                <Zap size={20} />
-                More optional detectors
-              </h2>
-              <p className="text-sm text-[var(--muted)] mb-4">
-                Drop the model file at the path shown and click <span className="font-mono">Re-check</span>.
-                Each card self-disables when its model isn't present, so leaving them all uninstalled is fine.
-              </p>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                <ModelFileCard
-                  title="SFace face recognition"
-                  description="128-D face embeddings → face_clusters. ~36 MB, Apache-2.0."
-                  probe={() => window.api.ai.sfaceStatus?.() ?? Promise.resolve(null) as any}
-                  download={() => window.api.ai.sfaceDownload?.() ?? Promise.resolve(undefined) as any}
-                  upstreamUrl="https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface"
-                  installHint="To swap in ArcFace's 512-D embeddings instead, drop face-recognition-arcface.onnx at the path above (auto-detected)."
-                  onToast={showToast}
-                />
-                <ModelFileCard
-                  title="Person ReID"
-                  description="768-D body embeddings linked to face_clusters via shared frame_idx."
-                  probe={() => window.api.ai.personReidStatus?.() ?? Promise.resolve(null) as any}
-                  upstreamUrl="https://github.com/KaiyangZhou/deep-person-reid"
-                  installHint="Drop person-reid.onnx at the path above. Used in the Performers tab's Bodies panel."
-                  onToast={showToast}
-                />
-                <ModelFileCard
-                  title="DB + CRNN OCR"
-                  description="Two-stage OCR — replaces tesseract.js. Opt-in via settings.ai.useDbCrnnOcr."
-                  probe={() => window.api.ai.dbCrnnStatus?.() ?? Promise.resolve(null) as any}
-                  installHint="Drop text-detection-db.onnx and text-recognition-crnn.onnx at the path above."
-                  onToast={showToast}
-                />
-                <ModelFileCard
-                  title="LAION aesthetic predictor"
-                  description="0-10 aesthetic score using existing CLIP image embeddings. Near-zero compute."
-                  probe={() => window.api.ai.aestheticStatus?.() ?? Promise.resolve(null) as any}
-                  upstreamUrl="https://github.com/LAION-AI/aesthetic-predictor"
-                  installHint="Drop aesthetic-linear.json at the path above."
-                  onToast={showToast}
-                />
-                <ModelFileCard
-                  title="Deepfake / AI-face detector"
-                  description="Binary classifier on 224×224 face crops from YuNet."
-                  probe={() => window.api.ai.deepfakeStatus?.() ?? Promise.resolve(null) as any}
-                  installHint="Drop deepfake-detector.onnx at the path above."
-                  onToast={showToast}
-                />
-                <ModelFileCard
-                  title="AI-image (full-frame) detector"
-                  description="SigLIP / DINOv2 binary head on the full frame — complements the face-level deepfake detector."
-                  probe={() => window.api.ai.aiImageStatus?.() ?? Promise.resolve(null) as any}
-                  installHint="Drop ai-image-detector.onnx at the path above."
-                  onToast={showToast}
-                />
-                <ModelFileCard
-                  title="WhisperX sidecar"
-                  description="Word-level + speaker-diarized transcripts on port 8031. Replaces whisper.cpp when up."
-                  probe={() => window.api.ai.whisperxStatus?.() ?? Promise.resolve(null) as any}
-                  upstreamUrl="https://github.com/m-bain/whisperX"
-                  installHint="Set settings.ai.whisperxStartScript to a start.bat that activates the venv + runs server.py. Auto-start at boot via settings.ai.whisperxAutoStart."
-                  onToast={showToast}
-                />
-                <ModelFileCard
-                  title="F5-TTS sidecar"
-                  description="Voice-clone alt to XTTS on port 8021. Switch via settings.ai.xyreneVoiceBackend = 'f5tts'."
-                  probe={() => window.api.ai.f5ttsStatus?.() ?? Promise.resolve(null) as any}
-                  upstreamUrl="https://github.com/SWivid/F5-TTS"
-                  installHint="Set settings.ai.f5ttsStartScript to a start.bat that activates the venv + runs server.py. Auto-start at boot via settings.ai.f5ttsAutoStart."
-                  onToast={showToast}
-                />
-                <ModelFileCard
-                  title="Chromaprint (fpcalc)"
-                  description="Audio fingerprinting for soundpack dedup + the new Audio Fingerprint dedup mode. ~600 KB, LGPL-2.1."
-                  probe={() => window.api.ai.chromaprintStatus?.() ?? Promise.resolve(null) as any}
-                  download={() => window.api.ai.fpcalcDownload?.() ?? Promise.resolve(undefined) as any}
-                  upstreamUrl="https://acoustid.org/chromaprint"
-                  installHint="Auto-download Windows-only. On Linux/macOS install via your package manager (apt install libchromaprint-tools / brew install chromaprint)."
-                  onToast={showToast}
-                />
-                <ModelFileCard
-                  title="JoyTag (second-opinion tagger)"
-                  description="ViT trained on photographic NSFW with full Danbooru vocab. Runs alongside WD Tagger; consensus boost lifts confidence on agreed tags."
-                  probe={() => window.api.media?.joytag?.status?.() ?? Promise.resolve(null)}
-                  upstreamUrl="https://huggingface.co/fancyfeast/joytag"
-                  installHint="Drop joytag.onnx + joytag-tags.txt at <userData>/models/. Once present, the tagger ensemble auto-includes it."
-                  onToast={showToast}
-                />
-                <ModelFileCard
-                  title="Image upscaler (Real-ESRGAN)"
-                  description="4× SR for stills + thumbnails. Used by the 'Upscale' action in the right-click menu."
-                  probe={() => window.api.media?.upscaler?.status?.() ?? Promise.resolve(null)}
-                  upstreamUrl="https://github.com/xinntao/Real-ESRGAN"
-                  installHint="Drop realesrgan-x4plus.onnx (or realesrgan-anime-x4.onnx for cartoons) at <userData>/models/. Tile size auto-tuned to VRAM."
-                  onToast={showToast}
-                />
-              </div>
-            </div>
+            {/* Unified optional-models surface (replaces the older
+                ModelFileCard grid + ExtraDetectorsCard split). One row
+                per capability, organized by what it unlocks. One-click
+                Install on the rows we know how to fetch automatically;
+                explicit Setup-guide or Manual hint on the rest. */}
+            <OptionalModelsCard />
 
             {/* v2.7 — Quality auditor + Clip similarity (action tools, not
                 status probes). Both consume window.api.tags.quality/clipSimilarity

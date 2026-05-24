@@ -4,7 +4,7 @@
 
 ### *Your Private Media Sanctuary*
 
-[![Version](https://img.shields.io/badge/v2.8.1-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
+[![Version](https://img.shields.io/badge/v2.8.2-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
 [![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-Platform-blue?style=for-the-badge)](https://github.com/Nwund/vault-project)
 [![Electron](https://img.shields.io/badge/Electron-32.0-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-19.2-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://react.dev)
@@ -33,6 +33,17 @@
 </div>
 
 <br/>
+
+## 🆕 v2.8.2 — Unified optional-models UI + one-click installers (2026-05-24)
+
+Replaces the previous two-card split (ModelFileCard grid + ExtraDetectorsCard) with one consolidated **Optional models & sidecars** panel under AI Tools → Setup. Same models, organized by capability instead of file type, with one-click installers where the upstream URL is stable. Per-model download progress bars stream live.
+
+- **One-click installers** for JoyTag (model.onnx + top_tags.txt from HuggingFace), Real-ESRGAN x4 upscaler, and Chromaprint fpcalc.
+- **Categorized rows**: Vision · Faces & people · Text · Audio · Voice. Scaffold-only detectors (wrappers without inference paths wired yet) collapsed behind a toggle so the main view stays scannable.
+- **Three install affordances**: `Install` button when we know the URL; `Setup guide` for Python sidecars (WhisperX, F5-TTS); `Manual` for models with no canonical community ONNX (AI-image, deepfake, AdaFace, PaddleOCR, BEATs, PANNs).
+- **No more duplicate rows** — the v2.7.1 split had `ai-image` and `deepfake` listed in both cards with different framings.
+- **No more stuck-on-Checking…** — the bug that the v2.8.1 ModelFileCard fix addressed is preserved in the new card's tristate `loading | ok | error | empty` status.
+- **Progress streaming**: `models:install-progress` event lets the UI show real `N MB / N MB · 73%` instead of a generic spinner.
 
 ## 🆕 v2.8.1 — Build-fix + freeze-perf patch (2026-05-24)
 
