@@ -4,7 +4,7 @@
 
 ### *Your Private Media Sanctuary*
 
-[![Version](https://img.shields.io/badge/v2.7.0-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
+[![Version](https://img.shields.io/badge/v2.8.0-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
 [![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-Platform-blue?style=for-the-badge)](https://github.com/Nwund/vault-project)
 [![Electron](https://img.shields.io/badge/Electron-32.0-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-19.2-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://react.dev)
@@ -33,6 +33,31 @@
 </div>
 
 <br/>
+
+## 🆕 v2.8.0 — UX & perf polish (2026-05-23)
+
+A ~50-item polish + perf release on top of v2.7.1. Headline numbers:
+**53 features / fixes shipped**, **~30 new keyboard shortcuts**, **1 new
+visibility-gated polling hook** that cut background IPC chatter to ~zero
+when the app is in the background.
+
+- **Voice Intake fix** — `getIntakeStatus()` was returning only 3 of the 8 fields the renderer card reads, so the panel rendered "Stopped" with "undefined done · undefined failed" even while the watcher was active. All counters now wire through.
+- **Theme text reactivity** — hardcoded Tailwind `text-white` / `text-zinc-*` / `text-gray-*` / `text-slate-*` now follow the active theme's `--text` variable in **every** theme (was only doing so in `light`).
+- **Library**: Untagged / Recent 24h / `<5min` / `5–20min` / `>20min` quick-filter pills · vim `gg`/`G`/`/`/`d` shortcuts · PageUp/PageDown paging · selection-bar additions (`+Tag` / `-Tag` / AI re-tag / Generate Thumbs / Open up to 4) · TopBar subtitle showing `N items · X GB` (or `N selected` in selection mode) · Random Pick excludes Continue Watching items · Library count badge in sidebar.
+- **Floating Player**: Ctrl+S saves current frame as PNG · `r` rotates 90° · `q`/Ctrl+W close · Shift+Q closes all · `[`/`]` rate ±10% (rate persists) · floating speed badge when rate ≠ 1× · Shift+S / Shift+E explicit A-B loop endpoints · Skip-intro overlay (configurable offset) · pause-on-blur (default ON) · Retry button on error overlay.
+- **AI Tools**: bare `a` approves / `x` rejects + auto-advance · Approve ≥85% bulk-confidence button · 1-4 keys swap tabs · ETA line in queue status.
+- **Sessions**: 1-5 keys swap sub-tabs · top-right End Session button (broadcasts `sessions:end-all`; verifier, stroke tempo, HR band, lockout all listen and stop themselves).
+- **Browse**: `sortBy` persists across sessions · vim `gg` / `G` jump to top / bottom.
+- **GoonWall**: `p` pauses all tiles · `1`-`9` set tile count.
+- **Performers**: `j`/`k` cluster navigation with focus ring + scroll-into-view · sort dropdown (by size / name / recent).
+- **Playlists**: search field · Cmd/Ctrl+N focuses new-playlist input.
+- **Brainwash**: Tab ping-pongs top↔bottom text inputs · **clipboard paste imports the image into your library** via new `media:importBuffer` IPC.
+- **Toast**: Logs button on error toasts · Dismiss-all when ≥3 stacked · dimmed during Zen mode.
+- **Settings**: Open userData folder · Reload from disk · API key reveal toggles.
+- **Command palette** gained 5 new entries: Pause/Resume AI Queue, Reload Settings, Open Logs Folder, Close All Floating Players.
+- **Perf**: new `useVisibilityInterval` hook applied to 10 polling cards (QueueDashboard 2s, DevicesView 2s, LiveSessionView 5s, CrossDeviceCard 5s, SidecarWatcherBadge 5s, VaultMlSidecarCard 8s, HomeAssistantCard 10s, ExtraDetectorsCard 30s, SubscriptionsBellButton 60s, App-level untagged count 30s) so polls pause when the tab is hidden. App-level AI status poll backs off 5s → 30s while hidden.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full v2.8.0 notes.
 
 ## 🆕 v2.7.0 — The integration sweep (2026-05-17)
 

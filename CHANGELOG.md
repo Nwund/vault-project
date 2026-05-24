@@ -7,6 +7,201 @@ For per-session work logs (the live ground truth), see **[SESSION_NOTES.md](SESS
 
 ---
 
+## v2.8.0 — 2026-05-23 — UX & perf polish
+
+A ~50-item polish + perf release. Headline numbers: **53 features / fixes
+shipped**, **~30 new keyboard shortcuts**, **1 new visibility-gated
+polling hook** applied to 10 cards. Two user-reported bugs fixed
+(Voice Intake "always Stopped" status + theme text not following
+custom themes). Three previously-deferred items closed (paste image
+from clipboard, sessions End-all bus, FVP skip-intro overlay).
+
+### Critical bug fixes
+
+- **Voice Intake status was permanently wrong** — `getIntakeStatus()` in
+  `src/main/services/xyrene/voice-intake.ts` returned `{watching,
+  folder, inFlight}`, but the renderer card at
+  `src/renderer/components/XyreneSettings.tsx` reads 8 fields
+  (`running`, `cleanupMode`, `queueDepth`, `processedCount`,
+  `failedCount`, `lastError`, `voiceSamplesDir`, plus `folder`). Result:
+  the card always rendered "○ Stopped" with "undefined done · undefined
+  failed" even while actively processing files. Now returns the full
+  shape; added `bumpIntakeCounters()` so the one-shot "Process file…"
+  IPC also lands in the counters. Saved as a memory entry so this
+  category of "renderer-card status-shape mismatch" gets caught next
+  time.
+- **Theme text colors ignored non-light themes** — the `text-white` /
+  `text-zinc-*` / `text-gray-*` / `text-slate-*` reactive overrides
+  were scoped to `[data-theme-mode="light"]`. Hardcoded Tailwind text
+  classes inside any dark or custom-dark theme stayed literal `#fff`
+  regardless of the user's `--text`. Hoisted the text remaps to
+  `:root` so they apply in every theme. Backgrounds + borders stay in
+  the light-only block (default dark theme look untouched).
+
+### Voice Intake follow-ups
+
+- One-shot `xyrene:intakeProcess` IPC now returns `voiceFilename` so the
+  renderer toast can name the cached file.
+- XyreneSettings only polls `xyreneListVoices` (which probes XTTS) while
+  the watcher is running — the 4s tick was hitting a non-running XTTS
+  server when xyrene-portable isn't installed and contributing to slow
+  Settings loads.
+
+### Library
+
+- **Quick-filter pills**: `Untagged` (NOT EXISTS subquery on
+  `media_tags`), `Recent 24h` (sinceMs filter), `<5 min` / `5–20 min` /
+  `>20 min` duration buckets. New `media:search` params:
+  `untaggedOnly`, `sinceMs`, `durationBucket` — with matching count
+  query so the `N items` badge stays accurate.
+- **Selection-bar bulk actions**: `+Tag` / `-Tag` (loops
+  `tags.addToMedia` / `removeFromMedia`), `AI re-tag` (routes through
+  `ai:requeue-specific`), `Generate Thumbs` (loops
+  `media:generateThumb`), `Open` (spawns up to 4 floating players,
+  caps at 4 to not drown the screen).
+- **Keyboard nav**: vim `gg` (double-tap) → first, `G` → last,
+  `PageUp` / `PageDown` swap pages, `/` focuses search, `d` / `Delete`
+  soft-deletes the focused tile (confirm dialog → `media:bulkDelete`).
+  Focused-tile keys: `l` toggles like, `s` cycles rating 0→5, `i`
+  opens MediaInfoModal via new `vault:open-info-modal` window event.
+- **TopBar subtitle** shows `N items · X GB` from `vault:getStats`, or
+  `N selected · of total` when in selection mode.
+- **Shuffle pill** no longer wipes `typeFilter` when toggled (was
+  silently turning "shuffle Videos" into "shuffle everything").
+- **Sidebar nav** gained a library-count badge next to Library nav
+  (formatted as `12,345` or `42.7k`).
+- **Home dashboard**: Random Pick excludes Continue Watching items so
+  it surfaces something fresh instead of resuming what was just
+  playing.
+
+### Floating Video Player
+
+- **`Ctrl+S` saves the current frame** as PNG (pauses, names
+  `<safe>_<sec>s.png`, downloads via Blob URL).
+- **`r` rotates** the video 90° clockwise (per-instance state, CSS
+  transform).
+- **`q` and `Ctrl+W` close** the player.
+- **`Shift+Q` closes ALL floating players** via new
+  `vault:close-all-floating-players` window event (LibraryPage owns
+  the `openIds` state and listens for it).
+- **`[` / `]` adjust playback rate** by 10% (capped 0.25–4); rate
+  persists across opens via `vault.floatingPlayer.rate` localStorage.
+  Floating speed badge top-right when rate ≠ 1×.
+- **`Shift+S` / `Shift+E`** set explicit A-B loop start / end without
+  toggling (vs the existing 3-way bare `a` key).
+- **Pause-on-blur** (default ON, `vault.floatingPlayer.pauseOnBlur`).
+  No auto-resume on refocus.
+- **Skip-intro overlay** — bottom-right pill appears 5–25s into a
+  video, jumps to `vault.floatingPlayer.introSkipSec` (default 30s).
+  Per-media latch; auto-hides on short clips.
+- **Error overlay** gained a Retry button (force-transcode re-fetch).
+
+### AI Tools
+
+- **Bare `a` approves / `x` rejects** the focused review item +
+  auto-advances to next (matches the existing Shift+Enter approve
+  flow). Number keys `1`-`4` swap setup / queue / review / tools tabs.
+- **Approve ≥85%** bulk button — only approves items with
+  `nsfw_confidence >= 0.85`. `bulkApprove` IPC + service method
+  extended with optional `minConfidence`.
+- **Queue ETA** line under the stats row: `~25s/item × pending`.
+- **API key reveal toggles** on both Venice + TpDB inputs.
+
+### Sessions
+
+- **`1`-`5` swap sub-tabs** (Live / Devices / Game / Coach / History).
+- **Top-right End Session button** dispatches new
+  `sessions:end-all` window event + closes any open analytics session.
+  Live tiles (Climax Verifier, Stroke Tempo, HR band, Lockout) each
+  register a listener and stop themselves.
+
+### Browse
+
+- **`sortBy` persists** across sessions (default / score / newest).
+- **vim `gg` / `G`** jump to top / bottom of grid.
+
+### GoonWall
+
+- **`p` pauses (or resumes) all tile videos** by walking the DOM.
+- **`1`-`9` set tile count** (clamped to 30).
+
+### Performers
+
+- **`j`/`k`** cluster navigation with keyboard-focus ring + smooth
+  `scrollIntoView`. Respects current filter + search + sort.
+- **Sort dropdown** — by size (mediaCount DESC) / by name / recent.
+
+### Playlists
+
+- **Cmd/Ctrl+N** focuses the new-playlist input (+ selects existing text).
+- Playlist search field.
+
+### Brainwash
+
+- **Clipboard paste imports the image** into your library. New
+  `media:importBuffer` IPC takes raw bytes + ext, writes to first
+  media dir with unique `pasted_YYYYMMDDHHMMSS.<ext>` name, upserts
+  the row inline, broadcasts `vault:changed`, returns the new
+  MediaRow. CaptionsPage paste listener routes the first image item
+  and sets `selectedMedia` immediately.
+- **`Tab` ping-pongs top↔bottom text inputs** without traversing the
+  variable chips in between.
+
+### Toast
+
+- **"Logs" button** on error toasts — opens the logs folder via
+  `logs:getLogFilePath` + `shell.openPath`.
+- **"Dismiss all (N)"** button when 3+ toasts stacked.
+- Toast container dims to 40% opacity during Zen mode (errors still
+  visible, less attention-yanking).
+
+### Settings
+
+- **Open userData Folder** + **Reload from Disk** buttons (Data tab).
+  New `settings:reload` IPC re-broadcasts `settings:changed` so every
+  card re-pulls.
+
+### Command palette
+
+- 5 new entries: Pause AI Queue, Resume AI Queue, Reload Settings from
+  Disk, Open Logs Folder, Close All Floating Players.
+
+### Keyboard shortcuts overlay
+
+- Updated Library + new Floating Player sections to document the
+  ~15 new keys added this release.
+
+### Perf — `useVisibilityInterval` hook
+
+New `src/renderer/hooks/useVisibilityInterval.ts` — drop-in
+`setInterval` replacement that pauses while `document.hidden` and
+re-fires once when visibility returns. Migrated 10 polling sites:
+
+| Card | Cadence |
+|---|---|
+| QueueDashboardCard | 2s |
+| sessions/DevicesView | 2s |
+| sessions/LiveSessionView | 5s |
+| AdminCards.CrossDeviceCard | 5s |
+| SidecarWatcherBadge | 5s |
+| network/VaultMlSidecarCard | 8s |
+| HomeAssistantCard | 10s |
+| ExtraDetectorsCard | 30s |
+| SubscriptionsBellButton | 60s |
+| App-level untagged-count | 30s |
+
+App-level AI status poll backs off from 5s → 30s while document is
+hidden (6× IPC chatter reduction) rather than fully pausing — keeps
+the sidebar badge from going stale by 10+ min when you alt-tab back.
+
+### Memory & docs
+
+- New memory entry `feedback_vault_intake_status_shape.md` documenting
+  the renderer-card status-shape mismatch class of bug.
+- README v2.8.0 section + version badge.
+
+---
+
 ## v2.7.1 — 2026-05-20 — Polish, cohesion, dead-code purge
 
 Followup to v2.7.0. No new features; instead, a deep cohesion + cleanup
