@@ -4329,6 +4329,14 @@ export function AiTaggerPage() {
                       match is highlighted). */}
                   {(() => {
                     const q = newTagInput.trim().toLowerCase()
+                    // PERF: previous version did this set + the full-scan loop
+                    // below INLINE on every parent re-render. On big tag DBs
+                    // (10k+) typing 1 char in this input triggered a 5k-line
+                    // component re-render which then walked every tag for
+                    // substring matches without breaking early — perceived
+                    // as a hard freeze. Now: only walks when q changes; hard
+                    // cap on substr + prefix lengths; suggestions list is
+                    // bounded at 6 either way.
                     const existing = new Set([
                       ...customTagsPending.map((t) => t.toLowerCase()),
                       ...Array.from(selectedNewTagNames),
@@ -4342,8 +4350,13 @@ export function AiTaggerPage() {
                       for (const t of allTagNames) {
                         if (existing.has(t) || t === q) continue
                         if (t.startsWith(q)) prefix.push(t)
-                        else if (t.includes(q)) substr.push(t)
+                        else if (t.includes(q) && substr.length < 6) substr.push(t)
+                        // Hard break: 6 prefix OR (6 prefix + 6 substr) is
+                        // already more than we'll render. Without this break
+                        // the substring branch ran for the FULL tag DB even
+                        // when we'd discard 99% of the results.
                         if (prefix.length >= 6) break
+                        if (substr.length >= 6 && prefix.length >= 2) break
                       }
                       suggestions = [...prefix, ...substr].slice(0, 6)
                     }
@@ -4842,8 +4855,13 @@ export function AiTaggerPage() {
                       if (excludeName && t === excludeName.toLowerCase()) continue
                       if (t === q) continue
                       if (t.startsWith(q)) prefix.push(t)
-                      else if (t.includes(q)) substr.push(t)
+                      else if (t.includes(q) && substr.length < 6) substr.push(t)
+                      // Same hard-cap as the custom-tag autocomplete: bail
+                      // once we have enough to render (6 visible). Without
+                      // this the substring branch scanned the full tag DB
+                      // on every keystroke. See sibling autocomplete above.
                       if (prefix.length >= 6) break
+                      if (substr.length >= 6 && prefix.length >= 2) break
                     }
                     suggestions = [...prefix, ...substr].slice(0, 6)
                   }
