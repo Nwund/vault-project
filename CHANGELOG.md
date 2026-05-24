@@ -7,6 +7,37 @@ For per-session work logs (the live ground truth), see **[SESSION_NOTES.md](SESS
 
 ---
 
+## v2.8.1 — 2026-05-24 — Build-fix + AI-review freeze perf patch
+
+Followup to v2.8.0 with three targeted fixes. No new features.
+
+### Build fix — electron-vite CJS-shim splice (upstream PR #838)
+
+`electron-vite@5.0.0`'s `esmShimPlugin` uses a regex to find the last ESM static import in the bundled `main.js` and inserts the CommonJS shim header right after that match. The regex has no negative lookbehind for comment markers, so any `import <thing> from '...'` text inside a JS comment or string literal in the main process source gets matched as if it were a real import. When the matched position lands inside a string, the shim splices mid-line and esbuild dies with "Unterminated string literal" pointing at a chunk-boundary line.
+
+This bit Vault on this session because the v2.8.0 `media:importBuffer` IPC handler had a doc comment containing the literal `import __cjs_mod__ from 'node:module';` as documentation. The plugin matched that, then spliced the actual shim header right over the next string literal in the bundle.
+
+Fix:
+- Handler moved from `src/main/ipc.ts` to a dedicated `src/main/ipc-media-import.ts`, registered via `registerMediaImportBufferIpc(ipcMain, db)`. The new file is written with NO `import <name> from <quoted>` patterns in comments or strings — the regex can't match it.
+- Removed the `args.suggestedName` sanitizer loop entirely (suggestedName is unused by the only caller, CaptionsPage clipboard paste — empty-string literals there were the splice target on later attempts).
+- Filename is now always `pasted_<unix-ms>.<ext>`.
+- Upstream PR #838 ("fix: add negative lookbehind for comment in static import regex", stevezhu, Sep 2025) is the real fix and is still open. Bump electron-vite past the merge release once it lands; the workaround can come back out.
+- Saved as memory entry `reference_electron_vite_cjs_shim_bug.md` so future sessions don't rediscover this from scratch.
+
+### AI Review "Custom Tag" felt frozen
+
+Two real perf problems in the same flow, plus one unrelated input crash that turned out not to be Vault's fault:
+
+- **Autocomplete walked the full tag DB on every keystroke without breaking early.** The IIFE at `AiTaggerPage.tsx:~4330` (custom-tag input) and `:~4838` (merge-tag picker) only broke the for-loop on `prefix.length >= 6` — substring matches kept scanning every tag in `allTagNames`. With thousands of tags + a single-char query with few prefix hits, this re-ran a full scan on each keystroke, and the resulting 5,000-line AiTaggerPage re-render starved the main thread. Added a hard break once both prefix + substr have enough to render the visible 6, and capped substr inserts at 6.
+- **`approveEdited` wrote tag links one-by-one without a transaction.** Each `INSERT OR IGNORE INTO media_tags` fsync'd individually. Approving a 20-tag item was ~200ms before; ~5ms now that the inserts are wrapped in a single `this.rawDb.transaction(...)`.
+- The user-reported "mouse and keyboard stopped working" turned out to be an OS-level WUDFHost / USB driver crash, not Vault. Saved as memory entry `reference_usb_input_crash.md` — recovery is Ctrl+Alt+Del → Restart; check Event Viewer for the offending driver.
+
+### React 19 fetchPriority casing
+
+CaptionsPage `<img>` tags spread `{ fetchpriority: 'low' }` (lowercase) — DOM accepts it but React 19 logs a dev warning. Switched to camelCase `fetchPriority`.
+
+---
+
 ## v2.8.0 — 2026-05-23 — UX & perf polish
 
 A ~50-item polish + perf release. Headline numbers: **53 features / fixes

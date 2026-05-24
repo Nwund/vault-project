@@ -191,9 +191,10 @@ const CaptionedThumb = memo(function CaptionedThumb({ mediaId, thumbPath, filena
           className="w-full h-full object-cover"
           loading="lazy"
           decoding="async"
-          // Tell the browser these aren't critical — let them yield to higher-pri loads
-          // (Vite typings don't know about fetchpriority yet, but Chromium does)
-          {...({ fetchpriority: 'low' } as any)}
+          // Tell the browser these aren't critical — let them yield to higher-pri loads.
+          // React 19 expects camelCase 'fetchPriority' (the DOM attribute is
+          // 'fetchpriority' but React normalizes); using lowercase logs a dev warning.
+          {...({ fetchPriority: 'low' } as any)}
           onError={(e) => {
             // If thumbnail fails to load, show placeholder
             e.currentTarget.style.display = 'none'

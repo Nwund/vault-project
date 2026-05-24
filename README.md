@@ -4,7 +4,7 @@
 
 ### *Your Private Media Sanctuary*
 
-[![Version](https://img.shields.io/badge/v2.8.0-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
+[![Version](https://img.shields.io/badge/v2.8.1-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
 [![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-Platform-blue?style=for-the-badge)](https://github.com/Nwund/vault-project)
 [![Electron](https://img.shields.io/badge/Electron-32.0-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-19.2-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://react.dev)
@@ -33,6 +33,14 @@
 </div>
 
 <br/>
+
+## 🆕 v2.8.1 — Build-fix + freeze-perf patch (2026-05-24)
+
+Followup to v2.8.0. No new features; two fixes for stability.
+
+- **Build fix**: an upstream electron-vite bug (PR #838, still open) was splicing the CJS-shim header mid-line in the bundled main.js, breaking the build. The `media:importBuffer` IPC for Brainwash clipboard paste was moved into its own file (`src/main/ipc-media-import.ts`) with all comment patterns that could trip the regex stripped out.
+- **Perf — AI Review autocomplete didn't freeze, but felt that way**: the Custom Tag autocomplete's render-time substring scan walked the entire tag DB on every keystroke without an early break, and the SQLite writes in `approveEdited` weren't transactioned. Both fixed: hard break once 6 visible matches are gathered, and tag inserts wrapped in a single transaction (~200ms → ~5ms on 20-tag approves).
+- React 19 `fetchPriority` casing fix in CaptionsPage (was `fetchpriority`, lowercase — Chromium worked, React 19 logged a dev warning).
 
 ## 🆕 v2.8.0 — UX & perf polish (2026-05-23)
 
