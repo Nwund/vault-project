@@ -379,12 +379,15 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   LIGHT MODE REACTIVE STYLES
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-/* Light mode: Override hardcoded dark colors for better visibility */
-[data-theme-mode="light"] {
-  /* Text colors that were hardcoded as white */
+   GLOBAL TEXT-COLOR REMAPS — apply in every theme
+   ═══════════════════════════════════════════════════════════════════════════
+   Without these, hardcoded Tailwind `text-white` / `text-zinc-*` /
+   `text-gray-*` / `text-slate-*` stay literal hex (#fff, #d4d4d8…)
+   and ignore the active theme's --text. Result: a user picks a custom
+   theme with a non-white --text and the body copy doesn't budge.
+   Backgrounds + borders stay scoped to light mode below (default dark
+   themes still want true black/zinc bgs). */
+:root {
   .text-white { color: var(--text) !important; }
   .text-white\/50 { color: var(--text-muted) !important; }
   .text-white\/60 { color: var(--text-muted) !important; }
@@ -394,7 +397,25 @@ body {
   .text-white\/40 { color: var(--text-subtle) !important; }
   .text-white\/30 { color: var(--text-subtle) !important; }
   .text-white\/20 { color: var(--text-subtle) !important; }
+  .text-zinc-100 { color: var(--text) !important; }
+  .text-zinc-200 { color: var(--text) !important; }
+  .text-zinc-300 { color: var(--text) !important; }
+  .text-zinc-400 { color: var(--text-muted) !important; }
+  .text-zinc-500 { color: var(--text-subtle) !important; }
+  .text-zinc-600 { color: var(--text-subtle) !important; }
+  .text-gray-300 { color: var(--text) !important; }
+  .text-gray-400 { color: var(--text-muted) !important; }
+  .text-gray-500 { color: var(--text-subtle) !important; }
+  .text-slate-300 { color: var(--text) !important; }
+  .text-slate-400 { color: var(--text-muted) !important; }
+}
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT MODE REACTIVE STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Light mode: Override hardcoded dark backgrounds + borders for visibility */
+[data-theme-mode="light"] {
   /* Background colors that were hardcoded as black */
   .bg-black { background-color: var(--background) !important; }
   .bg-black\/20 { background-color: var(--surface) !important; }
@@ -431,12 +452,6 @@ body {
   .bg-zinc-800\/80 { background-color: var(--surface-hover) !important; }
   .bg-zinc-700 { background-color: var(--surface-active) !important; }
   .bg-zinc-700\/50 { background-color: var(--surface) !important; }
-  .text-zinc-100 { color: var(--text) !important; }
-  .text-zinc-200 { color: var(--text) !important; }
-  .text-zinc-300 { color: var(--text) !important; }
-  .text-zinc-400 { color: var(--text-muted) !important; }
-  .text-zinc-500 { color: var(--text-subtle) !important; }
-  .text-zinc-600 { color: var(--text-subtle) !important; }
   .border-zinc-700 { border-color: var(--border) !important; }
   .border-zinc-800 { border-color: var(--border) !important; }
   .border-zinc-600 { border-color: var(--border-hover) !important; }
@@ -445,16 +460,11 @@ body {
   .bg-gray-900 { background-color: var(--surface) !important; }
   .bg-gray-800 { background-color: var(--surface-hover) !important; }
   .bg-gray-700 { background-color: var(--surface-active) !important; }
-  .text-gray-300 { color: var(--text) !important; }
-  .text-gray-400 { color: var(--text-muted) !important; }
-  .text-gray-500 { color: var(--text-subtle) !important; }
 
   /* Slate scale overrides */
   .bg-slate-900 { background-color: var(--surface) !important; }
   .bg-slate-800 { background-color: var(--surface-hover) !important; }
   .bg-slate-700 { background-color: var(--surface-active) !important; }
-  .text-slate-300 { color: var(--text) !important; }
-  .text-slate-400 { color: var(--text-muted) !important; }
 
   /* Button and interactive element improvements */
   button {

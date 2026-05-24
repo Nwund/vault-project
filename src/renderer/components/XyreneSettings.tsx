@@ -1899,12 +1899,18 @@ function VoiceIntakeCard() {
   useEffect(() => {
     void refresh()
     const off = window.api.events.onXyreneIntakeProcessed(() => { void refresh() })
-    const t = setInterval(() => { void refresh() }, 4000)
+    // Only poll while the watcher is actually running — the 4s tick was
+    // probing XTTS even when there was nothing to watch, contributing
+    // to slow Settings loads when xyrene-portable isn't installed.
+    let t: ReturnType<typeof setInterval> | null = null
+    if (status?.running) {
+      t = setInterval(() => { void refresh() }, 4000)
+    }
     return () => {
       try { off?.() } catch { /* ignore */ }
-      clearInterval(t)
+      if (t) clearInterval(t)
     }
-  }, [refresh])
+  }, [refresh, status?.running])
 
   const pickFolder = useCallback(async () => {
     setBusy('pick')

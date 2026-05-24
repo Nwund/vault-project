@@ -248,7 +248,15 @@ export async function processVoiceFile(
 
 let watcher: chokidar.FSWatcher | null = null
 let watchedFolder: string | null = null
+let watchedCleanup: CleanupMode = 'standard'
 const inFlight = new Set<string>()
+// Lifetime counters since service load. Persist across watcher
+// start/stop within the session; reset on app restart. Renderer
+// reads these via getIntakeStatus.
+let processedCount = 0
+let failedCount = 0
+let lastError: string | null = null
+let cachedVoiceSamplesDir: string = ''
 
 export interface WatchHandler {
   onProcessed?(srcPath: string, result: IntakeResult): void
@@ -266,6 +274,7 @@ export async function startIntakeWatcher(
     watcher = null
   }
   watchedFolder = folder
+  watchedCleanup = options.cleanup ?? 'standard'
   watcher = chokidar.watch(folder, {
     ignoreInitial: false,
     awaitWriteFinish: { stabilityThreshold: 1500, pollInterval: 400 },
@@ -276,12 +285,13 @@ export async function startIntakeWatcher(
     if (!/\.(wav|mp3|m4a|ogg|flac|aac|opus)$/i.test(filePath)) return
     inFlight.add(filePath)
     try {
-      const result = await processVoiceFile(filePath, { cleanup: options.cleanup })
+      const result = await processVoiceFile(filePath, { cleanup: watchedCleanup })
       handler.onProcessed?.(filePath, result)
-      // Move the source to a `_done/` sibling so the watcher doesn't
-      // re-pick it up on restart. Keep the original (don't delete) so
-      // the user can re-process with a different cleanup mode later.
       if (result.ok) {
+        processedCount++
+        // Move the source to a `_done/` sibling so the watcher doesn't
+        // re-pick it up on restart. Keep the original (don't delete) so
+        // the user can re-process with a different cleanup mode later.
         const doneDir = path.join(folder, '_done')
         try {
           await fsp.mkdir(doneDir, { recursive: true })
@@ -290,6 +300,8 @@ export async function startIntakeWatcher(
           console.warn('[VoiceIntake] move-to-_done failed:', err)
         }
       } else {
+        failedCount++
+        lastError = result.error ?? 'unknown error'
         // On failure, move to `_failed/` with the error written next to it.
         const failedDir = path.join(folder, '_failed')
         try {
@@ -306,6 +318,13 @@ export async function startIntakeWatcher(
   return { ok: true }
 }
 
+// Called from the one-shot IPC path (xyrene:intakeProcess) so manual
+// "Process file…" picks land in the same counters as folder drops.
+export function bumpIntakeCounters(ok: boolean, error: string | null): void {
+  if (ok) processedCount++
+  else { failedCount++; lastError = error }
+}
+
 export async function stopIntakeWatcher(): Promise<void> {
   if (watcher) {
     try { await watcher.close() } catch { /* noop */ }
@@ -314,6 +333,42 @@ export async function stopIntakeWatcher(): Promise<void> {
   watchedFolder = null
 }
 
-export function getIntakeStatus(): { watching: boolean; folder: string | null; inFlight: number } {
-  return { watching: !!watcher, folder: watchedFolder, inFlight: inFlight.size }
+export function getIntakeStatus(): {
+  running: boolean
+  watching: boolean
+  folder: string | null
+  cleanupMode: CleanupMode
+  queueDepth: number
+  inFlight: number
+  processedCount: number
+  failedCount: number
+  lastError: string | null
+  voiceSamplesDir: string
+} {
+  // Resolve voice_samples lazily so the dir is correct even if
+  // xyrene-portable is installed after vault boots.
+  if (!cachedVoiceSamplesDir) {
+    try {
+      const serverDir = findXttsServerDir(null)
+      if (serverDir) {
+        const portableDir = path.dirname(serverDir)
+        const dev = path.join(portableDir, 'dev', 'voice_samples')
+        const local = path.join(serverDir, 'voice_samples')
+        cachedVoiceSamplesDir = fs.existsSync(dev) ? dev : local
+      }
+    } catch { /* ignore */ }
+  }
+  const running = !!watcher
+  return {
+    running,
+    watching: running,
+    folder: watchedFolder,
+    cleanupMode: watchedCleanup,
+    queueDepth: inFlight.size,
+    inFlight: inFlight.size,
+    processedCount,
+    failedCount,
+    lastError,
+    voiceSamplesDir: cachedVoiceSamplesDir,
+  }
 }

@@ -177,6 +177,8 @@ const api = {
     randomByTags: (tags: string[], opts?: any) => invoke('media:randomByTags', tags, opts),
     rescan: () => invoke('media:rescan'),
     importFiles: (filePaths: string[]) => invoke<{ success: boolean; imported?: number; failed?: number; error?: string }>('media:importFiles', filePaths),
+    importBuffer: (args: { buffer: Uint8Array | ArrayBuffer; ext: string; suggestedName?: string }) =>
+      invoke<{ ok: true; mediaId: string; path: string; media: any } | { ok: false; error: string }>('media:importBuffer', args),
     count: (opts?: any) => invoke('media:count', opts),
     // Stats
     getStats: (mediaId: string) => invoke('media:getStats', mediaId),

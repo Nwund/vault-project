@@ -459,6 +459,16 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return getSettings()
   })
 
+  // #346 — force every renderer card to re-pull settings. electron-store
+  // is already disk-backed (no in-process cache), so all we have to do is
+  // re-broadcast the current value. Useful after editing settings.json
+  // by hand or after a backup-restore.
+  ipcMain.handle('settings:reload', async () => {
+    const fresh = getSettings()
+    broadcast('settings:changed', fresh)
+    return fresh
+  })
+
   ipcMain.handle('settings:patch', async (_ev, patch: Partial<VaultSettings>) => {
     const next = updateSettings(patch ?? {})
     if (patch?.library?.mediaDirs) {
@@ -913,12 +923,15 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     const limit = opts?.limit ?? 10000 // Default to large number to get all
     const offset = opts?.offset ?? 0
     const sortBy = opts?.sortBy ?? 'newest'
+    const untaggedOnly = opts?.untaggedOnly === true
+    const sinceMs = typeof opts?.sinceMs === 'number' && Number.isFinite(opts.sinceMs) ? opts.sinceMs : 0
+    const durationBucket = (opts?.durationBucket === 'short' || opts?.durationBucket === 'medium' || opts?.durationBucket === 'long') ? opts.durationBucket : ''
     const blacklist = getSettings().blacklist
     const blacklistActive = !!blacklist?.enabled
       && ((blacklist?.tags?.length ?? 0) > 0 || (blacklist?.mediaIds?.length ?? 0) > 0)
 
     if (!blacklistActive) {
-      const result = db.listMedia({ q, type, tag, limit, offset, sortBy })
+      const result = db.listMedia({ q, type, tag, limit, offset, sortBy, untaggedOnly, sinceMs, durationBucket })
       return { items: result.items, total: result.total }
     }
 
@@ -930,7 +943,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     // <100ms even with the LEFT JOINs.
     const blacklistedTags = new Set(blacklist?.tags ?? [])
     const blacklistedIds = new Set(blacklist?.mediaIds ?? [])
-    const unpaginated = db.listMedia({ q, type, tag, limit: 1_000_000, offset: 0, sortBy })
+    const unpaginated = db.listMedia({ q, type, tag, limit: 1_000_000, offset: 0, sortBy, untaggedOnly, sinceMs })
     const filtered = unpaginated.items.filter((item: any) => {
       if (blacklistedIds.has(item.id)) return false
       if (item.tags && Array.isArray(item.tags)
@@ -1589,6 +1602,58 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   // Import files by copying them to the first media directory
+  // #331 — Import an in-memory image buffer (clipboard paste / drag-and-
+  // drop blob). Writes to the first media dir with a unique filename,
+  // upserts the new media row inline, and returns it so the caller
+  // (Brainwash paste, Image-from-URL save, etc.) can set it as
+  // selectedMedia immediately without waiting for a full rescan.
+  //
+  //   args: { buffer: Uint8Array | ArrayBuffer
+  //         , ext: '.png' | '.jpg' | '.jpeg' | '.webp' | '.gif'
+  //         , suggestedName?: string }
+  //   returns: { ok: true, mediaId: string, path: string }
+  //          | { ok: false, error: string }
+  ipcMain.handle('media:importBuffer', async (_ev, args: { buffer: Uint8Array | ArrayBuffer; ext: string; suggestedName?: string }) => {
+    try {
+      const dirs = getMediaDirs()
+      if (!dirs.length) return { ok: false, error: 'No media directories configured' }
+      const targetDir = dirs[0]
+      const allowedExt = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'])
+      const extLower = (args.ext || '').toLowerCase()
+      if (!allowedExt.has(extLower)) return { ok: false, error: `Unsupported ext: ${extLower}` }
+
+      const buf = args.buffer instanceof Uint8Array
+        ? Buffer.from(args.buffer)
+        : Buffer.from(new Uint8Array(args.buffer as ArrayBuffer))
+      if (buf.length === 0) return { ok: false, error: 'Empty buffer' }
+      if (buf.length > 50 * 1024 * 1024) return { ok: false, error: 'Buffer >50MB; refusing to import' }
+
+      // Derive a sane filename. Default: pasted_YYYYMMDD_HHMMSS.<ext>
+      const stamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14)
+      const safeSuggest = (args.suggestedName ?? '').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 60)
+      const baseName = safeSuggest || `pasted_${stamp}`
+      let targetPath = path.join(targetDir, `${baseName}${extLower}`)
+      let counter = 1
+      while (fs.existsSync(targetPath)) {
+        targetPath = path.join(targetDir, `${baseName}_${counter}${extLower}`)
+        counter++
+      }
+      fs.writeFileSync(targetPath, buf)
+
+      // Inline upsert so the row exists before we return.
+      const { upsertOne } = await import('./scanner')
+      await upsertOne(db, targetPath)
+      const row = db.getMediaByPath(targetPath)
+      if (!row) return { ok: false, error: 'Wrote file but upsert did not produce a row' }
+
+      // Tell the rest of the UI a new media item landed.
+      try { broadcast('vault:changed') } catch { /* ignore */ }
+      return { ok: true, mediaId: row.id, path: targetPath, media: row }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
   ipcMain.handle('media:importFiles', async (_ev, filePaths: string[]) => {
     const dirs = getMediaDirs()
     if (!dirs.length) {
@@ -11760,8 +11825,13 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   ipcMain.handle('xyrene:intakeProcess', async (_ev, args: { srcPath: string; cleanup?: 'conservative' | 'standard' | 'aggressive'; displayName?: string; description?: string; language?: string; outputSlug?: string }) => {
     try {
-      const { processVoiceFile } = await import('./services/xyrene/voice-intake')
-      return await processVoiceFile(args.srcPath, args)
+      const { processVoiceFile, bumpIntakeCounters } = await import('./services/xyrene/voice-intake')
+      const r = await processVoiceFile(args.srcPath, args)
+      // Bump the same counters the watcher uses so the Settings UI
+      // "{N} done · {N} failed" row reflects one-shot picks too.
+      bumpIntakeCounters(r.ok, r.error ?? null)
+      // Renderer expects `voiceFilename` for the toast.
+      return { ...r, voiceFilename: r.outputPath ? r.outputPath.split(/[\\\/]/).pop() : undefined }
     } catch (err: any) {
       return { ok: false, error: err?.message ?? String(err) }
     }

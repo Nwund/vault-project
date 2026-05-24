@@ -398,6 +398,12 @@ export function createDb() {
     offset?: number
     sortBy?: 'newest' | 'oldest' | 'name' | 'name_desc' | 'views' | 'views_asc' | 'rating' | 'random' | 'size' | 'size_asc' | 'duration' | 'duration_asc' | 'aesthetic' | 'aesthetic_asc'
     liked?: boolean
+    /** Filter to media with zero tags (untagged backlog). */
+    untaggedOnly?: boolean
+    /** Filter to media added at or after this unix-ms timestamp. */
+    sinceMs?: number
+    /** Duration bucket filter: short (<5 min), medium (5-20 min), long (>20 min). */
+    durationBucket?: 'short' | 'medium' | 'long' | ''
   }) {
     const q = args.q ?? ''
     const type = args.type ?? ''
@@ -406,6 +412,9 @@ export function createDb() {
     const offset = args.offset ?? 0
     const sortBy = args.sortBy ?? 'newest'
     const liked = args.liked ?? false
+    const untaggedOnly = args.untaggedOnly === true
+    const sinceMs = typeof args.sinceMs === 'number' && Number.isFinite(args.sinceMs) ? args.sinceMs : 0
+    const durationBucket = args.durationBucket ?? '' // 'short'|'medium'|'long'|''
 
     // Build ORDER BY clause based on sortBy
     let orderClause: string
@@ -473,6 +482,21 @@ export function createDb() {
     const statsJoin = needsStatsJoin ? 'LEFT JOIN media_stats ms ON ms.mediaId = m.id' : ''
     const likedFilter = liked ? 'AND COALESCE(ms.rating, 0) >= 5' : ''
 
+    // Untagged + since filters slot into the WHERE clause. Untagged is a
+    // NOT EXISTS subquery so it co-operates with the DISTINCT/tag join
+    // without confusing the planner.
+    const untaggedFilter = untaggedOnly
+      ? 'AND NOT EXISTS (SELECT 1 FROM media_tags mt2 WHERE mt2.mediaId = m.id)'
+      : ''
+    const sinceFilter = sinceMs > 0 ? 'AND m.addedAt >= @sinceMs' : ''
+    // Duration buckets in seconds. Items with NULL duration get filtered
+    // out — they're either images, gifs, or not yet probed.
+    const durationFilter =
+      durationBucket === 'short'  ? 'AND m.durationSec IS NOT NULL AND m.durationSec < 300' :
+      durationBucket === 'medium' ? 'AND m.durationSec IS NOT NULL AND m.durationSec >= 300 AND m.durationSec <= 1200' :
+      durationBucket === 'long'   ? 'AND m.durationSec IS NOT NULL AND m.durationSec > 1200' :
+      ''
+
     const query = `
       SELECT DISTINCT m.*
       FROM media m
@@ -485,11 +509,14 @@ export function createDb() {
         AND (@tag = '' OR t.name = @tag)
         AND m.analyzeError = 0
         ${likedFilter}
+        ${untaggedFilter}
+        ${sinceFilter}
+        ${durationFilter}
       ${orderClause}
       LIMIT @limit OFFSET @offset;
     `
 
-    let items = db.prepare(query).all({ q, type, tag, limit, offset }) as MediaRow[]
+    let items = db.prepare(query).all({ q, type, tag, limit, offset, sinceMs }) as MediaRow[]
 
     // Fuzzy fallback — when the user typed a query but LIKE matched
     // nothing, try a Levenshtein-style closest-spelling search across
@@ -584,21 +611,26 @@ export function createDb() {
     if (fuzzyApplied) {
       // Fuzzy results — total is just the displayed count.
       total = items.length
-    } else if (liked) {
+    } else if (liked || untaggedOnly || sinceMs > 0 || durationBucket) {
+      // Liked/untagged/since don't fit the cached countMedia stmt; build
+      // a one-off count with the same filter shape as the SELECT above
+      // so the "N items" badge stays accurate.
       const countQuery = `
         SELECT COUNT(DISTINCT m.id) as n
         FROM media m
         LEFT JOIN media_tags mt ON mt.mediaId = m.id
         LEFT JOIN tags t ON t.id = mt.tagId
-        LEFT JOIN media_stats ms ON ms.mediaId = m.id
+        ${liked ? 'LEFT JOIN media_stats ms ON ms.mediaId = m.id' : ''}
         WHERE
           (@q = '' OR m.filename LIKE '%' || @q || '%')
           AND (@type = '' OR m.type = @type)
           AND (@tag = '' OR t.name = @tag)
           AND m.analyzeError = 0
-          AND COALESCE(ms.rating, 0) >= 5
+          ${liked ? 'AND COALESCE(ms.rating, 0) >= 5' : ''}
+          ${untaggedFilter}
+          ${sinceFilter}
       `
-      total = (db.prepare(countQuery).get({ q, type, tag }) as { n: number }).n
+      total = (db.prepare(countQuery).get({ q, type, tag, sinceMs }) as { n: number }).n
     } else {
       total = (stmts.countMedia.get({ q, type, tag }) as { n: number }).n
     }
