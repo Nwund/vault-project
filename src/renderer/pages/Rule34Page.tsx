@@ -386,6 +386,8 @@ export default function Rule34Page() {
   const [tagInput, setTagInput] = useState('')
   const [activeQuery, setActiveQuery] = useState('')
   const [page, setPage] = useState(0)
+  // 'gg' double-tap-to-top ref for Browse — same pattern as Library.
+  const browseLastGTapRef = useRef(0)
   const [source, setSource] = useState<Source>('all')
   // Media-type filter — drives the client-side filter applied after a
   // search returns. Boorus return mixed image / GIF / video posts;
@@ -396,7 +398,17 @@ export default function Rule34Page() {
   // see "this exact image is on e621 + Danbooru + Gelbooru" instead of
   // 3 identical tiles in a row.
   const [mergeBySharedHash, setMergeBySharedHash] = useState(false)
-  const [sortBy, setSortBy] = useState<'default' | 'score' | 'newest'>('default')
+  const [sortBy, setSortByRaw] = useState<'default' | 'score' | 'newest'>(() => {
+    try {
+      const v = localStorage.getItem('vault.browse.sortBy')
+      if (v === 'default' || v === 'score' || v === 'newest') return v
+    } catch { /* ignore */ }
+    return 'default'
+  })
+  const setSortBy = useCallback((next: 'default' | 'score' | 'newest') => {
+    setSortByRaw(next)
+    try { localStorage.setItem('vault.browse.sortBy', next) } catch { /* ignore */ }
+  }, [])
   const [posts, setPosts] = useState<BooruPost[]>([])
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(false)
@@ -497,7 +509,17 @@ export default function Rule34Page() {
   // Source family filter. When set to anything other than 'all', the
   // chip list narrows AND the "All sources" multi-source fan-out
   // restricts to sources in that family. Reduces visual + query load.
-  const [activeFamily, setActiveFamily] = useState<'all' | 'booru' | 'tube' | 'ai' | 'social'>('all')
+  const [activeFamily, setActiveFamilyRaw] = useState<'all' | 'booru' | 'tube' | 'ai' | 'social'>(() => {
+    try {
+      const v = localStorage.getItem('vault.browse.activeFamily')
+      if (v === 'all' || v === 'booru' || v === 'tube' || v === 'ai' || v === 'social') return v
+    } catch { /* ignore */ }
+    return 'all'
+  })
+  const setActiveFamily = useCallback((next: 'all' | 'booru' | 'tube' | 'ai' | 'social') => {
+    setActiveFamilyRaw(next)
+    try { localStorage.setItem('vault.browse.activeFamily', next) } catch { /* ignore */ }
+  }, [])
   // Rating filter — narrows the visible grid by booru rating.
   // 'all' shows everything, 's' = safe only, 'q' = questionable, 'e' = explicit.
   const [ratingFilter, setRatingFilter] = useState<'all' | 's' | 'q' | 'e'>('all')
@@ -794,6 +816,23 @@ export default function Rule34Page() {
         return
       }
       if (inInput) return
+      // Vim-style 'gg' top / 'G' bottom — handle BEFORE the modifier
+      // guard so Shift+G works.
+      if (e.key === 'G' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' })
+        return
+      }
+      if (e.key === 'g' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const now = Date.now()
+        if (now - browseLastGTapRef.current < 500) {
+          e.preventDefault()
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+          browseLastGTapRef.current = 0
+          return
+        }
+        browseLastGTapRef.current = now
+      }
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
       if ((e.key === 'PageDown' || e.key === 'f' || e.key === 'F') && hasMore && !loading) {
         e.preventDefault()
@@ -853,6 +892,11 @@ export default function Rule34Page() {
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'k' || e.key === 'h') {
         e.preventDefault()
         if (idx > 0) setLightbox(posts[idx - 1])
+      } else if ((e.key === 'd' || e.key === 'D') && !e.ctrlKey && !e.metaKey) {
+        // 'd' = download current post to Library. Bypasses needing to
+        // click the (small) download button in the lightbox.
+        e.preventDefault()
+        if (lightbox) void handleDownload(lightbox)
       }
     }
     window.addEventListener('keydown', onKey)

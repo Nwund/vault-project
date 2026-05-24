@@ -14,11 +14,13 @@ import {
   Edit2,
   Flame,
   Folder,
+  FolderOpen,
   HardDrive,
   Library,
   Mic,
   Play,
   Plus,
+  RefreshCw,
   Save,
   Search,
   Shield,
@@ -387,6 +389,7 @@ export function SettingsPage(props: {
           <input
             value={settingsSearch}
             onChange={(e) => setSettingsSearch(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') setSettingsSearch('') }}
             placeholder="Search settings..."
             className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-white/10 border border-[var(--border)] outline-none focus:border-[var(--primary)]/50 text-sm"
           />
@@ -2767,6 +2770,47 @@ export function SettingsPage(props: {
                   >
                     <Folder size={14} />
                     Open Logs Folder
+                  </Btn>
+                  {/* Open userData root — parent of logs/. Useful for
+                      poking at settings.json / models/ / soundpacks /
+                      vault.sqlite3 from the file explorer. */}
+                  <Btn
+                    onClick={async () => {
+                      try {
+                        const path = await window.api.logs?.getLogFilePath?.()
+                        if (path) {
+                          // userData = parent-of-parent of vault.log
+                          // (logs/vault.log → strip 2 segments).
+                          const userData = path.replace(/[\\\/][^\\\/]+[\\\/][^\\\/]+$/, '')
+                          await window.api.shell?.openPath?.(userData)
+                          showToast('success', 'Opened userData folder')
+                        }
+                      } catch (err: any) {
+                        showToast('error', `Open userData failed: ${err?.message ?? String(err)}`)
+                      }
+                    }}
+                    title="Opens %APPDATA%\vault — settings.json, models/, soundpacks/, vault.sqlite3, etc."
+                  >
+                    <FolderOpen size={14} />
+                    Open userData Folder
+                  </Btn>
+                  {/* #346 — Reload settings.json from disk. Useful after
+                      hand-editing the file or restoring from backup;
+                      broadcasts settings:changed so every card re-pulls. */}
+                  <Btn
+                    onClick={async () => {
+                      try {
+                        await (window.api as any).invoke?.('settings:reload')
+                          ?? await (window as any).electronAPI?.invoke?.('settings:reload')
+                        showToast('success', 'Settings reloaded from disk')
+                      } catch (err: any) {
+                        showToast('error', `Reload failed: ${err?.message ?? String(err)}`)
+                      }
+                    }}
+                    title="Force-refresh in-memory settings from settings.json — use after hand-editing or restoring from backup"
+                  >
+                    <RefreshCw size={14} />
+                    Reload from disk
                   </Btn>
                   <Btn
                     tone="ghost"

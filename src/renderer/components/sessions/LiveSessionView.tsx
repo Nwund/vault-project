@@ -12,8 +12,9 @@
 // Tiles use motion's layout primitives for smooth resize when the
 // active state changes (e.g. expanded HR chart while locked).
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
+import { useVisibilityInterval } from '../../hooks/useVisibilityInterval'
 import { HeartPulse, Webcam, Crown, Activity, Lock, Mic, MicOff, ChevronDown, X } from 'lucide-react'
 import { SPRINGS } from '../network/motion-tokens'
 import { useToast } from '../../contexts'
@@ -151,7 +152,13 @@ function HeartRateTile() {
       console.warn('[hr] connect failed', err)
     }
   }
-  const handleDisconnect = () => { hr?.disconnect(); setHr(null); setReading(null); setHistory([]) }
+  const handleDisconnect = useCallback(() => { hr?.disconnect(); setHr(null); setReading(null); setHistory([]) }, [hr])
+  // #333 — End-session bus event also disconnects the HR band.
+  useEffect(() => {
+    const onEndAll = () => handleDisconnect()
+    window.addEventListener('sessions:end-all', onEndAll)
+    return () => window.removeEventListener('sessions:end-all', onEndAll)
+  }, [handleDisconnect])
 
   // Build SVG sparkline path.
   const path = (() => {
@@ -266,13 +273,21 @@ function ScoreboardTile() {
     if (l.ok && l.state) setLockout(l.state as any)
     if (e.ok) setEdging(e as any)
   }
-  useEffect(() => { refresh(); const id = setInterval(refresh, 5000); return () => clearInterval(id) }, [])
+  // 5s status polling — paused while this sub-tab/window is hidden.
+  useVisibilityInterval(refresh, 5000)
 
   const onTriggerLockout = async (mins: number) => {
     await window.api.lockout.trigger({ durationMin: mins })
     refresh()
   }
   const onCancelLockout = async () => { await window.api.lockout.cancel(); refresh() }
+  // #333 — End-session bus event cancels any active lockout too.
+  useEffect(() => {
+    const onEndAll = () => { void onCancelLockout() }
+    window.addEventListener('sessions:end-all', onEndAll)
+    return () => window.removeEventListener('sessions:end-all', onEndAll)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <Tile title="Scoreboard" Icon={Lock} accent="from-amber-500 to-orange-600">
@@ -356,7 +371,7 @@ function ClimaxVerifierTile() {
       console.warn('[verifier] start failed', err)
     }
   }
-  const stop = () => {
+  const stop = useCallback(() => {
     stopRef.current?.()
     stopRef.current = null
     if (videoRef.current?.srcObject) {
@@ -365,8 +380,14 @@ function ClimaxVerifierTile() {
     }
     setRunning(false)
     setSignals(null)
-  }
+  }, [])
   useEffect(() => () => stopRef.current?.(), [])
+  // #333 — listen for the page-level End-session bus event.
+  useEffect(() => {
+    const onEndAll = () => stop()
+    window.addEventListener('sessions:end-all', onEndAll)
+    return () => window.removeEventListener('sessions:end-all', onEndAll)
+  }, [stop])
 
   return (
     <Tile title="Climax Verifier" Icon={Webcam} accent="from-purple-500 to-fuchsia-600">
@@ -455,7 +476,7 @@ function StrokeTempoTile() {
       console.warn('[tempo] start failed', err)
     }
   }
-  const stop = () => {
+  const stop = useCallback(() => {
     stopRef.current?.()
     stopRef.current = null
     if (videoRef.current?.srcObject) {
@@ -464,8 +485,14 @@ function StrokeTempoTile() {
     }
     setRunning(false)
     setBpm(null)
-  }
+  }, [])
   useEffect(() => () => stopRef.current?.(), [])
+  // #333 — End-session bus event.
+  useEffect(() => {
+    const onEndAll = () => stop()
+    window.addEventListener('sessions:end-all', onEndAll)
+    return () => window.removeEventListener('sessions:end-all', onEndAll)
+  }, [stop])
 
   const off = bpm != null ? Math.abs(bpm - target) : 0
   const accuracy = bpm != null ? Math.max(0, 100 - off * 4) : 0

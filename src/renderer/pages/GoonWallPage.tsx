@@ -541,6 +541,30 @@ export function GoonWallPage(props: {
       // Don't trigger if typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
 
+      // #391 — 'p' pauses (or resumes) ALL tile videos. Walks the DOM
+      // since each tile's <video> isn't passed up through React state.
+      // Toggle: if any video is currently playing, pause everything;
+      // otherwise resume everything.
+      if (e.key === 'p' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        e.preventDefault()
+        const videos = Array.from(document.querySelectorAll<HTMLVideoElement>('[data-goonwall-tile] video'))
+        const anyPlaying = videos.some((v) => !v.paused)
+        for (const v of videos) {
+          try {
+            if (anyPlaying) v.pause()
+            else void v.play()
+          } catch { /* ignore */ }
+        }
+        return
+      }
+      // #392 — 1-9 sets tile count to that many tiles (clamped).
+      if (/^[1-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        const n = parseInt(e.key, 10)
+        setTileCount(Math.min(30, Math.max(1, n)))
+        saveSettings({ tileCount: n } as any)
+        return
+      }
       switch (e.key.toLowerCase()) {
         case 's': // S - cascade shuffle all (wave effect)
           cascadeShuffle()

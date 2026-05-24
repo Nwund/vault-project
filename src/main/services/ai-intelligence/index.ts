@@ -1494,10 +1494,11 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
     return processingQueue.getUndoStatus()
   })
 
-  // Bulk approve all pending
-  ipcMain.handle('ai:bulk-approve', async () => {
+  // Bulk approve pending — optional minConfidence (0-1) filter so the
+  // renderer can offer "approve everything ≥ 0.85" buttons (#315).
+  ipcMain.handle('ai:bulk-approve', async (_ev, args?: { minConfidence?: number }) => {
     if (!processingQueue) throw new Error('Processing queue not initialized')
-    return processingQueue.bulkApprove()
+    return processingQueue.bulkApprove(args?.minConfidence ?? 0)
   })
 
   // Bulk reject all pending

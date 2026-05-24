@@ -3184,12 +3184,22 @@ export class ProcessingQueue {
   }
 
   /**
-   * Bulk approve all pending
+   * Bulk approve pending items. When `minConfidence` is supplied,
+   * only items with `nsfw_confidence >= minConfidence` get approved —
+   * lets the user blow through the "obviously fine" tail of the
+   * review queue without rubber-stamping low-confidence borderline
+   * cases. Caller passes a value 0-1; omit / 0 = approve everything.
    */
-  bulkApprove(): { approved: number } {
-    const pending = this.rawDb.prepare(`
-      SELECT media_id FROM ai_analysis_results WHERE review_status = 'pending'
-    `).all() as Array<{ media_id: string }>
+  bulkApprove(minConfidence: number = 0): { approved: number } {
+    const pending = (minConfidence > 0
+      ? this.rawDb.prepare(`
+          SELECT media_id FROM ai_analysis_results
+          WHERE review_status = 'pending'
+            AND COALESCE(nsfw_confidence, 0) >= ?
+        `).all(minConfidence)
+      : this.rawDb.prepare(`
+          SELECT media_id FROM ai_analysis_results WHERE review_status = 'pending'
+        `).all()) as Array<{ media_id: string }>
 
     let approved = 0
     for (const item of pending) {

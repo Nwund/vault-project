@@ -14,6 +14,7 @@ import {
 import { useDebounce, toFileUrlCached, useLazyLoad } from './hooks/usePerformance'
 import { useVideoPreview } from './hooks/useVideoPreview'
 import { useLocalStorage } from './hooks/useLocalStorage'
+import { useVisibilityInterval } from './hooks/useVisibilityInterval'
 import { useConfirm } from './components/ConfirmDialog'
 import { LoadingSpinner } from './components/LoadingSpinner'
 import { AboutPage } from './pages/AboutPage'
@@ -1137,6 +1138,8 @@ export default function App() {
 
   // Untagged media count for AI badge
   const [untaggedCount, setUntaggedCount] = useState(0)
+  // Total media count for the Library sidebar badge (#308).
+  const [libraryMediaCount, setLibraryMediaCount] = useState(0)
 
   // Command Palette (Ctrl+K) - quick actions search
   const [showCommandPalette, setShowCommandPalette] = useState(false)
@@ -1150,6 +1153,12 @@ export default function App() {
   // Zen Mode - hide all UI for distraction-free viewing
   const [zenMode, setZenMode] = useState(false)
   const [zenModeEdgeActive, setZenModeEdgeActive] = useState(false)
+  // Expose zen state to non-React islands (e.g. ToastContainer) via a
+  // root class. Keeps the toast container readable but at lower
+  // opacity when zen is on — errors still visible, less attention-yanking.
+  useEffect(() => {
+    document.documentElement.classList.toggle('vault-zen-mode', zenMode)
+  }, [zenMode])
 
   // Media Info Modal - show detailed metadata about a media item
   const [infoModalMedia, setInfoModalMedia] = useState<MediaRow | null>(null)
@@ -1667,20 +1676,43 @@ export default function App() {
     }
   }, [])
 
-  // Fetch untagged media count for AI badge
-  useEffect(() => {
-    const fetchUntaggedCount = async () => {
-      try {
-        const result = await window.api.invoke('ai:get-untagged-count')
-        setUntaggedCount(typeof result === 'number' ? result : 0)
-      } catch {
-        // API might not exist, that's ok
-      }
+  // Fetch untagged media count for AI badge. Visibility-gated so a
+  // backgrounded vault doesn't fire the IPC every 30s for nothing.
+  useVisibilityInterval(async () => {
+    try {
+      const result = await window.api.invoke('ai:get-untagged-count')
+      setUntaggedCount(typeof result === 'number' ? result : 0)
+    } catch {
+      // API might not exist, that's ok
     }
-    fetchUntaggedCount()
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchUntaggedCount, 30000)
-    return () => clearInterval(interval)
+  }, 30000)
+
+  // #308 — total library count for the Library sidebar badge. Pulled
+  // from vault:getStats so it matches the Stats page exactly. Refreshes
+  // on vault-changed broadcasts; cheap COUNT(*) on a tiny index.
+  useEffect(() => {
+    let alive = true
+    const refresh = async () => {
+      try {
+        const s: any = await window.api.vault?.getStats?.()
+        if (alive && s) setLibraryMediaCount(s.totalMedia ?? 0)
+      } catch { /* ignore */ }
+    }
+    void refresh()
+    const unsub = window.api.events?.onVaultChanged?.(() => void refresh())
+    return () => { alive = false; try { unsub?.() } catch { /* ignore */ } }
+  }, [])
+
+  // #303 — listen for 'vault:open-info-modal' fired by any page
+  // (currently LibraryPage's 'i' shortcut). Lets pages trigger the
+  // app-level MediaInfoModal without prop drilling.
+  useEffect(() => {
+    const onOpen = (ev: Event) => {
+      const m = (ev as CustomEvent<{ media: MediaRow }>).detail?.media
+      if (m) setInfoModalMedia(m)
+    }
+    window.addEventListener('vault:open-info-modal', onOpen)
+    return () => window.removeEventListener('vault:open-info-modal', onOpen)
   }, [])
 
   // Apply theme using our theme system
@@ -1760,8 +1792,18 @@ export default function App() {
     }
     // Initial poll
     pollAiStatus()
-    // Poll every 5 seconds
-    const interval = setInterval(pollAiStatus, 5000)
+    // Poll every 5 seconds; halved while document is hidden (still
+    // ticking so the sidebar badge isn't stale by 10 min, but at 1/6
+    // the IPC cost — runs every 30s while away).
+    const POLL_VISIBLE_MS = 5000
+    const POLL_HIDDEN_MS = 30000
+    let interval = setInterval(pollAiStatus, document.hidden ? POLL_HIDDEN_MS : POLL_VISIBLE_MS)
+    const onVisChange = () => {
+      clearInterval(interval)
+      interval = setInterval(pollAiStatus, document.hidden ? POLL_HIDDEN_MS : POLL_VISIBLE_MS)
+      if (!document.hidden) pollAiStatus()
+    }
+    document.addEventListener('visibilitychange', onVisChange)
     // Also subscribe to real-time AI status events
     const unsubStatus = window.api.events?.onAiStatus?.((data: { status: string }) => {
       if (data.status === 'started' || data.status === 'processing') {
@@ -1771,6 +1813,7 @@ export default function App() {
     return () => {
       alive = false
       clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisChange)
       unsubStatus?.()
     }
   }, [])
@@ -2316,6 +2359,17 @@ export default function App() {
                       {untaggedCount > 99 ? '99+' : untaggedCount}
                     </span>
                   )}
+                  {/* #308 — total media count next to Library nav. Lets the
+                      user eyeball library size at all times, including before
+                      navigating to the Library page. */}
+                  {n.id === 'library' && libraryMediaCount > 0 && (
+                    <span
+                      className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-[var(--text-muted)] tabular-nums"
+                      title={`${libraryMediaCount.toLocaleString()} items in library`}
+                    >
+                      {libraryMediaCount > 9999 ? `${(libraryMediaCount / 1000).toFixed(1)}k` : libraryMediaCount.toLocaleString()}
+                    </span>
+                  )}
                 </button>
               )
             })}
@@ -2782,7 +2836,61 @@ export default function App() {
                   </div>
                   <div className="flex items-center gap-2">
                     <kbd className="px-2 py-1 bg-black/30 rounded text-xs">L</kbd>
-                    <span className="text-white/70">Open Watch Later</span>
+                    <span className="text-white/70">Like focused / open Watch Later</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">S</kbd>
+                    <span className="text-white/70">Cycle rating 0→5</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">I</kbd>
+                    <span className="text-white/70">Open info modal</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">D</kbd>
+                    <span className="text-white/70">Delete (to Trash)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">/</kbd>
+                    <span className="text-white/70">Focus search</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">gg / G</kbd>
+                    <span className="text-white/70">Jump to first / last</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">PgUp/PgDn</kbd>
+                    <span className="text-white/70">Page through results</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-xs text-[var(--muted)] uppercase tracking-wider mb-2">Floating Player</h3>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">Q / Ctrl+W</kbd>
+                    <span className="text-white/70">Close player</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">Shift+Q</kbd>
+                    <span className="text-white/70">Close all players</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">R</kbd>
+                    <span className="text-white/70">Rotate 90°</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">Ctrl+S</kbd>
+                    <span className="text-white/70">Save current frame</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">[ / ]</kbd>
+                    <span className="text-white/70">Speed −10% / +10%</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-black/30 rounded text-xs">Shift+S / E</kbd>
+                    <span className="text-white/70">A-B loop start / end</span>
                   </div>
                 </div>
               </div>
@@ -3017,6 +3125,34 @@ export default function App() {
                   { id: 'divider1', divider: true },
                   { id: 'zen', icon: Eye, label: 'Toggle Zen Mode', shortcut: 'Z', action: () => { setZenMode(prev => !prev); setShowCommandPalette(false) } },
                   { id: 'shortcuts', icon: HelpCircle, label: 'Show Keyboard Shortcuts', shortcut: '?', action: () => { setShowShortcutsHelp(true); setShowCommandPalette(false) } },
+                  // New command-palette entries — quick access to common
+                  // actions that previously needed multi-click hunts.
+                  { id: 'pauseAi', icon: Pause, label: 'Pause AI Queue', action: async () => {
+                    setShowCommandPalette(false)
+                    try { await window.api.ai.pause(); globalShowToast('info', 'AI queue paused') }
+                    catch (err: any) { globalShowToast('error', `Pause failed: ${err?.message ?? String(err)}`) }
+                  } },
+                  { id: 'resumeAi', icon: Play, label: 'Resume AI Queue', action: async () => {
+                    setShowCommandPalette(false)
+                    try { await window.api.ai.resume(); globalShowToast('success', 'AI queue resumed') }
+                    catch (err: any) { globalShowToast('error', `Resume failed: ${err?.message ?? String(err)}`) }
+                  } },
+                  { id: 'reloadSettings', icon: RefreshCw, label: 'Reload Settings from Disk', action: async () => {
+                    setShowCommandPalette(false)
+                    try { await window.api.invoke('settings:reload'); globalShowToast('success', 'Settings reloaded') }
+                    catch (err: any) { globalShowToast('error', `Reload failed: ${err?.message ?? String(err)}`) }
+                  } },
+                  { id: 'openLogs', icon: FileText, label: 'Open Logs Folder', action: async () => {
+                    setShowCommandPalette(false)
+                    try {
+                      const p = await window.api.logs?.getLogFilePath?.()
+                      if (p) await window.api.shell?.openPath?.(p.replace(/[^\\\/]+$/, ''))
+                    } catch (err: any) { globalShowToast('error', `Open logs failed: ${err?.message ?? String(err)}`) }
+                  } },
+                  { id: 'closeAllFloating', icon: X, label: 'Close All Floating Players', action: () => {
+                    setShowCommandPalette(false)
+                    try { window.dispatchEvent(new CustomEvent('vault:close-all-floating-players')) } catch { /* ignore */ }
+                  } },
                   { id: 'refresh', icon: RefreshCw, label: 'Refresh Library', action: async () => { await window.api.scanner?.rescan?.(); setShowCommandPalette(false); globalShowToast('info', 'Library scan started') } },
                   { id: 'rebuildThumbs', icon: RefreshCw, label: 'Rebuild Missing Thumbnails', action: async () => {
                     setShowCommandPalette(false)

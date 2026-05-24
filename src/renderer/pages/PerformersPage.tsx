@@ -53,6 +53,18 @@ export default function PerformersPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'named' | 'unnamed'>('all')
   const [search, setSearch] = useState('')
+  // Cluster sort (#318). Persists across visits via localStorage so the
+  // user's preferred ordering survives a reload.
+  const [sortKey, setSortKey] = useState<'count' | 'name' | 'recent'>(() => {
+    try {
+      const v = localStorage.getItem('vault.performers.sort')
+      if (v === 'count' || v === 'name' || v === 'recent') return v
+    } catch { /* ignore */ }
+    return 'count'
+  })
+  useEffect(() => {
+    try { localStorage.setItem('vault.performers.sort', sortKey) } catch { /* ignore */ }
+  }, [sortKey])
   const [minSamples, setMinSamples] = useState(2)
   const [editingId, setEditingId] = useState<string | null>(null)
   // F2 = rename hovered cluster. Tracks the most-recently-hovered tile
@@ -110,6 +122,8 @@ export default function PerformersPage() {
   // Cluster keyboard shortcuts (#254 + #276):
   //   F2     — rename hovered cluster
   //   Del    — delete hovered cluster (with confirm)
+  // #385 j/k navigation is set up further down, after visibleClusters
+  // is declared (it depends on filter + search + sortKey state).
   useEffect(() => {
     const onKey = async (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
@@ -154,7 +168,7 @@ export default function PerformersPage() {
     return () => { alive = false }
   }, [clusters])
 
-  // Filtered + searched view.
+  // Filtered + searched + sorted view.
   const visibleClusters = useMemo(() => {
     let v = clusters
     if (filter === 'named') v = v.filter((c) => c.name !== null)
@@ -163,11 +177,48 @@ export default function PerformersPage() {
       const q = search.trim().toLowerCase()
       v = v.filter((c) => (c.name ?? '').toLowerCase().includes(q))
     }
-    return v
-  }, [clusters, filter, search])
+    // Don't mutate clusters — slice() before sort.
+    const sorted = v.slice().sort((a, b) => {
+      if (sortKey === 'name') {
+        return (a.name ?? '~unnamed').localeCompare(b.name ?? '~unnamed')
+      }
+      if (sortKey === 'recent') {
+        return (b.updatedAt ?? 0) - (a.updatedAt ?? 0)
+      }
+      // count (default) — biggest cluster first; tiebreak by name so it's stable.
+      const diff = (b.mediaCount ?? 0) - (a.mediaCount ?? 0)
+      return diff !== 0 ? diff : (a.name ?? '~').localeCompare(b.name ?? '~')
+    })
+    return sorted
+  }, [clusters, filter, search, sortKey])
 
   const namedCount = clusters.filter((c) => c.name !== null).length
   const unnamedCount = clusters.length - namedCount
+
+  // #385 — j/k navigate the visible cluster list. Lives down here
+  // because it depends on visibleClusters which is declared above.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.ctrlKey || e.metaKey || e.shiftKey) return
+      if (e.key !== 'j' && e.key !== 'k') return
+      if (editingId) return
+      if (visibleClusters.length === 0) return
+      e.preventDefault()
+      const curIdx = hoveredClusterId ? visibleClusters.findIndex((c) => c.id === hoveredClusterId) : -1
+      const next = e.key === 'j'
+        ? Math.min(visibleClusters.length - 1, curIdx + 1)
+        : Math.max(0, curIdx - 1)
+      const nextId = visibleClusters[next === -1 ? 0 : next]?.id
+      if (nextId) {
+        setHoveredClusterId(nextId)
+        const el = document.querySelector(`[data-cluster-id="${nextId}"]`)
+        if (el && 'scrollIntoView' in el) (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [hoveredClusterId, editingId, visibleClusters])
 
   // Compute the CSS crop for a face bbox so the representative thumb
   // zooms in on the face. bbox is normalized 0-1.
@@ -352,6 +403,32 @@ export default function PerformersPage() {
               </button>
             ))}
           </div>
+          {/* Sort selector — controls primary cluster ordering. */}
+          <div className="flex items-center gap-1 bg-black/20 rounded-md p-0.5 border border-[var(--border)]">
+            {([
+              { id: 'count', label: 'By size' },
+              { id: 'name', label: 'By name' },
+              { id: 'recent', label: 'Recent' },
+            ] as const).map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => setSortKey(opt.id)}
+                className={cn(
+                  'px-2.5 py-1 rounded text-[11px] font-medium transition',
+                  sortKey === opt.id
+                    ? 'bg-[var(--primary)] text-white'
+                    : 'text-[var(--muted)] hover:text-white'
+                )}
+                title={
+                  opt.id === 'count' ? 'Biggest clusters first (mediaCount DESC)'
+                  : opt.id === 'name' ? 'Alphabetical, unnamed sinks to bottom'
+                  : 'Most-recently-updated clusters first'
+                }
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
           <div className="flex items-center gap-2 ml-auto">
             <label className="text-[11px] text-[var(--muted)]">Min samples:</label>
             <input
@@ -414,15 +491,18 @@ export default function PerformersPage() {
             return (
               <div
                 key={c.id}
+                data-cluster-id={c.id}
                 onMouseEnter={() => setHoveredClusterId(c.id)}
                 onMouseLeave={() => setHoveredClusterId((prev) => (prev === c.id ? null : prev))}
                 className={cn(
                   'rounded-lg overflow-hidden border bg-[var(--panel)] transition group relative',
                   isMergeSource
                     ? 'border-amber-500/60 ring-2 ring-amber-500/30'
-                    : inMergeMode
-                      ? 'border-white/10 hover:border-[var(--primary)] cursor-pointer'
-                      : 'border-white/10 hover:border-white/30'
+                    : hoveredClusterId === c.id
+                      ? 'border-[var(--primary)]/60 ring-1 ring-[var(--primary)]/40'
+                      : inMergeMode
+                        ? 'border-white/10 hover:border-[var(--primary)] cursor-pointer'
+                        : 'border-white/10 hover:border-white/30'
                 )}
                 onClick={() => inMergeMode && handleMergeTarget(c.id)}
               >

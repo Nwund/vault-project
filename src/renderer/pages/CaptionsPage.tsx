@@ -240,6 +240,9 @@ export function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
   const [selectedMedia, setSelectedMedia] = useState<MediaRow | null>(null)
   const [topText, setTopText] = useState('')
   const [bottomText, setBottomText] = useState('')
+  // Refs for the Tab-swap ping-pong (#330).
+  const topTextInputRef = useRef<HTMLInputElement | null>(null)
+  const bottomTextInputRef = useRef<HTMLInputElement | null>(null)
   const [selectedPreset, setSelectedPreset] = useState('default')
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -269,6 +272,54 @@ export function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
     })()
     return () => { cancelled = true }
   }, [selectedMedia?.id])
+  // #331 — Clipboard image paste. Listens at the window level; ignores
+  // pastes targeted at <input>/<textarea> so caption-text editing
+  // doesn't get hijacked. Routes the image bytes through
+  // media:importBuffer which writes the file, upserts a row inline,
+  // and returns it — set as selectedMedia immediately so the editor
+  // surfaces it. Toast tells the user it landed in the library.
+  useEffect(() => {
+    const onPaste = async (e: ClipboardEvent) => {
+      // Skip when typing — pastes into caption fields should not steal images.
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      const items = e.clipboardData?.items
+      if (!items || items.length === 0) return
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
+        if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
+        const file = item.getAsFile()
+        if (!file) continue
+        e.preventDefault()
+        try {
+          const buffer = await file.arrayBuffer()
+          // image/png → .png, image/jpeg → .jpg, image/webp → .webp, etc.
+          const mimeExt: Record<string, string> = {
+            'image/png': '.png',
+            'image/jpeg': '.jpg',
+            'image/jpg': '.jpg',
+            'image/webp': '.webp',
+            'image/gif': '.gif',
+            'image/bmp': '.bmp',
+          }
+          const ext = mimeExt[item.type] ?? '.png'
+          showToast('info', `Importing pasted image (${(buffer.byteLength / 1024).toFixed(1)} KB)…`)
+          const r = await (window.api.media as any).importBuffer?.({ buffer: new Uint8Array(buffer), ext })
+          if (r?.ok && r.media) {
+            setSelectedMedia(r.media as MediaRow)
+            showToast('success', `Imported as ${r.media.filename ?? 'pasted image'}`)
+          } else {
+            showToast('error', `Paste failed: ${r?.error ?? 'unknown'}`)
+          }
+        } catch (err: any) {
+          showToast('error', `Paste failed: ${err?.message ?? String(err)}`)
+        }
+        return  // only handle the first image item per paste
+      }
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [showToast])
+
   // Context used to expand {performer}, {duration}, {tags}, etc. at
   // render time. Performers are extracted from tags prefixed with
   // `performer:` (the canonical convention).
@@ -1944,9 +1995,21 @@ export function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                     <div>
                       <label className="text-xs text-[var(--muted)] block mb-1">Top Text</label>
                       <input
+                        ref={topTextInputRef}
                         type="text"
                         value={topText}
                         onChange={(e) => setTopText(e.target.value)}
+                        // #330 — bare Tab (no shift, no modifier) jumps
+                        // directly to the bottom-text input so the user
+                        // can ping-pong without traversing every variable
+                        // chip in between. Shift+Tab still does default
+                        // reverse-traversal.
+                        onKeyDown={(e) => {
+                          if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                            e.preventDefault()
+                            bottomTextInputRef.current?.focus()
+                          }
+                        }}
                         placeholder="Top caption..."
                         className="w-full px-3 py-2 rounded-xl bg-black/30 border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)]"
                       />
@@ -1954,9 +2017,18 @@ export function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
                     <div>
                       <label className="text-xs text-[var(--muted)] block mb-1">Bottom Text</label>
                       <input
+                        ref={bottomTextInputRef}
                         type="text"
                         value={bottomText}
                         onChange={(e) => setBottomText(e.target.value)}
+                        // Tab from Bottom jumps back to Top — completes
+                        // the ping-pong loop.
+                        onKeyDown={(e) => {
+                          if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                            e.preventDefault()
+                            topTextInputRef.current?.focus()
+                          }
+                        }}
                         placeholder="Bottom caption..."
                         className="w-full px-3 py-2 rounded-xl bg-black/30 border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)]"
                       />

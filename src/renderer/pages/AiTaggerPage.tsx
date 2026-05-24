@@ -13,6 +13,7 @@ import {
   Download,
   Edit,
   Eye,
+  EyeOff,
   FileText,
   Layers,
   Loader2,
@@ -105,6 +106,10 @@ export function AiTaggerPage() {
   // "configured" flag. `editingKey` controls whether the input is in
   // replace-mode (textbox visible) or display-mode (preview chip visible).
   const [veniceApiKey, setVeniceApiKey] = useState('')
+  // #325 — show/hide toggles for API key inputs. Default hidden; reveal
+  // is per-session only (state lives in component, not localStorage).
+  const [showVeniceKey, setShowVeniceKey] = useState(false)
+  const [showTpdbKey, setShowTpdbKey] = useState(false)
   const [tier2Configured, setTier2Configured] = useState(false)
   const [veniceKeyPreview, setVeniceKeyPreview] = useState('')
   const [veniceKeyEncrypted, setVeniceKeyEncrypted] = useState(false)
@@ -380,6 +385,22 @@ export function AiTaggerPage() {
 
   // UI state
   const [activeTab, setActiveTab] = useState<'setup' | 'queue' | 'review' | 'tools'>('setup')
+  // Number keys 1-4 swap AI Tools tabs (#382). Same numpad convention
+  // as Sessions and Brainwash. Skips when typing.
+  useEffect(() => {
+    const TABS: Array<'setup' | 'queue' | 'review' | 'tools'> = ['setup', 'queue', 'review', 'tools']
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+      const idx = Number(e.key) - 1
+      if (idx >= 0 && idx < TABS.length) {
+        e.preventDefault()
+        setActiveTab(TABS[idx])
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   // Power-user keyboard flow for the review tab (#253). Shift+Enter
   // approves the currently-selected item AND advances to the next
   // pending one. Skips when typing in an input / textarea so editing
@@ -400,6 +421,28 @@ export function AiTaggerPage() {
           e.preventDefault()
           setSelectedReviewItem(reviewItems[nextIdx])
         }
+        return
+      }
+      // Bare 'a' approves, bare 'x' rejects, then advances to the next
+      // pending item — same advance behavior as Shift+Enter so the user
+      // can blow through a review queue one-handed.
+      if ((e.key === 'a' || e.key === 'x') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const cur = selectedReviewItem
+        if (!cur) return
+        e.preventDefault()
+        const idx = reviewItems.findIndex((r) => r.mediaId === cur.mediaId)
+        try {
+          if (e.key === 'a') await window.api.ai.approve(cur.mediaId)
+          else await window.api.ai.reject(cur.mediaId)
+        } catch (err: any) {
+          showToast('error', err?.message ?? `${e.key === 'a' ? 'Approve' : 'Reject'} failed`)
+          return
+        }
+        const next = idx >= 0 && idx + 1 < reviewItems.length ? reviewItems[idx + 1] : null
+        setSelectedReviewItem(next)
+        loadReviewItems()
+        refreshQueueStatus()
+        refreshUndoStatus()
         return
       }
       if (!e.shiftKey || e.key !== 'Enter') return
@@ -1530,13 +1573,23 @@ export function AiTaggerPage() {
                 // Edit / first-time mode — input + save.
                 <div className="space-y-2">
                   <div className="flex gap-2">
-                    <input
-                      type="password"
-                      value={veniceApiKey}
-                      onChange={(e) => setVeniceApiKey(e.target.value)}
-                      placeholder="Enter Venice API key..."
-                      className="flex-1 px-4 py-2 rounded-lg bg-white/5 border border-[var(--border)] focus:border-[var(--primary)] focus:outline-none"
-                    />
+                    <div className="flex-1 relative">
+                      <input
+                        type={showVeniceKey ? 'text' : 'password'}
+                        value={veniceApiKey}
+                        onChange={(e) => setVeniceApiKey(e.target.value)}
+                        placeholder="Enter Venice API key..."
+                        className="w-full px-4 py-2 pr-10 rounded-lg bg-white/5 border border-[var(--border)] focus:border-[var(--primary)] focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowVeniceKey((v) => !v)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-[var(--muted)] hover:text-white hover:bg-white/10 transition"
+                        title={showVeniceKey ? 'Hide API key' : 'Reveal API key'}
+                      >
+                        {showVeniceKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
                     <button
                       onClick={configureVenice}
                       disabled={!veniceApiKey.trim()}
@@ -1673,13 +1726,23 @@ export function AiTaggerPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <input
-                    type="password"
-                    value={tpdbKeyInput}
-                    onChange={(e) => setTpdbKeyInput(e.target.value)}
-                    placeholder="TpDB API key (Bearer token)"
-                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-[var(--border)] focus:border-[var(--primary)] focus:outline-none text-sm font-mono"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showTpdbKey ? 'text' : 'password'}
+                      value={tpdbKeyInput}
+                      onChange={(e) => setTpdbKeyInput(e.target.value)}
+                      placeholder="TpDB API key (Bearer token)"
+                      className="w-full px-3 py-2 pr-10 rounded-lg bg-white/5 border border-[var(--border)] focus:border-[var(--primary)] focus:outline-none text-sm font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowTpdbKey((v) => !v)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-[var(--muted)] hover:text-white hover:bg-white/10 transition"
+                      title={showTpdbKey ? 'Hide API key' : 'Reveal API key'}
+                    >
+                      {showTpdbKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={async () => {
@@ -2893,20 +2956,39 @@ export function AiTaggerPage() {
               <h2 className="text-lg font-semibold mb-4">Queue Status</h2>
 
               {queueStatus ? (
-                <div className="grid grid-cols-5 gap-4 mb-6">
-                  {[
-                    { label: 'Total', value: queueStatus.total, color: 'text-[var(--text)]' },
-                    { label: 'Pending', value: queueStatus.pending, color: 'text-yellow-500' },
-                    { label: 'Processing', value: queueStatus.processing, color: 'text-blue-500' },
-                    { label: 'Completed', value: queueStatus.completed, color: 'text-green-500' },
-                    { label: 'Failed', value: queueStatus.failed, color: 'text-red-500' },
-                  ].map(stat => (
-                    <div key={stat.label} className="text-center p-3 bg-white/5 rounded-lg">
-                      <div className={cn('text-2xl font-bold', stat.color)}>{stat.value}</div>
-                      <div className="text-xs text-[var(--muted)]">{stat.label}</div>
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <div className="grid grid-cols-5 gap-4 mb-3">
+                    {[
+                      { label: 'Total', value: queueStatus.total, color: 'text-[var(--text)]' },
+                      { label: 'Pending', value: queueStatus.pending, color: 'text-yellow-500' },
+                      { label: 'Processing', value: queueStatus.processing, color: 'text-blue-500' },
+                      { label: 'Completed', value: queueStatus.completed, color: 'text-green-500' },
+                      { label: 'Failed', value: queueStatus.failed, color: 'text-red-500' },
+                    ].map(stat => (
+                      <div key={stat.label} className="text-center p-3 bg-white/5 rounded-lg">
+                        <div className={cn('text-2xl font-bold', stat.color)}>{stat.value}</div>
+                        <div className="text-xs text-[var(--muted)]">{stat.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* #341 — rough ETA. Defaults to 25 s/item (median for
+                      the multi-tier pipeline with frame extraction +
+                      Tier 1 + a Tier 2 call). Updates as the queue
+                      drains since pending count changes. */}
+                  {queueStatus.pending > 0 && (() => {
+                    const secPerItem = 25
+                    const remainingSec = queueStatus.pending * secPerItem
+                    const hh = Math.floor(remainingSec / 3600)
+                    const mm = Math.floor((remainingSec % 3600) / 60)
+                    const label = hh > 0 ? `${hh}h ${mm}m` : `${mm}m`
+                    return (
+                      <div className="text-center text-xs text-[var(--muted)] mb-6">
+                        Estimated time remaining: <span className="text-[var(--text)] font-medium tabular-nums">{label}</span>
+                        <span className="opacity-60"> (~{secPerItem}s/item)</span>
+                      </div>
+                    )
+                  })()}
+                </>
               ) : (
                 <p className="text-[var(--muted)]">Loading queue status...</p>
               )}
@@ -3472,6 +3554,26 @@ export function AiTaggerPage() {
                   )}
                   {reviewListStatus === 'pending' && reviewTotal > 0 && (
                     <>
+                      {/* #315 — bulk-approve just the high-confidence
+                          subset (nsfw_confidence ≥ 0.85). Lets the
+                          reviewer chew through obvious wins without
+                          rubber-stamping borderline items. */}
+                      <button
+                        onClick={async () => {
+                          try {
+                            const r = await window.api.ai.bulkApprove({ minConfidence: 0.85 } as any) as { approved: number }
+                            showToast('success', `Approved ${r.approved} high-confidence items`)
+                            loadReviewItems()
+                            refreshQueueStatus()
+                          } catch (err: any) {
+                            showToast('error', err?.message ?? 'High-confidence approve failed')
+                          }
+                        }}
+                        className="text-sm text-emerald-400 hover:underline"
+                        title="Approve only items with nsfw_confidence ≥ 0.85 — skips borderline cases"
+                      >
+                        Approve ≥85%
+                      </button>
                       <button
                         onClick={bulkApproveAll}
                         className="text-sm text-[var(--primary)] hover:underline"

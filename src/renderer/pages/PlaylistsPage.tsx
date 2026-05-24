@@ -47,6 +47,14 @@ type PlaylistSortBy = 'manual' | 'name' | 'duration' | 'added' | 'random'
 export function PlaylistsPage() {
   const { showToast } = useToast()
   const [playlists, setPlaylists] = useState<PlaylistRow[]>([])
+  // Search field for filtering the playlists list by name (#319).
+  // Useful once the user has 20+ playlists; case-insensitive substring.
+  const [playlistSearch, setPlaylistSearch] = useState('')
+  const filteredPlaylists = useMemo(() => {
+    const q = playlistSearch.trim().toLowerCase()
+    if (!q) return playlists
+    return playlists.filter((p) => (p.name ?? '').toLowerCase().includes(q))
+  }, [playlists, playlistSearch])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [items, setItems] = useState<any[]>([])
   const [newName, setNewName] = useState('')
@@ -196,7 +204,16 @@ export function PlaylistsPage() {
       // Don't handle shortcuts when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
 
-      if (e.key === 'n' && !e.ctrlKey && !e.metaKey) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N')) {
+        // Cmd/Ctrl+N — same focus-the-new-playlist-input behavior as
+        // bare 'n', but composes with modifier-driven muscle memory.
+        const input = document.querySelector('input[placeholder="New playlist..."]') as HTMLInputElement
+        if (input) {
+          e.preventDefault()
+          input.focus()
+          input.select()
+        }
+      } else if (e.key === 'n' && !e.ctrlKey && !e.metaKey) {
         // 'n' for new playlist - focus the input
         const input = document.querySelector('input[placeholder="New playlist..."]') as HTMLInputElement
         if (input) {
@@ -919,7 +936,19 @@ export function PlaylistsPage() {
 
             {/* Playlist list */}
             <div className="space-y-1.5">
-              {playlists.map((p) => {
+              {/* Search field — filters by name substring. Hidden when
+                  the user has fewer than 5 playlists; useless visual
+                  clutter at that scale. */}
+              {playlists.length >= 5 && (
+                <input
+                  type="text"
+                  value={playlistSearch}
+                  onChange={(e) => setPlaylistSearch(e.target.value)}
+                  placeholder={`Search ${playlists.length} playlists…`}
+                  className="w-full px-2.5 py-1.5 mb-2 rounded-lg bg-black/20 border border-[var(--border)] outline-none focus:border-[var(--primary)]/50 text-xs"
+                />
+              )}
+              {filteredPlaylists.map((p) => {
                 const stats = playlistStats.get(p.id)
                 const duration = stats?.durationSec ?? 0
                 const durationStr = duration > 0 ? formatDuration(duration) : ''

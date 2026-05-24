@@ -190,6 +190,27 @@ const ToastItem: React.FC<{
         </button>
       )}
 
+      {/* #351 — 'Logs' link on error toasts. Opens the logs folder so
+          the user can read the full stack / preceding context without
+          digging through Settings → Data → Open Logs Folder. */}
+      {toast.type === 'error' && (
+        <button
+          onClick={async (e) => {
+            e.stopPropagation()
+            try {
+              const path = await (window as any).api?.logs?.getLogFilePath?.()
+              if (path) {
+                await (window as any).api?.shell?.openPath?.(path.replace(/[^\\\/]+$/, ''))
+              }
+            } catch { /* ignore */ }
+          }}
+          className="px-1.5 py-0.5 text-[10px] rounded bg-white/15 hover:bg-white/25 transition"
+          title="Open logs folder for full error context"
+        >
+          Logs
+        </button>
+      )}
+
       <button
         onClick={(e) => { e.stopPropagation(); handleDismiss() }}
         className="p-1 hover:bg-white/20 rounded transition btn-press"
@@ -217,8 +238,29 @@ export function ToastContainer() {
 
   if (toasts.length === 0) return null
 
+  // Zen mode (Z key) dims chrome to give the user a distraction-free
+  // surface. Toasts should still appear (errors matter) but at lower
+  // opacity so they don't yank focus. The data-theme-mode attribute
+  // is the only globally-set marker available to a non-React island.
+  const inZenMode = typeof document !== 'undefined'
+    && document.documentElement.classList.contains('vault-zen-mode')
+
   return (
-    <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none toast-stack">
+    <div
+      className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none toast-stack"
+      style={inZenMode ? { opacity: 0.4 } : undefined}
+    >
+      {/* #393 — dismiss-all button when 3+ toasts stacked. Bypasses
+          per-toast clicking when the user just wants the noise gone. */}
+      {toasts.length >= 3 && (
+        <button
+          onClick={() => { for (const t of toasts) dismissToast(t.id) }}
+          className="pointer-events-auto self-end px-2 py-0.5 rounded-md bg-black/70 hover:bg-black/85 text-white text-[10px] font-medium border border-white/15 backdrop-blur-sm transition"
+          title={`Dismiss all ${toasts.length} notifications`}
+        >
+          Dismiss all ({toasts.length})
+        </button>
+      )}
       {toasts.slice(0, 5).map((toast, index) => (
         <ToastItem
           key={toast.id}
