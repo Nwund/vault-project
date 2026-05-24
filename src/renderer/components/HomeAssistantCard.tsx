@@ -21,6 +21,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import { Home, Play, Square, CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react'
+import { useVisibilityInterval } from '../hooks/useVisibilityInterval'
 
 export function HomeAssistantCard(): React.JSX.Element {
   const [brokerUrl, setBrokerUrl] = useState('')
@@ -49,11 +50,10 @@ export function HomeAssistantCard(): React.JSX.Element {
         if (net.haUsername) setUsername(net.haUsername)
         if (net.haPassword) setPassword(net.haPassword)
       } catch { /* settings missing */ }
-      await refreshStatus()
     })()
-    const t = setInterval(refreshStatus, 10_000)
-    return () => clearInterval(t)
-  }, [refreshStatus])
+  }, [])
+  // 10s MQTT-status polling, paused while tab hidden.
+  useVisibilityInterval(refreshStatus, 10_000)
 
   const persist = useCallback(async () => {
     const api: any = (window as any).api

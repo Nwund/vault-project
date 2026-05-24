@@ -15,6 +15,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Bell } from 'lucide-react'
 import { SubscriptionsPanel } from './SubscriptionsPanel'
+import { useVisibilityInterval } from '../hooks/useVisibilityInterval'
 
 // Subset of the Browse tab's source registry — only stable JSON-API
 // sources are listed here, since subscriptions need to keep working
@@ -62,17 +63,13 @@ export function SubscriptionsBellButton({ className }: { className?: string }) {
   }, [])
 
   useEffect(() => {
-    void refreshCount()
     const api: any = (window as any).api
     const off = api?.events?.onVaultChanged?.(() => { void refreshCount() })
-    // Refresh on a 60s tick too — the background poller may land items
-    // without firing vault:changed if no DB writes occur.
-    const t = setInterval(refreshCount, 60_000)
-    return () => {
-      try { off?.() } catch {}
-      clearInterval(t)
-    }
+    return () => { try { off?.() } catch {} }
   }, [refreshCount])
+  // 60s tick — the background poller may land items without firing
+  // vault:changed when no DB writes occur. Paused while tab hidden.
+  useVisibilityInterval(refreshCount, 60_000)
 
   // Click-outside to close.
   useEffect(() => {

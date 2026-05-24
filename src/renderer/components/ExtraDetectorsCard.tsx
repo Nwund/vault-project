@@ -19,6 +19,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Cpu, Check, X as XIcon, FolderOpen, RefreshCw } from 'lucide-react'
 import { formatBytes } from '../utils/formatters'
+import { useVisibilityInterval } from '../hooks/useVisibilityInterval'
 
 interface DetectorRow {
   id: string
@@ -179,11 +180,9 @@ export function ExtraDetectorsCard(): React.JSX.Element {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows.length])
 
-  useEffect(() => {
-    void refresh()
-    const t = setInterval(refresh, 30_000)
-    return () => clearInterval(t)
-  }, [refresh])
+  // 30s detector-status polling, paused while tab hidden. The probe
+  // walks model dirs — file IO every tick adds up across many cards.
+  useVisibilityInterval(refresh, 30_000)
 
   return (
     <div className="rounded-3xl border border-[var(--border)] bg-black/20 p-5 mt-4">

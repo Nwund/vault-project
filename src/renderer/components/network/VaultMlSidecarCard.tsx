@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
+import { useVisibilityInterval } from '../../hooks/useVisibilityInterval'
 import {
   Cpu,
   Loader2,
@@ -59,11 +60,10 @@ export function VaultMlSidecarCard() {
     }
   }, [])
 
-  useEffect(() => {
-    refresh()
-    const id = window.setInterval(refresh, 8000)
-    return () => clearInterval(id)
-  }, [refresh])
+  // 8s health-poll for the Python sidecar; paused while tab hidden.
+  // The probe is an HTTP call to localhost so each tick costs IPC +
+  // a network hop — worth gating on visibility.
+  useVisibilityInterval(refresh, 8000)
 
   const state: ServiceState = error
     ? 'error'

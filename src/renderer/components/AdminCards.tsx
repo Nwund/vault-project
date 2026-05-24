@@ -13,6 +13,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Loader2, RefreshCw, Plus, Activity } from 'lucide-react'
 import { useToast } from '../contexts'
+import { useVisibilityInterval } from '../hooks/useVisibilityInterval'
 
 /**
  * Cross-device access card (#26). Reuses the existing mobile-sync HTTP
@@ -43,13 +44,10 @@ export function CrossDeviceCard() {
     }
   }, [])
 
-  useEffect(() => { void refresh() }, [refresh])
-  // Re-poll every 5s while the panel is open so on/off toggles in the
-  // adjacent Mobile Sync card reflect quickly.
-  useEffect(() => {
-    const t = setInterval(refresh, 5000)
-    return () => clearInterval(t)
-  }, [refresh])
+  // 5s poll while panel is open AND tab is visible — keeps the on/off
+  // state from the adjacent Mobile Sync card in sync without burning
+  // IPCs when the user has wandered to a different tab/app.
+  useVisibilityInterval(refresh, 5000)
 
   const generate = async () => {
     setGenerating(true)

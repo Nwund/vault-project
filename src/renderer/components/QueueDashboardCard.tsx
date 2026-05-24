@@ -8,6 +8,7 @@
 import React, { useEffect, useState } from 'react'
 import { Activity, Brain, Download, Loader2 } from 'lucide-react'
 import { cn } from '../utils/cn'
+import { useVisibilityInterval } from '../hooks/useVisibilityInterval'
 
 interface AiQueueSnapshot {
   isRunning: boolean
@@ -29,34 +30,29 @@ export function QueueDashboardCard(): React.JSX.Element {
   const [ai, setAi] = useState<AiQueueSnapshot | null>(null)
   const [dl, setDl] = useState<DownloadSnapshot | null>(null)
 
-  useEffect(() => {
-    let alive = true
-    const tick = async () => {
-      try {
-        const a: any = await (window.api as any).ai?.getQueueStatus?.()
-        if (alive && a) setAi({
-          isRunning: !!a.isRunning,
-          isPaused: !!a.isPaused,
-          pending: a.pending ?? 0,
-          processing: a.processing ?? 0,
-          completed: a.completed ?? 0,
-          failed: a.failed ?? 0,
-        })
-      } catch { /* swallow — keep prior snapshot */ }
-      try {
-        const items: any[] = (await (window.api as any).urlDownloader?.list?.()) ?? []
-        if (alive) {
-          const active = items.filter((i) => i.status === 'downloading' || i.status === 'queued').length
-          const done = items.filter((i) => i.status === 'completed' || i.status === 'imported').length
-          const failed = items.filter((i) => i.status === 'failed').length
-          setDl({ total: items.length, active, done, failed })
-        }
-      } catch { /* ignore — downloads tab may not be initialized */ }
-    }
-    void tick()
-    const t = setInterval(tick, 2000)
-    return () => { alive = false; clearInterval(t) }
-  }, [])
+  // Polled via useVisibilityInterval so the 2s tick pauses while this
+  // tab is hidden — no point burning IPC chatter when no one's looking.
+  // Cadence kept at 2s for the active case so progress bars feel live.
+  useVisibilityInterval(async () => {
+    try {
+      const a: any = await (window.api as any).ai?.getQueueStatus?.()
+      if (a) setAi({
+        isRunning: !!a.isRunning,
+        isPaused: !!a.isPaused,
+        pending: a.pending ?? 0,
+        processing: a.processing ?? 0,
+        completed: a.completed ?? 0,
+        failed: a.failed ?? 0,
+      })
+    } catch { /* swallow — keep prior snapshot */ }
+    try {
+      const items: any[] = (await (window.api as any).urlDownloader?.list?.()) ?? []
+      const active = items.filter((i) => i.status === 'downloading' || i.status === 'queued').length
+      const done = items.filter((i) => i.status === 'completed' || i.status === 'imported').length
+      const failed = items.filter((i) => i.status === 'failed').length
+      setDl({ total: items.length, active, done, failed })
+    } catch { /* ignore — downloads tab may not be initialized */ }
+  }, 2000)
 
   return (
     <div className="bg-[var(--panel)] rounded-xl border border-[var(--border)] p-6">

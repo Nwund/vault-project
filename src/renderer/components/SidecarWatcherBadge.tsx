@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'motion/react'
 import { Eye, Plus, Square, Folder, Loader2 } from 'lucide-react'
 import { useToast } from '../contexts'
 import { SPRINGS, FADE_SLIDE } from './network/motion-tokens'
+import { useVisibilityInterval } from '../hooks/useVisibilityInterval'
 
 export function SidecarWatcherBadge() {
   const { showToast } = useToast()
@@ -28,11 +29,8 @@ export function SidecarWatcherBadge() {
     }
   }, [])
 
-  useEffect(() => {
-    refresh()
-    const id = window.setInterval(refresh, 5000)
-    return () => clearInterval(id)
-  }, [refresh])
+  // 5s sidecar-status polling, paused while tab is hidden.
+  useVisibilityInterval(refresh, 5000)
 
   // Close popover on outside click
   useEffect(() => {

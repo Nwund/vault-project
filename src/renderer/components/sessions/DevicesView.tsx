@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
+import { useVisibilityInterval } from '../../hooks/useVisibilityInterval'
 import { SPRINGS } from '../network/motion-tokens'
 import { Bluetooth, Watch, Usb, HeartPulse, Power, Zap, Waves } from 'lucide-react'
 import { Btn } from '../ui/Btn'
@@ -226,7 +227,9 @@ function ArduinoTile() {
     try { setStatus(await window.api.arduinoToy.status()) }
     catch { /* ignore */ }
   }
-  useEffect(() => { refreshStatus(); const id = setInterval(refreshStatus, 2000); return () => clearInterval(id) }, [])
+  // 2s status polling — paused when this sub-tab isn't visible
+  // (Sessions has 5 sub-views; only the active one needs to poll).
+  useVisibilityInterval(refreshStatus, 2000)
 
   const connect = async () => {
     if (!selectedPort) return
