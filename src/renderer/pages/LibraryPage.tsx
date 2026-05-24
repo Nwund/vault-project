@@ -361,6 +361,14 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const [activeTags, setActiveTags] = useState<string[]>(persisted?.activeTags ?? [])
+  // Untagged-only + recent-24h quick filters (#305, #306). Session-local
+  // so they reset on app restart — these are exploration modes, not
+  // sticky preferences.
+  const [untaggedOnly, setUntaggedOnly] = useState(false)
+  const [recent24hOnly, setRecent24hOnly] = useState(false)
+  // #307 — duration bucket. 'short' = <5min, 'medium' = 5-20min,
+  // 'long' = >20min, null = any. Session-local.
+  const [durationBucket, setDurationBucket] = useState<'short' | 'medium' | 'long' | null>(null)
   const [typeFilter, setTypeFilter] = useState<MediaType | 'all'>(persisted?.typeFilter ?? 'all')
   const [sortBy, setSortBy] = useState<SortOption>(persisted?.sortBy ?? 'newest')
   const [sortAscending, setSortAscending] = useState(persisted?.sortAscending ?? false)
@@ -411,6 +419,22 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
     })
   }, [currentPage, sortBy, sortAscending, typeFilter])
   const [totalCount, setTotalCount] = useState(0)
+  // #304 — library-wide totals for the TopBar subtitle. Refreshes
+  // whenever the vault changes (scan, delete, etc.). Independent of
+  // the current filter — this is the "your library at a glance" line.
+  const [libraryStats, setLibraryStats] = useState<{ totalMedia: number; totalSizeBytes: number } | null>(null)
+  useEffect(() => {
+    let alive = true
+    const refresh = async () => {
+      try {
+        const s: any = await window.api.vault?.getStats?.()
+        if (alive && s) setLibraryStats({ totalMedia: s.totalMedia ?? 0, totalSizeBytes: s.totalSizeBytes ?? 0 })
+      } catch { /* ignore */ }
+    }
+    void refresh()
+    const unsub = window.api.events?.onVaultChanged?.(() => void refresh())
+    return () => { alive = false; try { unsub?.() } catch { /* ignore */ } }
+  }, [])
   // Fuzzy-search hint: when LIKE returned 0 results and the backend
   // fell back to closest-spelling match, surface "Did you mean X?" so
   // the user knows their query was rewritten.
@@ -700,6 +724,14 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
     setOpenIds([])
   }, [])
 
+  // #372 — Shift+Q from any FVP fires a window event so we can close
+  // every floating player at once from anywhere.
+  useEffect(() => {
+    const handler = () => closeAllFloatingPlayers()
+    window.addEventListener('vault:close-all-floating-players', handler)
+    return () => window.removeEventListener('vault:close-all-floating-players', handler)
+  }, [closeAllFloatingPlayers])
+
   // Auto-open media if coming from Home dashboard with pending media
   useEffect(() => {
     const checkPendingMedia = () => {
@@ -939,6 +971,8 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
 
   // Keyboard navigation state
   const [focusedIndex, setFocusedIndex] = useState(-1)
+  // Tracks last 'g' keypress for the vim-style 'gg' double-tap-to-top.
+  const lastGTapRef = useRef(0)
   const gridRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
@@ -1149,6 +1183,65 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       const endIndex = Math.min(startIndex + effectivePageSize, sortedMedia.length)
       const maxIndex = endIndex - startIndex - 1
 
+      // Vim-style jumps (gg = top, G = bottom) before the switch so
+      // they can compose with the existing arrow + index logic.
+      if (e.key === 'G' && e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault()
+        setFocusedIndex(maxIndex)
+        return
+      }
+      if (e.key === 'g' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        // 'gg' double-tap within 500ms jumps to the first tile —
+        // tracks the last 'g' timestamp on a module-local ref.
+        const now = Date.now()
+        if (now - lastGTapRef.current < 500) {
+          e.preventDefault()
+          setFocusedIndex(0)
+          lastGTapRef.current = 0
+          return
+        }
+        lastGTapRef.current = now
+      }
+      // PageUp / PageDown — jump a full grid page.
+      if (e.key === 'PageDown' && !e.ctrlKey && !e.metaKey) {
+        if (currentPage < Math.ceil(sortedMedia.length / effectivePageSize)) {
+          e.preventDefault()
+          setCurrentPage((p) => p + 1)
+          setFocusedIndex(0)
+        }
+        return
+      }
+      if (e.key === 'PageUp' && !e.ctrlKey && !e.metaKey) {
+        if (currentPage > 1) {
+          e.preventDefault()
+          setCurrentPage((p) => p - 1)
+          setFocusedIndex(0)
+        }
+        return
+      }
+      // '/' focuses the main search input — vim convention.
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        const input = document.querySelector('input[placeholder*="earch" i]') as HTMLInputElement | null
+        if (input) {
+          e.preventDefault()
+          input.focus()
+          input.select()
+          return
+        }
+      }
+      // 'd' on focused tile fires delete via context-menu event so it
+      // goes through the same confirm + soft-delete pipeline.
+      if ((e.key === 'd' || e.key === 'Delete') && !e.ctrlKey && !e.metaKey && !e.shiftKey
+        && focusedIndex >= 0 && focusedIndex <= maxIndex) {
+        const m = sortedMedia[startIndex + focusedIndex]
+        if (m) {
+          e.preventDefault()
+          try {
+            window.dispatchEvent(new CustomEvent('vault-delete-media', { detail: { mediaId: m.id } }))
+          } catch { /* ignore */ }
+        }
+      }
+
       switch (e.key) {
         case 'ArrowRight':
           e.preventDefault()
@@ -1194,9 +1287,34 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
           break
         case 'l':
         case 'L':
-          // Open Watch Later panel
+          // #303 — when a tile is focused, 'l' toggles the like on it
+          // (matches FVP convention). With no focus, fall through to
+          // open the Watch Later panel as before.
+          if (focusedIndex >= 0 && focusedIndex <= maxIndex) {
+            const m = sortedMedia[startIndex + focusedIndex]
+            if (m) {
+              e.preventDefault()
+              void toggleLike(m.id)
+              break
+            }
+          }
           e.preventDefault()
           setShowWatchLaterPanel(true)
+          break
+        case 'i':
+        case 'I':
+          // #303 — info modal for focused tile. Dispatches a DOM
+          // event the App-level info modal listens for so we don't
+          // need a prop drilled into every page.
+          if (focusedIndex >= 0 && focusedIndex <= maxIndex) {
+            const m = sortedMedia[startIndex + focusedIndex]
+            if (m) {
+              e.preventDefault()
+              try {
+                window.dispatchEvent(new CustomEvent('vault:open-info-modal', { detail: { media: m } }))
+              } catch { /* ignore */ }
+            }
+          }
           break
         case 'e':
         case 'E':
@@ -1246,13 +1364,41 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
           break
         case 's':
         case 'S':
-          // Scene detection for focused video
+          // Scene detection for focused video (Shift+S preserved). #303
+          // Bare 's' on a focused tile cycles its rating 0→1→2→3→4→5→0
+          // so the user can star without picking up the mouse.
           if (e.shiftKey && focusedIndex >= 0 && focusedIndex <= maxIndex) {
             e.preventDefault()
             const m = sortedMedia[startIndex + focusedIndex]
             if (m && m.type === 'video') {
               setActiveToolMedia(m)
               setShowSceneDetector(true)
+            }
+          } else if (!e.shiftKey && focusedIndex >= 0 && focusedIndex <= maxIndex) {
+            const m = sortedMedia[startIndex + focusedIndex]
+            if (m) {
+              e.preventDefault()
+              const cur = mediaStats.get(m.id)?.rating ?? 0
+              const next = (cur + 1) % 6  // 0..5 then wrap
+              void window.api.media.setRating(m.id, next)
+                .then(() => {
+                  // Optimistic in-component cache update so the star
+                  // overlay flips immediately instead of waiting for
+                  // the next bulk fetch.
+                  setMediaStats((prev) => {
+                    const m2 = new Map(prev)
+                    const ex = m2.get(m.id) ?? { rating: 0, viewCount: 0, oCount: 0 }
+                    m2.set(m.id, { ...ex, rating: next })
+                    return m2
+                  })
+                  setLikedIds((prev) => {
+                    const s = new Set(prev)
+                    if (next >= 5) s.add(m.id)
+                    else s.delete(m.id)
+                    return s
+                  })
+                })
+                .catch(() => showToast('error', 'Set rating failed'))
             }
           }
           break
@@ -1436,6 +1582,9 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
         sortBy: dbSortBy,
         limit: usePagination ? pageSize : undefined,
         offset: usePagination ? (currentPage - 1) * pageSize : undefined,
+        untaggedOnly: untaggedOnly || undefined,
+        sinceMs: recent24hOnly ? Date.now() - 24 * 60 * 60 * 1000 : undefined,
+        durationBucket: durationBucket ?? undefined,
       } as any)
       let items: MediaRow[] = extractItems<MediaRow>(m)
       // Pull the unsliced total from the response (server returns
@@ -1528,7 +1677,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
   // pageSize + currentPage now affect the server-side window, so they
   // belong in the dep array. Without them, paging would silently keep
   // showing the page-1 batch.
-  }, [debouncedQuery, typeFilter, activeTags, sortBy, sortAscending, parseAdvancedSearch, pageSize, currentPage])
+  }, [debouncedQuery, typeFilter, activeTags, sortBy, sortAscending, parseAdvancedSearch, pageSize, currentPage, untaggedOnly, recent24hOnly, durationBucket])
 
   useEffect(() => {
     let alive = true
@@ -1557,11 +1706,26 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
       void refresh()
     }
     window.addEventListener('media-deleted', handleMediaDeleted)
+    // #303 'd' shortcut bus — focused-tile delete with confirm.
+    const handleDeleteFromKey = async (ev: Event) => {
+      const id = (ev as CustomEvent<{ mediaId: string }>).detail?.mediaId
+      if (!id) return
+      if (!window.confirm('Move to Trash? (recoverable for 30 days)')) return
+      try {
+        await (window.api.media as any).bulkDelete([id])
+        showToast('success', 'Moved to Trash')
+        await refresh()
+      } catch (err: any) {
+        showToast('error', `Delete failed: ${err?.message ?? String(err)}`)
+      }
+    }
+    window.addEventListener('vault-delete-media', handleDeleteFromKey)
 
     return () => {
       alive = false
       unsub?.()
       window.removeEventListener('media-deleted', handleMediaDeleted)
+      window.removeEventListener('vault-delete-media', handleDeleteFromKey)
     }
   }, [])
 
@@ -1629,6 +1793,11 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
     <div className="h-full w-full flex flex-col overflow-hidden" data-page="library">
       <TopBar
         title="Library"
+        subtitle={
+          selectionMode && selectedIds.size > 0
+            ? `${selectedIds.size} selected${libraryStats ? ` · of ${libraryStats.totalMedia.toLocaleString()}` : ''}`
+            : libraryStats ? `${libraryStats.totalMedia.toLocaleString()} items · ${formatBytes(libraryStats.totalSizeBytes)}` : undefined
+        }
         right={
           <div className="flex items-center gap-2">
             {/* Layout toggle: Mosaic / Grid / Wall */}
@@ -2359,7 +2528,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
         {/* Clear-all pill — single click reset when any filter is on.
             Mirrors the empty-state CTA but reachable WITHOUT having to
             scroll past every tile to a zero-result screen. */}
-        {(debouncedQuery || activeTags.length > 0 || typeFilter !== 'all' || sortBy !== 'newest') && (
+        {(debouncedQuery || activeTags.length > 0 || typeFilter !== 'all' || sortBy !== 'newest' || untaggedOnly || recent24hOnly || durationBucket !== null) && (
           <button
             onClick={() => {
               setQuery('')
@@ -2367,6 +2536,9 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
               setTypeFilter('all')
               setSortBy('newest')
               setSortAscending(false)
+              setUntaggedOnly(false)
+              setRecent24hOnly(false)
+              setDurationBucket(null)
             }}
             className="px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/30 flex items-center gap-1"
             title="Reset query, tags, type filter, and sort to defaults"
@@ -2404,6 +2576,62 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
         >
           <Play size={10} className="fill-current" /> Videos
         </button>
+        {/* Untagged backlog — server-side NOT EXISTS filter so a 30k
+            library returns just the ones with zero tags. Toggle off
+            by re-clicking. */}
+        <button
+          onClick={() => {
+            setUntaggedOnly((v) => !v)
+            setRecent24hOnly(false)
+          }}
+          className={cn(
+            'px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 flex items-center gap-1',
+            untaggedOnly
+              ? 'bg-amber-500 text-white'
+              : 'bg-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
+          )}
+          title="Show only media with zero tags — the AI-queue backlog"
+        >
+          Untagged
+        </button>
+        {/* Recent 24h — sinceMs = now - 24h, server-side filter. Pairs
+            with the default 'newest' sort to show only fresh imports. */}
+        <button
+          onClick={() => {
+            setRecent24hOnly((v) => !v)
+            setUntaggedOnly(false)
+          }}
+          className={cn(
+            'px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 flex items-center gap-1',
+            recent24hOnly
+              ? 'bg-emerald-500 text-white'
+              : 'bg-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
+          )}
+          title="Only show media added in the last 24 hours"
+        >
+          Recent 24h
+        </button>
+        {/* #307 — duration buckets (videos only by intent; the filter
+            also drops NULL-duration rows so images/gifs naturally hide). */}
+        {(['short', 'medium', 'long'] as const).map((b) => (
+          <button
+            key={b}
+            onClick={() => setDurationBucket((cur) => cur === b ? null : b)}
+            className={cn(
+              'px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0',
+              durationBucket === b
+                ? 'bg-sky-500 text-white'
+                : 'bg-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
+            )}
+            title={
+              b === 'short'  ? 'Under 5 minutes' :
+              b === 'medium' ? '5 to 20 minutes' :
+                               'Over 20 minutes'
+            }
+          >
+            {b === 'short' ? '< 5 min' : b === 'medium' ? '5–20 min' : '> 20 min'}
+          </button>
+        ))}
         {/* Hide AI-generated toggle — excludes anything with aiImage
             or deepfake probability ≥ 0.75 from the grid. State
             persists across restarts. */}
@@ -2533,8 +2761,11 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
         </button>
         <button
           onClick={() => {
+            // #338 — flip to random order WITHOUT wiping the active
+            // type / tag / untagged / recent filters. The previous
+            // behavior reset typeFilter to 'all' which meant
+            // "shuffle Videos" silently became "shuffle everything".
             setSortBy('random')
-            setTypeFilter('all')
           }}
           className={cn(
             'px-2.5 py-1 rounded-full text-[11px] font-medium transition shrink-0 flex items-center gap-1',
@@ -2542,6 +2773,7 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
               ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
               : 'bg-white/5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white'
           )}
+          title="Random order over the currently-filtered set"
         >
           <Shuffle size={10} /> Shuffle
         </button>
@@ -3645,6 +3877,154 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
           >
             {bulkActionLoading === 'watchLater' ? <RefreshCw size={12} className="animate-spin" /> : <Clock size={12} />}
             <span>Watch Later</span>
+          </Btn>
+
+          {/* Bulk add tag — prompts for a tag, adds to every selected
+              item via tags.addToMedia. Creates the tag if needed. */}
+          <Btn
+            tone="ghost"
+            title="Add a tag to all selected items"
+            aria-label="Add a tag to all selected items"
+            disabled={!!bulkActionLoading}
+            onClick={async () => {
+              const tag = window.prompt('Tag to add to all selected items:')?.trim()
+              if (!tag) return
+              try {
+                setBulkActionLoading('addTag')
+                const ids = [...selectedIds]
+                let ok = 0
+                for (const id of ids) {
+                  try { await window.api.tags.addToMedia?.(id, tag); ok++ } catch { /* keep going */ }
+                }
+                showToast('success', `Added "${tag}" to ${ok}/${ids.length}`)
+              } catch (err: any) {
+                showToast('error', `Add tag failed: ${err?.message ?? String(err)}`)
+              } finally {
+                setBulkActionLoading(null)
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+          >
+            {bulkActionLoading === 'addTag' ? <RefreshCw size={12} className="animate-spin" /> : <Plus size={12} />}
+            <span>+Tag</span>
+          </Btn>
+          {/* Bulk remove tag — symmetric counterpart. Silent no-op if
+              the tag isn't on a given item. */}
+          <Btn
+            tone="ghost"
+            title="Remove a tag from all selected items"
+            aria-label="Remove a tag from all selected items"
+            disabled={!!bulkActionLoading}
+            onClick={async () => {
+              const tag = window.prompt('Tag to remove from all selected items:')?.trim()
+              if (!tag) return
+              try {
+                setBulkActionLoading('removeTag')
+                const ids = [...selectedIds]
+                let ok = 0
+                for (const id of ids) {
+                  try { await window.api.tags.removeFromMedia?.(id, tag); ok++ } catch { /* keep going */ }
+                }
+                showToast('success', `Removed "${tag}" from ${ok}/${ids.length}`)
+              } catch (err: any) {
+                showToast('error', `Remove tag failed: ${err?.message ?? String(err)}`)
+              } finally {
+                setBulkActionLoading(null)
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+          >
+            {bulkActionLoading === 'removeTag' ? <RefreshCw size={12} className="animate-spin" /> : <X size={12} />}
+            <span>-Tag</span>
+          </Btn>
+
+          {/* #344 — bulk AI re-tag the selection. Routes through the
+              existing ai:requeue-specific IPC, which handles wiping
+              prior analysis results + re-enqueueing at priority 1. */}
+          <Btn
+            tone="ghost"
+            title="Re-run AI tagging on selected items (wipes prior tags + re-analyzes)"
+            aria-label="Re-tag selected items with AI"
+            disabled={!!bulkActionLoading}
+            onClick={async () => {
+              try {
+                setBulkActionLoading('aiRetag')
+                const ids = [...selectedIds]
+                const r = await window.api.ai.requeueSpecific?.(ids) as { requeued: number } | undefined
+                showToast('success', `Re-queued ${r?.requeued ?? ids.length} for AI re-tagging`)
+              } catch (err: any) {
+                showToast('error', `AI re-tag failed: ${err?.message ?? String(err)}`)
+              } finally {
+                setBulkActionLoading(null)
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+          >
+            {bulkActionLoading === 'aiRetag' ? <RefreshCw size={12} className="animate-spin" /> : <Brain size={12} />}
+            <span>AI re-tag</span>
+          </Btn>
+
+          {/* #345 — bulk generate thumbnails for selected. Loops
+              media:generateThumb so each item gets a fresh thumb if
+              missing. Skips items that already have a valid thumb. */}
+          <Btn
+            tone="ghost"
+            title="Generate missing thumbnails for selected items"
+            aria-label="Generate missing thumbnails for selected items"
+            disabled={!!bulkActionLoading}
+            onClick={async () => {
+              try {
+                setBulkActionLoading('thumbs')
+                const ids = [...selectedIds]
+                let made = 0
+                let failed = 0
+                for (const id of ids) {
+                  try {
+                    const r = await (window.api.media as any).generateThumb?.(id)
+                    if (r) made++
+                  } catch { failed++ }
+                }
+                showToast('success', `Thumbnails: ${made} ready${failed > 0 ? `, ${failed} failed` : ''}`)
+              } catch (err: any) {
+                showToast('error', `Thumbnail batch failed: ${err?.message ?? String(err)}`)
+              } finally {
+                setBulkActionLoading(null)
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+          >
+            {bulkActionLoading === 'thumbs' ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
+            <span>Thumbs</span>
+          </Btn>
+
+          {/* #348 — Open multiple. Spawns a floating player for each
+              selected video, capped at 4 to avoid drowning the screen.
+              Selection survives — user can re-trigger to open more. */}
+          <Btn
+            tone="ghost"
+            title="Open up to 4 selected videos in floating players"
+            aria-label="Open selected videos in floating players"
+            disabled={!!bulkActionLoading}
+            onClick={() => {
+              const videoIds = sortedMedia
+                .filter((m) => selectedIds.has(m.id) && m.type === 'video')
+                .map((m) => m.id)
+              if (videoIds.length === 0) {
+                showToast('info', 'No videos in selection')
+                return
+              }
+              const toOpen = videoIds.slice(0, 4)
+              toOpen.forEach((id) => addFloatingPlayer(id))
+              if (videoIds.length > 4) {
+                showToast('info', `Opened ${toOpen.length} (capped at 4). ${videoIds.length - 4} more in selection.`)
+              } else {
+                showToast('success', `Opened ${toOpen.length} ${toOpen.length === 1 ? 'video' : 'videos'}`)
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+          >
+            <Play size={12} />
+            <span>Open</span>
           </Btn>
 
           {/* Cast to TV */}

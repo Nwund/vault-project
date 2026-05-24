@@ -576,8 +576,16 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToFa
         timeoutPromise
       ])
       const items = Array.isArray(result) ? result : (result as any)?.items ?? []
-      if (items.length > 0) {
-        const randomItem = items[Math.floor(Math.random() * items.length)]
+      // #326 — exclude anything currently in Continue Watching (the
+      // user's most-recent partial sessions) so "Random Pick" surfaces
+      // something fresh instead of a video they were already watching.
+      const recentlyWatchedIds = new Set(continueWatching.map((cw) => cw.mediaId))
+      const candidates = items.filter((it: any) => !recentlyWatchedIds.has(it.id))
+      // Fall back to the full set if the exclusion left us with nothing
+      // (tiny library, every video was watched recently).
+      const pool = candidates.length > 0 ? candidates : items
+      if (pool.length > 0) {
+        const randomItem = pool[Math.floor(Math.random() * pool.length)]
         onPlayMedia(randomItem.id)
       } else {
         console.warn('[RandomPick] No videos found in library')
@@ -587,7 +595,7 @@ export function HomeDashboard({ onPlayMedia, onNavigateToLibrary, onNavigateToFa
     } finally {
       setPickingRandom(false)
     }
-  }, [onPlayMedia])
+  }, [onPlayMedia, continueWatching])
 
   useEffect(() => {
     loadContinueWatching()
