@@ -2,7 +2,7 @@
 // Floating Picture-in-Picture style video player with fullscreen support
 
 
-import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2, Volume2, VolumeX, FolderOpen, Play, Pause, Sparkles, Heart, Settings2, Tv, Ban, Cast, Loader2, Monitor, StopCircle, Bookmark, Clock, Link2, StickyNote, ListOrdered, PictureInPicture2, RectangleHorizontal, Crop, Minus, Square, Scissors, Check, Download, Library, Palette, Sliders, Activity, Gauge, Repeat, Wrench, Mic, Eye } from 'lucide-react'
 import { RelatedMediaPanel } from './RelatedMediaPanel'
@@ -233,8 +233,65 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
   const [loopEnd, setLoopEnd] = useState<number | null>(null) // Point B
   const [isLooping, setIsLooping] = useState(false) // Loop active
   // Playback speed
-  const [playbackSpeed, setPlaybackSpeed] = useState(1)
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(() => {
+    // Persist last playback rate so the next-opened player starts at
+    // the same speed. Cap range [0.25, 4] which covers everything the
+    // <video> element supports practically.
+    try {
+      const v = parseFloat(localStorage.getItem('vault.floatingPlayer.rate') ?? '')
+      if (Number.isFinite(v) && v >= 0.25 && v <= 4) return v
+    } catch { /* ignore */ }
+    return 1
+  })
+  useEffect(() => {
+    try { localStorage.setItem('vault.floatingPlayer.rate', String(playbackSpeed)) } catch { /* ignore */ }
+  }, [playbackSpeed])
   const [showSpeedMenu, setShowSpeedMenu] = useState(false)
+  // 'r' key rotation — 0 / 90 / 180 / 270 degrees. Per-instance.
+  const [rotateDeg, setRotateDeg] = useState<number>(0)
+  // #349 — Skip-intro overlay. Configurable via localStorage; default
+  // jumps to 30s. Hidden once skipped (per-media latch) so it doesn't
+  // re-pop when the user scrubs back into the intro window. Bare
+  // visibility gate: 5s ≤ currentTime ≤ 25s.
+  const introSkipSec = useMemo(() => {
+    try {
+      const v = parseFloat(localStorage.getItem('vault.floatingPlayer.introSkipSec') ?? '')
+      if (Number.isFinite(v) && v > 5 && v <= 120) return v
+    } catch { /* ignore */ }
+    return 30
+  }, [])
+  const [introSkipped, setIntroSkipped] = useState(false)
+  // Latch resets when media changes.
+  useEffect(() => { setIntroSkipped(false) }, [media.id])
+  // #313 — pause-on-blur. When the Vault window loses focus (alt-tab,
+  // OS lock, switch desktop), pause the video so the user doesn't return
+  // to "wait, why is it 10 minutes ahead?". Opt-in setting; default ON
+  // since most users seem to expect this behavior from desktop players.
+  // No auto-resume on refocus — too easy to accidentally play audio
+  // when bringing the window forward in a quiet environment.
+  const [pauseOnBlur, setPauseOnBlur] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('vault.floatingPlayer.pauseOnBlur')
+      if (v === 'false') return false
+    } catch { /* ignore */ }
+    return true
+  })
+  useEffect(() => {
+    try { localStorage.setItem('vault.floatingPlayer.pauseOnBlur', String(pauseOnBlur)) } catch { /* ignore */ }
+  }, [pauseOnBlur])
+  useEffect(() => {
+    if (!pauseOnBlur) return
+    const onBlur = () => {
+      const v = videoRef.current
+      if (v && !v.paused) v.pause()
+    }
+    window.addEventListener('blur', onBlur)
+    document.addEventListener('visibilitychange', onBlur)
+    return () => {
+      window.removeEventListener('blur', onBlur)
+      document.removeEventListener('visibilitychange', onBlur)
+    }
+  }, [pauseOnBlur])
   // Video cropping
   const [isCropMode, setIsCropMode] = useState(false)
   const [cropValues, setCropValues] = useState({ top: 0, right: 0, bottom: 0, left: 0 }) // percentages
@@ -1014,6 +1071,97 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         const nextVol = Math.max(0, (volume || 0) - 0.05)
         setVolume(nextVol)
         if (nextVol === 0) setIsMuted(true)
+      } else if (e.key === 'q' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // Single-key close. Also dispatches an event other FVP instances
+        // can listen for so Shift+Q closes everything (#372).
+        e.preventDefault()
+        onClose()
+      } else if (e.key === 'Q' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // Shift+Q closes ALL floating players via a window event the
+        // App-level registry listens for.
+        e.preventDefault()
+        try { window.dispatchEvent(new CustomEvent('vault:close-all-floating-players')) } catch { /* ignore */ }
+      } else if ((e.key === 'w' || e.key === 'W') && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+        // Ctrl+W — standard "close tab" gesture.
+        e.preventDefault()
+        onClose()
+      } else if (e.key === 'r' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+        // 'r' rotates the video 90° clockwise. Wraps at 360. Applied
+        // via CSS transform on the wrapping container so the player
+        // chrome stays oriented correctly. State is per-instance.
+        e.preventDefault()
+        setRotateDeg((d) => (d + 90) % 360)
+      } else if (e.key === 'S' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // #339 — explicit A-B loop start. Sets point A WITHOUT toggling
+        // off an existing loop (vs. the bare 'a' key which is a 3-way
+        // toggle). Pairs with Shift+E.
+        if (media.type === 'video' && videoRef.current) {
+          e.preventDefault()
+          const t = videoRef.current.currentTime
+          setLoopStart(t)
+          if (loopEnd !== null && t < loopEnd) {
+            setIsLooping(true)
+          } else {
+            setIsLooping(false)
+          }
+          setBookmarkFeedback(`Loop A: ${formatDuration(t)}`)
+          setTimeout(() => setBookmarkFeedback(null), 1500)
+        }
+      } else if (e.key === 'E' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // #339 — explicit A-B loop end. Sets point B and activates the
+        // loop if A is already set (and is earlier in the timeline).
+        if (media.type === 'video' && videoRef.current) {
+          e.preventDefault()
+          const t = videoRef.current.currentTime
+          setLoopEnd(t)
+          if (loopStart !== null && t > loopStart) {
+            setIsLooping(true)
+            setBookmarkFeedback(`Looping ${formatDuration(loopStart)} - ${formatDuration(t)}`)
+          } else {
+            setBookmarkFeedback(`Loop B: ${formatDuration(t)} (set A first with Shift+S)`)
+          }
+          setTimeout(() => setBookmarkFeedback(null), 1800)
+        }
+      } else if ((e.key === 's' || e.key === 'S') && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+        // #311 — Ctrl+S grabs the current video frame as PNG and downloads
+        // it. Pauses first so the captured frame matches what's on screen.
+        // No-op for image media (already a static file).
+        const v = videoRef.current
+        if (v && media.type === 'video' && v.videoWidth > 0) {
+          e.preventDefault()
+          try {
+            if (!v.paused) v.pause()
+            const canvas = document.createElement('canvas')
+            canvas.width = v.videoWidth
+            canvas.height = v.videoHeight
+            const ctx = canvas.getContext('2d')
+            if (ctx) {
+              ctx.drawImage(v, 0, 0)
+              canvas.toBlob((blob) => {
+                if (!blob) return
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                const tsLabel = Number.isFinite(v.currentTime) ? `_${Math.floor(v.currentTime).toString().padStart(4, '0')}s` : ''
+                const safeName = ((media as any).title ?? media.filename ?? media.id).replace(/[^a-z0-9_-]+/gi, '_').slice(0, 60)
+                a.href = url
+                a.download = `${safeName}${tsLabel}.png`
+                document.body.appendChild(a)
+                a.click()
+                document.body.removeChild(a)
+                setTimeout(() => URL.revokeObjectURL(url), 1000)
+              }, 'image/png')
+            }
+          } catch (err) {
+            console.warn('[FVP] Ctrl+S frame capture failed:', err)
+          }
+        }
+      } else if (e.key === '[' && !e.ctrlKey && !e.metaKey) {
+        // Standard video-editor key: '[' slows by 10%, capped at 0.25.
+        e.preventDefault()
+        setPlaybackSpeed((r) => Math.max(0.25, Math.round((r - 0.1) * 100) / 100))
+      } else if (e.key === ']' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault()
+        setPlaybackSpeed((r) => Math.min(4, Math.round((r + 0.1) * 100) / 100))
       } else if (e.key === ',' && !e.shiftKey) {
         // NLE convention — comma steps back 1 frame (~1/30s). Lets the
         // user nudge to an exact moment for bookmarking / capture.
@@ -1904,6 +2052,35 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         </div>
       )}
 
+      {/* Floating speed badge — only renders when playback rate is
+          NOT 1.0 so the user remembers their video is sped up / slowed.
+          Top-right of the player so it doesn't cover content. */}
+      {playbackSpeed !== 1 && (
+        <div className="absolute top-2 right-2 z-40 px-2 py-1 rounded-md bg-black/70 text-white text-[11px] font-semibold tabular-nums backdrop-blur-sm border border-white/20">
+          {playbackSpeed.toFixed(2)}×
+        </div>
+      )}
+
+      {/* #349 — Skip-intro overlay. YouTube-style bottom-right pill
+          that appears between 5s and 25s into a video so the user can
+          one-click jump to the chosen offset (default 30s). Auto-hides
+          once skipped, after the offset is reached, or when there's
+          less than 10s of video left. */}
+      {media.type === 'video' && !introSkipped
+        && currentTime >= 5 && currentTime < Math.min(introSkipSec - 2, 25)
+        && duration > introSkipSec + 10 && (
+        <button
+          onClick={() => {
+            if (videoRef.current) videoRef.current.currentTime = introSkipSec
+            setIntroSkipped(true)
+          }}
+          className="absolute bottom-20 right-4 z-40 px-3 py-2 rounded-lg bg-black/85 hover:bg-black/95 text-white text-xs font-medium backdrop-blur-sm border border-white/25 shadow-lg flex items-center gap-2 transition"
+          title={`Jump to ${formatDuration(introSkipSec)} — configurable via vault.floatingPlayer.introSkipSec`}
+        >
+          Skip intro →
+        </button>
+      )}
+
       {/* Resume prompt - shows when video has a saved position */}
       {showResumePrompt && resumePosition !== null && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-black/95 text-white rounded-xl backdrop-blur-md border border-white/20 shadow-2xl overflow-hidden animate-scaleIn">
@@ -2068,12 +2245,42 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black z-20">
           <div className="text-4xl mb-2">⚠️</div>
           <div className="text-sm text-white/60">Failed to load video</div>
-          <button
-            onClick={goToNext}
-            className="mt-3 px-4 py-2 bg-white/20 rounded-lg text-sm hover:bg-white/30 transition"
-          >
-            Skip to next
-          </button>
+          <div className="mt-3 flex items-center gap-2">
+            {/* #340 — explicit Retry button. Re-asks main for a fresh
+                playable URL (force-transcode=true) and clears the
+                error flags so the video element re-mounts. */}
+            <button
+              onClick={async () => {
+                errorHandled.current = false
+                setTranscodeRetried(false)
+                setHasError(false)
+                setIsLoading(true)
+                try {
+                  const u = await window.api.media.getPlayableUrl(media.id, true)
+                  if (u) setUrl(u as string)
+                  else {
+                    setIsLoading(false)
+                    setHasError(true)
+                  }
+                } catch {
+                  setIsLoading(false)
+                  setHasError(true)
+                }
+              }}
+              className="px-4 py-2 bg-blue-500/30 hover:bg-blue-500/50 rounded-lg text-sm transition"
+              title="Re-request the playable URL with force-transcode"
+            >
+              Retry
+            </button>
+            {hasNext && (
+              <button
+                onClick={goToNext}
+                className="px-4 py-2 bg-white/20 rounded-lg text-sm hover:bg-white/30 transition"
+              >
+                Skip to next
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -2098,6 +2305,11 @@ export function FloatingVideoPlayer({ media, mediaList, onClose, onMediaChange, 
                 ...((cropValues.top > 0 || cropValues.right > 0 || cropValues.bottom > 0 || cropValues.left > 0) ? {
                   clipPath: `inset(${cropValues.top}% ${cropValues.right}% ${cropValues.bottom}% ${cropValues.left}%)`,
                 } : {}),
+                // 'r' key rotates the video 90° clockwise (#366). At
+                // 90/270 swap aspect to avoid letterboxing inside the
+                // player frame — `object-contain` plus rotate is the
+                // right combo for non-stretching display.
+                ...(rotateDeg ? { transform: `rotate(${rotateDeg}deg)`, transition: 'transform 200ms ease-out' } : {}),
                 // Apply color grading and video filters as CSS filter
                 filter: [
                   videoFilterStyle !== 'none' ? videoFilterStyle : '',
