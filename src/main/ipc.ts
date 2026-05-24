@@ -7,6 +7,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import type { DB } from './db'
+import { registerMediaImportBufferIpc } from './ipc-media-import'
 import { SoundOrganizer } from './services/audio/sound-organizer'
 import { VoiceLineService } from './services/audio/voice-line-service'
 import { NSFWTagger } from './services/tagging/nsfw-tagger'
@@ -1602,57 +1603,10 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   })
 
   // Import files by copying them to the first media directory
-  // #331 — Import an in-memory image buffer (clipboard paste / drag-and-
-  // drop blob). Writes to the first media dir with a unique filename,
-  // upserts the new media row inline, and returns it so the caller
-  // (Brainwash paste, Image-from-URL save, etc.) can set it as
-  // selectedMedia immediately without waiting for a full rescan.
-  //
-  //   args: { buffer: Uint8Array | ArrayBuffer
-  //         , ext: '.png' | '.jpg' | '.jpeg' | '.webp' | '.gif'
-  //         , suggestedName?: string }
-  //   returns: { ok: true, mediaId: string, path: string }
-  //          | { ok: false, error: string }
-  ipcMain.handle('media:importBuffer', async (_ev, args: { buffer: Uint8Array | ArrayBuffer; ext: string; suggestedName?: string }) => {
-    try {
-      const dirs = getMediaDirs()
-      if (!dirs.length) return { ok: false, error: 'No media directories configured' }
-      const targetDir = dirs[0]
-      const allowedExt = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'])
-      const extLower = (args.ext || '').toLowerCase()
-      if (!allowedExt.has(extLower)) return { ok: false, error: `Unsupported ext: ${extLower}` }
-
-      const buf = args.buffer instanceof Uint8Array
-        ? Buffer.from(args.buffer)
-        : Buffer.from(new Uint8Array(args.buffer as ArrayBuffer))
-      if (buf.length === 0) return { ok: false, error: 'Empty buffer' }
-      if (buf.length > 50 * 1024 * 1024) return { ok: false, error: 'Buffer >50MB; refusing to import' }
-
-      // Derive a sane filename. Default: pasted_YYYYMMDD_HHMMSS.<ext>
-      const stamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14)
-      const safeSuggest = (args.suggestedName ?? '').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 60)
-      const baseName = safeSuggest || `pasted_${stamp}`
-      let targetPath = path.join(targetDir, `${baseName}${extLower}`)
-      let counter = 1
-      while (fs.existsSync(targetPath)) {
-        targetPath = path.join(targetDir, `${baseName}_${counter}${extLower}`)
-        counter++
-      }
-      fs.writeFileSync(targetPath, buf)
-
-      // Inline upsert so the row exists before we return.
-      const { upsertOne } = await import('./scanner')
-      await upsertOne(db, targetPath)
-      const row = db.getMediaByPath(targetPath)
-      if (!row) return { ok: false, error: 'Wrote file but upsert did not produce a row' }
-
-      // Tell the rest of the UI a new media item landed.
-      try { broadcast('vault:changed') } catch { /* ignore */ }
-      return { ok: true, mediaId: row.id, path: targetPath, media: row }
-    } catch (err: any) {
-      return { ok: false, error: err?.message ?? String(err) }
-    }
-  })
+  // #331 media:importBuffer (clipboard paste) — handler is in its
+  // own file to dodge an upstream electron-vite esmShim bug. See
+  // memory: reference_electron_vite_cjs_shim_bug.
+  registerMediaImportBufferIpc(ipcMain, db)
 
   ipcMain.handle('media:importFiles', async (_ev, filePaths: string[]) => {
     const dirs = getMediaDirs()
