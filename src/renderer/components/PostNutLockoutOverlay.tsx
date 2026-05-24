@@ -16,6 +16,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import { ShieldCheck, X } from 'lucide-react'
+import { useVisibilityInterval } from '../hooks/useVisibilityInterval'
 
 interface LockoutState {
   enabled: boolean
@@ -45,18 +46,22 @@ export function PostNutLockoutOverlay(): React.JSX.Element | null {
   }, [])
 
   useEffect(() => {
-    void refresh()
     const off = window.api.events.onLockoutChanged((payload: any) => {
       setState(payload as LockoutState)
     })
+    // Countdown tick MUST keep running even when hidden — the lockout
+    // clock is real-world time, the user might briefly tab away then
+    // come back and find the timer hadn't advanced. Plain setInterval.
     const tick = setInterval(() => setNow(Date.now()), 1000)
-    const poll = setInterval(() => { void refresh() }, 30_000)
     return () => {
       try { off?.() } catch { /* ignore */ }
       clearInterval(tick)
-      clearInterval(poll)
     }
-  }, [refresh])
+  }, [])
+  // Backup poll for the state — only needed when the onLockoutChanged
+  // broadcast misses (main process restarts, IPC reconnect). Safe to
+  // pause when hidden; the next visibility-return fires it.
+  useVisibilityInterval(refresh, 30_000)
 
   const cancel = useCallback(async () => {
     try {

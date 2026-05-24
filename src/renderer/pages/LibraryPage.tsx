@@ -66,6 +66,7 @@ import { shuffleTake } from '../utils/shuffle'
 import thumbnailLoadingGif from '../assets/overlays/thumbnail-loading.gif'
 import { useDebounce, toFileUrlCached, useLazyLoad } from '../hooks/usePerformance'
 import { useVideoPreview } from '../hooks/useVideoPreview'
+import { useVisibilityInterval } from '../hooks/useVisibilityInterval'
 import { useConfetti } from '../hooks/useConfetti'
 import { useAnime } from '../hooks/useAnime'
 import { formatBytes, formatDuration } from '../utils/formatters'
@@ -484,29 +485,25 @@ export function LibraryPage(props: { settings: VaultSettings | null; selected: s
   // vault:changed, and every minute while mounted so badges count
   // down without leaning on a per-card subscription.
   const [denialUntilByMedia, setDenialUntilByMedia] = useState<Map<string, number>>(new Map())
-  useEffect(() => {
-    let cancelled = false
-    const refresh = async () => {
-      try {
-        const res: any = await window.api.tags?.denial?.listActive?.()
-        if (cancelled) return
-        const next = new Map<string, number>()
-        if (res?.ok && Array.isArray(res.items)) {
-          for (const r of res.items) next.set(r.mediaId, r.until)
-        }
-        setDenialUntilByMedia(next)
-      } catch { /* ignore */ }
-    }
-    void refresh()
-    const onChange = () => { void refresh() }
-    window.addEventListener('vault:changed', onChange)
-    const tick = window.setInterval(refresh, 60_000)
-    return () => {
-      cancelled = true
-      window.removeEventListener('vault:changed', onChange)
-      window.clearInterval(tick)
-    }
+  const refreshDenialMap = useCallback(async () => {
+    try {
+      const res: any = await window.api.tags?.denial?.listActive?.()
+      const next = new Map<string, number>()
+      if (res?.ok && Array.isArray(res.items)) {
+        for (const r of res.items) next.set(r.mediaId, r.until)
+      }
+      setDenialUntilByMedia(next)
+    } catch { /* ignore */ }
   }, [])
+  useEffect(() => {
+    const onChange = () => { void refreshDenialMap() }
+    window.addEventListener('vault:changed', onChange)
+    return () => window.removeEventListener('vault:changed', onChange)
+  }, [refreshDenialMap])
+  // 60s refresh of active denial cooldowns. Paused while tab hidden —
+  // the vault:changed listener catches anything that happens during
+  // pause, and refresh re-fires on visibility return.
+  useVisibilityInterval(refreshDenialMap, 60_000)
   const [selectionMode, setSelectionMode] = useState(false) // Bulk selection mode
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set()) // Selected media IDs for bulk actions
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false) // Show playlist picker for bulk add

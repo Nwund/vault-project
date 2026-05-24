@@ -303,13 +303,21 @@ export function CaptionsPage({ settings }: { settings: VaultSettings | null }) {
             'image/bmp': '.bmp',
           }
           const ext = mimeExt[item.type] ?? '.png'
+          const importer = (window.api.media as any).importBuffer
+          if (typeof importer !== 'function') {
+            // Main process predates the importBuffer IPC. Common right
+            // after a Vault upgrade if Electron didn't restart with the
+            // new bundle.
+            showToast('warning', 'Paste needs a Vault restart — main process is older than this build.')
+            return
+          }
           showToast('info', `Importing pasted image (${(buffer.byteLength / 1024).toFixed(1)} KB)…`)
-          const r = await (window.api.media as any).importBuffer?.({ buffer: new Uint8Array(buffer), ext })
+          const r = await importer({ buffer: new Uint8Array(buffer), ext })
           if (r?.ok && r.media) {
             setSelectedMedia(r.media as MediaRow)
             showToast('success', `Imported as ${r.media.filename ?? 'pasted image'}`)
           } else {
-            showToast('error', `Paste failed: ${r?.error ?? 'unknown'}`)
+            showToast('error', `Paste failed: ${r?.error ?? 'unknown error from main'}`)
           }
         } catch (err: any) {
           showToast('error', `Paste failed: ${err?.message ?? String(err)}`)
