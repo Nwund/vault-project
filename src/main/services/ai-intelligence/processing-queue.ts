@@ -2046,12 +2046,19 @@ export class ProcessingQueue {
       // Generate contact sheet (YAPO-style 4×3 thumbnail grid) for the
       // review UI. Fire-and-forget — doesn't block the queue. Only for
       // videos with frames available.
+      // dedupFrames: false because mpdecimate was clustering tiles
+      // from a narrow window on slow-pan videos, making the grid look
+      // like "the first 10 seconds 12 times" instead of representative
+      // shots across the timeline.
       if (mediaType === 'video' && frames.length > 0) {
         void generateContactSheet(
           media.path,
           this.frameExtractor.getFfmpegPath(),
           item.mediaId,
-          { durationSec: (media as any).durationSec ?? null }
+          {
+            durationSec: (media as any).durationSec ?? null,
+            dedupFrames: false,
+          },
         ).then((sheetPath) => {
           if (sheetPath) {
             console.log(`[ProcessingQueue] Contact sheet → ${path.basename(sheetPath)}`)
@@ -2702,7 +2709,18 @@ export class ProcessingQueue {
             if (Array.isArray(parsed)) tags = parsed
           }
         } catch { /* ignore */ }
-        if (tags.length === 0) return { row, score: 0 }
+
+        // Fallback path: when rich_tags is empty/null (older analyses
+        // pre-rich-tags column, or items where Tier 2 never ran), use
+        // nsfw_confidence as the uncertainty signal. Without this
+        // fallback every old row scored 0 → uncertainty sort visually
+        // looked identical to newest sort.
+        if (tags.length === 0) {
+          const conf = typeof row.nsfw_confidence === 'number' ? row.nsfw_confidence : 0.5
+          // Distance from 0.5; max borderline-ness = 1.0 at conf=0.5.
+          const borderline = 1 - Math.abs(conf - 0.5) * 2
+          return { row, score: borderline }
+        }
 
         let total = 0
         for (const t of tags) {

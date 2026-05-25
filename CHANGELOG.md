@@ -7,6 +7,54 @@ For per-session work logs (the live ground truth), see **[SESSION_NOTES.md](SESS
 
 ---
 
+## v2.8.4 — 2026-05-25 — Theme reactivity + AI Review polish + LAION installer
+
+(v2.8.3 was the build-fix tag — see commit `8f241bd`. This entry covers the user-facing UI work + the LAION installer that landed on top of it.)
+
+### Theme: text classes truly follow the active theme now
+
+The v2.8.0 patch fixed `text-white` / `text-zinc-*` / `text-gray-*` / `text-slate-*` to track `var(--text)` globally. But Tailwind's pink/rose/fuchsia/violet/purple accent classes — used heavily across the codebase as "brand pink" — were still hardcoded hex (#f9a8d4 etc.). Result: switching to a non-default theme left ~66 spots across the UI showing pink instead of the theme's primary color.
+
+Fix: same global `:root` remap pattern. Now `text-pink-200..400` / `text-rose-200..400` / `text-fuchsia-200..400` / `text-violet-200..400` / `text-purple-200..400` all map to `var(--primary) !important`. The 500-700 saturations map to `var(--primary-hover)` so deeper accents still differ visually. Xyrene branding loses its locked-pink in custom themes but that's the explicit ask.
+
+### Quick Actions sidebar block removed
+
+The collapsed dropdown at the bottom-left sidebar (Cycle Theme / AI Tools / Rescan Library / Keybinds) is gone. Same functionality stays reachable via the command palette (Ctrl+K) which is now the single discoverable surface for "do a thing from anywhere." Saves ~115 lines of App.tsx + the `quickActionsOpen` state.
+
+### AI Review sort
+
+Uncertainty sort was scoring `0` on every row where `rich_tags` was null (most older analyses — the rich_tags column was added in a later migration and never backfilled). With every row scoring 0, the post-fetch re-rank was a no-op and the user saw newest-by-created_at regardless of which toggle was active.
+
+Fix: when `rich_tags` is empty, fall back to scoring by `nsfw_confidence` distance from 0.5 (which is a column that's always populated). Borderline-NSFW rows now bubble to the top in uncertainty mode even without rich_tags, which is actually the right signal for "where would my review move the model most?"
+
+### AI Review preview: click-to-play with full controls
+
+`ReviewHoverPreview.tsx` was hover-to-play with a fixed clip duration. That makes it impossible to pause, scrub the timeline, or seek to a specific frame to verify a tag — exactly the behavior a reviewer needs. Switched to click-to-play with a big centered Play button overlay + a native `<video controls>` once clicked. Auto-pauses + resets to thumb when the selected item changes (so switching reviews doesn't leave audio playing in the background). Component name kept for back-compat with imports.
+
+### AI Review frame grid: tiles spread across the whole video
+
+Two real bugs:
+
+1. **`mpdecimate` was clustering tiles**. The dedup filter is great for talking-head / static-shot videos but on slow-pan content (most adult video) it was throwing away too many distinct frames, leaving the 12-tile grid filled from a narrow window — "first 10 seconds, 12 times" symptom. Fix: `processing-queue.ts` now passes `dedupFrames: false` when generating the review contact sheet. The deduper is still available for callers that explicitly want it (sprite-sheet for hover-scrub is fine without dedup too).
+
+2. **No-duration fallback packed frames from t=0**. When `media.durationSec` is null (older imports, or media that hasn't been duration-probed yet), `generateContactSheet` was falling to `select=not(mod(n,30))` which grabs every 30th frame from the START. On a 2-hour video that fills 12 tiles in the first 6 seconds. Fix: added a `probeDurationViaFfmpeg` helper that parses ffmpeg's `Duration: HH:MM:SS.cc` stderr line as a fallback, so the `fps=` path runs even on duration-less media. The hard-fallback when probing also fails is now `select='gt(scene,0.05)'` (scene-cut spread) instead of fixed-modulus from t=0.
+
+### New script: `npm run install:aesthetic`
+
+LAION's aesthetic predictor is a tiny linear (or 5-layer MLP) head on top of CLIP-L/14 embeddings. Vault's loader (`services/ai-intelligence/aesthetic-predictor.ts`) wants the weights as a JSON in a specific schema. LAION publishes the weights as PyTorch `.pth` files, which Vault can't load directly.
+
+Added `scripts/install-aesthetic-predictor.mjs` — a zero-dependency Node script that:
+
+1. Downloads the right `.pth` from LAION's GitHub (linear default; `--variant=mlp` for the improved 5-layer head, `--pth=path` for a local file)
+2. Parses the .pth ZIP container in pure Node (`zlib.inflateRawSync` for compressed entries, manual EOCD scan for the central directory)
+3. Extracts the `data/0..data/N` raw float32 tensor blobs
+4. Reshapes into the JSON schema `{ version: 1, layers: [{ weight, bias }] }`
+5. Writes to `%APPDATA%\vault\models\aesthetic-linear.json` (Windows) or platform equivalent
+
+No PyTorch dependency; the .pth zip layout for these specific models is known + regular enough to extract without a real pickle reader. Run with `npm run install:aesthetic`. After it completes, the OptionalModelsCard's LAION aesthetic row flips to "Installed" on next Re-check.
+
+---
+
 ## v2.8.2 — 2026-05-24 — Unified optional-models UI + one-click installers
 
 Consolidates the old two-card optional-models split (ModelFileCard grid in AiTaggerPage Setup + ExtraDetectorsCard in SettingsPage Services) into one panel under AI Tools → Setup, organized by capability rather than file format. Same models, same probes, same install paths — better navigation + one-click install where we know the URL.

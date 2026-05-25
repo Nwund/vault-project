@@ -4,7 +4,7 @@
 
 ### *Your Private Media Sanctuary*
 
-[![Version](https://img.shields.io/badge/v2.8.2-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
+[![Version](https://img.shields.io/badge/v2.8.4-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
 [![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-Platform-blue?style=for-the-badge)](https://github.com/Nwund/vault-project)
 [![Electron](https://img.shields.io/badge/Electron-32.0-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-19.2-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://react.dev)
@@ -33,6 +33,17 @@
 </div>
 
 <br/>
+
+## 🆕 v2.8.4 — Theme reactivity + AI Review polish + LAION installer (2026-05-25)
+
+Follow-up patch addressing five user-reported issues, plus a new install script for the LAION aesthetic predictor.
+
+- **Theme text no longer pink across every theme** — Tailwind `text-pink-*` / `-rose-*` / `-fuchsia-*` / `-violet-*` / `-purple-*` classes now remap to `var(--primary)` globally so they flow with the active theme (was hardcoded #f9a8d4 etc.).
+- **Quick Actions sidebar block removed** — collapsed dropdown at the bottom of the sidebar. Cycle Theme / Rescan Library / etc. are reachable from the Command Palette (Ctrl+K) instead.
+- **AI Review sort now actually works** — uncertainty sort was scoring 0 on rows with no `rich_tags` JSON (most older items), so the list looked identical to newest sort. Added an `nsfw_confidence`-based fallback so the toggle re-orders even on legacy rows.
+- **AI Review preview is click-to-play with full timeline** — replaced the hover-preview with a click-to-play `<video controls>` so reviewers can pause, scrub, and seek frame-by-frame to verify tags against specific moments.
+- **AI Review frame grid spreads across the whole video** — `mpdecimate` dedup was clustering tiles from a narrow window on slow-pan videos ("first 10 seconds 12 times" symptom). Disabled for the review contact-sheet. Plus an ffmpeg-side duration probe for videos missing `durationSec` in DB — was falling to `select=not(mod(n,30))` which packs frames from t=0.
+- **New `npm run install:aesthetic`** — Node script that downloads the LAION aesthetic-predictor `.pth` from GitHub and converts it to the JSON schema Vault's loader expects, writing to `%APPDATA%\vault\models\aesthetic-linear.json` directly. Supports the 1-layer linear MSE (default) and the 5-layer MLP variant (`--variant=mlp`). No PyTorch dependency — parses the .pth zip + raw float32 tensors in pure Node.
 
 ## 🆕 v2.8.2 — Unified optional-models UI + one-click installers (2026-05-24)
 

@@ -116,14 +116,30 @@ export async function generateContactSheet(
   // works well for adult video at 480p tile size. Looser settings
   // would drop too many distinct frames in slow-zoom sequences.
   const mpdec = dedup ? 'mpdecimate=hi=768:lo=320:frac=0.33,' : ''
+
+  // When duration is known we use fps= to spread across the timeline.
+  // When it's unknown we used to do select=not(mod(n,30)) which packs
+  // the first N frames from the very start of the video — the
+  // "frame grid only shows beginnings" symptom. Fix: ffprobe the
+  // duration as a fallback so we always go through the fps= path.
+  let effectiveDuration: number = duration
+  if (!effectiveDuration || effectiveDuration <= 1) {
+    try {
+      const probed = await probeDurationViaFfmpeg(videoPath, ffmpegPath)
+      if (probed != null && probed > 0) effectiveDuration = probed
+    } catch { /* ignore — fall through */ }
+  }
+
   let vfFilter: string
-  if (duration && duration > 1) {
+  if (effectiveDuration && effectiveDuration > 1) {
     // fps filter — N frames evenly across the duration
-    const fps = ((totalTiles * oversample) / duration).toFixed(4)
+    const fps = ((totalTiles * oversample) / effectiveDuration).toFixed(4)
     vfFilter = `fps=${fps},${mpdec}scale=${tileWidth}:-1,tile=${cols}x${rows}`
   } else {
-    // Fallback: every-Nth-frame select (approximate)
-    vfFilter = `select=not(mod(n\\,30)),${mpdec}scale=${tileWidth}:-1,tile=${cols}x${rows}`
+    // Hard fallback: probe failed AND no duration. select with
+    // scene-cut detection sweeps across whatever frames exist; it
+    // still beats packing the first N frames from t=0.
+    vfFilter = `select='gt(scene\\,0.05)',${mpdec}scale=${tileWidth}:-1,tile=${cols}x${rows}`
   }
 
   return new Promise<string | null>((resolve) => {
@@ -146,6 +162,29 @@ export async function generateContactSheet(
         console.warn(`[ContactSheet] FFmpeg exit ${code}: ${stderr.slice(-300)}`)
         resolve(null)
       }
+    })
+  })
+}
+
+/**
+ * Quick ffprobe-via-ffmpeg duration probe. Used as a fallback when
+ * the DB doesn't have a duration for the media yet (older imports
+ * pre-duration backfill, or media just added). Returns null on
+ * failure — caller decides what to do.
+ */
+function probeDurationViaFfmpeg(videoPath: string, ffmpegPath: string): Promise<number | null> {
+  return new Promise<number | null>((resolve) => {
+    const proc = spawn(ffmpegPath, ['-i', videoPath, '-f', 'null', '-'], { windowsHide: true })
+    let stderr = ''
+    proc.stderr?.on('data', (d) => { stderr += d.toString() })
+    proc.on('error', () => resolve(null))
+    proc.on('close', () => {
+      // ffmpeg writes "Duration: HH:MM:SS.cc" to stderr.
+      const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/)
+      if (!m) return resolve(null)
+      const h = Number(m[1]); const mn = Number(m[2]); const s = Number(m[3])
+      const total = h * 3600 + mn * 60 + s
+      resolve(Number.isFinite(total) && total > 0 ? total : null)
     })
   })
 }

@@ -408,6 +408,26 @@ body {
   .text-gray-500 { color: var(--text-subtle) !important; }
   .text-slate-300 { color: var(--text) !important; }
   .text-slate-400 { color: var(--text-muted) !important; }
+  /* Accent-tier color classes — Tailwind pink/rose/fuchsia/violet/purple
+     etc. used decoratively throughout the codebase. Without these remaps
+     a non-default theme still shows pink text everywhere because
+     `text-pink-300` is literal #f9a8d4. Mapping them to --primary lets
+     each theme's brand color flow through. Saturations 200-400 = bright
+     accent, 500-700 = primary-strength. */
+  .text-pink-200, .text-pink-300, .text-pink-400,
+  .text-rose-200, .text-rose-300, .text-rose-400,
+  .text-fuchsia-200, .text-fuchsia-300, .text-fuchsia-400,
+  .text-violet-200, .text-violet-300, .text-violet-400,
+  .text-purple-200, .text-purple-300, .text-purple-400 {
+    color: var(--primary) !important;
+  }
+  .text-pink-500, .text-pink-600, .text-pink-700,
+  .text-rose-500, .text-rose-600, .text-rose-700,
+  .text-fuchsia-500, .text-fuchsia-600, .text-fuchsia-700,
+  .text-violet-500, .text-violet-600, .text-violet-700,
+  .text-purple-500, .text-purple-600, .text-purple-700 {
+    color: var(--primary-hover, var(--primary)) !important;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

@@ -1132,8 +1132,6 @@ export default function App() {
   // Keyboard shortcuts help modal
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
 
-  // Quick Actions panel state
-  const [quickActionsOpen, setQuickActionsOpen] = useState(false)
   const [showKeybindsEditor, setShowKeybindsEditor] = useState(false)
 
   // Untagged media count for AI badge
@@ -2375,119 +2373,6 @@ export default function App() {
             })}
           </nav>
 
-          {/* Quick Actions Section - Bottom of Sidebar */}
-          <div className="mt-auto px-3 pb-4 border-t border-[var(--border)] pt-3">
-            <button
-              onClick={() => setQuickActionsOpen(!quickActionsOpen)}
-              className="w-full text-left px-3 py-2 rounded-xl text-sm transition flex items-center gap-2 bg-transparent border-transparent hover:bg-[var(--surface)] text-[var(--text-muted)]"
-            >
-              <MoreHorizontal size={16} />
-              <span className="flex-1">Quick Actions</span>
-              <ChevronDown size={14} className={cn('transition-transform', quickActionsOpen && 'rotate-180')} />
-            </button>
-
-            {quickActionsOpen && (
-              <div className="mt-2 space-y-1 pl-2">
-                {/* Theme Presets */}
-                <button
-                  onClick={() => {
-                    const presets = ['obsidian', 'moonlight', 'neon-lust', 'arctic', 'void']
-                    const current = settings?.appearance?.themeId ?? 'obsidian'
-                    const idx = presets.indexOf(current)
-                    const next = presets[(idx + 1) % presets.length]
-                    window.api.settings.setTheme(next).then((s: VaultSettings | null) => {
-                      if (s) setSettings(s)
-                      applyThemeCSS(next as ThemeId)
-                    })
-                  }}
-                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
-                >
-                  <Palette size={14} />
-                  <span>Cycle Theme</span>
-                </button>
-
-                {/* AI Quick Tools */}
-                <button
-                  onClick={() => navigateTo('ai')}
-                  onMouseEnter={() => { void import('./pages/AiTaggerPage') }}
-                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
-                >
-                  <Wand2 size={14} />
-                  <span>AI Tools</span>
-                </button>
-
-                {/* Rescan Library */}
-                <button
-                  onClick={() => {
-                    window.api.vault.rescan()
-                    globalShowToast?.('info', 'Rescanning library...')
-                  }}
-                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
-                >
-                  <ScanLine size={14} />
-                  <span>Rescan Library</span>
-                </button>
-
-                {/* Tag Manager */}
-                <button
-                  onClick={() => {
-                    navigateTo('settings')
-                    // Could scroll to tags section
-                  }}
-                  onMouseEnter={() => { void import('./pages/SettingsPage') }}
-                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
-                >
-                  <Tags size={14} />
-                  <span>Manage Tags</span>
-                </button>
-
-                {/* Find Duplicates */}
-                <button
-                  onClick={() => {
-                    navigateTo('library')
-                    // Dispatch custom event to open duplicates modal after page loads
-                    setTimeout(() => {
-                      window.dispatchEvent(new CustomEvent('vault-open-duplicates'))
-                    }, 100)
-                  }}
-                  onMouseEnter={() => { void import('./components/DuplicatesModal') }}
-                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
-                >
-                  <FileSearch size={14} />
-                  <span>Find Duplicates</span>
-                </button>
-
-                {/* URL Downloader */}
-                <button
-                  onClick={() => window.dispatchEvent(new CustomEvent('vault-open-url-downloader'))}
-                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
-                >
-                  <Download size={14} />
-                  <span>Download from URL</span>
-                  <span className="ml-auto text-[10px] opacity-50">D</span>
-                </button>
-
-                {/* Command Palette */}
-                <button
-                  onClick={() => setShowCommandPalette(true)}
-                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
-                >
-                  <Command size={14} />
-                  <span>Command Palette</span>
-                  <span className="ml-auto text-[10px] opacity-50">Ctrl+K</span>
-                </button>
-
-                {/* Keybinds */}
-                <button
-                  onClick={() => setShowKeybindsEditor(true)}
-                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-2 hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]"
-                >
-                  <Keyboard size={14} />
-                  <span>Keybinds</span>
-                </button>
-              </div>
-            )}
-          </div>
 
         </aside>
 
