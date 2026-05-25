@@ -1,0 +1,57 @@
+diff --git a/node_modules/electron-vite/dist/chunks/lib-q6ns0vZr.js b/node_modules/electron-vite/dist/chunks/lib-q6ns0vZr.js
+index fe0d0c6..35446b7 100644
+--- a/node_modules/electron-vite/dist/chunks/lib-q6ns0vZr.js
++++ b/node_modules/electron-vite/dist/chunks/lib-q6ns0vZr.js
+@@ -801,10 +801,51 @@ const __dirname = import.meta.dirname;
+ const require = __cjs_mod__.createRequire(import.meta.url);
+ `;
+ const ESMStaticImportRe = /(?<=\s|^|;)import\s*([\s"']*(?<imports>[\p{L}\p{M}\w\t\n\r $*,/{}@.]+)from\s*)?["']\s*(?<specifier>(?<="\s*)[^"]*[^\s"](?=\s*")|(?<='\s*)[^']*[^\s'](?=\s*'))\s*["'][\s;]*/gmu;
++// Local patch for upstream bug (PR alex8088/electron-vite#838 is still
++// open as of v5.0.0): the regex above matches the literal text of
++// import statements anywhere in the bundled code — including inside
++// string literals and JS comments. When a match lands inside a string,
++// the CJS-shim header gets appended mid-string and the build dies with
++// "Unterminated string literal". The filter below walks each match
++// back through the surrounding line and drops any whose line starts
++// with `//`, `*`, or that sits inside an open `/*` block — same idea
++// as the upstream PR's negative lookbehind, but implemented post-match
++// here so we don't have to fight the look-behind regex engine.
++function isInsideCommentOrString(code, idx) {
++    const lineStart = code.lastIndexOf('\n', idx - 1) + 1;
++    const linePrefix = code.slice(lineStart, idx);
++    // Single-line comment: `//` somewhere before our position.
++    const slashSlash = linePrefix.indexOf('//');
++    if (slashSlash !== -1) {
++        // But not inside a string preceding `//`. Quick approximation:
++        // count unescaped quotes before the `//`. If odd, we're inside
++        // a string and `//` is just text, so the match may still be a
++        // real import. Skip the comment check in that case.
++        const before = linePrefix.slice(0, slashSlash);
++        const dq = (before.match(/(?<!\\)"/g) || []).length;
++        const sq = (before.match(/(?<!\\)'/g) || []).length;
++        const bt = (before.match(/(?<!\\)`/g) || []).length;
++        if (dq % 2 === 0 && sq % 2 === 0 && bt % 2 === 0) return true;
++    }
++    // Inside a /* … */ block comment: check if there's an unmatched
++    // `/*` before idx and the matching `*/` is after idx.
++    const blockOpen = code.lastIndexOf('/*', idx);
++    const blockClose = code.lastIndexOf('*/', idx);
++    if (blockOpen !== -1 && blockOpen > blockClose) return true;
++    // String-literal heuristic: count unescaped quotes on the same
++    // line BEFORE our position. Odd count => we're inside a string.
++    const dq = (linePrefix.match(/(?<!\\)"/g) || []).length;
++    const sq = (linePrefix.match(/(?<!\\)'/g) || []).length;
++    const bt = (linePrefix.match(/(?<!\\)`/g) || []).length;
++    if (dq % 2 === 1 || sq % 2 === 1 || bt % 2 === 1) return true;
++    return false;
++}
+ function findStaticImports(code) {
+     const matches = [];
+     for (const match of code.matchAll(ESMStaticImportRe)) {
+-        matches.push({ end: (match.index || 0) + match[0].length });
++        const idx = match.index || 0;
++        if (isInsideCommentOrString(code, idx)) continue;
++        matches.push({ end: idx + match[0].length });
+     }
+     return matches;
+ }

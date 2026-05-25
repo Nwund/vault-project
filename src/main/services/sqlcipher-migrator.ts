@@ -59,7 +59,7 @@ export function checkSqlcipherFeasibility(): SqlcipherFeasibility {
       '1. Quit Vault',
       '2. Run: npm install better-sqlite3-multiple-ciphers',
       '3. Run: npx electron-builder install-app-deps  (rebuilds native bindings for Electron)',
-      '4. In src/main/db.ts replace `import Database from "better-sqlite3"` with `import Database from "better-sqlite3-multiple-ciphers"`',
+      '4. In src/main/db.ts swap the better-sqlite3 import to better-sqlite3-multiple-ciphers (Database default export, same call signature).',
       '5. After Database() construction, call db.pragma(`key = "<your passphrase>"`)',
       '6. Run the dry-run migrator (this file: sqlcipher:dryRun IPC) to produce an encrypted copy at vault.sqlite3.enc',
       '7. Verify the copy opens with your passphrase via sqlite3 CLI:',
