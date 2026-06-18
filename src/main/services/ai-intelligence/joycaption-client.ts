@@ -176,11 +176,24 @@ export class JoyCaptionClient {
     imagePath: string,
     options?: { style?: JoyCaptionConfig['defaultStyle']; maxTokens?: number; timeoutMs?: number }
   ): Promise<JoyCaptionResult | null> {
-    if (!fs.existsSync(imagePath)) return null
+    if (!fs.existsSync(imagePath)) {
+      console.warn(`[JoyCaption] caption: file does not exist: ${imagePath}`)
+      return null
+    }
     const start = Date.now()
+    let buf: Buffer
     try {
-      const buf = fs.readFileSync(imagePath)
-      const result = await postJson<{ caption: string; vram_gb?: number }>(
+      buf = fs.readFileSync(imagePath)
+    } catch (err) {
+      console.warn(`[JoyCaption] caption: read failed for ${imagePath}:`, err)
+      return null
+    }
+    if (buf.length === 0) {
+      console.warn(`[JoyCaption] caption: empty file at ${imagePath}`)
+      return null
+    }
+    try {
+      const result = await postJson<{ caption: string; vram_gb?: number; error?: string }>(
         this.cfg.host,
         this.cfg.port,
         '/caption',
@@ -191,14 +204,25 @@ export class JoyCaptionClient {
         },
         options?.timeoutMs ?? 60_000
       )
+      if (result?.error) {
+        console.warn(`[JoyCaption] sidecar returned error for ${imagePath}:`, result.error)
+        return null
+      }
+      if (typeof result?.caption !== 'string') {
+        console.warn(`[JoyCaption] sidecar response missing caption field for ${imagePath}:`, result)
+        return null
+      }
       return {
-        caption: result.caption ?? '',
+        caption: result.caption,
         style: options?.style ?? this.cfg.defaultStyle,
         latencyMs: Date.now() - start,
         vramGb: result.vram_gb,
       }
-    } catch (err) {
-      console.warn('[JoyCaption] caption failed:', err)
+    } catch (err: any) {
+      // Surface enough context to triage from logs without leaking
+      // the full base64 payload: error code, message, and the path.
+      const msg = err?.message ?? String(err)
+      console.warn(`[JoyCaption] HTTP call failed for ${imagePath}: ${msg}`)
       return null
     }
   }

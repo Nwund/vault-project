@@ -1,23 +1,31 @@
 // File: src/renderer/components/ReviewHoverPreview.tsx
 //
-// AI Review media preview. Switched from hover-to-play to
-// click-to-play in v2.8.4 because hover-preview made it impossible to
-// pause + scrub through the video — exactly what a reviewer needs to
-// verify a tag against a specific moment.
+// AI Review media preview. Behavior depends on media type:
 //
-// Behavior:
-//   - Renders the still thumbnail by default (click to start playing).
-//   - On click: swaps to a <video> with native controls so the
-//     reviewer can pause, scrub the timeline, seek frame-by-frame.
-//   - Auto-pauses when the selected review item changes (so switching
-//     items doesn't leave audio playing in the background).
-//   - Component name kept for back-compat with imports; functionally
-//     it's now ReviewClickToPlay.
+//   Video → click-to-play with native <video controls> so the reviewer
+//           can pause / scrub / seek frame-by-frame.
+//   GIF   → autoplay inline (no chrome — GIFs are short loops by
+//           nature; controls are noise).
+//   Image → show the still, full quality, no chrome.
+//
+// Switched from hover-to-play because hover-preview made it impossible
+// to pause + scrub through a video — exactly what a reviewer needs to
+// verify a tag against a specific moment. Component name kept for
+// back-compat with imports.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Play } from 'lucide-react'
 import { toFileUrlCached } from '../hooks/usePerformance'
 import { cn } from '../utils/cn'
+
+type MediaKind = 'video' | 'gif' | 'image'
+
+function detectKind(filename: string): MediaKind {
+  const ext = filename.toLowerCase().split('.').pop() ?? ''
+  if (ext === 'gif') return 'gif'
+  if (['jpg', 'jpeg', 'png', 'webp', 'bmp', 'avif', 'jxl', 'heic', 'heif', 'tiff', 'tif'].includes(ext)) return 'image'
+  return 'video'
+}
 
 export function ReviewHoverPreview({
   mediaId,
@@ -28,8 +36,9 @@ export function ReviewHoverPreview({
   thumbPath?: string | null
   filename: string
 }) {
+  const kind = useMemo(() => detectKind(filename), [filename])
   const [thumbUrl, setThumbUrl] = useState<string>('')
-  const [videoUrl, setVideoUrl] = useState<string>('')
+  const [mediaUrl, setMediaUrl] = useState<string>('')
   const [playing, setPlaying] = useState(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
@@ -45,8 +54,8 @@ export function ReviewHoverPreview({
     }
   }, [mediaId])
 
-  // Resolve thumbnail URL — uses cached one if available, generates
-  // on demand otherwise.
+  // Resolve thumbnail URL (still images use this as the primary
+  // display when no thumb-distinct full URL is needed yet).
   useEffect(() => {
     let alive = true
     ;(async () => {
@@ -68,23 +77,24 @@ export function ReviewHoverPreview({
     return () => { alive = false }
   }, [mediaId, thumbPath])
 
-  // Resolve playable URL up-front so click-to-play has zero latency.
+  // Resolve the playable / full-resolution URL. For videos this is the
+  // streamable mp4/webm; for gifs it's the file URL we'll <img> with
+  // autoplay; for stills it's the full-size image URL so the reviewer
+  // sees the actual content quality, not a downscaled thumb.
   useEffect(() => {
     let alive = true
     ;(async () => {
       try {
         const u = await window.api.media.getPlayableUrl(mediaId, false)
-        if (alive && u) setVideoUrl(u as string)
+        if (alive && u) setMediaUrl(u as string)
       } catch { /* ignore */ }
     })()
     return () => { alive = false }
   }, [mediaId])
 
   const startPlaying = () => {
-    if (!videoUrl) return
+    if (!mediaUrl || kind !== 'video') return
     setPlaying(true)
-    // play() must run AFTER the <video> is in the DOM with src set.
-    // requestAnimationFrame gives React one tick to swap the element.
     requestAnimationFrame(() => {
       try {
         videoRef.current?.play().catch(() => { /* user gesture issue, ignored */ })
@@ -92,10 +102,47 @@ export function ReviewHoverPreview({
     })
   }
 
+  // ─── GIF: autoplay inline, no chrome ─────────────────────────────
+  if (kind === 'gif') {
+    // Prefer the full URL so the GIF actually animates. Fall back to
+    // thumb (a stillframe extract) only if the full URL hasn't
+    // resolved yet so we don't show a blank frame on load.
+    const src = mediaUrl || thumbUrl
+    return (
+      <div className="relative aspect-video rounded-xl overflow-hidden bg-black/50 border border-[var(--border)]">
+        {src && (
+          <img
+            src={src}
+            alt={filename}
+            className="absolute inset-0 w-full h-full object-contain"
+          />
+        )}
+        <div className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-[9px] bg-black/60 text-white/80 font-mono uppercase tracking-wider">
+          GIF
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Still image: show at full quality, no chrome ────────────────
+  if (kind === 'image') {
+    const src = mediaUrl || thumbUrl
+    return (
+      <div className="relative aspect-video rounded-xl overflow-hidden bg-black/50 border border-[var(--border)]">
+        {src && (
+          <img
+            src={src}
+            alt={filename}
+            className="absolute inset-0 w-full h-full object-contain"
+          />
+        )}
+      </div>
+    )
+  }
+
+  // ─── Video: click-to-play with native controls ───────────────────
   return (
     <div className="relative aspect-video rounded-xl overflow-hidden bg-black/50 border border-[var(--border)] group">
-      {/* Thumbnail view — clickable to start playback. Stays mounted
-          underneath the video so video load doesn't flash black. */}
       {thumbUrl && (
         <img
           src={thumbUrl}
@@ -106,12 +153,10 @@ export function ReviewHoverPreview({
           )}
         />
       )}
-      {/* Click-to-play overlay — only shown when not playing. Big
-          centered play button + filename overlay. */}
       {!playing && (
         <button
           onClick={startPlaying}
-          disabled={!videoUrl}
+          disabled={!mediaUrl}
           className="absolute inset-0 w-full h-full flex items-center justify-center bg-black/0 hover:bg-black/30 transition-colors disabled:cursor-wait"
           aria-label={`Play ${filename}`}
         >
@@ -123,13 +168,10 @@ export function ReviewHoverPreview({
           </div>
         </button>
       )}
-      {/* Native video element with controls — pause / scrub / seek.
-          Mounted with src ONLY when playing so background-tab cost
-          stays zero when the user just glances at the thumb. */}
-      {playing && videoUrl && (
+      {playing && mediaUrl && (
         <video
           ref={videoRef}
-          src={videoUrl}
+          src={mediaUrl}
           controls
           playsInline
           className="absolute inset-0 w-full h-full object-contain bg-black"

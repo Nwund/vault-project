@@ -2124,6 +2124,50 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   // persistent media_trash table (for cross-session restore up to 30
   // days). The two systems are independent — Ctrl+Z still pops the most
   // recent stack entry; the Settings → Trash UI lists from media_trash.
+  // Hard-delete: removes from DB AND deletes the underlying file from
+  // disk. Used by the AI Review "Trash" button when the reviewer
+  // decides the media should not be kept at all. No undo — the file
+  // is gone. Returns { ok, path } so the renderer can surface the
+  // exact path that was deleted in a confirmation toast.
+  ipcMain.handle('media:purgeFromDisk', async (_ev, mediaId: string) => {
+    try {
+      const media = db.getMedia(mediaId)
+      if (!media) return { ok: false, error: 'Media not found' }
+      const filePath = media.path
+      // DB delete first — if the file delete fails for any reason
+      // (in use, permission), we still want the row gone so the user
+      // doesn't see a phantom item that can't be opened. Trash row
+      // is NOT written because there's nothing to restore.
+      try { db.deleteMediaById(mediaId) } catch (err) {
+        console.warn('[media:purgeFromDisk] db delete failed:', err)
+      }
+      // Best-effort thumb cleanup.
+      if (media.thumbPath) {
+        try { if (fs.existsSync(media.thumbPath)) fs.unlinkSync(media.thumbPath) } catch { /* ignore */ }
+      }
+      // The actual file. Use unlinkSync so we can detect errors
+      // synchronously and report them to the user.
+      let fileDeleted = false
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath)
+          fileDeleted = true
+        } else {
+          // File was already gone — treat as success since the end
+          // state matches what the user asked for.
+          fileDeleted = true
+        }
+      } catch (err: any) {
+        broadcast('vault:changed')
+        return { ok: false, error: `DB row removed but file delete failed: ${err?.message ?? String(err)}`, path: filePath }
+      }
+      broadcast('vault:changed')
+      return { ok: true, path: filePath, fileDeleted }
+    } catch (err: any) {
+      return { ok: false, error: err?.message ?? String(err) }
+    }
+  })
+
   ipcMain.handle('media:delete', async (_ev, mediaId: string) => {
     try {
       const media = db.getMedia(mediaId)

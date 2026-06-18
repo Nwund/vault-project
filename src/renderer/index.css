@@ -430,6 +430,76 @@ body {
   }
 }
 
+/* Accent-tier BACKGROUND / BORDER / ACCENT-COLOR remaps. The user's
+   complaint after the v2.8.4 text-only remap was "text not changing,
+   still pink" — and they were right: hover backgrounds, focus
+   borders, range slider thumbs, gradient stops were all still
+   literal pink because the v2.8.4 patch only covered `text-*-N`.
+   This block extends the pattern to every surface that paints with
+   the same accent color family. Generated via Tailwind class
+   inventory of the actual codebase, not a guess. */
+:root {
+  /* Hover backgrounds — `hover:bg-pink-500/30` etc. Match the
+     base class without :hover; Tailwind's `hover:` produces a class
+     like `hover\:bg-pink-500` and we want to win on specificity
+     regardless of the hover-state prefix. */
+  [class*="bg-pink-"]:not([class*="bg-pink-50 "]):not([class*="bg-pink-50"]),
+  [class*="bg-rose-"],
+  [class*="bg-fuchsia-"],
+  [class*="bg-violet-"],
+  [class*="bg-purple-"] {
+    background-color: color-mix(in oklab, var(--primary) 25%, transparent) !important;
+  }
+  /* Strong backgrounds (500-700) get full primary opacity. */
+  .bg-pink-500, .bg-pink-600, .bg-pink-700,
+  .bg-rose-500, .bg-rose-600, .bg-rose-700,
+  .bg-fuchsia-500, .bg-fuchsia-600, .bg-fuchsia-700,
+  .bg-violet-500, .bg-violet-600, .bg-violet-700,
+  .bg-purple-500, .bg-purple-600, .bg-purple-700 {
+    background-color: var(--primary) !important;
+  }
+  /* Border colors. */
+  [class*="border-pink-"],
+  [class*="border-rose-"],
+  [class*="border-fuchsia-"],
+  [class*="border-violet-"],
+  [class*="border-purple-"] {
+    border-color: color-mix(in oklab, var(--primary) 40%, transparent) !important;
+  }
+  /* Range slider accent + focus-ring (Tailwind `accent-pink-*` /
+     `ring-pink-*`). */
+  [class*="accent-pink-"],
+  [class*="accent-rose-"],
+  [class*="accent-fuchsia-"],
+  [class*="accent-violet-"],
+  [class*="accent-purple-"] {
+    accent-color: var(--primary) !important;
+  }
+  [class*="ring-pink-"],
+  [class*="ring-rose-"],
+  [class*="ring-fuchsia-"],
+  [class*="ring-violet-"],
+  [class*="ring-purple-"] {
+    --tw-ring-color: var(--primary) !important;
+  }
+  /* Gradient stops — `from-pink-500 to-purple-500` style. Tailwind
+     compiles these as --tw-gradient-from / --tw-gradient-to custom
+     properties; overriding them re-tints any gradient. */
+  [class*="from-pink-"], [class*="from-rose-"], [class*="from-fuchsia-"],
+  [class*="from-violet-"], [class*="from-purple-"] {
+    --tw-gradient-from: var(--primary) var(--tw-gradient-from-position) !important;
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, color-mix(in oklab, var(--primary) 0%, transparent)) !important;
+  }
+  [class*="to-pink-"], [class*="to-rose-"], [class*="to-fuchsia-"],
+  [class*="to-violet-"], [class*="to-purple-"] {
+    --tw-gradient-to: var(--primary-hover, var(--primary)) var(--tw-gradient-to-position) !important;
+  }
+  [class*="via-pink-"], [class*="via-rose-"], [class*="via-fuchsia-"],
+  [class*="via-violet-"], [class*="via-purple-"] {
+    --tw-gradient-via: var(--primary) var(--tw-gradient-via-position) !important;
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    LIGHT MODE REACTIVE STYLES
    ═══════════════════════════════════════════════════════════════════════════ */

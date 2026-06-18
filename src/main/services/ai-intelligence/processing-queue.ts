@@ -49,7 +49,64 @@ export interface QueueItem {
   tier2Needed: boolean
   tier2Done: boolean
   error?: string
+  // Whether this item was classified as animated/hentai content at
+  // dequeue time, based on filename + path keywords + existing tags.
+  // Drives the content-ratio scheduler below — see CONTENT_RATIO.
+  isAnimated: boolean
 }
+
+// Content-ratio scheduler. User feedback 2026-06-18: the Tier 2 model
+// (Venice vision) is currently much weaker at naming/categorizing
+// animated content (hentai / SFM / 3D / cartoon) than IRL, so the
+// review queue piles up garbage results for animated items.
+//
+// Workaround: interleave the two buckets at a fixed ratio so IRL
+// progress doesn't stall while animated review-debt accumulates.
+//   Per cycle: 50 real videos, then 10 animated videos, repeat.
+// User can adjust these constants if the ratio needs tuning.
+const REAL_PER_BATCH = 50
+const ANIM_PER_BATCH = 10
+
+// SQL fragment that evaluates to 1 when a queue item is animated,
+// 0 otherwise. Two signals:
+//   1. The media already has a tag in (hentai, animation, animated,
+//      3d, sfm, cartoon, drawn) — most reliable but only fires for
+//      items that already went through Tier 3 at least once.
+//   2. Filename or path contains a strong animated-content keyword
+//      — covers fresh items that haven't been analyzed yet.
+// The keyword list is intentionally narrow (no bare "3d" — too many
+// false positives; no "anime" alone because of false matches like
+// "danielle") and biased toward distinct producer/engine tokens.
+const ANIMATED_PREDICATE_SQL = `
+  CASE
+    WHEN EXISTS (
+      SELECT 1 FROM media_tags mt
+      JOIN tags t ON t.id = mt.tagId
+      WHERE mt.mediaId = q.media_id
+        AND LOWER(t.name) IN ('hentai','animation','animated','3d','sfm','cartoon','drawn','hentai animation')
+    ) THEN 1
+    WHEN
+      LOWER(COALESCE(m.filename, '')) LIKE '%hentai%'
+      OR LOWER(COALESCE(m.filename, '')) LIKE '%anime%'
+      OR LOWER(COALESCE(m.filename, '')) LIKE '%animated%'
+      OR LOWER(COALESCE(m.filename, '')) LIKE '%cartoon%'
+      OR LOWER(COALESCE(m.filename, '')) LIKE '%sfm%'
+      OR LOWER(COALESCE(m.filename, '')) LIKE '%koikatsu%'
+      OR LOWER(COALESCE(m.filename, '')) LIKE '%honey select%'
+      OR LOWER(COALESCE(m.filename, '')) LIKE '%mmd%'
+      OR LOWER(COALESCE(m.filename, '')) LIKE '%blender%'
+      OR LOWER(COALESCE(m.filename, '')) LIKE '%rule34%'
+      OR LOWER(COALESCE(m.filename, '')) LIKE '%r34%'
+      OR LOWER(COALESCE(m.path, '')) LIKE '%\\hentai\\%'
+      OR LOWER(COALESCE(m.path, '')) LIKE '%\\anime\\%'
+      OR LOWER(COALESCE(m.path, '')) LIKE '%\\animated\\%'
+      OR LOWER(COALESCE(m.path, '')) LIKE '%\\cartoon\\%'
+      OR LOWER(COALESCE(m.path, '')) LIKE '%\\sfm\\%'
+      OR LOWER(COALESCE(m.path, '')) LIKE '%\\3d\\%'
+    THEN 1
+    ELSE 0
+  END
+`
 
 export interface QueueStatus {
   total: number
@@ -117,6 +174,14 @@ export class ProcessingQueue {
   // the bar AND no new-tag suggestions exist below the bar, the whole record is
   // marked approved silently. 0 disables (default — preserves existing review flow).
   private autoApproveThreshold = 0
+
+  // Content-ratio scheduler state. We process REAL_PER_BATCH real items
+  // then ANIM_PER_BATCH animated items, repeating. Counters reset on
+  // mode switch. Mode survives queue pauses/restarts within a single
+  // process — fresh-start state is { real, 0, 0 }.
+  private contentMode: 'real' | 'animated' = 'real'
+  private contentRealProcessed = 0
+  private contentAnimProcessed = 0
 
   // Cached fresh sqlite connection for getReviewList. The primary connection
   // (this.rawDb) sometimes has a stale schema-cache for ai_analysis_results
@@ -458,6 +523,11 @@ export class ProcessingQueue {
           `).run(String((err as Error)?.message ?? err).slice(0, 500), item.mediaId)
         } catch { /* if even this fails, just continue */ }
       }
+      // Advance the content-ratio scheduler regardless of success/fail —
+      // a failed item still consumed a slot, and we want the cadence to
+      // hold against a corrupt batch (e.g. a folder of broken animated
+      // files shouldn't lock the scheduler into perpetual animated mode).
+      this.advanceContentRatio(item)
       this.batchProcessed += 1
     }
   }
@@ -479,28 +549,57 @@ export class ProcessingQueue {
     // count as duration=∞ and sort to the back rather than crashing the
     // query. media_stats join is also LEFT — unwatched items have NULL
     // stats and naturally get interest_score=0.
-    const row = this.rawDb.prepare(`
+    //
+    // Content-ratio scheduler: filter by is_animated based on the
+    // current mode. If no items match the mode, fall through to the
+    // other mode so the queue doesn't stall on a depleted bucket.
+    const wantAnimated = this.contentMode === 'animated' ? 1 : 0
+    const baseSelect = `
       SELECT q.id, q.media_id, q.status, q.priority, q.tier1_done, q.tier2_needed, q.tier2_done, q.error,
         (
           (CASE WHEN COALESCE(ms.rating, 0) >= 5 THEN 30 ELSE 0 END) +
           (CASE WHEN COALESCE(ms.views, 0) > 0 THEN 15 ELSE 0 END) +
           (CASE WHEN COALESCE(ms.oCount, 0) > 0 THEN 20 ELSE 0 END) +
           (CASE WHEN EXISTS (SELECT 1 FROM playlist_items pi WHERE pi.mediaId = q.media_id) THEN 20 ELSE 0 END)
-        ) AS interest_score
+        ) AS interest_score,
+        (${ANIMATED_PREDICATE_SQL}) AS is_animated
       FROM ai_processing_queue q
       LEFT JOIN media m ON m.id = q.media_id
       LEFT JOIN media_stats ms ON ms.mediaId = q.media_id
       WHERE q.status = 'pending'
+    `
+    const orderClause = `
       ORDER BY q.priority DESC,
                interest_score DESC,
                COALESCE(m.durationSec, 999999) ASC,
                q.id ASC
       LIMIT 1
-    `).get() as any
+    `
+    // Preferred-bucket pass — only return items matching current mode.
+    let row = this.rawDb.prepare(`${baseSelect} AND (${ANIMATED_PREDICATE_SQL}) = ${wantAnimated} ${orderClause}`).get() as any
+    let fellBack = false
+    if (!row) {
+      // Fallback: bucket is depleted — pick from the other mode rather
+      // than idle the worker. Reset counters so the next refill kicks
+      // back into the scheduled cadence.
+      row = this.rawDb.prepare(`${baseSelect} ${orderClause}`).get() as any
+      if (row) {
+        fellBack = true
+        const otherMode: 'real' | 'animated' = this.contentMode === 'animated' ? 'real' : 'animated'
+        console.log(`[ProcessingQueue] Content bucket '${this.contentMode}' empty; falling back to '${otherMode}' for this item`)
+      }
+    }
 
     if (!row) return null
     if (row.interest_score > 0) {
       console.log(`[ProcessingQueue] Prioritizing ${row.media_id} (interest_score=${row.interest_score})`)
+    }
+    if (fellBack) {
+      // If the only items left are the opposite mode, switch the
+      // scheduler over so we don't repeatedly log fallbacks.
+      this.contentMode = row.is_animated ? 'animated' : 'real'
+      this.contentRealProcessed = 0
+      this.contentAnimProcessed = 0
     }
 
     return {
@@ -511,7 +610,31 @@ export class ProcessingQueue {
       tier1Done: !!row.tier1_done,
       tier2Needed: !!row.tier2_needed,
       tier2Done: !!row.tier2_done,
-      error: row.error
+      error: row.error,
+      isAnimated: !!row.is_animated,
+    }
+  }
+
+  // Called by the run loop after each successful processItem. Advances
+  // the content-ratio scheduler state: count toward the current
+  // bucket's batch quota, switch modes when the quota is hit.
+  private advanceContentRatio(item: QueueItem): void {
+    if (item.isAnimated) {
+      this.contentAnimProcessed++
+      if (this.contentAnimProcessed >= ANIM_PER_BATCH) {
+        console.log(`[ProcessingQueue] Content-ratio: completed ${this.contentAnimProcessed} animated, switching to real for next ${REAL_PER_BATCH}`)
+        this.contentMode = 'real'
+        this.contentAnimProcessed = 0
+        this.contentRealProcessed = 0
+      }
+    } else {
+      this.contentRealProcessed++
+      if (this.contentRealProcessed >= REAL_PER_BATCH) {
+        console.log(`[ProcessingQueue] Content-ratio: completed ${this.contentRealProcessed} real, switching to animated for next ${ANIM_PER_BATCH}`)
+        this.contentMode = 'animated'
+        this.contentRealProcessed = 0
+        this.contentAnimProcessed = 0
+      }
     }
   }
 
@@ -991,15 +1114,21 @@ export class ProcessingQueue {
                 jc.caption(frames[0].path, { style: 'tags-danbooru', maxTokens: 180 }),
               ])
               if (descRes?.caption && tier2Result) {
-                // Append JoyCaption's description to Venice's so the
-                // description-tag-extractor mines BOTH for canonical
-                // tag mentions. Newline-separated so the extractor's
-                // sentence-splitter handles them independently.
-                const combined = tier2Result.description
-                  ? `${tier2Result.description}\n\n[Local caption]\n${descRes.caption}`
-                  : descRes.caption
-                tier2Result = { ...tier2Result, description: combined }
-                console.log(`[ProcessingQueue] JoyCaption descriptive: ${descRes.caption.slice(0, 80)}…`)
+                // 2026-05-25: stopped concatenating the JoyCaption
+                // descriptive caption into the user-facing
+                // description field. The previous behavior dumped
+                // "[Local caption] ..." after Venice's text — useful
+                // for backend tag-mining but ugly in the Review +
+                // Library UIs. The companion JoyCaption call below
+                // ('style: tags-danbooru') already feeds tag
+                // candidates into rich_tags directly, so we don't
+                // lose tag-extraction signal. Only fall back to the
+                // JoyCaption description as the PRIMARY when Venice
+                // produced nothing (sidecar-only path).
+                if (!tier2Result.description) {
+                  tier2Result = { ...tier2Result, description: descRes.caption }
+                }
+                console.log(`[ProcessingQueue] JoyCaption descriptive (logged only): ${descRes.caption.slice(0, 80)}…`)
               }
               if (tagRes?.caption && tier2Result) {
                 // Parse booru-style tag output (comma- or
@@ -2759,6 +2888,18 @@ export class ProcessingQueue {
           // ignore — bad row
         }
       }
+      // Re-hydrate the user's saved approval state. Without these
+      // fields the renderer falls back to AI matched_tags + AI title
+      // when re-opening an Approved item, which made every edit
+      // look like it had reverted. See selectReviewItem() renderer
+      // fix from 2026-05-25.
+      let approvedTagIds: string[] = []
+      try {
+        if (row.approved_tag_ids) {
+          const parsed = JSON.parse(row.approved_tag_ids)
+          if (Array.isArray(parsed)) approvedTagIds = parsed.map(String)
+        }
+      } catch { /* ignore */ }
       return {
         mediaId: row.media_id,
         filename: row.filename,
@@ -2772,7 +2913,9 @@ export class ProcessingQueue {
         reviewStatus: row.review_status,
         createdAt: row.created_at,
         suggestedFilename: row.suggested_filename ?? null,
-        richTags
+        richTags,
+        approvedTagIds,
+        approvedTitle: row.approved_title ?? null,
       }
     })
 
@@ -3003,16 +3146,61 @@ export class ProcessingQueue {
     // Snapshot for single-level undo before mutating anything.
     this.captureUndoSnapshot(mediaId, 'approve-edited')
 
-    // PERF: wrap the tag-insert loop in a single sqlite transaction so
-    // each INSERT doesn't fsync individually. Approving an item with
-    // 20+ tags was previously ~200ms (fsync-bound) and contributed to
-    // perceived freezing during review. Inside a transaction it's ~5ms.
+    // BUGFIX 2026-05-25: approveEdited previously only INSERTed kept
+    // tags; never DELETEd the ones the user unchecked. So unchecking
+    // an AI-applied tag and clicking Approve was a silent no-op — the
+    // tag stayed on the media. Now we compute the "candidate set"
+    // from matched_tags + new_tag_suggestions (the tags the AI
+    // suggested for this review), then DELETE any candidate not in
+    // selectedTagIds before re-INSERTing the kept ones. User-added
+    // tags from other contexts are untouched.
+    const selectedSet = new Set<string>((edits.selectedTagIds ?? []).map(String))
+    let candidateIds: string[] = []
+    try {
+      const analysisRow = this.rawDb.prepare(
+        `SELECT matched_tags FROM ai_analysis_results WHERE media_id = ?`,
+      ).get(mediaId) as { matched_tags?: string } | undefined
+      if (analysisRow?.matched_tags) {
+        const matched = JSON.parse(analysisRow.matched_tags) as Array<{ id: string | number }>
+        if (Array.isArray(matched)) {
+          candidateIds = matched.map((m) => String(m.id))
+        }
+      }
+    } catch (err) {
+      console.warn('[ProcessingQueue] approveEdited: could not load matched_tags for candidate set:', err)
+    }
+    const toRemove = candidateIds.filter((id) => !selectedSet.has(id))
+    // DIAGNOSTIC (2026-05-25): trace which tags are being computed
+    // for removal. Pair with the renderer-side log to confirm the
+    // approveEdited path is firing AND that the candidate diff is
+    // what we expect.
+    console.log('[approveEdited]', mediaId, {
+      candidateIds,
+      selectedIds: Array.from(selectedSet),
+      toRemove,
+      newTagsCount: edits.newTags?.length ?? 0,
+    })
+
+    // PERF: wrap the tag-insert + delete loops in a single sqlite
+    // transaction so each row doesn't fsync individually.
     const insertMediaTag = this.rawDb.prepare(
       'INSERT OR IGNORE INTO media_tags (mediaId, tagId) VALUES (?, ?)'
+    )
+    const deleteMediaTag = this.rawDb.prepare(
+      'DELETE FROM media_tags WHERE mediaId = ? AND tagId = ?'
     )
     const writeTags = this.rawDb.transaction((tagIds: Array<string | number>) => {
       for (const tagId of tagIds) insertMediaTag.run(mediaId, tagId)
     })
+    const removeTags = this.rawDb.transaction((tagIds: string[]) => {
+      for (const tagId of tagIds) deleteMediaTag.run(mediaId, tagId)
+    })
+
+    // Remove unchecked candidates FIRST so a same-row INSERT below
+    // doesn't get masked by the DELETE.
+    if (toRemove.length > 0) {
+      removeTags(toRemove)
+    }
 
     // Apply selected tags
     if (edits.selectedTagIds && edits.selectedTagIds.length > 0) {

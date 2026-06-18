@@ -462,6 +462,8 @@ const api = {
     deleteDuplicates: (options?: { dryRun?: boolean }) => invoke<{ deletedCount: number; freedBytes: number; deleted: string[]; dryRun: boolean }>('media:deleteDuplicates', options),
     // Delete from library (soft delete - removes from DB, file stays on disk)
     delete: (mediaId: string) => invoke<{ success: boolean; deletedMedia?: any; error?: string }>('media:delete', mediaId),
+    purgeFromDisk: (mediaId: string) =>
+      invoke<{ ok: boolean; path?: string; fileDeleted?: boolean; error?: string }>('media:purgeFromDisk', mediaId),
     // Bulk operations — Library's "select all + tag / feature-less /
     // deny / delete" used to issue one IPC per id (4,800+ round trips on
     // the user's collection). These collapse it into a single call with

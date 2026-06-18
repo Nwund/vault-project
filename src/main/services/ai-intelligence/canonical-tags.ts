@@ -1012,6 +1012,38 @@ const CAPTIONER_NOISE = new Set([
  * shouldn't be in the user's library either. Captioner-style observations
  * about furniture/lighting/colors don't help the user find videos later.
  */
+// Tags that are CANONICAL (user CAN manually pick them) but should
+// NEVER be auto-applied by the tagger. User repeatedly flagged these
+// as overused on inappropriate content:
+//   - trans/transgender/shemale/futa/futanari: the model fires these
+//     on cis-female content (any visible bulge, cosmetic body mod,
+//     even just clothing shadows). User wants these applied ONLY
+//     manually after they confirm the content actually fits.
+//
+// isJunkTag() can't reject these because they ARE in CANONICAL_TAGS
+// (the user wants to keep them in their library for manual selection)
+// and canonical-wins short-circuits the noise checks. This separate
+// function is the auto-apply gate — used by tier3-tag-matcher,
+// description-tag-extractor, and the Tier 2 richTags filter, but NOT
+// by the cleanup pass (which must preserve the user's manually-added
+// 'trans' tags).
+const AUTO_APPLY_BLACKLIST = new Set([
+  'trans', 'transgender', 'shemale', 'futa', 'futanari',
+])
+
+export function isAutoApplyBlocked(name: string): boolean {
+  if (!name) return true
+  const t = String(name).toLowerCase().trim()
+  if (AUTO_APPLY_BLACKLIST.has(t)) return true
+  // Hedge-prefix forms ("implied X", "possible X", etc.) — covers
+  // cases where the prefix wasn't stripped upstream because the
+  // bare form happened to be canonical (e.g. "implied blowjob"
+  // would normalize to "blowjob" elsewhere but the raw "implied X"
+  // text can still leak through tier 2's additionalTags list).
+  if (/^(implied|possible|potential|maybe|likely|appears? to be)\s+/i.test(t)) return true
+  return isJunkTag(t)
+}
+
 export function isJunkTag(name: string): boolean {
   const t = String(name).trim().toLowerCase()
   if (!t) return true

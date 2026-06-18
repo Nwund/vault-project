@@ -8,6 +8,7 @@ import {
   getCanonicalCategory,
   normalizeToCanonical,
   isJunkTag,
+  isAutoApplyBlocked,
   decomposeToAtoms,
   getCoSuggestions,
 } from './canonical-tags'
@@ -320,15 +321,19 @@ export class Tier3TagMatcher {
     }
 
     const expandAndMatch = (rawLabel: string, confidence: number) => {
+      // Check the raw label against the auto-apply blocklist BEFORE
+      // normalize — catches "implied X" forms that normalize would
+      // strip to a canonical bare form (then sneak through).
+      if (isAutoApplyBlocked(rawLabel)) return
       const canonical = normalizeToCanonical(rawLabel)
-      if (!canonical || isJunkTag(canonical)) return
+      if (!canonical || isAutoApplyBlocked(canonical)) return
       // The compound itself + any atomic constituents. Atoms inherit a
       // slightly lower confidence because their evidence is indirect (we
       // saw the compound, not the atom in isolation).
       const atoms = decomposeToAtoms(canonical)
       for (let i = 0; i < atoms.length; i++) {
         const atom = atoms[i]
-        if (!atom || isJunkTag(atom)) continue
+        if (!atom || isAutoApplyBlocked(atom)) continue
         const c = i === 0 ? confidence : Math.max(0.5, confidence * 0.9)
         tryMatch(atom, c)
       }
@@ -354,7 +359,7 @@ export class Tier3TagMatcher {
       for (const atom of implied) {
         if (matchedNamesLower.has(atom)) continue
         if (seenSuggestions.has(atom)) continue
-        if (isJunkTag(atom)) continue
+        if (isAutoApplyBlocked(atom)) continue
         // Try to match the implied atom against the tag library — if it
         // already exists, promote it to matchedTags as a "synonym" hit at
         // reduced confidence. Otherwise add as a suggestion.

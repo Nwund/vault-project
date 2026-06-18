@@ -29,6 +29,7 @@ import {
   Tag,
   Volume2,
   X,
+  Trash2,
   XCircle,
   Zap,
 } from 'lucide-react'
@@ -88,6 +89,12 @@ interface ReviewItem {
   // Phase 2 of #19 audit: frameCount/totalFrames let the review UI show
   // "12/12 agreed" badges so the user can spot single-frame outliers.
   richTags?: Array<{ name: string; confidence: number; source: string; frameCount?: number; totalFrames?: number }>
+  // User's curated final state — populated by the backend when the
+  // item has been approved. Renderer uses these on re-open so the
+  // UI shows the saved selection (not the AI's original matched
+  // set, which would look like every edit had reverted).
+  approvedTagIds?: string[]
+  approvedTitle?: string | null
 }
 
 
@@ -426,13 +433,15 @@ export function AiTaggerPage() {
       // Bare 'a' approves, bare 'x' rejects, then advances to the next
       // pending item — same advance behavior as Shift+Enter so the user
       // can blow through a review queue one-handed.
+      // BUGFIX 2026-05-25: routed through approveEditedItem (not bare
+      // approve) so user edits in the pane actually persist.
       if ((e.key === 'a' || e.key === 'x') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const cur = selectedReviewItem
         if (!cur) return
         e.preventDefault()
         const idx = reviewItems.findIndex((r) => r.mediaId === cur.mediaId)
         try {
-          if (e.key === 'a') await window.api.ai.approve(cur.mediaId)
+          if (e.key === 'a') await approveEditedItem()
           else await window.api.ai.reject(cur.mediaId)
         } catch (err: any) {
           showToast('error', err?.message ?? `${e.key === 'a' ? 'Approve' : 'Reject'} failed`)
@@ -451,7 +460,8 @@ export function AiTaggerPage() {
       e.preventDefault()
       const idx = reviewItems.findIndex((r) => r.mediaId === cur.mediaId)
       try {
-        await window.api.ai.approve(cur.mediaId)
+        // BUGFIX 2026-05-25: same as above — route through edited.
+        await approveEditedItem()
       } catch (err: any) {
         showToast('error', err?.message ?? 'Approve failed')
         return
@@ -1055,13 +1065,23 @@ export function AiTaggerPage() {
 
   async function approveItem(mediaId: string) {
     try {
+      // BUGFIX 2026-05-25: if THIS item is the currently-selected
+      // review item, route through approveEditedItem so the user's
+      // tag check/uncheck + custom tags + title/description edits
+      // get persisted. Bare approve() ignores everything in the edit
+      // pane and saves the AI's auto-applied set — which is what
+      // every previous version was doing and why approved items
+      // looked like "AI tags only, my edits gone".
+      if (selectedReviewItem?.mediaId === mediaId) {
+        await approveEditedItem()
+        return
+      }
+      // Different item (e.g. an approve-from-list action that
+      // doesn't touch the edit pane) — bare approve is fine.
       await window.api.ai.approve(mediaId)
       loadReviewItems()
       refreshQueueStatus()
       refreshUndoStatus()
-      if (selectedReviewItem?.mediaId === mediaId) {
-        setSelectedReviewItem(null)
-      }
     } catch (err: any) {
       console.error('[AI] Failed to approve:', err)
       showToast('error', err?.message ?? 'Failed to approve item')
@@ -1083,8 +1103,24 @@ export function AiTaggerPage() {
         ...customTagsPending,
         ...fromInput,
       ]))
-      await window.api.ai.approveEdited(selectedReviewItem.mediaId, {
-        selectedTagIds: Array.from(selectedTags),
+      const selectedTagIds = Array.from(selectedTags)
+      // DIAGNOSTIC (2026-05-25): logs every approve-edited payload so
+      // we can see what the renderer is actually sending. Remove once
+      // the "edits don't save" bug is confirmed fixed.
+      console.log('[AI Review] approveEditedItem payload:', {
+        mediaId: selectedReviewItem.mediaId,
+        selectedTagIds,
+        selectedTagCount: selectedTagIds.length,
+        originalMatchedCount: selectedReviewItem.matchedTags?.length ?? 0,
+        unchecked: (selectedReviewItem.matchedTags ?? [])
+          .filter((t: any) => !selectedTags.has(t.id))
+          .map((t: any) => t.name),
+        newTags,
+        editedTitle,
+        titleChanged: editedTitle !== (selectedReviewItem.suggestedTitle ?? ''),
+      })
+      const result = await window.api.ai.approveEdited(selectedReviewItem.mediaId, {
+        selectedTagIds,
         editedTitle: editedTitle || undefined,
         editedDescription: editedDescription !== (selectedReviewItem.description ?? '') ? editedDescription : undefined,
         // Pass the originals too so the backend can log them as rejection
@@ -1093,6 +1129,7 @@ export function AiTaggerPage() {
         originalDescription: selectedReviewItem.description ?? null,
         newTags: newTags.length > 0 ? newTags : undefined
       })
+      console.log('[AI Review] approveEditedItem result:', result)
       showToast('success', 'Item approved with edits')
       loadReviewItems()
       refreshQueueStatus()
@@ -1172,13 +1209,33 @@ export function AiTaggerPage() {
 
   function selectReviewItem(item: ReviewItem) {
     setSelectedReviewItem(item)
-    setSelectedTags(new Set(item.matchedTags.map(t => t.id)))
-    // Default: pre-check ALL AI-suggested new tags so the user can deselect
-    // the wrong ones rather than re-select every right one. Matches the
-    // existing "matched tags start pre-checked" behavior.
-    setSelectedNewTagNames(new Set(item.newTagSuggestions.map(s => s.name.toLowerCase())))
+    // For ALREADY-APPROVED items, restore the user's previously-saved
+    // selection (approved_tag_ids) instead of re-checking all of the
+    // AI's original matched_tags. Without this, re-opening an
+    // approved item in the Approved filter looked like every edit
+    // had reverted — when in reality the saved set was correct in
+    // the DB, the UI was just lying about what was checked.
+    const isAlreadyApproved = item.reviewStatus === 'approved'
+    const initialSelection = isAlreadyApproved && Array.isArray(item.approvedTagIds) && item.approvedTagIds.length > 0
+      ? item.approvedTagIds
+      : item.matchedTags.map(t => t.id)
+    setSelectedTags(new Set(initialSelection))
+    // For approved items, the user's new-tag choices were already
+    // promoted into real tags (and live in approved_tag_ids), so we
+    // don't pre-check the AI's "newTagSuggestions" — that'd offer to
+    // re-add things the user already kept or rejected.
+    setSelectedNewTagNames(
+      isAlreadyApproved ? new Set() : new Set(item.newTagSuggestions.map(s => s.name.toLowerCase())),
+    )
     setCustomTagsPending([])
-    setEditedTitle(item.suggestedTitle || '')
+    // Approved title goes back in the field (was previously showing
+    // the AI's suggestedTitle even after the user had edited and
+    // saved their own).
+    setEditedTitle(
+      isAlreadyApproved && item.approvedTitle
+        ? String(item.approvedTitle)
+        : item.suggestedTitle || '',
+    )
     setEditedDescription(item.description || '')
     setEditedFilename(item.suggestedFilename || '')
     setNewTagInput('')
@@ -3755,7 +3812,7 @@ export function AiTaggerPage() {
                       <button
                         onClick={() => rejectItem(selectedReviewItem.mediaId)}
                         className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition"
-                        title="Reject (R)"
+                        title="Reject AI suggestions (R) — keeps the file"
                       >
                         <XCircle size={20} />
                       </button>
@@ -3765,6 +3822,39 @@ export function AiTaggerPage() {
                         title="Approve (A)"
                       >
                         <CheckCircle2 size={20} />
+                      </button>
+                      {/* Trash — deletes from DB AND from disk. No
+                          undo. Distinct from Reject (which only drops
+                          the AI suggestions, keeping the file). */}
+                      <button
+                        onClick={async () => {
+                          const cur = selectedReviewItem
+                          if (!cur) return
+                          const ok = window.confirm(
+                            `Delete "${cur.filename}" from the app AND from disk?\n\nThis cannot be undone — the file is permanently removed from your media folder.`,
+                          )
+                          if (!ok) return
+                          try {
+                            const r = await (window.api.media as any).purgeFromDisk?.(cur.mediaId)
+                            if (r?.ok) {
+                              showToast('success', r.fileDeleted ? `Trashed: ${cur.filename}` : 'DB row removed (file was already gone)')
+                              // Jump to next item like approve/reject does.
+                              const idx = reviewItems.findIndex((r2) => r2.mediaId === cur.mediaId)
+                              const next = idx >= 0 && idx + 1 < reviewItems.length ? reviewItems[idx + 1] : null
+                              setSelectedReviewItem(next)
+                              loadReviewItems()
+                              refreshQueueStatus()
+                            } else {
+                              showToast('error', r?.error ?? 'Trash failed')
+                            }
+                          } catch (err: any) {
+                            showToast('error', err?.message ?? 'Trash failed')
+                          }
+                        }}
+                        className="p-2 rounded-lg bg-rose-600/20 text-rose-300 hover:bg-rose-600/40 transition border border-rose-500/30"
+                        title="Trash — deletes from app AND from disk (no undo)"
+                      >
+                        <Trash2 size={20} />
                       </button>
                     </div>
                   </div>
@@ -3929,10 +4019,17 @@ export function AiTaggerPage() {
                         </button>
                       </div>
                     </div>
-                    <DebouncedInput
+                    {/* Plain input (no debounce) so clicking Approve
+                        immediately after typing doesn't drop the
+                        edit. v2.8.4 had DebouncedInput here with a
+                        250ms commit — fast Approve clicks beat the
+                        debounce → stale title sent → "title didn't
+                        save" bug. Description below has the same
+                        fix. */}
+                    <input
                       type="text"
                       value={editedTitle}
-                      onChange={(next) => setEditedTitle(next)}
+                      onChange={(e) => setEditedTitle(e.target.value)}
                       placeholder={selectedReviewItem.suggestedTitle ? '' : 'Click Regenerate to suggest a title'}
                       className="w-full px-4 py-2 rounded-lg bg-white/5 border border-[var(--border)] focus:border-[var(--primary)] focus:outline-none"
                     />
@@ -3973,9 +4070,13 @@ export function AiTaggerPage() {
                         {regenDescBusy ? 'Regenerating…' : 'Regenerate'}
                       </button>
                     </div>
-                    <DebouncedTextarea
+                    {/* Plain textarea (no debounce) so Approve right
+                        after typing doesn't drop the edit — same
+                        debounce-vs-approve race as the title input
+                        above. */}
+                    <textarea
                       value={editedDescription}
-                      onChange={(next) => setEditedDescription(next)}
+                      onChange={(e) => setEditedDescription(e.target.value)}
                       placeholder="Click Regenerate to produce a description, or type your own"
                       rows={3}
                       className="w-full text-sm bg-white/5 p-3 rounded-lg whitespace-pre-wrap min-h-[3.5rem] border border-[var(--border)] focus:border-[var(--primary)] focus:outline-none resize-y"
@@ -4109,8 +4210,11 @@ export function AiTaggerPage() {
                                         key={p.id}
                                         onClick={() => {
                                           const next = new Set(selectedTags)
-                                          if (next.has(p.id)) next.delete(p.id)
+                                          const had = next.has(p.id)
+                                          if (had) next.delete(p.id)
                                           else next.add(p.id)
+                                          // Live trace: what got toggled.
+                                          console.log(`[AI Review] toggled MATCHED tag "${p.name}" (${p.id}) — was ${had ? 'checked' : 'unchecked'}, now ${had ? 'unchecked' : 'checked'}. selectedTags size: ${selectedTags.size} -> ${next.size}`)
                                           setSelectedTags(next)
                                         }}
                                         className={cn(
@@ -4148,8 +4252,10 @@ export function AiTaggerPage() {
                                             key={`new-${i}`}
                                             onClick={() => {
                                               const next = new Set(selectedNewTagNames)
-                                              if (next.has(nameLower)) next.delete(nameLower)
+                                              const had = next.has(nameLower)
+                                              if (had) next.delete(nameLower)
                                               else next.add(nameLower)
+                                              console.log(`[AI Review] toggled NEW tag "${p.name}" — was ${had ? 'checked' : 'unchecked'}, now ${had ? 'unchecked' : 'checked'}. selectedNewTagNames size: ${selectedNewTagNames.size} -> ${next.size}`)
                                               setSelectedNewTagNames(next)
                                             }}
                                             className={cn(

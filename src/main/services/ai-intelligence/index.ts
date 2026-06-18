@@ -1549,17 +1549,19 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
       throw new Error('Venice (Tier 2) not configured')
     }
     const rawDb = db.raw
-    // Pull the stored analysis context — we need the frame dir, the existing
-    // tier1 tags, and whatever we already had as title/description so the
-    // model can iterate rather than start from scratch.
+    // LEFT JOIN against analysis: if the media exists but has never been
+    // analyzed (or its analysis row was wiped), we still want regen to
+    // work — the user is asking us to GENERATE a title/description, no
+    // prior context required. We just won't have tier1 hints to seed
+    // Venice with, which is fine.
     const row = rawDb.prepare(`
       SELECT ar.suggested_title, ar.description, ar.tier1_raw_tags, ar.tier2_extra_tags,
              m.filename, m.path, m.type, m.durationSec
-      FROM ai_analysis_results ar
-      INNER JOIN media m ON ar.media_id = m.id
-      WHERE ar.media_id = ?
+      FROM media m
+      LEFT JOIN ai_analysis_results ar ON ar.media_id = m.id
+      WHERE m.id = ?
     `).get(mediaId) as any
-    if (!row) throw new Error('No analysis record found for this media')
+    if (!row) throw new Error('Media not found')
 
     // Re-extract a small frame budget — 4 frames is enough for a fresh
     // title/description; saves API cost vs. the full 12.
@@ -1587,11 +1589,20 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
       field,
     })
 
-    // Persist the new value into ai_analysis_results.
+    // Persist the new value. UPSERT so first-time regen on a never-
+    // analyzed item creates the row instead of silently no-op'ing.
     if (field === 'title') {
-      rawDb.prepare('UPDATE ai_analysis_results SET suggested_title = ? WHERE media_id = ?').run(result, mediaId)
+      rawDb.prepare(`
+        INSERT INTO ai_analysis_results (media_id, suggested_title)
+        VALUES (?, ?)
+        ON CONFLICT(media_id) DO UPDATE SET suggested_title = excluded.suggested_title
+      `).run(mediaId, result)
     } else {
-      rawDb.prepare('UPDATE ai_analysis_results SET description = ? WHERE media_id = ?').run(result, mediaId)
+      rawDb.prepare(`
+        INSERT INTO ai_analysis_results (media_id, description)
+        VALUES (?, ?)
+        ON CONFLICT(media_id) DO UPDATE SET description = excluded.description
+      `).run(mediaId, result)
     }
     // Cleanup re-extracted frames in the background.
     setTimeout(() => { try { frameExtractor?.cleanupAll() } catch {} }, 500)
@@ -1618,14 +1629,16 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
     const { mediaId, field } = args
     const streamId = `${mediaId}-${field}-${Date.now()}`
     const rawDb = db.raw
+    // LEFT JOIN — same rationale as regenerateField above. Regen should
+    // work on never-analyzed media; tier1 hints just stay empty.
     const row = rawDb.prepare(`
       SELECT ar.suggested_title, ar.description, ar.tier1_raw_tags, ar.tier2_extra_tags,
              m.filename, m.path, m.type, m.durationSec
-      FROM ai_analysis_results ar
-      INNER JOIN media m ON ar.media_id = m.id
-      WHERE ar.media_id = ?
+      FROM media m
+      LEFT JOIN ai_analysis_results ar ON ar.media_id = m.id
+      WHERE m.id = ?
     `).get(mediaId) as any
-    if (!row) throw new Error('No analysis record found for this media')
+    if (!row) throw new Error('Media not found')
     if (!frameExtractor) throw new Error('Frame extractor not initialized')
 
     const mediaType: 'video' | 'image' | 'gif' = row.type === 'video' ? 'video' : row.type === 'gif' ? 'gif' : 'image'
@@ -1655,9 +1668,17 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
     })
 
     if (field === 'title') {
-      rawDb.prepare('UPDATE ai_analysis_results SET suggested_title = ? WHERE media_id = ?').run(result, mediaId)
+      rawDb.prepare(`
+        INSERT INTO ai_analysis_results (media_id, suggested_title)
+        VALUES (?, ?)
+        ON CONFLICT(media_id) DO UPDATE SET suggested_title = excluded.suggested_title
+      `).run(mediaId, result)
     } else {
-      rawDb.prepare('UPDATE ai_analysis_results SET description = ? WHERE media_id = ?').run(result, mediaId)
+      rawDb.prepare(`
+        INSERT INTO ai_analysis_results (media_id, description)
+        VALUES (?, ?)
+        ON CONFLICT(media_id) DO UPDATE SET description = excluded.description
+      `).run(mediaId, result)
     }
     setTimeout(() => { try { frameExtractor?.cleanupAll() } catch { /* ignore */ } }, 500)
 
@@ -5352,7 +5373,13 @@ RULES:
         maxTokens: 200,
         timeoutMs: 45_000,
       })
-      if (!result) return { ok: false, error: 'Caption returned null (image read or inference failed)' }
+      if (!result) {
+        // The client logs the SPECIFIC failure mode (file missing /
+        // read failed / sidecar error / HTTP failed). Point the user
+        // at the main-process log instead of repeating the generic
+        // error which previously hid all four cases behind one toast.
+        return { ok: false, error: 'Caption returned null — check vault.log for the [JoyCaption] entry with the specific cause (file missing, sidecar error, HTTP timeout, etc.)' }
+      }
       return {
         ok: true,
         caption: result.caption,

@@ -18,7 +18,7 @@
 // CANONICAL_TAGS. This prevents the extractor from emitting garbage
 // like "the" or fragments of unrelated phrases.
 
-import { CANONICAL_TAGS, normalizeToCanonical, isJunkTag } from './canonical-tags'
+import { CANONICAL_TAGS, normalizeToCanonical, isJunkTag, isAutoApplyBlocked } from './canonical-tags'
 import type { Tier2Tag, Tier2TagSource } from './tier2-vision-llm'
 
 // Tags we deliberately DON'T extract from descriptions even when they
@@ -48,6 +48,7 @@ function buildMatchers(): Array<{ name: string; re: RegExp }> {
     if (!name) continue
     if (DESCRIPTION_EXTRACTION_BLOCKLIST.has(name)) continue
     if (isJunkTag(name)) continue
+    if (isAutoApplyBlocked(name)) continue
     // Build a word-boundary regex. Multi-word tags use \s+ between tokens
     // so "facial close up" matches "facial close-up", "facial closeup",
     // etc. via the secondary normalizer below — but the primary match

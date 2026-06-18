@@ -6,7 +6,7 @@ import https from 'https'
 import fs from 'fs'
 import { extractFilenameHints, renderHintsForPrompt, detectStudio, assessFilename, describeDurationBucket } from './filename-hints'
 import { parseFilename, renderParsedForPrompt } from './filename-tokenizer'
-import { getCanonicalPromptVocabulary, normalizeToCanonical, isJunkTag, decomposeToAtoms } from './canonical-tags'
+import { getCanonicalPromptVocabulary, normalizeToCanonical, isJunkTag, isAutoApplyBlocked, decomposeToAtoms } from './canonical-tags'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Venice model selection.
@@ -877,7 +877,9 @@ Walk through the 8 analysis steps internally, then return JSON only.`
         .filter((t: any): t is Tier2Tag => !!t && t.name.length > 0)
         // Drop junk: furniture, captioner color-noun phrases, typos, hedge tags.
         // isJunkTag() runs AFTER normalize so it sees the cleaned form.
-        .filter((t: Tier2Tag) => !isJunkTag(t.name))
+        // isAutoApplyBlocked also catches bare trans/transgender/etc. that
+        // isJunkTag lets through via the canonical-wins shortcut.
+        .filter((t: Tier2Tag) => !isJunkTag(t.name) && !isAutoApplyBlocked(t.name))
 
       // Two off-vocab tags can normalize to the same canonical (e.g.
       // "doggy" + "doggystyle" → "doggystyle"). Keep the higher-confidence
@@ -903,7 +905,7 @@ Walk through the 8 analysis steps internally, then return JSON only.`
         const compoundDropped = atoms.length > 0 && !atoms.includes(t.name)
         for (const atom of atoms) {
           if (atom === t.name) continue
-          if (isJunkTag(atom)) continue
+          if (isJunkTag(atom) || isAutoApplyBlocked(atom)) continue
           const existing = richTagsByName.get(atom)
           if (!existing || t.confidence > existing.confidence) {
             richTagsByName.set(atom, { ...t, name: atom })

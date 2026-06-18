@@ -4,7 +4,7 @@
 
 ### *Your Private Media Sanctuary*
 
-[![Version](https://img.shields.io/badge/v2.8.4-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
+[![Version](https://img.shields.io/badge/v2.8.5-Latest-brightgreen?style=for-the-badge)](https://github.com/Nwund/vault-project/releases)
 [![Platform](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-Platform-blue?style=for-the-badge)](https://github.com/Nwund/vault-project)
 [![Electron](https://img.shields.io/badge/Electron-32.0-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-19.2-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://react.dev)
@@ -33,6 +33,15 @@
 </div>
 
 <br/>
+
+## 🆕 v2.8.5 — AI Review scheduler + tagger sanity + regen-anywhere (2026-06-18)
+
+Bug-fix + small-feature release. Most of these came out of a long live-review session where the user surfaced model failure modes the calibration layer wasn't catching.
+
+- **Content-ratio scheduler in the AI processing queue** — animated/hentai content currently produces worse Tier 2 titles + descriptions than IRL, so the review backlog was clogging with garbage. The queue now interleaves at 50 real : 10 animated per cycle. Detection uses a media-tag check (any of `hentai` / `animation` / `3d` / `sfm` / `cartoon` / `drawn` on the item) plus filename/path keywords (`hentai`, `anime`, `koikatsu`, `honey select`, `mmd`, `blender`, `rule34`, etc.). If a bucket is empty the scheduler falls back to the other so the worker never idles.
+- **Trans/transgender/shemale/futa never auto-apply** — bare `trans` was firing on cis-female content constantly. The model overuses it. New `isAutoApplyBlocked()` in `canonical-tags.ts` runs the never-auto-apply checks **before** the canonical-wins shortcut in `isJunkTag()` (which was letting `trans` through because the tag exists in canonical for manual selection). Same gate catches "implied X" hedge forms that slipped past the prefix-strip. Used in tier3-tag-matcher, description-tag-extractor, and the Tier 2 richTags filter — but NOT in the cleanup IPC, so existing manually-applied `trans` tags survive. `mtf` and `ftm` still auto-apply, gated by the existing corroboration rule (must have another trans indicator OR conf ≥ 0.85).
+- **Description no longer concatenates JoyCaption local caption** — Venice's description was getting a `[Local caption]` block appended from the JoyCaption sidecar, intended for backend tag-mining but ugly in the UI. The companion JoyCaption `tags-danbooru` call already feeds tag candidates directly into rich_tags, so removing the description concat doesn't lose tag-extraction signal. Sidecar still runs; user just sees one clean description.
+- **`ai:regenerate-title` / `ai:regenerate-description` work on never-analyzed media** — both IPCs were throwing "No analysis record found" because they `INNER JOIN`'d on `ai_analysis_results`. Switched to `LEFT JOIN media` and an `INSERT … ON CONFLICT(media_id) DO UPDATE` so the row gets created on first regen instead of silently no-op'ing. Tier 1 hints just stay empty when there's no prior context.
 
 ## 🆕 v2.8.4 — Theme reactivity + AI Review polish + LAION installer (2026-05-25)
 

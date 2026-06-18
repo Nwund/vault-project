@@ -7,6 +7,61 @@ For per-session work logs (the live ground truth), see **[SESSION_NOTES.md](SESS
 
 ---
 
+## v2.8.5 — 2026-06-18 — AI Review scheduler + tagger sanity + regen-anywhere
+
+Bug-fix release driven by a live-review session. Most fixes address Tier 2 failure modes that the calibration layer + exclusion rules weren't catching.
+
+### Content-ratio scheduler
+
+The Tier 2 model (Venice vision) currently produces low-quality titles + descriptions on animated/hentai content compared with IRL. The review queue was filling with unusable animated items faster than the user could clear them, blocking progress on IRL.
+
+`ProcessingQueue.getNextItem` now interleaves the two buckets at a fixed ratio: 50 real, then 10 animated, repeating. State lives on the queue instance — counters increment after each `processItem` (success or fail) and a bucket-switch logs to the console.
+
+Detection uses two SQL signals:
+- Existing tags on the media — any of `hentai`, `animation`, `animated`, `3d`, `sfm`, `cartoon`, `drawn`, `hentai animation`.
+- Filename / path keywords — `hentai`, `anime`, `animated`, `cartoon`, `sfm`, `koikatsu`, `honey select`, `mmd`, `blender`, `rule34`, `r34`, plus folder hits like `\hentai\`, `\anime\`, `\3d\`.
+
+Bucket-empty fallback: if the preferred mode has no pending items, the query falls back to the other mode and the scheduler quietly switches to match. Worker never idles on a depleted bucket.
+
+Tunable in one place — `REAL_PER_BATCH` and `ANIM_PER_BATCH` constants at the top of `processing-queue.ts`.
+
+### `isAutoApplyBlocked` — bare trans/transgender/shemale/futa never auto-apply
+
+User repeatedly reported `trans` tags appearing on cis-female content. Root cause: `isJunkTag()` checks `CANONICAL_TAGS.has(t)` *before* `CAPTIONER_NOISE`, and `trans` lives in both sets — canonical so users can manually pick it, noise so auto-apply drops it. The canonical-wins shortcut let `trans` through every filter.
+
+Fix is a new `isAutoApplyBlocked()` function in `canonical-tags.ts` that runs the never-auto-apply checks *before* canonical-wins. Wired into the three auto-apply paths:
+- `tier3-tag-matcher.ts` — `expandAndMatch` + co-suggestion pass.
+- `description-tag-extractor.ts` — description-mining filter.
+- `tier2-vision-llm.ts` — `richTags` filter + atom decomposition.
+
+Deliberately NOT wired into the cleanup IPC (`ai:cleanup-tags`), which uses `isJunkTag` to decide which tags to delete from the user's library. Existing manually-applied `trans` tags survive.
+
+Also catches hedge-prefix forms (`implied X`, `possible X`, `appears to be X`) that slip past `normalizeToCanonical`'s strip when the bare form happens to be canonical.
+
+`mtf` / `ftm` auto-apply behavior unchanged — already gated by the existing corroboration rule in `tag-exclusion-rules.ts` (require another trans indicator OR conf ≥ 0.85).
+
+### JoyCaption no longer doubles into the description field
+
+The processing-queue concat at `processing-queue.ts:999` was appending JoyCaption's descriptive output to Venice's description as `\n\n[Local caption]\n${jcDesc}`, intended to give the description-tag-extractor two corpora to mine. The side effect — every item showed two captions in the description field — was worse than the benefit, since the companion JoyCaption call (`style: 'tags-danbooru'`) already feeds tag candidates directly into rich_tags.
+
+Now the JoyCaption descriptive caption is only used as the primary description when Venice produced nothing (sidecar-only path). The log line is kept for debugging.
+
+### `ai:regenerate-title` / `ai:regenerate-description` work on never-analyzed media
+
+Both IPCs were throwing `No analysis record found for this media` because the SQL `INNER JOIN`'d `ai_analysis_results` on the media. Items that had never been analyzed (or whose row was wiped) failed regen entirely.
+
+Fix:
+- `INNER JOIN ai_analysis_results` → `LEFT JOIN ai_analysis_results`, so the query succeeds on any media that exists. Tier 1 hints just stay empty when there's no prior context.
+- `UPDATE ai_analysis_results SET …` → `INSERT … ON CONFLICT(media_id) DO UPDATE SET …` — the `media_id` column has a `UNIQUE` constraint, so the UPSERT creates the row on first regen instead of silently no-op'ing.
+
+Same shape applied to the streaming variant `ai:regenerate-field-stream`.
+
+### JoyCaption client error surfacing
+
+`joycaption-client.ts caption()` was returning `null` for four different failure modes — file missing, file unreadable, sidecar error response, HTTP call exception — with one generic warning that didn't distinguish them. Added one specific log line per failure mode so triage from `vault.log` is possible without re-running.
+
+---
+
 ## v2.8.4 — 2026-05-25 — Theme reactivity + AI Review polish + LAION installer
 
 (v2.8.3 was the build-fix tag — see commit `8f241bd`. This entry covers the user-facing UI work + the LAION installer that landed on top of it.)

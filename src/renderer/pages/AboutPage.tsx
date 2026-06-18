@@ -21,7 +21,7 @@ export function AboutPage() {
   // would briefly see the wrong tier on every navigate.
   const [tier, setTier] = useState<string | null>(null)
   const [vaultStats, setVaultStats] = useState<any>(null)
-  const [appVersion, setAppVersion] = useState('2.7.1')
+  const [appVersion, setAppVersion] = useState('2.8.5')
 
   useEffect(() => {
     // Long timeout — only fires if the IPC truly hangs. 3s was racing
