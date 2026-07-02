@@ -7,6 +7,32 @@ For per-session work logs (the live ground truth), see **[SESSION_NOTES.md](SESS
 
 ---
 
+## v2.9.0 — 2026-07-02 — Playlist-aware AI review
+
+When the AI queue analyzes media, videos the user has manually filed into **named playlists** now scan first and get their playlist as context — so tags, titles, descriptions, and suggested filenames stay consistent within a curated collection.
+
+### Prioritize named-playlist members
+
+`ProcessingQueue.getNextItem`'s `interest_score` previously gave `+20` for membership in *any* playlist. That term now joins `playlists`, requires `COALESCE(isSmart, 0) = 0` (manual playlists only — smart/auto playlists are rule-derived, not curation), and scores `+1000`, so named-playlist members dominate the secondary sort and are analyzed first. Still ordered under the explicit `q.priority DESC` key, so a manual requeue still wins.
+
+### Inject playlist context as a Tier 2 soft prior
+
+New shared module `services/ai-intelligence/playlist-context.ts` → `buildPlaylistContextBlock(rawDb, mediaId)`. For a given media it gathers:
+
+- the named (manual) playlist(s) it belongs to,
+- the top-20 most common tags across the sibling videos in those playlists (`media_tags` → `tags`),
+- up to 6 example sibling titles (`ai_analysis_results.approved_title` ?? `suggested_title`).
+
+It renders a `PLAYLIST CONTEXT — …soft prior…` block that instructs the model to use the playlist name(s) as a prior for tags/title/description while overriding it if the frames clearly disagree. Returns `''` when the media is in no named playlist (append is then a no-op). All queries are try/catch-wrapped so a lookup failure degrades to no context rather than breaking analysis.
+
+The block is appended to the Tier 2 catch-all context string in `processing-queue.ts` (alongside the OCR / audio / metadata / style blocks), so it influences tags, title, description, **and** the suggested filename (rename) in a single pass.
+
+### Regenerate uses it too
+
+The one-off regenerate IPCs now share the same prior. `Tier2VisionLLM.regenerateField` and `regenerateFieldStream` accept an optional `playlistContext` string, injected into the prompt after the "Previous title/description was…" line. The `ai:regenerate-title`, `ai:regenerate-description`, and `ai:regenerate-field-stream` handlers in `services/ai-intelligence/index.ts` pass `buildPlaylistContextBlock(rawDb, mediaId)`, so a manual regenerate on a playlist member stays consistent with the collection.
+
+---
+
 ## v2.8.5 — 2026-06-18 — AI Review scheduler + tagger sanity + regen-anywhere
 
 Bug-fix release driven by a live-review session. Most fixes address Tier 2 failure modes that the calibration layer + exclusion rules weren't catching.

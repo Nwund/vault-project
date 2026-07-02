@@ -17,6 +17,7 @@ import { analyzeAudioTrack, renderAudioBlockForPrompt, audioFingerprintToTagPrio
 import { analyzeMediaMetadata, renderMetadataBlockForPrompt } from './media-metadata-signals'
 import { renderStyleBlockForPrompt, getVocabPreference } from './style-learner'
 import { priorsForMediaPath } from './learning-helpers'
+import { buildPlaylistContextBlock } from './playlist-context'
 import { getJoyCaptionClient } from './joycaption-client'
 import { detectDomains } from './domain-detector'
 import { generateContactSheet } from './contact-sheet'
@@ -537,11 +538,15 @@ export class ProcessingQueue {
     //   1. explicit priority field (manual prioritization, requeue)
     //   2. USER INTEREST signals — items the user has interacted with
     //      should be tagged first regardless of duration. Sum of:
+    //         - in a named (manual) playlist → +1000 (dominant: the user
+    //           deliberately curated it into a themed group, so it scans
+    //           first AND gets playlist context injected into Tier 2)
     //         - rating  >= 5 (favorite)   → +30
     //         - viewCount > 0             → +15
     //         - oCount   > 0              → +20 (orgasm count = strong signal)
-    //         - in any playlist           → +20
     //      Computed as an interest_score and used as secondary sort.
+    //      Smart/auto playlists (isSmart=1) are excluded — their
+    //      membership is rule-derived, not a human curation signal.
     //   3. shortest duration first (quick feedback on short clips)
     //   4. id ASC tiebreaker
     //
@@ -560,7 +565,11 @@ export class ProcessingQueue {
           (CASE WHEN COALESCE(ms.rating, 0) >= 5 THEN 30 ELSE 0 END) +
           (CASE WHEN COALESCE(ms.views, 0) > 0 THEN 15 ELSE 0 END) +
           (CASE WHEN COALESCE(ms.oCount, 0) > 0 THEN 20 ELSE 0 END) +
-          (CASE WHEN EXISTS (SELECT 1 FROM playlist_items pi WHERE pi.mediaId = q.media_id) THEN 20 ELSE 0 END)
+          (CASE WHEN EXISTS (
+            SELECT 1 FROM playlist_items pi
+            JOIN playlists p ON p.id = pi.playlistId
+            WHERE pi.mediaId = q.media_id AND COALESCE(p.isSmart, 0) = 0
+          ) THEN 1000 ELSE 0 END)
         ) AS interest_score,
         (${ANIMATED_PREDICATE_SQL}) AS is_animated
       FROM ai_processing_queue q
@@ -1040,6 +1049,16 @@ export class ProcessingQueue {
             console.warn('[ProcessingQueue] Similar-priors lookup failed:', err)
           }
 
+          // Playlist context — if the user has manually filed this media
+          // into one or more named playlists, feed the playlist name(s) +
+          // the common tags and example titles of its sibling videos to
+          // Tier 2 as a curated soft prior. Helps tagging, title, and
+          // description stay consistent within a themed collection.
+          const playlistBlock = buildPlaylistContextBlock(this.rawDb, item.mediaId)
+          if (playlistBlock) {
+            console.log(`[ProcessingQueue] Injecting playlist context for ${item.mediaId}`)
+          }
+
           // Multi-hypothesis Venice sampling — when veniceMultiSample > 1,
           // run the full analyze() N times and aggregate via voting.
           // Reduces hallucination because tags that only appeared in
@@ -1071,7 +1090,8 @@ export class ProcessingQueue {
               (ocrBlock ?? '') +
               (audioBlock ?? '') +
               (metadataBlock ?? '') +
-              renderStyleBlockForPrompt(this.rawDb),
+              renderStyleBlockForPrompt(this.rawDb) +
+              playlistBlock,
             similarApprovedExamples,
           ] as const
 

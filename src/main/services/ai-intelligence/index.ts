@@ -15,6 +15,7 @@ import { Tier1OnnxTagger } from './tier1-onnx-tagger'
 import { Tier2VisionLLM } from './tier2-vision-llm'
 import { Tier3TagMatcher } from './tier3-tag-matcher'
 import { ProcessingQueue } from './processing-queue'
+import { buildPlaylistContextBlock } from './playlist-context'
 import {
   encryptString,
   decryptString,
@@ -1587,6 +1588,9 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
       currentTitle: row.suggested_title,
       currentDescription: row.description,
       field,
+      // Named-playlist soft prior so one-off regen stays consistent with
+      // the collection the user filed this media into. '' when not in one.
+      playlistContext: buildPlaylistContextBlock(rawDb, mediaId),
     })
 
     // Persist the new value. UPSERT so first-time regen on a never-
@@ -1660,6 +1664,9 @@ function registerIpcHandlers(db: DB, mainWindow: BrowserWindow | null): void {
       currentTitle: row.suggested_title,
       currentDescription: row.description,
       field,
+      // Named-playlist soft prior so one-off regen stays consistent with
+      // the collection the user filed this media into. '' when not in one.
+      playlistContext: buildPlaylistContextBlock(rawDb, mediaId),
       onChunk: (delta, accumulated) => {
         try {
           ev.sender.send('ai:venice-chunk', { streamId, mediaId, field, delta, accumulated })

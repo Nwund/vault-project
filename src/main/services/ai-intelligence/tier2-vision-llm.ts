@@ -1026,6 +1026,10 @@ Walk through the 8 analysis steps internally, then return JSON only.`
     currentTitle: string | null
     currentDescription: string | null
     field: 'title' | 'description'
+    // Optional pre-rendered playlist-context soft prior (see
+    // playlist-context.ts). Empty string when the media is in no named
+    // playlist; injected verbatim into the prompt.
+    playlistContext?: string
   }): Promise<string | null> {
     if (!this.isEnabled()) throw new Error('Tier 2 not configured - missing API key')
     const valid = args.framePaths.filter((p) => fs.existsSync(p)).slice(0, 4)
@@ -1047,7 +1051,7 @@ Walk through the 8 analysis steps internally, then return JSON only.`
 Filename: "${args.filename}"
 Already-known tags: [${tier1List || 'none'}]
 ${otherField ? `Existing ${otherFieldLabel} (don't contradict): "${otherField}"` : ''}
-${prev ? `Previous title was: "${prev}" — produce a DIFFERENT, better one.` : ''}
+${prev ? `Previous title was: "${prev}" — produce a DIFFERENT, better one.` : ''}${args.playlistContext || ''}
 
 Reply with ONLY the new title (4-12 words, capitalized like a porn-site
 content title, vulgar OK, NO hedge words like "implied" / "appears to be").`
@@ -1055,7 +1059,7 @@ content title, vulgar OK, NO hedge words like "implied" / "appears to be").`
 Filename: "${args.filename}"
 Already-known tags: [${tier1List || 'none'}]
 ${otherField ? `Existing ${otherFieldLabel} (don't contradict): "${otherField}"` : ''}
-${prev ? `Previous description was: "${prev}" — produce a DIFFERENT, more accurate one.` : ''}
+${prev ? `Previous description was: "${prev}" — produce a DIFFERENT, more accurate one.` : ''}${args.playlistContext || ''}
 
 Reply with ONLY the new description, 2-3 sentences, EXPLICIT and SPECIFIC,
 porn-site-style vocabulary (cock, pussy, tits, cum, fuck, blowjob, etc.).
@@ -1110,6 +1114,10 @@ For VIDEOS, when temporal evidence is clear, write as a sequence
     currentDescription: string | null
     field: 'title' | 'description'
     onChunk: (delta: string, accumulated: string) => void
+    // Optional pre-rendered playlist-context soft prior (see
+    // playlist-context.ts). Empty string when the media is in no named
+    // playlist; injected verbatim into the prompt.
+    playlistContext?: string
   }): Promise<string | null> {
     if (!this.isEnabled()) throw new Error('Tier 2 not configured - missing API key')
     const valid = args.framePaths.filter((p) => fs.existsSync(p)).slice(0, 4)
@@ -1131,7 +1139,7 @@ For VIDEOS, when temporal evidence is clear, write as a sequence
 Filename: "${args.filename}"
 Already-known tags: [${tier1List || 'none'}]
 ${otherField ? `Existing ${otherFieldLabel} (don't contradict): "${otherField}"` : ''}
-${prev ? `Previous title was: "${prev}" — produce a DIFFERENT, better one.` : ''}
+${prev ? `Previous title was: "${prev}" — produce a DIFFERENT, better one.` : ''}${args.playlistContext || ''}
 
 Reply with ONLY the new title (4-12 words, capitalized like a porn-site
 content title, vulgar OK, NO hedge words like "implied" / "appears to be").`
@@ -1139,7 +1147,7 @@ content title, vulgar OK, NO hedge words like "implied" / "appears to be").`
 Filename: "${args.filename}"
 Already-known tags: [${tier1List || 'none'}]
 ${otherField ? `Existing ${otherFieldLabel} (don't contradict): "${otherField}"` : ''}
-${prev ? `Previous description was: "${prev}" — produce a DIFFERENT, more accurate one.` : ''}
+${prev ? `Previous description was: "${prev}" — produce a DIFFERENT, more accurate one.` : ''}${args.playlistContext || ''}
 
 Reply with ONLY the new description, 2-3 sentences, EXPLICIT and SPECIFIC,
 porn-site-style vocabulary (cock, pussy, tits, cum, fuck, blowjob, etc.).
