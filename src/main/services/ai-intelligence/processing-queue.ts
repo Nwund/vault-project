@@ -109,6 +109,19 @@ const ANIMATED_PREDICATE_SQL = `
   END
 `
 
+// SQL fragment that is true when a queue item belongs to at least one
+// NAMED (manual) playlist. Smart/auto playlists (isSmart=1) are excluded —
+// their membership is rule-derived, not human curation. Used both to bump
+// interest_score and to short-circuit selection ahead of the content-ratio
+// bucket filter (playlist members scan first regardless of real/animated).
+const NAMED_PLAYLIST_PREDICATE_SQL = `
+  EXISTS (
+    SELECT 1 FROM playlist_items pi
+    JOIN playlists p ON p.id = pi.playlistId
+    WHERE pi.mediaId = q.media_id AND COALESCE(p.isSmart, 0) = 0
+  )
+`
+
 export interface QueueStatus {
   total: number
   pending: number
@@ -534,13 +547,19 @@ export class ProcessingQueue {
   }
 
   private getNextItem(): QueueItem | null {
-    // Ordering priority (highest → lowest):
+    // Selection order (highest → lowest):
+    //   0. NAMED-PLAYLIST members scan FIRST, regardless of content type.
+    //      A dedicated pass selects any pending manual-playlist member
+    //      before the content-ratio bucket filter is applied, so curated
+    //      videos (real OR animated) drain ahead of the interleave and get
+    //      playlist context injected into Tier 2. (See the playlist pass
+    //      below; the +1000 interest_score term still orders these members
+    //      among themselves and matters in the fallback pass.)
+    //   Then, within the normal (non-playlist) population:
     //   1. explicit priority field (manual prioritization, requeue)
     //   2. USER INTEREST signals — items the user has interacted with
     //      should be tagged first regardless of duration. Sum of:
-    //         - in a named (manual) playlist → +1000 (dominant: the user
-    //           deliberately curated it into a themed group, so it scans
-    //           first AND gets playlist context injected into Tier 2)
+    //         - in a named (manual) playlist → +1000
     //         - rating  >= 5 (favorite)   → +30
     //         - viewCount > 0             → +15
     //         - oCount   > 0              → +20 (orgasm count = strong signal)
@@ -555,9 +574,10 @@ export class ProcessingQueue {
     // query. media_stats join is also LEFT — unwatched items have NULL
     // stats and naturally get interest_score=0.
     //
-    // Content-ratio scheduler: filter by is_animated based on the
-    // current mode. If no items match the mode, fall through to the
-    // other mode so the queue doesn't stall on a depleted bucket.
+    // Content-ratio scheduler (applies only AFTER playlist members are
+    // exhausted): filter by is_animated based on the current mode. If no
+    // items match the mode, fall through to the other mode so the queue
+    // doesn't stall on a depleted bucket.
     const wantAnimated = this.contentMode === 'animated' ? 1 : 0
     const baseSelect = `
       SELECT q.id, q.media_id, q.status, q.priority, q.tier1_done, q.tier2_needed, q.tier2_done, q.error,
@@ -565,11 +585,7 @@ export class ProcessingQueue {
           (CASE WHEN COALESCE(ms.rating, 0) >= 5 THEN 30 ELSE 0 END) +
           (CASE WHEN COALESCE(ms.views, 0) > 0 THEN 15 ELSE 0 END) +
           (CASE WHEN COALESCE(ms.oCount, 0) > 0 THEN 20 ELSE 0 END) +
-          (CASE WHEN EXISTS (
-            SELECT 1 FROM playlist_items pi
-            JOIN playlists p ON p.id = pi.playlistId
-            WHERE pi.mediaId = q.media_id AND COALESCE(p.isSmart, 0) = 0
-          ) THEN 1000 ELSE 0 END)
+          (CASE WHEN ${NAMED_PLAYLIST_PREDICATE_SQL} THEN 1000 ELSE 0 END)
         ) AS interest_score,
         (${ANIMATED_PREDICATE_SQL}) AS is_animated
       FROM ai_processing_queue q
@@ -584,9 +600,17 @@ export class ProcessingQueue {
                q.id ASC
       LIMIT 1
     `
-    // Preferred-bucket pass — only return items matching current mode.
-    let row = this.rawDb.prepare(`${baseSelect} AND (${ANIMATED_PREDICATE_SQL}) = ${wantAnimated} ${orderClause}`).get() as any
+    // Playlist-priority pass — named (manual) playlist members scan FIRST,
+    // regardless of the real/animated content bucket. The user deliberately
+    // curated these into themed groups, so honor that ahead of the
+    // interleave; the content-ratio scheduler only governs everything else.
+    // This finite set drains before normal cadence resumes.
+    let row = this.rawDb.prepare(`${baseSelect} AND ${NAMED_PLAYLIST_PREDICATE_SQL} ${orderClause}`).get() as any
     let fellBack = false
+    if (!row) {
+      // Preferred-bucket pass — only return items matching current mode.
+      row = this.rawDb.prepare(`${baseSelect} AND (${ANIMATED_PREDICATE_SQL}) = ${wantAnimated} ${orderClause}`).get() as any
+    }
     if (!row) {
       // Fallback: bucket is depleted — pick from the other mode rather
       // than idle the worker. Reset counters so the next refill kicks

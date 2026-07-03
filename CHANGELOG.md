@@ -7,6 +7,23 @@ For per-session work logs (the live ground truth), see **[SESSION_NOTES.md](SESS
 
 ---
 
+## v2.9.1 — 2026-07-02 — Playlist members scan first regardless of content type
+
+Follow-up to v2.9.0. The named-playlist prioritization lived inside `interest_score`, which is a *secondary* sort key — subordinate to the content-ratio scheduler's `is_animated` hard `WHERE` filter. So an **animated** playlist member (or even a priority-1 requeue of one) waited behind real items until an animated batch came around. Curated videos should scan first no matter their type.
+
+### Playlist-priority selection pass
+
+`ProcessingQueue.getNextItem` now runs a dedicated pass **before** the content bucket filter:
+
+- New `NAMED_PLAYLIST_PREDICATE_SQL` constant (manual playlists only — `COALESCE(isSmart,0)=0`), reused by both the `interest_score` term and the new pass.
+- Selection order is now: **(0) any pending named-playlist member, ignoring the real/animated bucket** → (1) preferred-bucket pass (current content mode) → (2) depletion fallback. Playlist members — real *and* animated — drain ahead of the 50:10 interleave; the content-ratio scheduler governs everything else.
+
+The `+1000 interest_score` term stays: it orders playlist members among themselves and still applies in the fallback pass.
+
+Verified in the running app: an animated ("animation"-tagged) playlist member is now selected first while the scheduler is in `real` mode (`interest_score=1045`), with no bucket-depletion fallback — confirming the selection came from the new playlist pass.
+
+---
+
 ## v2.9.0 — 2026-07-02 — Playlist-aware AI review
 
 When the AI queue analyzes media, videos the user has manually filed into **named playlists** now scan first and get their playlist as context — so tags, titles, descriptions, and suggested filenames stay consistent within a curated collection.
