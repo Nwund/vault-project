@@ -79,5 +79,8 @@ New folder/
 *.backup
 .gitignore.txt
 
-# Mobile app (separate project)
-vault-mobile/
+# Mobile companion app — source IS tracked (its own .gitignore excludes
+# node_modules/.expo). Only ignore its heavy/generated trees here as a guard.
+vault-mobile/node_modules/
+vault-mobile/.expo/
+vault-mobile/dist/

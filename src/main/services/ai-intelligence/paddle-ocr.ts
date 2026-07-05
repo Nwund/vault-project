@@ -251,13 +251,21 @@ async function preprocessForCrnn(
       .raw()
       .toBuffer({ resolveWithObject: true })
 
-    // PaddleOCR CRNN normalization: (x / 255 - 0.5) / 0.5
-    const out = new Float32Array(1 * 1 * CRNN_INPUT_HEIGHT * targetW)
-    for (let i = 0; i < data.length; i++) {
-      out[i] = (data[i] / 255 - 0.5) / 0.5
+    // PaddleOCR CRNN recognition models expect 3-channel NCHW input
+    // ([1, 3, 32, W]). Feeding a 1-channel greyscale tensor tripped ORT's
+    // "Got invalid dimensions for input" on every box (recognition produced
+    // nothing). Replicate the greyscale value across all 3 channels with the
+    // standard (x/255 - 0.5)/0.5 normalization.
+    const plane = CRNN_INPUT_HEIGHT * targetW
+    const out = new Float32Array(3 * plane)
+    for (let i = 0; i < plane; i++) {
+      const v = (data[i] / 255 - 0.5) / 0.5
+      out[i] = v            // R
+      out[plane + i] = v    // G
+      out[2 * plane + i] = v // B
     }
     return {
-      tensor: new ort.Tensor('float32', out, [1, 1, CRNN_INPUT_HEIGHT, targetW]),
+      tensor: new ort.Tensor('float32', out, [1, 3, CRNN_INPUT_HEIGHT, targetW]),
       width: targetW,
     }
   } catch (err) {
@@ -295,6 +303,11 @@ export async function runDbCrnnOcr(imagePath: string): Promise<string[]> {
     // Cap the per-frame box count — heavy frames (full-screen subtitle
     // walls) would otherwise cause runaway CRNN cost.
     const limited = boxes.slice(0, 25)
+    // Count per-box recognition failures and log ONE compact summary at the
+    // end instead of a warning per box — a broken CRNN would otherwise emit
+    // dozens of identical lines per frame and drown the log.
+    let crnnFailed = 0
+    let firstErr: unknown = null
     for (const box of limited) {
       const pre = await preprocessForCrnn(imagePath, box)
       if (!pre) continue
@@ -313,8 +326,12 @@ export async function runDbCrnnOcr(imagePath: string): Promise<string[]> {
         if (text.length >= 2) results.push(text)
       } catch (err) {
         // Individual box recognition failures shouldn't kill the whole pass.
-        console.warn('[PaddleOCR] CRNN inference failed for box:', err)
+        crnnFailed++
+        if (!firstErr) firstErr = err
       }
+    }
+    if (crnnFailed > 0) {
+      console.warn(`[PaddleOCR] CRNN recognition failed on ${crnnFailed}/${limited.length} text box(es); skipped. First error: ${(firstErr as any)?.message ?? firstErr}`)
     }
     return results
   } catch (err) {

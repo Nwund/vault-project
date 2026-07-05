@@ -60,6 +60,7 @@ class MobileSyncService extends EventEmitter {
   public getPlaylists: (() => Promise<any[]>) | null = null
   public getPlaylistItems: ((id: string) => Promise<any[]>) | null = null
   public addPlaylistItems: ((playlistId: string, mediaIds: string[]) => Promise<void>) | null = null
+  public createPlaylist: ((name: string) => Promise<any>) | null = null
   public getTags: (() => Promise<string[]>) | null = null
   public getThumbPath: ((mediaPath: string) => Promise<string | null>) | null = null
   public generateThumb: ((mediaId: string) => Promise<string | null>) | null = null
@@ -84,6 +85,27 @@ class MobileSyncService extends EventEmitter {
   public getWatchHistory: ((since?: number) => Promise<Array<{ mediaId: string; views: number; lastViewedAt: number }>>) | null = null
   public syncWatchHistory: ((items: Array<{ mediaId: string; viewedAt: number }>) => Promise<{ synced: number }>) | null = null
   public getSyncState: (() => Promise<{ lastSync: number; mediaCount: number; favoritesCount: number }>) | null = null
+
+  // AI review (tagging) — drive the PC's review queue from the phone.
+  // Each list item is enriched with `appliedTags` (the media's real
+  // current tags) so the phone can show what's actually on the video.
+  public getReviewList: ((opts?: { status?: 'pending' | 'approved' | 'rejected' | 'all'; limit?: number; offset?: number }) => Promise<{ items: any[]; total: number }>) | null = null
+  public approveReview: ((mediaId: string, edits: any) => Promise<{ success: boolean }>) | null = null
+  public rejectReview: ((mediaId: string) => Promise<{ success: boolean }>) | null = null
+  public regenerateReviewField: ((mediaId: string, field: 'title' | 'description') => Promise<string | null>) | null = null
+
+  // AI scan queue — queue media from the phone to be analyzed on the PC so
+  // more items flow into the review queue. Enqueue actions ensure the queue
+  // is running (Tier 2 enabled) so scanning starts automatically.
+  public getQueueStatus: (() => Promise<any>) | null = null
+  public enqueueMedia: ((mediaIds: string[]) => Promise<any>) | null = null
+  public enqueueUntagged: (() => Promise<any>) | null = null
+  public startQueue: (() => Promise<any>) | null = null
+  public stopQueue: (() => Promise<any>) | null = null
+  public setVeniceEnabled: ((enabled: boolean) => Promise<any>) | null = null
+
+  // Remove a single tag from a media item (phone tag-editing).
+  public removeMediaTag: ((mediaId: string, tag: string) => Promise<any>) | null = null
 
   constructor() {
     super()
@@ -343,6 +365,55 @@ class MobileSyncService extends EventEmitter {
         return this.handleRecordView(res, mediaId)
       }
 
+      // ── AI review (tagging) — phone drives the PC's review queue ──────
+      // GET /api/review?status=pending|approved|rejected|all&limit=&offset=
+      if (pathname === '/api/review' && req.method === 'GET') {
+        return this.handleReviewList(res, url)
+      }
+      // POST /api/review/:id/approve  (body: { selectedTagIds, newTags, editedTitle, editedDescription, ... })
+      if (pathname.startsWith('/api/review/') && pathname.endsWith('/approve') && req.method === 'POST') {
+        const mediaId = pathname.replace('/api/review/', '').replace('/approve', '')
+        return this.handleReviewApprove(req, res, mediaId)
+      }
+      // POST /api/review/:id/reject
+      if (pathname.startsWith('/api/review/') && pathname.endsWith('/reject') && req.method === 'POST') {
+        const mediaId = pathname.replace('/api/review/', '').replace('/reject', '')
+        return this.handleReviewReject(res, mediaId)
+      }
+      // POST /api/review/:id/regenerate  (body: { field: 'title' | 'description' })
+      if (pathname.startsWith('/api/review/') && pathname.endsWith('/regenerate') && req.method === 'POST') {
+        const mediaId = pathname.replace('/api/review/', '').replace('/regenerate', '')
+        return this.handleReviewRegenerate(req, res, mediaId)
+      }
+
+      // ── AI scan queue — queue media from the phone to be analyzed on PC ──
+      if (pathname === '/api/queue/status' && req.method === 'GET') {
+        return this.handleQueueStatus(res)
+      }
+      if (pathname === '/api/queue/enqueue' && req.method === 'POST') {
+        return this.handleQueueEnqueue(req, res)  // body: { mediaIds: string[] }
+      }
+      if (pathname === '/api/queue/untagged' && req.method === 'POST') {
+        return this.handleQueueUntagged(res)
+      }
+      if (pathname === '/api/queue/start' && req.method === 'POST') {
+        return this.handleQueueControl(res, 'start')
+      }
+      if (pathname === '/api/queue/stop' && req.method === 'POST') {
+        return this.handleQueueControl(res, 'stop')
+      }
+      // POST /api/queue/venice  (body: { enabled: boolean }) — toggle Venice (Tier 2)
+      if (pathname === '/api/queue/venice' && req.method === 'POST') {
+        return this.handleSetVenice(req, res)
+      }
+
+      // POST /api/media/:id/tags/remove  (body: { tag: string }) — remove a
+      // tag from a media item (the "On this media" tags on the phone).
+      if (pathname.startsWith('/api/media/') && pathname.endsWith('/tags/remove') && req.method === 'POST') {
+        const mediaId = pathname.replace('/api/media/', '').replace('/tags/remove', '')
+        return this.handleRemoveMediaTag(req, res, mediaId)
+      }
+
       // GET /api/media/:id/stats - Get stats for a media item
       if (pathname.startsWith('/api/media/') && pathname.endsWith('/stats')) {
         const mediaId = pathname.replace('/api/media/', '').replace('/stats', '')
@@ -409,6 +480,10 @@ class MobileSyncService extends EventEmitter {
       // GET /api/sync/state - Get current sync state
       if (pathname === '/api/sync/state' && req.method === 'GET') {
         return this.handleGetSyncState(res)
+      }
+
+      if (pathname === '/api/playlists' && req.method === 'POST') {
+        return this.handleCreatePlaylist(req, res)  // body: { name }
       }
 
       if (pathname === '/api/playlists') {
@@ -749,6 +824,140 @@ class MobileSyncService extends EventEmitter {
     }
   }
 
+  // ── AI review handlers ────────────────────────────────────────────────
+  private async handleReviewList(res: http.ServerResponse, url: URL): Promise<void> {
+    if (!this.getReviewList) {
+      return this.sendError(res, 500, 'Review service not available')
+    }
+    try {
+      const raw = url.searchParams.get('status') || 'pending'
+      const status = (['pending', 'approved', 'rejected', 'all'].includes(raw) ? raw : 'pending') as any
+      const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '50', 10) || 50, 1), 200)
+      const offset = Math.max(parseInt(url.searchParams.get('offset') || '0', 10) || 0, 0)
+      const result = await this.getReviewList({ status, limit, offset })
+      return this.sendJson(res, result)
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleReviewApprove(req: http.IncomingMessage, res: http.ServerResponse, mediaId: string): Promise<void> {
+    if (!this.approveReview) {
+      return this.sendError(res, 500, 'Review service not available')
+    }
+    try {
+      // Body is optional — a bare approve keeps the AI's suggestions as-is.
+      const body = await this.parseJsonBody(req).catch(() => ({}))
+      const result = await this.approveReview(mediaId, body || {})
+      console.log('[MobileSync] Approved review for', mediaId)
+      return this.sendJson(res, result)
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleReviewReject(res: http.ServerResponse, mediaId: string): Promise<void> {
+    if (!this.rejectReview) {
+      return this.sendError(res, 500, 'Review service not available')
+    }
+    try {
+      const result = await this.rejectReview(mediaId)
+      console.log('[MobileSync] Rejected review for', mediaId)
+      return this.sendJson(res, result)
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleReviewRegenerate(req: http.IncomingMessage, res: http.ServerResponse, mediaId: string): Promise<void> {
+    if (!this.regenerateReviewField) {
+      return this.sendError(res, 500, 'Review service not available')
+    }
+    try {
+      const body = await this.parseJsonBody(req).catch(() => ({}))
+      const field = body?.field === 'description' ? 'description' : 'title'
+      const value = await this.regenerateReviewField(mediaId, field)
+      console.log('[MobileSync] Regenerated', field, 'for', mediaId)
+      return this.sendJson(res, { success: true, field, value })
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  // ── AI scan queue handlers ────────────────────────────────────────────
+  private async handleQueueStatus(res: http.ServerResponse): Promise<void> {
+    if (!this.getQueueStatus) return this.sendError(res, 500, 'Queue service not available')
+    try {
+      return this.sendJson(res, await this.getQueueStatus())
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleQueueEnqueue(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (!this.enqueueMedia) return this.sendError(res, 500, 'Queue service not available')
+    try {
+      const body = await this.parseJsonBody(req)
+      const ids = Array.isArray(body?.mediaIds) ? body.mediaIds.filter((x: any) => typeof x === 'string') : []
+      if (ids.length === 0) return this.sendError(res, 400, 'mediaIds (non-empty array) required')
+      const result = await this.enqueueMedia(ids)
+      console.log('[MobileSync] Enqueued', ids.length, 'media for AI scan')
+      return this.sendJson(res, result)
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleQueueUntagged(res: http.ServerResponse): Promise<void> {
+    if (!this.enqueueUntagged) return this.sendError(res, 500, 'Queue service not available')
+    try {
+      const result = await this.enqueueUntagged()
+      console.log('[MobileSync] Enqueued untagged media for AI scan')
+      return this.sendJson(res, result)
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleQueueControl(res: http.ServerResponse, action: 'start' | 'stop'): Promise<void> {
+    const fn = action === 'start' ? this.startQueue : this.stopQueue
+    if (!fn) return this.sendError(res, 500, 'Queue service not available')
+    try {
+      const result = await fn()
+      console.log('[MobileSync] Queue', action)
+      return this.sendJson(res, result)
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleSetVenice(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (!this.setVeniceEnabled) return this.sendError(res, 500, 'Queue service not available')
+    try {
+      const body = await this.parseJsonBody(req)
+      const enabled = !!body?.enabled
+      const result = await this.setVeniceEnabled(enabled)
+      console.log('[MobileSync] Venice (Tier 2) set to', enabled)
+      return this.sendJson(res, result)
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleRemoveMediaTag(req: http.IncomingMessage, res: http.ServerResponse, mediaId: string): Promise<void> {
+    if (!this.removeMediaTag) return this.sendError(res, 500, 'Tag service not available')
+    try {
+      const body = await this.parseJsonBody(req)
+      const tag = typeof body?.tag === 'string' ? body.tag.trim() : ''
+      if (!tag) return this.sendError(res, 400, 'tag (string) required')
+      const result = await this.removeMediaTag(mediaId, tag)
+      console.log('[MobileSync] Removed tag', tag, 'from', mediaId)
+      return this.sendJson(res, result)
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
   private async handleMediaStream(req: http.IncomingMessage, res: http.ServerResponse, mediaId: string): Promise<void> {
     if (!this.getMediaById) {
       return this.sendError(res, 500, 'Media service not available')
@@ -879,10 +1088,27 @@ class MobileSyncService extends EventEmitter {
           id: p.id,
           name: p.name,
           itemCount: p.itemCount || 0,
+          thumbId: p.thumbId || undefined,
           createdAt: p.createdAt,
           isSmart: !!p.isSmart
         }))
       })
+    } catch (err: any) {
+      return this.sendError(res, 500, err.message)
+    }
+  }
+
+  private async handleCreatePlaylist(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (!this.createPlaylist) {
+      return this.sendError(res, 500, 'Playlist service not available')
+    }
+    try {
+      const body = await this.parseJsonBody(req)
+      const name = typeof body?.name === 'string' ? body.name.trim() : ''
+      if (!name) return this.sendError(res, 400, 'name (string) required')
+      const playlist = await this.createPlaylist(name)
+      console.log('[MobileSync] Created playlist', name)
+      return this.sendJson(res, { success: true, playlist })
     } catch (err: any) {
       return this.sendError(res, 500, err.message)
     }
@@ -897,12 +1123,16 @@ class MobileSyncService extends EventEmitter {
       const items = await this.getPlaylistItems(playlistId)
       return this.sendJson(res, {
         id: playlistId,
+        // The slot returns flat media rows (id, filename, …). Read item.id
+        // first — the old item.media?.id / item.mediaId were always undefined
+        // for this shape, so every item came back with id:undefined and
+        // couldn't be played.
         items: items.map((item: any) => ({
-          id: item.media?.id || item.mediaId,
-          filename: item.media?.filename || item.filename,
-          type: item.media?.type || item.type,
-          durationSec: item.media?.durationSec || item.durationSec,
-          hasThumb: !!(item.media?.thumbPath || item.thumbPath)
+          id: item.id || item.media?.id || item.mediaId,
+          filename: item.filename || item.media?.filename,
+          type: item.type || item.media?.type,
+          durationSec: item.durationSec ?? item.media?.durationSec,
+          hasThumb: !!(item.thumbPath || item.media?.thumbPath)
         }))
       })
     } catch (err: any) {

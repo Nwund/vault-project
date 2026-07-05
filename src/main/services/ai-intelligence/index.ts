@@ -151,6 +151,16 @@ let tier2Vision: Tier2VisionLLM | null = null
 let tier3Matcher: Tier3TagMatcher | null = null
 let processingQueue: ProcessingQueue | null = null
 
+/**
+ * Accessor for the module-private processing-queue singleton so other
+ * main-process modules (e.g. the mobile-sync HTTP server, which drives the
+ * review queue from the phone) can reach the review methods. Returns null
+ * until initializeAiIntelligence() has constructed the queue.
+ */
+export function getProcessingQueue(): ProcessingQueue | null {
+  return processingQueue
+}
+
 export function initializeAiIntelligence(
   db: DB,
   ffmpegPath: string,

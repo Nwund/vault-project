@@ -146,6 +146,12 @@ export function AiTaggerPage() {
   // until approve fires (then sent as newTags). Used to render them as
   // clickable chips alongside the AI suggestions.
   const [customTagsPending, setCustomTagsPending] = useState<string[]>([])
+  // The tags ACTUALLY on the selected media right now (from media_tags —
+  // the source of truth), independent of the AI's matched/new suggestions.
+  // Surfaced so tags the user added on approve are visible in the review
+  // pane (esp. the Approved tab), which otherwise only renders AI-suggested
+  // tags and made added tags look like they hadn't saved.
+  const [appliedTags, setAppliedTags] = useState<string[]>([])
   // Co-occurrence suggestions — tags that strongly co-occur with the
   // current selection in approved media. Refreshes on selection change
   // with a debounce to coalesce burst toggles.
@@ -1311,6 +1317,24 @@ export function AiTaggerPage() {
       setTagCategoryMap({})
     }
   }
+
+  // Load the media's ACTUAL current tags whenever the selected item
+  // changes, so the pane can show what's really applied (including tags
+  // the user added on a prior approve) rather than only AI suggestions.
+  useEffect(() => {
+    if (!selectedReviewItem) { setAppliedTags([]); return }
+    let cancelled = false
+    window.api.tags.forMedia?.(selectedReviewItem.mediaId)
+      .then((rows: any) => {
+        if (cancelled) return
+        const names = (Array.isArray(rows) ? rows : [])
+          .map((r: any) => String(r?.name ?? r ?? '').trim())
+          .filter(Boolean)
+        setAppliedTags(names)
+      })
+      .catch(() => { if (!cancelled) setAppliedTags([]) })
+    return () => { cancelled = true }
+  }, [selectedReviewItem])
 
   // Refresh co-occurrence suggestions whenever the selection changes.
   // Debounced because clicking through many chips in quick succession
@@ -4176,6 +4200,23 @@ export function AiTaggerPage() {
                             </span>
                           )}
                         </div>
+                        {appliedTags.length > 0 && (
+                          <div className="rounded-lg border border-emerald-400/20 bg-emerald-500/5 px-2.5 py-2">
+                            <div className="text-[10px] uppercase tracking-wider mb-1.5 text-emerald-400/80">
+                              On this media <span className="opacity-60">· {appliedTags.length}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {appliedTags.map((name) => (
+                                <span
+                                  key={name}
+                                  className="px-2 py-0.5 rounded text-[11px] bg-emerald-500/15 text-emerald-200 border border-emerald-400/20"
+                                >
+                                  {name}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         {ORDER.map((g) => {
                           const arr = grouped.get(g.key) ?? []
                           if (arr.length === 0) return null

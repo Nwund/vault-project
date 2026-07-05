@@ -7,6 +7,31 @@ For per-session work logs (the live ground truth), see **[SESSION_NOTES.md](SESS
 
 ---
 
+## v2.10.0 — 2026-07-05 — Phone companion: AI review, scanning, playlists + fixes
+
+Big release centered on the **`vault-mobile`** companion app (now tracked in the repo) plus several desktop fixes. New mobile-sync HTTP endpoints let the phone drive the PC.
+
+### Phone AI Review (new)
+- Review screen with **Pending / Approved / Rejected** tabs; detail screen **plays the real video** (not just frames), edits **title + description** (with AI **Regenerate**), full **tag editing** including creating new tags and **tap-to-remove** the "On this media" tags, then **Approve / Reject**.
+- **Scan queue from the phone** — a scanner bar to **Scan untagged** / Start / Pause and per-video "Scan" buttons; the PC analyzes and results flow into Pending.
+- **Venice (Tier 2) toggle on the phone** — the scanner bar shows and toggles Venice ON/OFF. Phone-started scans now **respect the `tier2Enabled` setting** instead of forcing Venice on (previously a phone scan ran Venice even with the toggle off).
+- New endpoints: `GET/POST /api/review*`, `POST /api/queue/{enqueue,untagged,start,stop,venice}`, `GET /api/queue/status`, `POST /api/media/:id/tags/remove`.
+
+### Phone playlists (new + fixes)
+- **Sessions/playlists** now show correct **item counts** (the server never computed them → always "0 items") with cover thumbs.
+- **Fixed "can't watch playlist videos"** — the playlist-detail endpoint returned `id: undefined` for every item. New **playlist detail screen** lists a playlist's videos and plays them (the old nav sent a playlist id to the video player and errored).
+- **Create playlists** and **add videos to playlists** from the app (a "+" on Sessions, and an "Add to playlist" button on the video detail **and** the watch screen).
+- **Liked videos show a heart** in the library — `getMediaList`/`getMediaById` now return `rating`, so desktop-rated (★5) videos display as liked.
+
+### Desktop fixes (also in the AI Review pipeline)
+- **Feed randomness** — `media:randomByTags` drew the newest 500 and shuffled those; now it samples randomly across the whole library each shuffle (a >500-item library never showed its older items before).
+- **Edited titles now save everywhere** — `approveEdited` wrote `media.title` + `approved_title` but not `suggested_title` (what the review list reads), so edits looked lost. Now all three update; a one-time backfill fixed past edits.
+- **AI Review tag display** — approving with added tags now records them in `approved_tag_ids`, and the review pane shows the media's **actual** current tags.
+- **Reject re-queue** — rejecting an item upserts its queue row instead of a raw INSERT that hit `UNIQUE constraint failed` and dropped the requeue.
+- **PaddleOCR** — CRNN recognition now uses 3-channel input (fixing "invalid dimensions" on every box) and logs one summary instead of per-box spam.
+
+---
+
 ## v2.9.1 — 2026-07-02 — Playlist members scan first regardless of content type
 
 Follow-up to v2.9.0. The named-playlist prioritization lived inside `interest_score`, which is a *secondary* sort key — subordinate to the content-ratio scheduler's `is_animated` hard `WHERE` filter. So an **animated** playlist member (or even a priority-1 requeue of one) waited behind real items until an animated batch came around. Curated videos should scan first no matter their type.

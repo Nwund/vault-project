@@ -17,6 +17,7 @@ import { analyzeVideo, isAnalyzerAvailable } from './services/ai/video-analyzer'
 import { aiCleanupTags, aiGenerateTags, aiSuggestFilename, aiBatchRename, isOllamaAvailable } from './services/ai/ai-library-tools'
 import { getDLNAService } from './services/dlna-service'
 import { getMobileSyncService } from './services/mobile-sync-service'
+import { getProcessingQueue } from './services/ai-intelligence'
 import { getSmartPlaylistService, SMART_PLAYLIST_PRESETS } from './services/smart-playlists'
 import { getBatchOperationsService } from './services/batch-operations'
 import { getGlobalSearchService, type SearchOptions } from './services/global-search'
@@ -1571,12 +1572,20 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
   ipcMain.handle('media:randomByTags', async (_ev, tags: string[], opts?: any) => {
     const limit = opts?.limit ?? 50
     const typeFilter = opts?.type ?? 'video' // Default to video for Feed compatibility
+    // Draw a RANDOM sample across the whole matching set on every call
+    // (sortBy: 'random' → ORDER BY RANDOM()), not the first N by date.
+    // Previously this fetched the newest 500 (or newest 200 per tag) and
+    // shuffled only those in memory — so a library larger than 500 never
+    // surfaced its older items in the Feed, and every shuffle re-drew from
+    // the same fixed pool ("same stuff each shuffle"). Over-fetch a pool so
+    // there's headroom for blacklist removal + the Feed's seen-id dedup.
+    const pool = Math.max(limit * 4, 200)
     let items: any[] = []
     if (tags.length === 0) {
-      items = db.listMedia({ q: '', type: typeFilter, tag: '', limit: 500, offset: 0 }).items
+      items = db.listMedia({ q: '', type: typeFilter, tag: '', sortBy: 'random', limit: pool, offset: 0 }).items
     } else {
       for (const tag of tags) {
-        const result = db.listMedia({ q: '', type: typeFilter, tag, limit: 200, offset: 0 })
+        const result = db.listMedia({ q: '', type: typeFilter, tag, sortBy: 'random', limit: pool, offset: 0 })
         items.push(...result.items)
       }
       const seen = new Set<string>()
@@ -1588,7 +1597,7 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     }
     // Apply blacklist filtering
     items = applyBlacklist(items)
-    // Shuffle
+    // Final mix (esp. when unioning multiple tags), then cap to requested count.
     for (let i = items.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
       ;[items[i], items[j]] = [items[j], items[i]]
@@ -10323,6 +10332,119 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
 
   // Initialize mobile sync service dependencies
   const mobileSyncService = getMobileSyncService()
+
+  // ── AI review (tagging) slots — let the phone drive the review queue ──
+  // Looked up lazily (getProcessingQueue() at call time) because the queue
+  // is constructed after registerIpc() runs. Writes broadcast
+  // 'vault:changed' so the desktop review UI refreshes live.
+  mobileSyncService.getReviewList = async (opts) => {
+    const pq = getProcessingQueue()
+    if (!pq) return { items: [], total: 0 }
+    const result = pq.getReviewList(opts as any)
+    // Enrich each item with the media's ACTUAL current tags (source of
+    // truth) so the phone shows what's really applied — including tags the
+    // user added on a prior approve, mirroring the desktop review pane.
+    const withTags = result.items.map((item: any) => {
+      let appliedTags: string[] = []
+      try {
+        appliedTags = (db.raw.prepare(
+          `SELECT t.name FROM media_tags mt JOIN tags t ON t.id = mt.tagId WHERE mt.mediaId = ? ORDER BY t.name`
+        ).all(item.mediaId) as Array<{ name: string }>).map((r) => r.name)
+      } catch { /* leave empty */ }
+      return { ...item, appliedTags }
+    })
+    return { items: withTags, total: result.total }
+  }
+  mobileSyncService.approveReview = async (mediaId, edits) => {
+    const pq = getProcessingQueue()
+    if (!pq) throw new Error('AI not initialized')
+    const result = pq.approveEdited(mediaId, edits || {})
+    broadcast('vault:changed')
+    return result
+  }
+  mobileSyncService.rejectReview = async (mediaId) => {
+    const pq = getProcessingQueue()
+    if (!pq) throw new Error('AI not initialized')
+    const result = pq.reject(mediaId)
+    broadcast('vault:changed')
+    return result
+  }
+  mobileSyncService.regenerateReviewField = async (mediaId, field) => {
+    const pq = getProcessingQueue()
+    if (!pq) throw new Error('AI not initialized')
+    const value = await pq.regenerateField(mediaId, field)
+    broadcast('vault:changed')
+    return value
+  }
+
+  // ── AI scan queue slots — queue videos from the phone; the PC scans them ──
+  const ensureQueueRunning = async () => {
+    const pq = getProcessingQueue()
+    if (!pq) return
+    if (!pq.getStatus().isRunning) {
+      // Respect the user's Venice (Tier 2) toggle — do NOT force it on.
+      // If tier2Enabled is off, the scan runs local Tier 1 tagging only.
+      const enableTier2 = !!(getSettings().ai as any)?.tier2Enabled
+      try { await pq.start({ enableTier2, concurrency: 1 }) }
+      catch (e) { console.warn('[MobileSync] queue auto-start failed:', e) }
+    }
+  }
+  mobileSyncService.getQueueStatus = async () => {
+    const pq = getProcessingQueue()
+    const tier2Enabled = !!(getSettings().ai as any)?.tier2Enabled
+    if (!pq) return { isRunning: false, pending: 0, processing: 0, completed: 0, failed: 0, total: 0, untagged: 0, tier2Enabled }
+    const st = pq.getStatus()
+    let untagged = 0
+    try { untagged = pq.getUntaggedCount() } catch { /* ignore */ }
+    return { ...st, untagged, tier2Enabled }
+  }
+  mobileSyncService.enqueueMedia = async (mediaIds) => {
+    const pq = getProcessingQueue()
+    if (!pq) throw new Error('AI not initialized')
+    const r = pq.queueSpecific(mediaIds)  // priority 1 → scanned first
+    await ensureQueueRunning()
+    broadcast('vault:changed')
+    return { ...r, ...pq.getStatus() }
+  }
+  mobileSyncService.enqueueUntagged = async () => {
+    const pq = getProcessingQueue()
+    if (!pq) throw new Error('AI not initialized')
+    const r = pq.queueUntagged()
+    await ensureQueueRunning()
+    broadcast('vault:changed')
+    return { ...r, ...pq.getStatus() }
+  }
+  mobileSyncService.startQueue = async () => {
+    const pq = getProcessingQueue()
+    if (!pq) throw new Error('AI not initialized')
+    await ensureQueueRunning()
+    broadcast('vault:changed')
+    return pq.getStatus()
+  }
+  mobileSyncService.stopQueue = async () => {
+    const pq = getProcessingQueue()
+    if (!pq) throw new Error('AI not initialized')
+    pq.stop()
+    broadcast('vault:changed')
+    return pq.getStatus()
+  }
+  // Toggle the Venice (Tier 2) setting from the phone. Affects future items;
+  // an already-running scan keeps its current mode until restarted.
+  mobileSyncService.setVeniceEnabled = async (enabled) => {
+    updateSettings({ ai: { tier2Enabled: !!enabled } } as any)
+    broadcast('settings:changed', getSettings())
+    return { tier2Enabled: !!enabled }
+  }
+
+  // Remove a tag from a media item (phone tag-editing). Returns the updated
+  // tag list so the phone can refresh what's on the media.
+  mobileSyncService.removeMediaTag = async (mediaId, tag) => {
+    db.removeTagFromMedia(mediaId, tag)
+    broadcast('vault:changed')
+    const tags = (db.listMediaTags(mediaId) as any[]).map((t) => t.name)
+    return { success: true, tags }
+  }
+
   mobileSyncService.getMediaList = async (opts) => {
     // Build sort clause
     let orderBy = 'addedAt DESC'
@@ -10353,7 +10475,9 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     const whereClause = conditions.length > 0 ? `WHERE (${conditions.join(') AND (')})` : ''
 
     const rows = db.raw.prepare(`
-      SELECT id, path, filename, type, durationSec, size as sizeBytes, width, height, addedAt, thumbPath
+      SELECT id, path, filename, type, durationSec, size as sizeBytes, width, height, addedAt, thumbPath,
+        COALESCE((SELECT rating FROM media_stats ms WHERE ms.mediaId = media.id), 0) AS rating,
+        COALESCE((SELECT views FROM media_stats ms WHERE ms.mediaId = media.id), 0) AS viewCount
       FROM media
       ${whereClause}
       ORDER BY ${orderBy}
@@ -10375,10 +10499,28 @@ export function registerIpc(ipcMain: IpcMain, db: DB, onDirsChanged: OnDirsChang
     return result?.count || 0
   }
   mobileSyncService.getMediaById = async (id) => {
-    return db.raw.prepare('SELECT * FROM media WHERE id = ?').get(id) as any
+    return db.raw.prepare(`
+      SELECT media.*,
+        COALESCE((SELECT rating FROM media_stats ms WHERE ms.mediaId = media.id), 0) AS rating,
+        COALESCE((SELECT views FROM media_stats ms WHERE ms.mediaId = media.id), 0) AS viewCount
+      FROM media WHERE id = ?
+    `).get(id) as any
   }
   mobileSyncService.getPlaylists = async () => {
-    return db.raw.prepare('SELECT * FROM playlists ORDER BY createdAt DESC').all() as any[]
+    // Include itemCount (was missing → phone showed "0 items" for every
+    // playlist) and the first item's mediaId as a cover thumb.
+    return db.raw.prepare(`
+      SELECT p.*,
+        (SELECT COUNT(*) FROM playlist_items pi WHERE pi.playlistId = p.id) AS itemCount,
+        (SELECT pi.mediaId FROM playlist_items pi WHERE pi.playlistId = p.id ORDER BY pi.position ASC LIMIT 1) AS thumbId
+      FROM playlists p
+      ORDER BY p.createdAt DESC
+    `).all() as any[]
+  }
+  mobileSyncService.createPlaylist = async (name) => {
+    const pl = db.playlistCreate(name)
+    broadcast('vault:changed')
+    return pl
   }
   mobileSyncService.getPlaylistItems = async (id) => {
     return db.raw.prepare(`

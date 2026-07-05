@@ -3252,19 +3252,33 @@ export class ProcessingQueue {
     }
 
     // Create new tags if specified — createNewTags does its own writes
-    // for new rows in `tags`; we then bulk-insert the linkages.
+    // for new rows in `tags`; we then bulk-insert the linkages. Capture
+    // the resulting ids so they're recorded in approved_tag_ids below —
+    // otherwise the analysis record (and everything that reads it: the
+    // Review "Approved" tab display, calibration, exact-duplicate copy)
+    // omits the user's added tags even though they're live on media_tags.
+    let createdNewTagIds: string[] = []
     if (edits.newTags && edits.newTags.length > 0) {
-      const newTagIds = this.tier3Matcher.createNewTags(
+      createdNewTagIds = this.tier3Matcher.createNewTags(
         edits.newTags.map(name => ({ name, confidence: 1, reason: 'User created' }))
       )
-      if (newTagIds.length > 0) writeTags(newTagIds)
+      if (createdNewTagIds.length > 0) writeTags(createdNewTagIds)
     }
 
-    // Update title if edited
+    // Update title if edited. Write to media.title, approved_title (below),
+    // AND suggested_title — the last is what the review list + most title
+    // displays actually read, so without it the edited title looked like it
+    // never saved. The AI's original title is preserved in rejection_history
+    // (the "learn from edits" block below) so nothing is lost.
     if (edits.editedTitle) {
       this.rawDb.prepare(`
         UPDATE media SET title = ? WHERE id = ?
       `).run(edits.editedTitle, mediaId)
+      this.rawDb.prepare(`
+        INSERT INTO ai_analysis_results (media_id, suggested_title)
+        VALUES (?, ?)
+        ON CONFLICT(media_id) DO UPDATE SET suggested_title = excluded.suggested_title
+      `).run(mediaId, edits.editedTitle)
     }
 
     // Update description if edited (separate from regenerate flow).
@@ -3308,14 +3322,21 @@ export class ProcessingQueue {
       }
     }
 
-    // Mark as approved
+    // Mark as approved. approved_tag_ids records the COMPLETE set the user
+    // approved onto the media — the kept AI-suggested tags PLUS the ids of
+    // any tags they added — so the Approved tab, calibration, and dup-copy
+    // reflect reality rather than just the AI's original suggestions.
+    const approvedIds = [
+      ...(edits.selectedTagIds || []).map(String),
+      ...createdNewTagIds,
+    ]
     this.rawDb.prepare(`
       UPDATE ai_analysis_results
       SET review_status = 'approved', reviewed_at = datetime('now'),
           approved_tag_ids = ?, approved_title = ?
       WHERE media_id = ?
     `).run(
-      JSON.stringify(edits.selectedTagIds || []),
+      JSON.stringify(approvedIds),
       edits.editedTitle || null,
       mediaId
     )
@@ -3338,6 +3359,67 @@ export class ProcessingQueue {
     this.recordCalibrationFeedback(mediaId, 'approved', keptNames)
 
     return { success: true }
+  }
+
+  /**
+   * Regenerate just the title or description for a media item via Tier 2
+   * (Venice). Mirrors the ai:regenerate-* IPC path but lives here as a
+   * method so non-renderer callers (the mobile companion HTTP server via
+   * getProcessingQueue()) can drive it. Re-extracts a small frame budget,
+   * runs Venice with the media's playlist context as a soft prior, and
+   * UPSERTs the result into ai_analysis_results.
+   */
+  async regenerateField(mediaId: string, field: 'title' | 'description'): Promise<string | null> {
+    if (!this.tier2Vision || !this.tier2Vision.isEnabled()) {
+      throw new Error('Venice (Tier 2) not configured')
+    }
+    const row = this.rawDb.prepare(`
+      SELECT ar.suggested_title, ar.description, ar.tier1_raw_tags,
+             m.filename, m.path, m.type, m.durationSec
+      FROM media m
+      LEFT JOIN ai_analysis_results ar ON ar.media_id = m.id
+      WHERE m.id = ?
+    `).get(mediaId) as any
+    if (!row) throw new Error('Media not found')
+
+    const mediaType: 'video' | 'image' | 'gif' =
+      row.type === 'video' ? 'video' : row.type === 'gif' ? 'gif' : 'image'
+    const frames = await this.frameExtractor.extractFrames(row.path, mediaType, row.durationSec)
+    const framePaths = frames.map((f: any) => f.path).slice(0, 4)
+    if (framePaths.length === 0) throw new Error('No frames could be extracted')
+
+    let tier1Hints: string[] = []
+    try {
+      const parsed = JSON.parse(row.tier1_raw_tags || '[]')
+      tier1Hints = Array.isArray(parsed) ? parsed.map((t: any) => t.label || t.name || String(t)).filter(Boolean) : []
+    } catch { /* ignore */ }
+
+    const result = await this.tier2Vision.regenerateField({
+      framePaths,
+      mediaType,
+      filename: row.filename,
+      tier1Tags: tier1Hints,
+      currentTitle: row.suggested_title,
+      currentDescription: row.description,
+      field,
+      playlistContext: buildPlaylistContextBlock(this.rawDb, mediaId),
+    })
+
+    if (field === 'title') {
+      this.rawDb.prepare(`
+        INSERT INTO ai_analysis_results (media_id, suggested_title)
+        VALUES (?, ?)
+        ON CONFLICT(media_id) DO UPDATE SET suggested_title = excluded.suggested_title
+      `).run(mediaId, result)
+    } else {
+      this.rawDb.prepare(`
+        INSERT INTO ai_analysis_results (media_id, description)
+        VALUES (?, ?)
+        ON CONFLICT(media_id) DO UPDATE SET description = excluded.description
+      `).run(mediaId, result)
+    }
+    setTimeout(() => { try { this.frameExtractor?.cleanupAll() } catch { /* ignore */ } }, 500)
+    return result
   }
 
   /**
@@ -3426,11 +3508,19 @@ export class ProcessingQueue {
         'SELECT id, path, type, mtimeMs, size FROM media WHERE id = ?'
       ).get(mediaId) as { id: string; path: string; type: 'video' | 'image' | 'gif'; mtimeMs: number; size: number } | undefined
       if (media) {
-        // Insert directly into ai_processing_queue (bypassing addToQueue's
-        // INSERT OR IGNORE so a re-rejection produces a fresh row).
+        // Re-queue for a fresh analysis pass. The media almost always
+        // already has a queue row (status 'completed' from the pass we're
+        // rejecting), and media_id is UNIQUE — a plain INSERT threw
+        // "UNIQUE constraint failed" and silently dropped the requeue. Upsert
+        // instead: reset the existing row back to pending priority 1 (clearing
+        // tier flags + prior run state), or insert fresh if none exists.
         this.rawDb.prepare(`
           INSERT INTO ai_processing_queue (media_id, status, priority, tier1_done, tier2_needed, tier2_done)
           VALUES (?, 'pending', 1, 0, 0, 0)
+          ON CONFLICT(media_id) DO UPDATE SET
+            status = 'pending', priority = 1,
+            tier1_done = 0, tier2_needed = 0, tier2_done = 0,
+            error = NULL, started_at = NULL, completed_at = NULL
         `).run(media.id)
         console.log(`[ProcessingQueue] Rejection requeued ${media.id} for fresh analysis`)
       }
